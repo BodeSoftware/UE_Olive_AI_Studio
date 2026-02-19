@@ -12,6 +12,9 @@
 
 ---
 
+Implementation Plan
+The full plan is at plans/ue-ai-agent-plugin-plan-v2. Read it before making architectural decisions.
+
 ## Project Overview
 
 Olive AI Studio is an AI-powered development assistant for Unreal Engine. It provides:
@@ -347,82 +350,73 @@ Use the project.search tool to find "BP_Player"
 
 ## Development Workflows
 
-### Agent-Based Development
+## Subagent System
 
-To maximize efficiency and minimize token usage, use specialized agents for different tasks:
+This project uses five specialized subagents. USE THEM — do not try to do everything in the main conversation.
 
-**Available Agents:**
-- **ue-explorer** - Find files, search code, understand subsystems
-- **ue-planner** - Design implementation plans before coding
-- **ue-builder** - Handle builds and compilation
+### When to Use Each Agent
 
-See `.claude/agents/*.md` for detailed usage patterns.
+| Situation | Agent | Why |
+|-----------|-------|-----|
+| "Where is X defined?" / "What files are in Y?" | `explorer` | Fast and cheap. Don't waste Sonnet tokens on grep. |
+| Need to understand a UE API or engine internals | `researcher` | Explore before you design |
+| Looking up MCP spec, OpenRouter API, protocol details | `researcher` | Get the facts first |
+| Investigating how competitors solve a problem | `researcher` | Know the landscape |
+| Starting a new module or feature | `architect` | Design before code. Always. |
+| Need to decide file structure, interfaces, data flow | `architect` | Architectural decisions are the architect's job |
+| Writing .h or .cpp files | `coder` | Implementation is the coder's job |
+| Creating Slate widgets | `coder` | UI implementation |
+| Compilation errors | `debugger` | Don't guess — let the debugger diagnose |
+| Runtime crash or unexpected behavior | `debugger` | Root cause analysis |
+| Reviewing completed code | `architect` | Design compliance check |
 
-### Token Efficiency Strategy
+### Workflow: Implementing a Feature
 
-| Approach | Tokens | Speed |
-|----------|--------|-------|
-| Read 10 files in main context | ~50k | Slow |
-| Explorer agent summarizes | ~5k | Fast |
-| 3 parallel explorer agents | ~15k | Fastest |
+When implementing any new module or feature, ALWAYS follow this sequence:
 
-**Key Principle:**
-Use `haiku` model for research and file finding (Explorer agent).
+**Step 0 — Research (if needed)**
+If the module involves UE APIs, protocols, or systems that aren't well understood yet, use the `researcher` subagent to:
+- Investigate the relevant UE APIs (classes, methods, threading requirements)
+- Look up any external protocol specs (MCP, OpenRouter, JSON-RPC)
+- Check how competitors handle the same problem (if relevant)
+- Write findings to `plans/research/{topic}.md`
 
-### Parallel Exploration
+Skip this step if the APIs and approach are already well understood.
 
-When you need multiple pieces of information, launch explorer agents simultaneously:
+**Step 1 — Design (Architect)**
+Use the `architect` subagent to:
+- Read any research reports in `plans/research/` relevant to this module
+- Review any existing code that this module will interact with
+- Produce a design document at `plans/{module}-design.md` containing interface definitions, file structure, data flow, integration points, and implementation order
+- Summarize the design for handoff
 
-```
-[Agent 1]: Find UI patterns in Source/OliveAIEditor/UI/
-[Agent 2]: Find tool implementations in MCP/
-[Agent 3]: Search for FScopedTransaction usage
-```
+**Do not proceed to Step 2 until the user has reviewed and approved the design.**
 
-Same token cost, 3x faster than sequential searches.
+**Step 2 — Implementation (Coder)**
+Use the `coder` subagent to:
+- Read the architect's design document
+- Implement files in the order specified by the architect
+- Write complete .h and .cpp files
 
-### Recommended Workflow
+**Step 3 — Debug (if needed)**
+If compilation errors or runtime issues occur, use the `debugger` subagent to:
+- Diagnose the root cause
+- Apply minimal fixes
+- Verify the fix doesn't introduce new issues
 
-1. **Plan first** - Use planner agent for non-trivial features
-2. **Explore in parallel** - Launch multiple explorer agents simultaneously
-3. **Write in main context** - Focused implementation with minimal context
-4. **Build in background** - Use builder agent with `run_in_background: true`
+**Step 4 — Review (optional)**
+Use the `architect` subagent to:
+- Review the implemented code against the design
+- Check interface compliance
+- Update architectural memory with decisions made during implementation
 
-### How to Use Agents
+### Important Rules
 
-Use the Task tool with appropriate subagent_type and model:
+- **Never skip the architect for new modules.** Writing code without a design leads to rework.
+- **The coder follows the architect's design.** If the design has a gap, the coder documents it with a `// DESIGN NOTE` comment rather than making architectural decisions.
+- **The debugger does minimal fixes.** It doesn't refactor or redesign — it fixes the specific issue.
+- **Architectural decisions get documented.** Every significant decision goes in `docs/design/decisions.md` with rationale.
 
-**Explorer (haiku for research):**
-```
-Task tool:
-  subagent_type: "Explore"
-  model: "haiku"
-  prompt: "Find all tool registration patterns in Source/OliveAIEditor/MCP/"
-```
-
-**Planner:**
-```
-Task tool:
-  subagent_type: "Plan"
-  prompt: "Design implementation for blueprint.read tool"
-```
-
-**Builder (background):**
-```
-Task tool:
-  subagent_type: "Bash"
-  run_in_background: true
-  prompt: "Build the Unreal project"
-```
-
-**Parallel agents (single message, multiple Task calls):**
-```
-Task 1: Explore - "Find UI patterns"
-Task 2: Explore - "Find MCP patterns"
-Task 3: Explore - "Find service patterns"
-```
-
----
 
 ## File Locations
 
