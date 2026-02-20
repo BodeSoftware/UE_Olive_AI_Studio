@@ -194,6 +194,26 @@ FOliveAssetInfo FOliveProjectIndex::AssetDataToInfo(const FAssetData& AssetData)
 	Info.bIsMaterial = ClassStr.Contains(TEXT("Material"));
 	Info.bIsWidget = ClassStr.Contains(TEXT("Widget"));
 
+	// Track BT -> Blackboard association when available in asset tags.
+	if (Info.bIsBehaviorTree)
+	{
+		static const TArray<FName> BlackboardTagCandidates = {
+			FName(TEXT("BlackboardAsset")),
+			FName(TEXT("Blackboard")),
+			FName(TEXT("BlackboardData"))
+		};
+
+		for (const FName& TagName : BlackboardTagCandidates)
+		{
+			FAssetTagValueRef TagValue = AssetData.TagsAndValues.FindTag(TagName);
+			if (TagValue.IsSet())
+			{
+				Info.AssociatedBlackboardPath = TagValue.GetValue();
+				break;
+			}
+		}
+	}
+
 	// Get parent class for Blueprints
 	if (Info.bIsBlueprint)
 	{
@@ -543,6 +563,10 @@ TSharedPtr<FJsonObject> FOliveAssetInfo::ToJson() const
 	Json->SetBoolField(TEXT("is_behavior_tree"), bIsBehaviorTree);
 	Json->SetBoolField(TEXT("is_blackboard"), bIsBlackboard);
 	Json->SetBoolField(TEXT("is_pcg"), bIsPCG);
+	if (!AssociatedBlackboardPath.IsEmpty())
+	{
+		Json->SetStringField(TEXT("associated_blackboard"), AssociatedBlackboardPath);
+	}
 
 	return Json;
 }

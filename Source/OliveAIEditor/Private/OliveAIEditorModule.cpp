@@ -12,6 +12,8 @@
 #include "Services/OliveValidationEngine.h"
 #include "Catalog/OliveNodeCatalog.h"
 #include "MCP/OliveBlueprintToolHandlers.h"
+#include "MCP/OliveBTToolHandlers.h"
+#include "Catalog/OliveBTNodeCatalog.h"
 #include "UI/SOliveAIChatPanel.h"
 
 #include "Framework/Docking/TabManager.h"
@@ -52,6 +54,12 @@ void FOliveAIEditorModule::ShutdownModule()
 
 	// Unregister UI
 	UnregisterUI();
+
+	// Unregister BT/BB tools
+	FOliveBTToolHandlers::Get().UnregisterAllTools();
+
+	// Shutdown BT node catalog
+	FOliveBTNodeCatalog::Get().Shutdown();
 
 	// Unregister Blueprint tools
 	FOliveBlueprintToolHandlers::Get().UnregisterAllTools();
@@ -171,6 +179,15 @@ void FOliveAIEditorModule::OnPostEngineInit()
 
 	// Register Blueprint tools (replaces stubs with real handlers)
 	FOliveBlueprintToolHandlers::Get().RegisterAllTools();
+
+	// Initialize BT node catalog
+	FOliveBTNodeCatalog::Get().Initialize();
+
+	// Register BT/BB tools
+	FOliveBTToolHandlers::Get().RegisterAllTools();
+
+	// Register BT validation rules
+	FOliveValidationEngine::Get().RegisterBehaviorTreeRules();
 
 	// Start MCP server if configured
 	const UOliveAISettings* Settings = UOliveAISettings::Get();

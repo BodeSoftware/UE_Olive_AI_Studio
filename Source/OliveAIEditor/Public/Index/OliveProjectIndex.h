@@ -49,6 +49,10 @@ struct OLIVEAIEDITOR_API FOliveAssetInfo
 	UPROPERTY()
 	bool bIsBlackboard = false;
 
+	/** For BehaviorTree assets, associated Blackboard asset path if available */
+	UPROPERTY()
+	FString AssociatedBlackboardPath;
+
 	UPROPERTY()
 	bool bIsPCG = false;
 

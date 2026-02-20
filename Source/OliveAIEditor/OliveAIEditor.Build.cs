@@ -9,27 +9,31 @@ public class OliveAIEditor : ModuleRules
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		string BlueprintRoot = Path.Combine(ModuleDirectory, "Blueprint");
-		string BlueprintPublic = Path.Combine(BlueprintRoot, "Public");
-		string BlueprintPrivate = Path.Combine(BlueprintRoot, "Private");
-
-		// This module keeps headers under Blueprint/Public instead of Module/Public.
-		// Add recursive include paths so legacy short includes (e.g. "OliveBlueprintTypes.h") resolve.
-		if (Directory.Exists(BlueprintPublic))
+		// Add recursive include paths for sub-module directories (Blueprint, BehaviorTree, etc.)
+		// so short includes (e.g. "OliveBlueprintTypes.h", "OliveBlackboardReader.h") resolve.
+		string[] SubModules = { "Blueprint", "BehaviorTree" };
+		foreach (string SubModule in SubModules)
 		{
-			PublicIncludePaths.Add(BlueprintPublic);
-			foreach (string Dir in Directory.GetDirectories(BlueprintPublic, "*", SearchOption.AllDirectories))
+			string SubRoot = Path.Combine(ModuleDirectory, SubModule);
+			string SubPublic = Path.Combine(SubRoot, "Public");
+			string SubPrivate = Path.Combine(SubRoot, "Private");
+
+			if (Directory.Exists(SubPublic))
 			{
-				PublicIncludePaths.Add(Dir);
+				PublicIncludePaths.Add(SubPublic);
+				foreach (string Dir in Directory.GetDirectories(SubPublic, "*", SearchOption.AllDirectories))
+				{
+					PublicIncludePaths.Add(Dir);
+				}
 			}
-		}
 
-		if (Directory.Exists(BlueprintPrivate))
-		{
-			PrivateIncludePaths.Add(BlueprintPrivate);
-			foreach (string Dir in Directory.GetDirectories(BlueprintPrivate, "*", SearchOption.AllDirectories))
+			if (Directory.Exists(SubPrivate))
 			{
-				PrivateIncludePaths.Add(Dir);
+				PrivateIncludePaths.Add(SubPrivate);
+				foreach (string Dir in Directory.GetDirectories(SubPrivate, "*", SearchOption.AllDirectories))
+				{
+					PrivateIncludePaths.Add(Dir);
+				}
 			}
 		}
 
@@ -88,6 +92,10 @@ public class OliveAIEditor : ModuleRules
 			// Widget Blueprint
 			"UMG",
 			"UMGEditor",
+
+			// AI
+			"AIModule",
+			"GameplayTasks",
 
 			// Configuration
 			"Projects",

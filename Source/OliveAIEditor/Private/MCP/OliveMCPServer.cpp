@@ -5,6 +5,7 @@
 #include "MCP/OliveToolRegistry.h"
 #include "Index/OliveProjectIndex.h"
 #include "Catalog/OliveNodeCatalog.h"
+#include "Catalog/OliveBTNodeCatalog.h"
 #include "OliveAIEditorModule.h"
 #include "HttpPath.h"
 #include "HttpServerModule.h"
@@ -553,6 +554,26 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleResourcesList(const TSharedPtr<FJ
 		Resources.Add(MakeShared<FJsonValueObject>(Resource));
 	}
 
+	// Behavior Tree node catalog resource
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://behaviortree/node-catalog"));
+		Resource->SetStringField(TEXT("name"), TEXT("Behavior Tree Node Catalog"));
+		Resource->SetStringField(TEXT("description"), TEXT("Available BT task/decorator/service classes with metadata"));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("application/json"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
+	// Behavior Tree node catalog search resource
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://behaviortree/node-catalog/search"));
+		Resource->SetStringField(TEXT("name"), TEXT("Behavior Tree Node Catalog Search"));
+		Resource->SetStringField(TEXT("description"), TEXT("Search BT node catalog by query (append ?q=<query>)"));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("application/json"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
 	Result->SetArrayField(TEXT("resources"), Resources);
 
 	return Result;
@@ -576,6 +597,13 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleResourcesRead(const TSharedPtr<FJ
 
 	FString ContentText;
 	FString MimeType = TEXT("application/json");
+	auto JsonToString = [](const TSharedPtr<FJsonObject>& Json) -> FString
+	{
+		FString Output;
+		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Output);
+		FJsonSerializer::Serialize(Json.ToSharedRef(), Writer);
+		return Output;
+	};
 
 	if (Uri == TEXT("olive://project/config"))
 	{
@@ -612,6 +640,33 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleResourcesRead(const TSharedPtr<FJ
 	else if (Uri == TEXT("olive://blueprint/node-catalog"))
 	{
 		ContentText = FOliveNodeCatalog::Get().ToJson();
+	}
+	else if (Uri.StartsWith(TEXT("olive://behaviortree/node-catalog/search")))
+	{
+		FString Query;
+		int32 QueryStart = Uri.Find(TEXT("?q="));
+		if (QueryStart != INDEX_NONE)
+		{
+			Query = Uri.RightChop(QueryStart + 3);
+		}
+
+		TArray<FOliveBTNodeTypeInfo> SearchResults = FOliveBTNodeCatalog::Get().Search(Query);
+		TSharedPtr<FJsonObject> SearchJson = MakeShared<FJsonObject>();
+		SearchJson->SetStringField(TEXT("query"), Query);
+		SearchJson->SetNumberField(TEXT("total_results"), SearchResults.Num());
+
+		TArray<TSharedPtr<FJsonValue>> ResultsArray;
+		for (const FOliveBTNodeTypeInfo& Info : SearchResults)
+		{
+			ResultsArray.Add(MakeShared<FJsonValueObject>(Info.ToJson()));
+		}
+		SearchJson->SetArrayField(TEXT("results"), ResultsArray);
+
+		ContentText = JsonToString(SearchJson);
+	}
+	else if (Uri == TEXT("olive://behaviortree/node-catalog"))
+	{
+		ContentText = JsonToString(FOliveBTNodeCatalog::Get().ToJson());
 	}
 	else
 	{

@@ -186,3 +186,71 @@ public:
 	virtual FString GetDescription() const override { return TEXT("Validates target asset exists"); }
 	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
 };
+
+// ============================================================================
+// Behavior Tree / Blackboard Validation Rules
+// ============================================================================
+
+/**
+ * Rule that validates BT tools target BT assets and BB tools target BB assets
+ */
+class OLIVEAIEDITOR_API FOliveBTAssetTypeRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("BTAssetType")); }
+	virtual FString GetDescription() const override { return TEXT("Validates correct asset type for BT/BB tools"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return {
+			TEXT("behaviortree.read"), TEXT("behaviortree.set_blackboard"),
+			TEXT("behaviortree.add_composite"), TEXT("behaviortree.add_task"),
+			TEXT("behaviortree.add_decorator"), TEXT("behaviortree.add_service"),
+			TEXT("behaviortree.remove_node"), TEXT("behaviortree.move_node"),
+			TEXT("behaviortree.set_node_property"),
+			TEXT("blackboard.read"), TEXT("blackboard.add_key"),
+			TEXT("blackboard.remove_key"), TEXT("blackboard.modify_key"),
+			TEXT("blackboard.set_parent")
+		};
+	}
+	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+};
+
+/**
+ * Rule that validates node_id parameters have correct format
+ */
+class OLIVEAIEDITOR_API FOliveBTNodeExistsRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("BTNodeExists")); }
+	virtual FString GetDescription() const override { return TEXT("Validates node_id parameters have correct format"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return {
+			TEXT("behaviortree.add_composite"), TEXT("behaviortree.add_task"),
+			TEXT("behaviortree.add_decorator"), TEXT("behaviortree.add_service"),
+			TEXT("behaviortree.remove_node"), TEXT("behaviortree.move_node"),
+			TEXT("behaviortree.set_node_property")
+		};
+	}
+	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+};
+
+/**
+ * Rule that validates Blackboard key name is not empty for add_key
+ */
+class OLIVEAIEDITOR_API FOliveBBKeyUniqueRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("BBKeyUnique")); }
+	virtual FString GetDescription() const override { return TEXT("Validates Blackboard key operations and parent inheritance safety"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return {
+			TEXT("blackboard.add_key"),
+			TEXT("blackboard.remove_key"),
+			TEXT("blackboard.modify_key"),
+			TEXT("blackboard.set_parent")
+		};
+	}
+	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+};
