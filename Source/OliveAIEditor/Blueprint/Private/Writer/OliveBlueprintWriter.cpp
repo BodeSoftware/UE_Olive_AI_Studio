@@ -1,0 +1,1632 @@
+// Copyright Bode Software. All Rights Reserved.
+
+#include "OliveBlueprintWriter.h"
+#include "OliveBlueprintTypes.h"
+#include "Services/OliveTransactionManager.h"
+
+#include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
+#include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphNode.h"
+#include "EdGraph/EdGraphPin.h"
+#include "EdGraphSchema_K2.h"
+#include "K2Node_FunctionEntry.h"
+#include "K2Node_FunctionResult.h"
+#include "K2Node_CustomEvent.h"
+#include "K2Node_Event.h"
+#include "Kismet2/BlueprintEditorUtils.h"
+#include "Kismet2/KismetEditorUtilities.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "AssetToolsModule.h"
+#include "ObjectTools.h"
+#include "UObject/Package.h"
+#include "UObject/SavePackage.h"
+#include "UObject/UObjectGlobals.h"
+#include "Editor.h"
+#include "Dom/JsonObject.h"
+
+DEFINE_LOG_CATEGORY(LogOliveBPWriter);
+
+// ============================================================================
+// FOliveBlueprintWriteResult Implementation
+// ============================================================================
+
+FOliveBlueprintWriteResult FOliveBlueprintWriteResult::Success(const FString& InAssetPath, const FString& InCreatedItemName)
+{
+	FOliveBlueprintWriteResult Result;
+	Result.bSuccess = true;
+	Result.AssetPath = InAssetPath;
+	Result.CreatedItemName = InCreatedItemName;
+	return Result;
+}
+
+FOliveBlueprintWriteResult FOliveBlueprintWriteResult::SuccessWithNode(const FString& InAssetPath, const FString& InNodeId)
+{
+	FOliveBlueprintWriteResult Result;
+	Result.bSuccess = true;
+	Result.AssetPath = InAssetPath;
+	Result.CreatedNodeId = InNodeId;
+	return Result;
+}
+
+FOliveBlueprintWriteResult FOliveBlueprintWriteResult::Error(const FString& ErrorMessage, const FString& InAssetPath)
+{
+	FOliveBlueprintWriteResult Result;
+	Result.bSuccess = false;
+	Result.AssetPath = InAssetPath;
+	Result.Errors.Add(ErrorMessage);
+	return Result;
+}
+
+FOliveBlueprintWriteResult FOliveBlueprintWriteResult::FromValidation(const FOliveValidationResult& ValidationResult, const FString& InAssetPath)
+{
+	FOliveBlueprintWriteResult Result;
+	Result.bSuccess = ValidationResult.bValid;
+	Result.AssetPath = InAssetPath;
+
+	for (const FOliveIRMessage& Message : ValidationResult.Messages)
+	{
+		if (Message.Severity == EOliveIRSeverity::Error)
+		{
+			Result.Errors.Add(Message.Message);
+		}
+		else if (Message.Severity == EOliveIRSeverity::Warning)
+		{
+			Result.Warnings.Add(Message.Message);
+		}
+	}
+
+	return Result;
+}
+
+void FOliveBlueprintWriteResult::AddWarning(const FString& Warning)
+{
+	Warnings.Add(Warning);
+}
+
+void FOliveBlueprintWriteResult::AddError(const FString& ErrorMessage)
+{
+	Errors.Add(ErrorMessage);
+	bSuccess = false;
+}
+
+TSharedPtr<FJsonObject> FOliveBlueprintWriteResult::ToJson() const
+{
+	TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject());
+
+	JsonObject->SetBoolField(TEXT("success"), bSuccess);
+	JsonObject->SetStringField(TEXT("assetPath"), AssetPath);
+
+	if (!CreatedItemName.IsEmpty())
+	{
+		JsonObject->SetStringField(TEXT("createdItemName"), CreatedItemName);
+	}
+
+	if (!CreatedNodeId.IsEmpty())
+	{
+		JsonObject->SetStringField(TEXT("createdNodeId"), CreatedNodeId);
+	}
+
+	if (CreatedNodeIds.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> NodeIdsArray;
+		for (const FString& NodeId : CreatedNodeIds)
+		{
+			NodeIdsArray.Add(MakeShareable(new FJsonValueString(NodeId)));
+		}
+		JsonObject->SetArrayField(TEXT("createdNodeIds"), NodeIdsArray);
+	}
+
+	if (Warnings.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> WarningsArray;
+		for (const FString& Warning : Warnings)
+		{
+			WarningsArray.Add(MakeShareable(new FJsonValueString(Warning)));
+		}
+		JsonObject->SetArrayField(TEXT("warnings"), WarningsArray);
+	}
+
+	if (Errors.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> ErrorsArray;
+		for (const FString& Error : Errors)
+		{
+			ErrorsArray.Add(MakeShareable(new FJsonValueString(Error)));
+		}
+		JsonObject->SetArrayField(TEXT("errors"), ErrorsArray);
+	}
+
+	JsonObject->SetBoolField(TEXT("compileSuccess"), bCompileSuccess);
+
+	if (CompileErrors.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> CompileErrorsArray;
+		for (const FString& CompileError : CompileErrors)
+		{
+			CompileErrorsArray.Add(MakeShareable(new FJsonValueString(CompileError)));
+		}
+		JsonObject->SetArrayField(TEXT("compileErrors"), CompileErrorsArray);
+	}
+
+	return JsonObject;
+}
+
+// ============================================================================
+// FOliveBlueprintWriter Singleton
+// ============================================================================
+
+FOliveBlueprintWriter& FOliveBlueprintWriter::Get()
+{
+	static FOliveBlueprintWriter Instance;
+	return Instance;
+}
+
+// ============================================================================
+// Asset-Level Operations
+// ============================================================================
+
+FOliveBlueprintWriteResult FOliveBlueprintWriter::CreateBlueprint(
+	const FString& AssetPath,
+	const FString& ParentClass,
+	EOliveBlueprintType Type)
+{
+	if (IsPIEActive())
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Cannot create Blueprints while Play-In-Editor is active"));
+	}
+
+	// Find the parent class
+	UClass* ParentUClass = FindParentClass(ParentClass);
+	if (!ParentUClass)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Parent class '%s' not found"), *ParentClass));
+	}
+
+	// Parse the asset path
+	FString PackagePath = FPackageName::GetLongPackagePath(AssetPath);
+	FString AssetName = FPackageName::GetShortName(AssetPath);
+
+	// Validate asset name
+	if (AssetName.IsEmpty())
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Invalid asset name"));
+	}
+
+	// Check if asset already exists
+	if (FindObject<UBlueprint>(nullptr, *AssetPath))
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Asset already exists at path: %s"), *AssetPath));
+	}
+
+	// Create the package
+	UPackage* Package = CreatePackage(*AssetPath);
+	if (!Package)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Failed to create package for: %s"), *AssetPath));
+	}
+
+	// Use transaction for undo support
+	OLIVE_SCOPED_TRANSACTION(FText::Format(
+		NSLOCTEXT("OliveBPWriter", "CreateBlueprint", "Create Blueprint '{0}'"),
+		FText::FromString(AssetName)));
+
+	// Get the UE Blueprint type
+	EBlueprintType UEBPType = GetUEBlueprintType(Type);
+
+	// Create the Blueprint
+	UBlueprint* NewBlueprint = FKismetEditorUtilities::CreateBlueprint(
+		ParentUClass,
+		Package,
+		*AssetName,
+		UEBPType,
+		UBlueprint::StaticClass(),
+		UBlueprintGeneratedClass::StaticClass()
+	);
+
+	if (!NewBlueprint)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Failed to create Blueprint: %s"), *AssetPath));
+	}
+
+	// Mark the package as dirty
+	Package->MarkPackageDirty();
+
+	// Notify asset registry
+	FAssetRegistryModule::AssetCreated(NewBlueprint);
+
+	UE_LOG(LogOliveBPWriter, Log, TEXT("Created Blueprint: %s (Parent: %s, Type: %d)"),
+		*AssetPath, *ParentClass, static_cast<int32>(Type));
+
+	return FOliveBlueprintWriteResult::Success(AssetPath, AssetName);
+}
+
+FOliveBlueprintWriteResult FOliveBlueprintWriter::DeleteBlueprint(const FString& AssetPath)
+{
+	if (IsPIEActive())
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Cannot delete Blueprints while Play-In-Editor is active"));
+	}
+
+	// Load the Blueprint to verify it exists
+	FString Error;
+	UBlueprint* Blueprint = LoadBlueprintForEditing(AssetPath, Error);
+	if (!Blueprint)
+	{
+		return FOliveBlueprintWriteResult::Error(Error);
+	}
+
+	// Use asset tools to delete with proper reference handling
+	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
+
+	TArray<UObject*> AssetsToDelete;
+	AssetsToDelete.Add(Blueprint);
+
+	// This will handle reference cleanup
+	int32 DeletedCount = ObjectTools::DeleteObjects(AssetsToDelete, /*bShowConfirmation=*/false);
+
+	if (DeletedCount == 0)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Failed to delete Blueprint: %s (may have references)"), *AssetPath));
+	}
+
+	UE_LOG(LogOliveBPWriter, Log, TEXT("Deleted Blueprint: %s"), *AssetPath);
+
+	return FOliveBlueprintWriteResult::Success(AssetPath);
+}
+
+FOliveBlueprintWriteResult FOliveBlueprintWriter::DuplicateBlueprint(
+	const FString& SourcePath,
+	const FString& DestPath)
+{
+	if (IsPIEActive())
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Cannot duplicate Blueprints while Play-In-Editor is active"));
+	}
+
+	// Load the source Blueprint
+	FString Error;
+	UBlueprint* SourceBlueprint = LoadBlueprintForEditing(SourcePath, Error);
+	if (!SourceBlueprint)
+	{
+		return FOliveBlueprintWriteResult::Error(Error);
+	}
+
+	// Parse destination path
+	FString DestPackagePath = FPackageName::GetLongPackagePath(DestPath);
+	FString DestAssetName = FPackageName::GetShortName(DestPath);
+
+	// Check if destination already exists
+	if (FindObject<UBlueprint>(nullptr, *DestPath))
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Asset already exists at destination: %s"), *DestPath));
+	}
+
+	// Use asset tools to duplicate
+	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
+
+	UObject* DuplicatedAsset = AssetTools.DuplicateAsset(DestAssetName, DestPackagePath, SourceBlueprint);
+
+	if (!DuplicatedAsset)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Failed to duplicate Blueprint from '%s' to '%s'"), *SourcePath, *DestPath));
+	}
+
+	UE_LOG(LogOliveBPWriter, Log, TEXT("Duplicated Blueprint: %s -> %s"), *SourcePath, *DestPath);
+
+	return FOliveBlueprintWriteResult::Success(DestPath, DestAssetName);
+}
+
+FOliveBlueprintWriteResult FOliveBlueprintWriter::SetParentClass(
+	const FString& AssetPath,
+	const FString& NewParentClass)
+{
+	if (IsPIEActive())
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Cannot modify Blueprints while Play-In-Editor is active"));
+	}
+
+	FString Error;
+	UBlueprint* Blueprint = LoadBlueprintForEditing(AssetPath, Error);
+	if (!Blueprint)
+	{
+		return FOliveBlueprintWriteResult::Error(Error);
+	}
+
+	// Find the new parent class
+	UClass* NewParentUClass = FindParentClass(NewParentClass);
+	if (!NewParentUClass)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Parent class '%s' not found"), *NewParentClass));
+	}
+
+	// Check if current parent is the same
+	if (Blueprint->ParentClass == NewParentUClass)
+	{
+		FOliveBlueprintWriteResult Result = FOliveBlueprintWriteResult::Success(AssetPath);
+		Result.AddWarning(TEXT("Blueprint already has this parent class"));
+		return Result;
+	}
+
+	// Use transaction for undo support
+	OLIVE_SCOPED_TRANSACTION(FText::Format(
+		NSLOCTEXT("OliveBPWriter", "SetParentClass", "Set Parent Class of '{0}' to '{1}'"),
+		FText::FromString(Blueprint->GetName()),
+		FText::FromString(NewParentClass)));
+
+	Blueprint->Modify();
+
+	// Change the parent class directly (ReparentBlueprint was removed in UE 5.5)
+	Blueprint->ParentClass = NewParentUClass;
+	FBlueprintEditorUtils::RefreshAllNodes(Blueprint);
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+
+	UE_LOG(LogOliveBPWriter, Log, TEXT("Set parent class of '%s' to '%s'"), *AssetPath, *NewParentClass);
+
+	return FOliveBlueprintWriteResult::Success(AssetPath);
+}
+
+FOliveBlueprintWriteResult FOliveBlueprintWriter::AddInterface(
+	const FString& AssetPath,
+	const FString& InterfacePath)
+{
+	if (IsPIEActive())
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Cannot modify Blueprints while Play-In-Editor is active"));
+	}
+
+	FString Error;
+	UBlueprint* Blueprint = LoadBlueprintForEditing(AssetPath, Error);
+	if (!Blueprint)
+	{
+		return FOliveBlueprintWriteResult::Error(Error);
+	}
+
+	// Find the interface class
+	UClass* InterfaceClass = FindInterfaceClass(InterfacePath);
+	if (!InterfaceClass)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Interface '%s' not found"), *InterfacePath));
+	}
+
+	// Check if it's actually an interface
+	if (!InterfaceClass->HasAnyClassFlags(CLASS_Interface))
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("'%s' is not an interface class"), *InterfacePath));
+	}
+
+	// Check if interface is already implemented
+	for (const FBPInterfaceDescription& ExistingInterface : Blueprint->ImplementedInterfaces)
+	{
+		if (ExistingInterface.Interface == InterfaceClass)
+		{
+			FOliveBlueprintWriteResult Result = FOliveBlueprintWriteResult::Success(AssetPath);
+			Result.AddWarning(FString::Printf(TEXT("Interface '%s' is already implemented"), *InterfacePath));
+			return Result;
+		}
+	}
+
+	// Use transaction for undo support
+	OLIVE_SCOPED_TRANSACTION(FText::Format(
+		NSLOCTEXT("OliveBPWriter", "AddInterface", "Add Interface '{0}' to '{1}'"),
+		FText::FromString(InterfacePath),
+		FText::FromString(Blueprint->GetName())));
+
+	Blueprint->Modify();
+
+	// Add the interface (UE 5.5 requires FTopLevelAssetPath)
+	FTopLevelAssetPath InterfaceAssetPath(InterfaceClass->GetPackage()->GetFName(), InterfaceClass->GetFName());
+	FBlueprintEditorUtils::ImplementNewInterface(Blueprint, InterfaceAssetPath);
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+
+	UE_LOG(LogOliveBPWriter, Log, TEXT("Added interface '%s' to '%s'"), *InterfacePath, *AssetPath);
+
+	return FOliveBlueprintWriteResult::Success(AssetPath, InterfaceClass->GetName());
+}
+
+FOliveBlueprintWriteResult FOliveBlueprintWriter::RemoveInterface(
+	const FString& AssetPath,
+	const FString& InterfacePath)
+{
+	if (IsPIEActive())
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Cannot modify Blueprints while Play-In-Editor is active"));
+	}
+
+	FString Error;
+	UBlueprint* Blueprint = LoadBlueprintForEditing(AssetPath, Error);
+	if (!Blueprint)
+	{
+		return FOliveBlueprintWriteResult::Error(Error);
+	}
+
+	// Find the interface class
+	UClass* InterfaceClass = FindInterfaceClass(InterfacePath);
+	if (!InterfaceClass)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Interface '%s' not found"), *InterfacePath));
+	}
+
+	// Check if interface is implemented
+	bool bFound = false;
+	for (const FBPInterfaceDescription& ExistingInterface : Blueprint->ImplementedInterfaces)
+	{
+		if (ExistingInterface.Interface == InterfaceClass)
+		{
+			bFound = true;
+			break;
+		}
+	}
+
+	if (!bFound)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Interface '%s' is not implemented by '%s'"), *InterfacePath, *AssetPath));
+	}
+
+	// Use transaction for undo support
+	OLIVE_SCOPED_TRANSACTION(FText::Format(
+		NSLOCTEXT("OliveBPWriter", "RemoveInterface", "Remove Interface '{0}' from '{1}'"),
+		FText::FromString(InterfacePath),
+		FText::FromString(Blueprint->GetName())));
+
+	Blueprint->Modify();
+
+	// Remove the interface (UE 5.5 requires FTopLevelAssetPath)
+	FTopLevelAssetPath InterfaceAssetPath(InterfaceClass->GetPackage()->GetFName(), InterfaceClass->GetFName());
+	FBlueprintEditorUtils::RemoveInterface(Blueprint, InterfaceAssetPath);
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+
+	UE_LOG(LogOliveBPWriter, Log, TEXT("Removed interface '%s' from '%s'"), *InterfacePath, *AssetPath);
+
+	return FOliveBlueprintWriteResult::Success(AssetPath);
+}
+
+// ============================================================================
+// Variable Operations
+// ============================================================================
+
+FOliveBlueprintWriteResult FOliveBlueprintWriter::AddVariable(
+	const FString& AssetPath,
+	const FOliveIRVariable& Variable)
+{
+	if (IsPIEActive())
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Cannot modify Blueprints while Play-In-Editor is active"));
+	}
+
+	FString Error;
+	UBlueprint* Blueprint = LoadBlueprintForEditing(AssetPath, Error);
+	if (!Blueprint)
+	{
+		return FOliveBlueprintWriteResult::Error(Error);
+	}
+
+	// Validate the operation
+	EOliveBlueprintType BPType = FOliveBlueprintTypeDetector::DetectType(Blueprint);
+	FOliveValidationResult ValidationResult = FOliveBlueprintConstraints::ValidateAddVariable(BPType, Variable.Name);
+	if (!ValidationResult.bValid)
+	{
+		return FOliveBlueprintWriteResult::FromValidation(ValidationResult, AssetPath);
+	}
+
+	// Check for name conflicts
+	int32 ExistingIndex = FindVariableIndex(Blueprint, Variable.Name);
+	if (ExistingIndex != INDEX_NONE)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Variable '%s' already exists in Blueprint '%s'"), *Variable.Name, *AssetPath));
+	}
+
+	// Convert IR type to UE pin type
+	FEdGraphPinType PinType = ConvertIRType(Variable.Type);
+
+	// Use transaction for undo support
+	OLIVE_SCOPED_TRANSACTION(FText::Format(
+		NSLOCTEXT("OliveBPWriter", "AddVariable", "Add Variable '{0}' to '{1}'"),
+		FText::FromString(Variable.Name),
+		FText::FromString(Blueprint->GetName())));
+
+	Blueprint->Modify();
+
+	// Create the variable description
+	FBPVariableDescription NewVar;
+	NewVar.VarName = FName(*Variable.Name);
+	NewVar.VarType = PinType;
+	NewVar.VarGuid = FGuid::NewGuid();
+	NewVar.FriendlyName = Variable.Name;
+	NewVar.Category = FText::FromString(Variable.Category);
+	NewVar.DefaultValue = Variable.DefaultValue;
+
+	// Set property flags
+	EPropertyFlags Flags = CPF_Edit | CPF_BlueprintVisible;
+
+	if (Variable.bBlueprintReadWrite)
+	{
+		// Default is read/write, nothing extra needed
+	}
+	else
+	{
+		Flags |= CPF_BlueprintReadOnly;
+	}
+
+	if (Variable.bExposeOnSpawn)
+	{
+		Flags |= CPF_ExposeOnSpawn;
+	}
+
+	if (Variable.bReplicated)
+	{
+		Flags |= CPF_Net;
+	}
+
+	if (Variable.bSaveGame)
+	{
+		Flags |= CPF_SaveGame;
+	}
+
+	NewVar.PropertyFlags = Flags;
+
+	// Set metadata
+	if (!Variable.Description.IsEmpty())
+	{
+		NewVar.SetMetaData(FBlueprintMetadata::MD_Tooltip, Variable.Description);
+	}
+
+	// Add to Blueprint
+	Blueprint->NewVariables.Add(NewVar);
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+
+	UE_LOG(LogOliveBPWriter, Log, TEXT("Added variable '%s' (Type: %s) to '%s'"),
+		*Variable.Name,
+		*Variable.Type.GetDisplayName(),
+		*AssetPath);
+
+	return FOliveBlueprintWriteResult::Success(AssetPath, Variable.Name);
+}
+
+FOliveBlueprintWriteResult FOliveBlueprintWriter::RemoveVariable(
+	const FString& AssetPath,
+	const FString& VariableName)
+{
+	if (IsPIEActive())
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Cannot modify Blueprints while Play-In-Editor is active"));
+	}
+
+	FString Error;
+	UBlueprint* Blueprint = LoadBlueprintForEditing(AssetPath, Error);
+	if (!Blueprint)
+	{
+		return FOliveBlueprintWriteResult::Error(Error);
+	}
+
+	// Find the variable
+	int32 VarIndex = FindVariableIndex(Blueprint, VariableName);
+	if (VarIndex == INDEX_NONE)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Variable '%s' not found in Blueprint '%s'"), *VariableName, *AssetPath));
+	}
+
+	// Use transaction for undo support
+	OLIVE_SCOPED_TRANSACTION(FText::Format(
+		NSLOCTEXT("OliveBPWriter", "RemoveVariable", "Remove Variable '{0}' from '{1}'"),
+		FText::FromString(VariableName),
+		FText::FromString(Blueprint->GetName())));
+
+	Blueprint->Modify();
+
+	// Remove all references to this variable in graphs
+	FBlueprintEditorUtils::RemoveMemberVariable(Blueprint, FName(*VariableName));
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+
+	UE_LOG(LogOliveBPWriter, Log, TEXT("Removed variable '%s' from '%s'"), *VariableName, *AssetPath);
+
+	return FOliveBlueprintWriteResult::Success(AssetPath, VariableName);
+}
+
+FOliveBlueprintWriteResult FOliveBlueprintWriter::ModifyVariable(
+	const FString& AssetPath,
+	const FString& VariableName,
+	const TMap<FString, FString>& Modifications)
+{
+	if (IsPIEActive())
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Cannot modify Blueprints while Play-In-Editor is active"));
+	}
+
+	FString Error;
+	UBlueprint* Blueprint = LoadBlueprintForEditing(AssetPath, Error);
+	if (!Blueprint)
+	{
+		return FOliveBlueprintWriteResult::Error(Error);
+	}
+
+	// Find the variable
+	int32 VarIndex = FindVariableIndex(Blueprint, VariableName);
+	if (VarIndex == INDEX_NONE)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Variable '%s' not found in Blueprint '%s'"), *VariableName, *AssetPath));
+	}
+
+	if (Modifications.Num() == 0)
+	{
+		FOliveBlueprintWriteResult Result = FOliveBlueprintWriteResult::Success(AssetPath, VariableName);
+		Result.AddWarning(TEXT("No modifications specified"));
+		return Result;
+	}
+
+	// Use transaction for undo support
+	OLIVE_SCOPED_TRANSACTION(FText::Format(
+		NSLOCTEXT("OliveBPWriter", "ModifyVariable", "Modify Variable '{0}' in '{1}'"),
+		FText::FromString(VariableName),
+		FText::FromString(Blueprint->GetName())));
+
+	Blueprint->Modify();
+
+	FBPVariableDescription& VarDesc = Blueprint->NewVariables[VarIndex];
+	FOliveBlueprintWriteResult Result = FOliveBlueprintWriteResult::Success(AssetPath, VariableName);
+
+	// Apply modifications
+	for (const TPair<FString, FString>& Mod : Modifications)
+	{
+		if (Mod.Key == TEXT("Category"))
+		{
+			VarDesc.Category = FText::FromString(Mod.Value);
+		}
+		else if (Mod.Key == TEXT("DefaultValue"))
+		{
+			VarDesc.DefaultValue = Mod.Value;
+		}
+		else if (Mod.Key == TEXT("Description"))
+		{
+			VarDesc.SetMetaData(FBlueprintMetadata::MD_Tooltip, Mod.Value);
+		}
+		else if (Mod.Key == TEXT("bBlueprintReadWrite"))
+		{
+			bool bReadWrite = Mod.Value.ToBool();
+			if (bReadWrite)
+			{
+				VarDesc.PropertyFlags &= ~CPF_BlueprintReadOnly;
+			}
+			else
+			{
+				VarDesc.PropertyFlags |= CPF_BlueprintReadOnly;
+			}
+		}
+		else if (Mod.Key == TEXT("bExposeOnSpawn"))
+		{
+			if (Mod.Value.ToBool())
+			{
+				VarDesc.PropertyFlags |= CPF_ExposeOnSpawn;
+			}
+			else
+			{
+				VarDesc.PropertyFlags &= ~CPF_ExposeOnSpawn;
+			}
+		}
+		else if (Mod.Key == TEXT("bReplicated"))
+		{
+			if (Mod.Value.ToBool())
+			{
+				VarDesc.PropertyFlags |= CPF_Net;
+			}
+			else
+			{
+				VarDesc.PropertyFlags &= ~CPF_Net;
+			}
+		}
+		else
+		{
+			Result.AddWarning(FString::Printf(TEXT("Unknown modification key: '%s'"), *Mod.Key));
+		}
+	}
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+
+	UE_LOG(LogOliveBPWriter, Log, TEXT("Modified variable '%s' in '%s' (%d changes)"),
+		*VariableName, *AssetPath, Modifications.Num());
+
+	return Result;
+}
+
+// ============================================================================
+// Function Operations
+// ============================================================================
+
+FOliveBlueprintWriteResult FOliveBlueprintWriter::AddFunction(
+	const FString& AssetPath,
+	const FOliveIRFunctionSignature& Signature)
+{
+	if (IsPIEActive())
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Cannot modify Blueprints while Play-In-Editor is active"));
+	}
+
+	FString Error;
+	UBlueprint* Blueprint = LoadBlueprintForEditing(AssetPath, Error);
+	if (!Blueprint)
+	{
+		return FOliveBlueprintWriteResult::Error(Error);
+	}
+
+	// Validate the operation
+	EOliveBlueprintType BPType = FOliveBlueprintTypeDetector::DetectType(Blueprint);
+	FOliveValidationResult ValidationResult = FOliveBlueprintConstraints::ValidateAddFunction(BPType, Signature.bIsStatic, Signature.bIsPublic);
+	if (!ValidationResult.bValid)
+	{
+		return FOliveBlueprintWriteResult::FromValidation(ValidationResult, AssetPath);
+	}
+
+	// Check for name conflicts
+	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+	{
+		if (Graph && Graph->GetName() == Signature.Name)
+		{
+			return FOliveBlueprintWriteResult::Error(
+				FString::Printf(TEXT("Function '%s' already exists in Blueprint '%s'"), *Signature.Name, *AssetPath));
+		}
+	}
+
+	// Use transaction for undo support
+	OLIVE_SCOPED_TRANSACTION(FText::Format(
+		NSLOCTEXT("OliveBPWriter", "AddFunction", "Add Function '{0}' to '{1}'"),
+		FText::FromString(Signature.Name),
+		FText::FromString(Blueprint->GetName())));
+
+	Blueprint->Modify();
+
+	// Create the function graph
+	UEdGraph* NewGraph = FBlueprintEditorUtils::CreateNewGraph(
+		Blueprint,
+		FName(*Signature.Name),
+		UEdGraph::StaticClass(),
+		UEdGraphSchema_K2::StaticClass()
+	);
+
+	if (!NewGraph)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Failed to create function graph for '%s'"), *Signature.Name));
+	}
+
+	// Add the graph to the Blueprint
+	FBlueprintEditorUtils::AddFunctionGraph(Blueprint, NewGraph, /*bIsUserCreated=*/true, /*SignatureFromObject=*/(UClass*)nullptr);
+
+	// Find the function entry node to set up parameters
+	UK2Node_FunctionEntry* EntryNode = nullptr;
+	for (UEdGraphNode* Node : NewGraph->Nodes)
+	{
+		EntryNode = Cast<UK2Node_FunctionEntry>(Node);
+		if (EntryNode)
+		{
+			break;
+		}
+	}
+
+	if (EntryNode)
+	{
+		// Set function flags via metadata
+		if (Signature.bIsPure)
+		{
+			EntryNode->AddExtraFlags(FUNC_BlueprintPure);
+		}
+
+		if (Signature.bIsStatic)
+		{
+			EntryNode->AddExtraFlags(FUNC_Static);
+		}
+
+		if (Signature.bIsConst)
+		{
+			EntryNode->AddExtraFlags(FUNC_Const);
+		}
+
+		if (Signature.bCallInEditor)
+		{
+			EntryNode->MetaData.bCallInEditor = true;
+		}
+
+		// Add input parameters
+		for (const FOliveIRFunctionParam& Param : Signature.Inputs)
+		{
+			FEdGraphPinType PinType = CreatePinTypeFromParam(Param);
+
+			TSharedPtr<FUserPinInfo> NewPinInfo = MakeShareable(new FUserPinInfo());
+			NewPinInfo->PinName = FName(*Param.Name);
+			NewPinInfo->PinType = PinType;
+			NewPinInfo->DesiredPinDirection = EGPD_Output; // Entry node outputs are function inputs
+
+			EntryNode->UserDefinedPins.Add(NewPinInfo);
+		}
+
+		EntryNode->ReconstructNode();
+	}
+
+	// Add output parameters (create result node if needed)
+	if (Signature.Outputs.Num() > 0)
+	{
+		// Find or create result node
+		UK2Node_FunctionResult* ResultNode = nullptr;
+		for (UEdGraphNode* Node : NewGraph->Nodes)
+		{
+			ResultNode = Cast<UK2Node_FunctionResult>(Node);
+			if (ResultNode)
+			{
+				break;
+			}
+		}
+
+		if (!ResultNode)
+		{
+			// Create result node
+			FGraphNodeCreator<UK2Node_FunctionResult> ResultCreator(*NewGraph);
+			ResultNode = ResultCreator.CreateNode();
+			ResultNode->NodePosX = 400;
+			ResultNode->NodePosY = 0;
+			ResultCreator.Finalize();
+		}
+
+		if (ResultNode)
+		{
+			for (const FOliveIRFunctionParam& Param : Signature.Outputs)
+			{
+				FEdGraphPinType PinType = CreatePinTypeFromParam(Param);
+
+				TSharedPtr<FUserPinInfo> NewPinInfo = MakeShareable(new FUserPinInfo());
+				NewPinInfo->PinName = FName(*Param.Name);
+				NewPinInfo->PinType = PinType;
+				NewPinInfo->DesiredPinDirection = EGPD_Input; // Result node inputs are function outputs
+
+				ResultNode->UserDefinedPins.Add(NewPinInfo);
+			}
+
+			ResultNode->ReconstructNode();
+		}
+	}
+
+	// Set category and description
+	if (!Signature.Category.IsEmpty() && EntryNode)
+	{
+		EntryNode->MetaData.Category = FText::FromString(Signature.Category);
+	}
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+
+	UE_LOG(LogOliveBPWriter, Log, TEXT("Added function '%s' to '%s' (Inputs: %d, Outputs: %d)"),
+		*Signature.Name, *AssetPath, Signature.Inputs.Num(), Signature.Outputs.Num());
+
+	return FOliveBlueprintWriteResult::Success(AssetPath, Signature.Name);
+}
+
+FOliveBlueprintWriteResult FOliveBlueprintWriter::RemoveFunction(
+	const FString& AssetPath,
+	const FString& FunctionName)
+{
+	if (IsPIEActive())
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Cannot modify Blueprints while Play-In-Editor is active"));
+	}
+
+	FString Error;
+	UBlueprint* Blueprint = LoadBlueprintForEditing(AssetPath, Error);
+	if (!Blueprint)
+	{
+		return FOliveBlueprintWriteResult::Error(Error);
+	}
+
+	// Find the function graph
+	UEdGraph* FunctionGraph = nullptr;
+	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+	{
+		if (Graph && Graph->GetName() == FunctionName)
+		{
+			FunctionGraph = Graph;
+			break;
+		}
+	}
+
+	if (!FunctionGraph)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Function '%s' not found in Blueprint '%s'"), *FunctionName, *AssetPath));
+	}
+
+	// Use transaction for undo support
+	OLIVE_SCOPED_TRANSACTION(FText::Format(
+		NSLOCTEXT("OliveBPWriter", "RemoveFunction", "Remove Function '{0}' from '{1}'"),
+		FText::FromString(FunctionName),
+		FText::FromString(Blueprint->GetName())));
+
+	Blueprint->Modify();
+
+	// Remove the function graph
+	FBlueprintEditorUtils::RemoveGraph(Blueprint, FunctionGraph);
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+
+	UE_LOG(LogOliveBPWriter, Log, TEXT("Removed function '%s' from '%s'"), *FunctionName, *AssetPath);
+
+	return FOliveBlueprintWriteResult::Success(AssetPath, FunctionName);
+}
+
+FOliveBlueprintWriteResult FOliveBlueprintWriter::OverrideFunction(
+	const FString& AssetPath,
+	const FString& FunctionName)
+{
+	if (IsPIEActive())
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Cannot modify Blueprints while Play-In-Editor is active"));
+	}
+
+	FString Error;
+	UBlueprint* Blueprint = LoadBlueprintForEditing(AssetPath, Error);
+	if (!Blueprint)
+	{
+		return FOliveBlueprintWriteResult::Error(Error);
+	}
+
+	if (!Blueprint->ParentClass)
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Blueprint has no parent class"));
+	}
+
+	// Find the function in the parent class
+	UFunction* ParentFunction = Blueprint->ParentClass->FindFunctionByName(FName(*FunctionName));
+	if (!ParentFunction)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Function '%s' not found in parent class"), *FunctionName));
+	}
+
+	// Check if already overridden
+	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+	{
+		if (Graph && Graph->GetName() == FunctionName)
+		{
+			FOliveBlueprintWriteResult Result = FOliveBlueprintWriteResult::Success(AssetPath, FunctionName);
+			Result.AddWarning(FString::Printf(TEXT("Function '%s' is already overridden"), *FunctionName));
+			return Result;
+		}
+	}
+
+	// Use transaction for undo support
+	OLIVE_SCOPED_TRANSACTION(FText::Format(
+		NSLOCTEXT("OliveBPWriter", "OverrideFunction", "Override Function '{0}' in '{1}'"),
+		FText::FromString(FunctionName),
+		FText::FromString(Blueprint->GetName())));
+
+	Blueprint->Modify();
+
+	// Create override graph - this handles the event vs function distinction
+	UEdGraph* NewGraph = FBlueprintEditorUtils::CreateNewGraph(
+		Blueprint,
+		FName(*FunctionName),
+		UEdGraph::StaticClass(),
+		UEdGraphSchema_K2::StaticClass()
+	);
+
+	if (!NewGraph)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Failed to create override graph for '%s'"), *FunctionName));
+	}
+
+	// Add as override (bIsUserCreated = false indicates override)
+	FBlueprintEditorUtils::AddFunctionGraph(Blueprint, NewGraph, /*bIsUserCreated=*/false, /*SignatureFromObject=*/(UClass*)nullptr);
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+
+	UE_LOG(LogOliveBPWriter, Log, TEXT("Created override for function '%s' in '%s'"), *FunctionName, *AssetPath);
+
+	return FOliveBlueprintWriteResult::Success(AssetPath, FunctionName);
+}
+
+FOliveBlueprintWriteResult FOliveBlueprintWriter::AddCustomEvent(
+	const FString& AssetPath,
+	const FString& EventName,
+	const TArray<FOliveIRFunctionParam>& Params)
+{
+	if (IsPIEActive())
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Cannot modify Blueprints while Play-In-Editor is active"));
+	}
+
+	FString Error;
+	UBlueprint* Blueprint = LoadBlueprintForEditing(AssetPath, Error);
+	if (!Blueprint)
+	{
+		return FOliveBlueprintWriteResult::Error(Error);
+	}
+
+	// Validate the operation
+	EOliveBlueprintType BPType = FOliveBlueprintTypeDetector::DetectType(Blueprint);
+	FOliveValidationResult ValidationResult = FOliveBlueprintConstraints::ValidateAddEventGraph(BPType);
+	if (!ValidationResult.bValid)
+	{
+		return FOliveBlueprintWriteResult::FromValidation(ValidationResult, AssetPath);
+	}
+
+	// Get or create the event graph
+	UEdGraph* EventGraph = nullptr;
+	if (Blueprint->UbergraphPages.Num() > 0)
+	{
+		EventGraph = Blueprint->UbergraphPages[0];
+	}
+
+	if (!EventGraph)
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Blueprint has no event graph"));
+	}
+
+	// Check for existing event with same name
+	for (UEdGraphNode* Node : EventGraph->Nodes)
+	{
+		UK2Node_CustomEvent* ExistingEvent = Cast<UK2Node_CustomEvent>(Node);
+		if (ExistingEvent && ExistingEvent->CustomFunctionName.ToString() == EventName)
+		{
+			return FOliveBlueprintWriteResult::Error(
+				FString::Printf(TEXT("Custom event '%s' already exists"), *EventName));
+		}
+	}
+
+	// Use transaction for undo support
+	OLIVE_SCOPED_TRANSACTION(FText::Format(
+		NSLOCTEXT("OliveBPWriter", "AddCustomEvent", "Add Custom Event '{0}' to '{1}'"),
+		FText::FromString(EventName),
+		FText::FromString(Blueprint->GetName())));
+
+	Blueprint->Modify();
+
+	// Create the custom event node
+	FGraphNodeCreator<UK2Node_CustomEvent> EventCreator(*EventGraph);
+	UK2Node_CustomEvent* EventNode = EventCreator.CreateNode();
+	EventNode->CustomFunctionName = FName(*EventName);
+	EventNode->NodePosX = 0;
+	EventNode->NodePosY = 0;
+
+	// Add parameters
+	for (const FOliveIRFunctionParam& Param : Params)
+	{
+		FEdGraphPinType PinType = CreatePinTypeFromParam(Param);
+
+		TSharedPtr<FUserPinInfo> NewPinInfo = MakeShareable(new FUserPinInfo());
+		NewPinInfo->PinName = FName(*Param.Name);
+		NewPinInfo->PinType = PinType;
+		NewPinInfo->DesiredPinDirection = EGPD_Output;
+
+		EventNode->UserDefinedPins.Add(NewPinInfo);
+	}
+
+	EventCreator.Finalize();
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+
+	UE_LOG(LogOliveBPWriter, Log, TEXT("Added custom event '%s' to '%s'"), *EventName, *AssetPath);
+
+	return FOliveBlueprintWriteResult::Success(AssetPath, EventName);
+}
+
+FOliveBlueprintWriteResult FOliveBlueprintWriter::AddEventDispatcher(
+	const FString& AssetPath,
+	const FString& DispatcherName,
+	const TArray<FOliveIRFunctionParam>& Params)
+{
+	if (IsPIEActive())
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Cannot modify Blueprints while Play-In-Editor is active"));
+	}
+
+	FString Error;
+	UBlueprint* Blueprint = LoadBlueprintForEditing(AssetPath, Error);
+	if (!Blueprint)
+	{
+		return FOliveBlueprintWriteResult::Error(Error);
+	}
+
+	// Check for existing dispatcher with same name
+	for (const FBPVariableDescription& Var : Blueprint->NewVariables)
+	{
+		if (Var.VarName.ToString() == DispatcherName &&
+			Var.VarType.PinCategory == UEdGraphSchema_K2::PC_MCDelegate)
+		{
+			return FOliveBlueprintWriteResult::Error(
+				FString::Printf(TEXT("Event dispatcher '%s' already exists"), *DispatcherName));
+		}
+	}
+
+	// Use transaction for undo support
+	OLIVE_SCOPED_TRANSACTION(FText::Format(
+		NSLOCTEXT("OliveBPWriter", "AddEventDispatcher", "Add Event Dispatcher '{0}' to '{1}'"),
+		FText::FromString(DispatcherName),
+		FText::FromString(Blueprint->GetName())));
+
+	Blueprint->Modify();
+
+	// Create the multicast delegate variable
+	FEdGraphPinType PinType;
+	PinType.PinCategory = UEdGraphSchema_K2::PC_MCDelegate;
+
+	// Add the delegate variable
+	bool bSuccess = FBlueprintEditorUtils::AddMemberVariable(
+		Blueprint,
+		FName(*DispatcherName),
+		PinType
+	);
+
+	if (!bSuccess)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Failed to add event dispatcher '%s'"), *DispatcherName));
+	}
+
+	// Note: Adding parameters to the delegate signature requires additional work
+	// with FMulticastDelegateProperty which is more complex. For now, we create
+	// a parameterless dispatcher. Adding params would require creating a delegate
+	// signature function.
+	if (Params.Num() > 0)
+	{
+		FOliveBlueprintWriteResult Result = FOliveBlueprintWriteResult::Success(AssetPath, DispatcherName);
+		Result.AddWarning(TEXT("Event dispatcher parameters are not yet supported; created without parameters"));
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+		return Result;
+	}
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+
+	UE_LOG(LogOliveBPWriter, Log, TEXT("Added event dispatcher '%s' to '%s'"), *DispatcherName, *AssetPath);
+
+	return FOliveBlueprintWriteResult::Success(AssetPath, DispatcherName);
+}
+
+// ============================================================================
+// Compilation and Saving
+// ============================================================================
+
+FOliveBlueprintWriteResult FOliveBlueprintWriter::Compile(const FString& AssetPath)
+{
+	if (IsPIEActive())
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Cannot compile Blueprints while Play-In-Editor is active"));
+	}
+
+	FString Error;
+	UBlueprint* Blueprint = LoadBlueprintForEditing(AssetPath, Error);
+	if (!Blueprint)
+	{
+		return FOliveBlueprintWriteResult::Error(Error);
+	}
+
+	// Compile the Blueprint
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+
+	FOliveBlueprintWriteResult Result = FOliveBlueprintWriteResult::Success(AssetPath);
+
+	// Check compile status
+	if (Blueprint->Status == BS_Error)
+	{
+		Result.bCompileSuccess = false;
+
+		// Extract compile errors from the message log
+		// Note: Full error extraction requires hooking into the compiler messages
+		// For now, we indicate failure and recommend checking the message log
+		Result.CompileErrors.Add(TEXT("Blueprint compilation failed. Check the Output Log for details."));
+	}
+	else if (Blueprint->Status == BS_UpToDateWithWarnings)
+	{
+		Result.bCompileSuccess = true;
+		Result.AddWarning(TEXT("Blueprint compiled with warnings"));
+	}
+	else
+	{
+		Result.bCompileSuccess = true;
+	}
+
+	UE_LOG(LogOliveBPWriter, Log, TEXT("Compiled Blueprint '%s' (Status: %d)"),
+		*AssetPath, static_cast<int32>(Blueprint->Status));
+
+	return Result;
+}
+
+FOliveBlueprintWriteResult FOliveBlueprintWriter::CompileAndSave(const FString& AssetPath)
+{
+	// First compile
+	FOliveBlueprintWriteResult CompileResult = Compile(AssetPath);
+	if (!CompileResult.bSuccess)
+	{
+		return CompileResult;
+	}
+
+	// Then save
+	FOliveBlueprintWriteResult SaveResult = Save(AssetPath);
+
+	// Merge results
+	SaveResult.bCompileSuccess = CompileResult.bCompileSuccess;
+	SaveResult.CompileErrors = CompileResult.CompileErrors;
+	SaveResult.Warnings.Append(CompileResult.Warnings);
+
+	return SaveResult;
+}
+
+FOliveBlueprintWriteResult FOliveBlueprintWriter::Save(const FString& AssetPath)
+{
+	if (IsPIEActive())
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Cannot save Blueprints while Play-In-Editor is active"));
+	}
+
+	FString Error;
+	UBlueprint* Blueprint = LoadBlueprintForEditing(AssetPath, Error);
+	if (!Blueprint)
+	{
+		return FOliveBlueprintWriteResult::Error(Error);
+	}
+
+	UPackage* Package = Blueprint->GetPackage();
+	if (!Package)
+	{
+		return FOliveBlueprintWriteResult::Error(TEXT("Blueprint has no package"));
+	}
+
+	// Get the package filename
+	FString PackageFilename;
+	if (!FPackageName::TryConvertLongPackageNameToFilename(Package->GetName(), PackageFilename, FPackageName::GetAssetPackageExtension()))
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Failed to determine filename for package: %s"), *Package->GetName()));
+	}
+
+	// Save the package
+	FSavePackageArgs SaveArgs;
+	SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+
+	FSavePackageResultStruct SaveResult = UPackage::Save(Package, Blueprint, *PackageFilename, SaveArgs);
+
+	if (SaveResult.Result != ESavePackageResult::Success)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Failed to save Blueprint: %s"), *AssetPath));
+	}
+
+	UE_LOG(LogOliveBPWriter, Log, TEXT("Saved Blueprint: %s"), *AssetPath);
+
+	return FOliveBlueprintWriteResult::Success(AssetPath);
+}
+
+// ============================================================================
+// Private Helper Methods
+// ============================================================================
+
+UBlueprint* FOliveBlueprintWriter::LoadBlueprintForEditing(const FString& AssetPath, FString& OutError)
+{
+	// Normalize the path
+	FString NormalizedPath = AssetPath;
+	if (!NormalizedPath.StartsWith(TEXT("/")))
+	{
+		NormalizedPath = TEXT("/") + NormalizedPath;
+	}
+
+	// Try to load the Blueprint
+	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *NormalizedPath);
+	if (!Blueprint)
+	{
+		// Try with _C suffix removed if it's a class path
+		FString CleanPath = NormalizedPath;
+		if (CleanPath.EndsWith(TEXT("_C")))
+		{
+			CleanPath.LeftChopInline(2);
+			Blueprint = LoadObject<UBlueprint>(nullptr, *CleanPath);
+		}
+	}
+
+	if (!Blueprint)
+	{
+		OutError = FString::Printf(TEXT("Blueprint not found: %s"), *AssetPath);
+		return nullptr;
+	}
+
+	return Blueprint;
+}
+
+void FOliveBlueprintWriter::MarkDirty(UBlueprint* Blueprint)
+{
+	if (Blueprint)
+	{
+		Blueprint->MarkPackageDirty();
+	}
+}
+
+FOliveValidationResult FOliveBlueprintWriter::ValidateOperation(
+	const FString& Operation,
+	const UBlueprint* Blueprint,
+	const TSharedPtr<FJsonObject>& Params)
+{
+	FOliveValidationResult Result;
+
+	if (!Blueprint)
+	{
+		Result.AddError(TEXT("INVALID_BLUEPRINT"), TEXT("Blueprint is null"));
+		return Result;
+	}
+
+	// Use the validation engine for standard checks
+	return FOliveValidationEngine::Get().ValidateOperation(Operation, Params, const_cast<UBlueprint*>(Blueprint));
+}
+
+FEdGraphPinType FOliveBlueprintWriter::ConvertIRType(const FOliveIRType& IRType)
+{
+	FEdGraphPinType PinType;
+
+	// Map IR category to UE pin category
+	switch (IRType.Category)
+	{
+	case EOliveIRTypeCategory::Bool:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Boolean;
+		break;
+	case EOliveIRTypeCategory::Byte:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Byte;
+		break;
+	case EOliveIRTypeCategory::Int:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Int;
+		break;
+	case EOliveIRTypeCategory::Int64:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Int64;
+		break;
+	case EOliveIRTypeCategory::Float:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Float;
+		break;
+	case EOliveIRTypeCategory::Double:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Double;
+		break;
+	case EOliveIRTypeCategory::String:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_String;
+		break;
+	case EOliveIRTypeCategory::Name:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Name;
+		break;
+	case EOliveIRTypeCategory::Text:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Text;
+		break;
+	case EOliveIRTypeCategory::Vector:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
+		PinType.PinSubCategoryObject = TBaseStructure<FVector>::Get();
+		break;
+	case EOliveIRTypeCategory::Vector2D:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
+		PinType.PinSubCategoryObject = TBaseStructure<FVector2D>::Get();
+		break;
+	case EOliveIRTypeCategory::Rotator:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
+		PinType.PinSubCategoryObject = TBaseStructure<FRotator>::Get();
+		break;
+	case EOliveIRTypeCategory::Transform:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
+		PinType.PinSubCategoryObject = TBaseStructure<FTransform>::Get();
+		break;
+	case EOliveIRTypeCategory::Color:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
+		PinType.PinSubCategoryObject = TBaseStructure<FColor>::Get();
+		break;
+	case EOliveIRTypeCategory::LinearColor:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
+		PinType.PinSubCategoryObject = TBaseStructure<FLinearColor>::Get();
+		break;
+	case EOliveIRTypeCategory::Object:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Object;
+		if (!IRType.ClassName.IsEmpty())
+		{
+			UClass* Class = FindObject<UClass>(nullptr, *IRType.ClassName);
+			if (!Class)
+			{
+				Class = FindFirstObject<UClass>( *IRType.ClassName);
+			}
+			if (Class)
+			{
+				PinType.PinSubCategoryObject = Class;
+			}
+		}
+		break;
+	case EOliveIRTypeCategory::Class:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Class;
+		if (!IRType.ClassName.IsEmpty())
+		{
+			UClass* Class = FindObject<UClass>(nullptr, *IRType.ClassName);
+			if (!Class)
+			{
+				Class = FindFirstObject<UClass>( *IRType.ClassName);
+			}
+			if (Class)
+			{
+				PinType.PinSubCategoryObject = Class;
+			}
+		}
+		break;
+	case EOliveIRTypeCategory::Struct:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
+		if (!IRType.StructName.IsEmpty())
+		{
+			UScriptStruct* Struct = FindObject<UScriptStruct>(nullptr, *IRType.StructName);
+			if (!Struct)
+			{
+				Struct = FindFirstObject<UScriptStruct>( *IRType.StructName);
+			}
+			if (Struct)
+			{
+				PinType.PinSubCategoryObject = Struct;
+			}
+		}
+		break;
+	case EOliveIRTypeCategory::Enum:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Byte;
+		if (!IRType.EnumName.IsEmpty())
+		{
+			UEnum* Enum = FindObject<UEnum>(nullptr, *IRType.EnumName);
+			if (!Enum)
+			{
+				Enum = FindFirstObject<UEnum>( *IRType.EnumName);
+			}
+			if (Enum)
+			{
+				PinType.PinSubCategoryObject = Enum;
+			}
+		}
+		break;
+	case EOliveIRTypeCategory::Delegate:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Delegate;
+		break;
+	case EOliveIRTypeCategory::MulticastDelegate:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_MCDelegate;
+		break;
+	case EOliveIRTypeCategory::Array:
+		// For arrays, we need to set up the container type
+		// Start with a simple implementation - convert the element type
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Object;
+		PinType.ContainerType = EPinContainerType::Array;
+		break;
+	case EOliveIRTypeCategory::Exec:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Exec;
+		break;
+	default:
+		// Default to wildcard for unknown types
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Wildcard;
+		break;
+	}
+
+	PinType.bIsReference = IRType.bIsReference;
+	PinType.bIsConst = IRType.bIsConst;
+
+	return PinType;
+}
+
+UClass* FOliveBlueprintWriter::FindParentClass(const FString& ClassName)
+{
+	// Try direct class lookup first (for native classes like "Actor", "Pawn")
+	UClass* Class = FindFirstObject<UClass>( *ClassName);
+	if (Class)
+	{
+		return Class;
+	}
+
+	// Try with common prefixes
+	TArray<FString> Prefixes = { TEXT("A"), TEXT("U"), TEXT("") };
+	for (const FString& Prefix : Prefixes)
+	{
+		FString PrefixedName = Prefix + ClassName;
+		Class = FindFirstObject<UClass>( *PrefixedName);
+		if (Class)
+		{
+			return Class;
+		}
+	}
+
+	// Try as Blueprint path
+	if (ClassName.Contains(TEXT("/")))
+	{
+		UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *ClassName);
+		if (Blueprint && Blueprint->GeneratedClass)
+		{
+			return Blueprint->GeneratedClass;
+		}
+	}
+
+	return nullptr;
+}
+
+UClass* FOliveBlueprintWriter::FindInterfaceClass(const FString& InterfacePath)
+{
+	// Try as Blueprint interface first
+	if (InterfacePath.Contains(TEXT("/")))
+	{
+		UBlueprint* InterfaceBP = LoadObject<UBlueprint>(nullptr, *InterfacePath);
+		if (InterfaceBP && InterfaceBP->GeneratedClass)
+		{
+			return InterfaceBP->GeneratedClass;
+		}
+	}
+
+	// Try as native interface
+	UClass* Class = FindFirstObject<UClass>( *InterfacePath);
+	if (Class)
+	{
+		return Class;
+	}
+
+	// Try with I prefix
+	FString PrefixedName = TEXT("I") + InterfacePath;
+	Class = FindFirstObject<UClass>( *PrefixedName);
+	if (Class)
+	{
+		return Class;
+	}
+
+	// Try with U prefix (some interfaces are UInterface-derived)
+	PrefixedName = TEXT("U") + InterfacePath;
+	Class = FindFirstObject<UClass>( *PrefixedName);
+
+	return Class;
+}
+
+int32 FOliveBlueprintWriter::FindVariableIndex(const UBlueprint* Blueprint, const FString& VariableName)
+{
+	if (!Blueprint)
+	{
+		return INDEX_NONE;
+	}
+
+	for (int32 i = 0; i < Blueprint->NewVariables.Num(); ++i)
+	{
+		if (Blueprint->NewVariables[i].VarName.ToString() == VariableName)
+		{
+			return i;
+		}
+	}
+
+	return INDEX_NONE;
+}
+
+FEdGraphPinType FOliveBlueprintWriter::CreatePinTypeFromParam(const FOliveIRFunctionParam& Param)
+{
+	FEdGraphPinType PinType = ConvertIRType(Param.Type);
+	PinType.bIsReference = Param.bIsReference;
+	return PinType;
+}
+
+bool FOliveBlueprintWriter::IsPIEActive() const
+{
+	return GEditor && GEditor->PlayWorld != nullptr;
+}
+
+EBlueprintType FOliveBlueprintWriter::GetUEBlueprintType(EOliveBlueprintType BPType) const
+{
+	switch (BPType)
+	{
+	case EOliveBlueprintType::Normal:
+		return BPTYPE_Normal;
+	case EOliveBlueprintType::Interface:
+		return BPTYPE_Interface;
+	case EOliveBlueprintType::FunctionLibrary:
+		return BPTYPE_FunctionLibrary;
+	case EOliveBlueprintType::MacroLibrary:
+		return BPTYPE_MacroLibrary;
+	default:
+		return BPTYPE_Normal;
+	}
+}

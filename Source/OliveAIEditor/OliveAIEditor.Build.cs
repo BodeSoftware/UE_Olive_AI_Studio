@@ -1,6 +1,7 @@
 // Copyright Bode Software. All Rights Reserved.
 
 using UnrealBuildTool;
+using System.IO;
 
 public class OliveAIEditor : ModuleRules
 {
@@ -8,8 +9,29 @@ public class OliveAIEditor : ModuleRules
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		// NOTE: Blueprint folder is temporarily excluded until UE 5.5 API compatibility is fixed.
-		// Core MCP server and chat UI work without it.
+		string BlueprintRoot = Path.Combine(ModuleDirectory, "Blueprint");
+		string BlueprintPublic = Path.Combine(BlueprintRoot, "Public");
+		string BlueprintPrivate = Path.Combine(BlueprintRoot, "Private");
+
+		// This module keeps headers under Blueprint/Public instead of Module/Public.
+		// Add recursive include paths so legacy short includes (e.g. "OliveBlueprintTypes.h") resolve.
+		if (Directory.Exists(BlueprintPublic))
+		{
+			PublicIncludePaths.Add(BlueprintPublic);
+			foreach (string Dir in Directory.GetDirectories(BlueprintPublic, "*", SearchOption.AllDirectories))
+			{
+				PublicIncludePaths.Add(Dir);
+			}
+		}
+
+		if (Directory.Exists(BlueprintPrivate))
+		{
+			PrivateIncludePaths.Add(BlueprintPrivate);
+			foreach (string Dir in Directory.GetDirectories(BlueprintPrivate, "*", SearchOption.AllDirectories))
+			{
+				PrivateIncludePaths.Add(Dir);
+			}
+		}
 
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
@@ -52,9 +74,20 @@ public class OliveAIEditor : ModuleRules
 			"AssetTools",
 			"ContentBrowser",
 
-			// Blueprint (minimal - for project index)
+			// Blueprint
 			"BlueprintGraph",
 			"Kismet",
+			"KismetWidgets",
+			"GraphEditor",
+			"Blutility",
+
+			// Animation Blueprint
+			"AnimGraph",
+			"AnimGraphRuntime",
+
+			// Widget Blueprint
+			"UMG",
+			"UMGEditor",
 
 			// Configuration
 			"Projects",

@@ -1,0 +1,859 @@
+// Copyright Bode Software. All Rights Reserved.
+
+#include "OliveBlueprintTypes.h"
+#include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
+#include "Animation/AnimBlueprint.h"
+#include "WidgetBlueprint.h"
+#include "EditorUtilityBlueprint.h"
+#include "EditorUtilityWidgetBlueprint.h"
+#include "Engine/LevelScriptBlueprint.h"
+#include "Animation/AnimNotifies/AnimNotify.h"
+#include "Animation/AnimNotifies/AnimNotifyState.h"
+#include "Components/ActorComponent.h"
+#include "Components/SceneComponent.h"
+
+// Optional ControlRig support
+#if defined(WITH_CONTROLRIG) && WITH_CONTROLRIG
+#include "ControlRigBlueprint.h"
+#endif
+
+// ============================================================================
+// FOliveBlueprintTypeDetector
+// ============================================================================
+
+EOliveBlueprintType FOliveBlueprintTypeDetector::DetectType(const UBlueprint* Blueprint)
+{
+	if (!Blueprint)
+	{
+		return EOliveBlueprintType::Unknown;
+	}
+
+	// Stage 1: Check Blueprint asset class (most specific first)
+
+	// Check ControlRigBlueprint (optional plugin)
+#if defined(WITH_CONTROLRIG) && WITH_CONTROLRIG
+	if (Blueprint->IsA<UControlRigBlueprint>())
+	{
+		return EOliveBlueprintType::ControlRigBlueprint;
+	}
+#endif
+
+	// Check Animation Blueprint
+	if (Blueprint->IsA<UAnimBlueprint>())
+	{
+		return EOliveBlueprintType::AnimationBlueprint;
+	}
+
+	// Check EditorUtilityWidgetBlueprint BEFORE WidgetBlueprint (more specific)
+	if (Blueprint->IsA<UEditorUtilityWidgetBlueprint>())
+	{
+		return EOliveBlueprintType::EditorUtilityWidget;
+	}
+
+	if (Blueprint->IsA<UWidgetBlueprint>())
+	{
+		return EOliveBlueprintType::WidgetBlueprint;
+	}
+
+	if (Blueprint->IsA<UEditorUtilityBlueprint>())
+	{
+		return EOliveBlueprintType::EditorUtility;
+	}
+
+	if (Blueprint->IsA<ULevelScriptBlueprint>())
+	{
+		return EOliveBlueprintType::LevelScript;
+	}
+
+	// Stage 2: Check Blueprint type enum
+	switch (Blueprint->BlueprintType)
+	{
+	case BPTYPE_Normal:
+	{
+		// Further classify Normal blueprints by parent class using IsChildOf()
+		if (Blueprint->ParentClass)
+		{
+			// Check for Anim Notify State (more specific, check first)
+			if (Blueprint->ParentClass->IsChildOf(UAnimNotifyState::StaticClass()))
+			{
+				return EOliveBlueprintType::AnimNotifyState;
+			}
+
+			// Check for Anim Notify
+			if (Blueprint->ParentClass->IsChildOf(UAnimNotify::StaticClass()))
+			{
+				return EOliveBlueprintType::AnimNotify;
+			}
+
+			// Check for Scene Component (subclass of ActorComponent that can have children)
+			// Both SceneComponent and ActorComponent will return ActorComponent type,
+			// but bIsSceneComponent flag in capabilities will differentiate them
+			if (Blueprint->ParentClass->IsChildOf(USceneComponent::StaticClass()))
+			{
+				return EOliveBlueprintType::ActorComponent;
+			}
+
+			// Check for Actor Component (non-scene, cannot have SCS children)
+			if (Blueprint->ParentClass->IsChildOf(UActorComponent::StaticClass()))
+			{
+				return EOliveBlueprintType::ActorComponent;
+			}
+
+			// GameplayAbility check - use string match for now (optional GAS plugin)
+			// DESIGN NOTE: Using string match because GameplayAbilities is an optional plugin.
+			// Proper IsChildOf() check would require conditional compilation with WITH_GAMEPLAY_ABILITIES.
+			FString ParentClassName = Blueprint->ParentClass->GetName();
+			if (ParentClassName.Contains(TEXT("GameplayAbility")))
+			{
+				return EOliveBlueprintType::GameplayAbility;
+			}
+		}
+		return EOliveBlueprintType::Normal;
+	}
+
+	case BPTYPE_Interface:
+		return EOliveBlueprintType::Interface;
+
+	case BPTYPE_FunctionLibrary:
+		return EOliveBlueprintType::FunctionLibrary;
+
+	case BPTYPE_MacroLibrary:
+		return EOliveBlueprintType::MacroLibrary;
+
+	case BPTYPE_LevelScript:
+		return EOliveBlueprintType::LevelScript;
+
+	default:
+		return EOliveBlueprintType::Unknown;
+	}
+}
+
+FOliveBlueprintCapabilities FOliveBlueprintTypeDetector::GetCapabilities(EOliveBlueprintType Type)
+{
+	FOliveBlueprintCapabilities Caps;
+
+	switch (Type)
+	{
+	case EOliveBlueprintType::Normal:
+		// Most permissive - standard Blueprint
+		Caps.bHasEventGraph = true;
+		Caps.bHasFunctions = true;
+		Caps.bHasVariables = true;
+		Caps.bHasComponents = true;
+		Caps.bHasMacros = true;
+		Caps.bCanHaveLocalVariables = true;
+		Caps.bCanWriteEventGraph = true;
+		break;
+
+	case EOliveBlueprintType::ActorComponent:
+		// Actor Components - bHasComponents depends on whether it's a SceneComponent
+		// Note: bIsSceneComponent is set in GetCapabilities(UBlueprint*) overload
+		Caps.bHasEventGraph = true;
+		Caps.bHasFunctions = true;
+		Caps.bHasVariables = true;
+		Caps.bHasComponents = false;  // Default to false; overload sets bIsSceneComponent
+		Caps.bHasMacros = true;
+		Caps.bCanHaveLocalVariables = true;
+		Caps.bCanWriteEventGraph = true;
+		break;
+
+	case EOliveBlueprintType::GameplayAbility:
+		Caps.bHasEventGraph = true;
+		Caps.bHasFunctions = true;
+		Caps.bHasVariables = true;
+		Caps.bHasComponents = false;
+		Caps.bHasMacros = true;
+		Caps.bCanHaveLocalVariables = true;
+		Caps.bCanWriteEventGraph = true;
+		break;
+
+	case EOliveBlueprintType::Interface:
+		// Interfaces are very restricted
+		Caps.bHasEventGraph = false;
+		Caps.bHasFunctions = true;
+		Caps.bHasVariables = false;
+		Caps.bHasComponents = false;
+		Caps.bHasMacros = false;
+		Caps.bCanHaveLocalVariables = false;
+		Caps.bFunctionsMustBePublic = true;
+		Caps.bCanWriteEventGraph = false;
+		break;
+
+	case EOliveBlueprintType::FunctionLibrary:
+		// Function libraries have static functions only
+		Caps.bHasEventGraph = false;
+		Caps.bHasFunctions = true;
+		Caps.bHasVariables = false;
+		Caps.bHasComponents = false;
+		Caps.bHasMacros = false;
+		Caps.bCanHaveLocalVariables = true;
+		Caps.bFunctionsMustBeStatic = true;
+		Caps.bCanWriteEventGraph = false;
+		break;
+
+	case EOliveBlueprintType::MacroLibrary:
+		// Macro libraries only have macros
+		Caps.bHasEventGraph = false;
+		Caps.bHasFunctions = false;
+		Caps.bHasVariables = false;
+		Caps.bHasComponents = false;
+		Caps.bHasMacros = true;
+		Caps.bCanHaveLocalVariables = true;
+		Caps.bCanWriteEventGraph = false;
+		break;
+
+	case EOliveBlueprintType::AnimNotify:
+	case EOliveBlueprintType::AnimNotifyState:
+		Caps.bHasEventGraph = true;
+		Caps.bHasFunctions = true;
+		Caps.bHasVariables = true;
+		Caps.bHasComponents = false;
+		Caps.bHasMacros = true;
+		Caps.bCanWriteEventGraph = true;
+		break;
+
+	case EOliveBlueprintType::EditorUtility:
+		Caps.bHasEventGraph = true;
+		Caps.bHasFunctions = true;
+		Caps.bHasVariables = true;
+		Caps.bHasComponents = true;  // Can have components if Actor-based
+		Caps.bHasMacros = true;
+		Caps.bCanWriteEventGraph = true;
+		Caps.bEditorOnly = true;
+		break;
+
+	case EOliveBlueprintType::EditorUtilityWidget:
+		Caps.bHasEventGraph = true;
+		Caps.bHasFunctions = true;
+		Caps.bHasVariables = true;
+		Caps.bHasComponents = false;  // Widgets don't have SCS components
+		Caps.bHasMacros = true;
+		Caps.bHasWidgetTree = true;
+		Caps.bCanWriteEventGraph = true;
+		Caps.bCanWriteWidgetTree = false;  // Tier 2 partial support
+		Caps.bEditorOnly = true;
+		break;
+
+	case EOliveBlueprintType::AnimationBlueprint:
+		Caps.bHasEventGraph = true;
+		Caps.bHasFunctions = true;
+		Caps.bHasVariables = true;
+		Caps.bHasComponents = false;
+		Caps.bHasMacros = true;
+		Caps.bHasAnimGraph = true;
+		Caps.bHasStateMachines = true;
+		// Tier 2 partial support - can write event graph but not anim graph/state machines
+		Caps.bCanWriteEventGraph = true;
+		Caps.bCanWriteAnimGraph = false;
+		Caps.bCanWriteStateMachine = false;
+		break;
+
+	case EOliveBlueprintType::WidgetBlueprint:
+		Caps.bHasEventGraph = true;
+		Caps.bHasFunctions = true;
+		Caps.bHasVariables = true;
+		Caps.bHasComponents = false;  // Widgets don't have SCS components
+		Caps.bHasMacros = true;
+		Caps.bHasWidgetTree = true;
+		// Tier 2 partial support - can write event graph but not widget tree
+		Caps.bCanWriteEventGraph = true;
+		Caps.bCanWriteWidgetTree = false;
+		break;
+
+	case EOliveBlueprintType::ControlRigBlueprint:
+		Caps.bHasEventGraph = false;
+		Caps.bHasFunctions = true;
+		Caps.bHasVariables = true;
+		Caps.bHasComponents = false;
+		Caps.bHasMacros = false;
+		// Tier 2 partial support - read-only for Phase 1
+		Caps.bCanWriteEventGraph = false;
+		break;
+
+	case EOliveBlueprintType::LevelScript:
+		Caps.bHasEventGraph = true;
+		Caps.bHasFunctions = true;
+		Caps.bHasVariables = true;
+		Caps.bHasComponents = false;  // Level scripts don't have SCS
+		Caps.bHasMacros = true;
+		Caps.bCanWriteEventGraph = true;
+		break;
+
+	default:
+		// Unknown - assume restricted
+		Caps.bHasEventGraph = false;
+		Caps.bHasFunctions = false;
+		Caps.bHasVariables = false;
+		Caps.bHasComponents = false;
+		Caps.bHasMacros = false;
+		Caps.bCanWriteEventGraph = false;
+		break;
+	}
+
+	return Caps;
+}
+
+FOliveBlueprintCapabilities FOliveBlueprintTypeDetector::GetCapabilities(const UBlueprint* Blueprint)
+{
+	FOliveBlueprintCapabilities Caps = GetCapabilities(DetectType(Blueprint));
+
+	// For ActorComponent Blueprints, check if it's a SceneComponent (can have SCS children)
+	if (Blueprint && Blueprint->ParentClass)
+	{
+		if (Blueprint->ParentClass->IsChildOf(USceneComponent::StaticClass()))
+		{
+			Caps.bIsSceneComponent = true;
+			Caps.bHasComponents = true;  // SceneComponents can have child components
+		}
+	}
+
+	return Caps;
+}
+
+FString FOliveBlueprintTypeDetector::TypeToString(EOliveBlueprintType Type)
+{
+	switch (Type)
+	{
+	case EOliveBlueprintType::Normal: return TEXT("Blueprint");
+	case EOliveBlueprintType::Interface: return TEXT("Blueprint Interface");
+	case EOliveBlueprintType::FunctionLibrary: return TEXT("Blueprint Function Library");
+	case EOliveBlueprintType::MacroLibrary: return TEXT("Blueprint Macro Library");
+	case EOliveBlueprintType::ActorComponent: return TEXT("Actor Component Blueprint");
+	case EOliveBlueprintType::AnimNotify: return TEXT("Anim Notify Blueprint");
+	case EOliveBlueprintType::AnimNotifyState: return TEXT("Anim Notify State Blueprint");
+	case EOliveBlueprintType::EditorUtility: return TEXT("Editor Utility Blueprint");
+	case EOliveBlueprintType::EditorUtilityWidget: return TEXT("Editor Utility Widget Blueprint");
+	case EOliveBlueprintType::GameplayAbility: return TEXT("Gameplay Ability Blueprint");
+	case EOliveBlueprintType::AnimationBlueprint: return TEXT("Animation Blueprint");
+	case EOliveBlueprintType::WidgetBlueprint: return TEXT("Widget Blueprint");
+	case EOliveBlueprintType::ControlRigBlueprint: return TEXT("Control Rig Blueprint");
+	case EOliveBlueprintType::LevelScript: return TEXT("Level Blueprint");
+	default: return TEXT("Unknown Blueprint");
+	}
+}
+
+EOliveBlueprintType FOliveBlueprintTypeDetector::FromIRType(EOliveIRBlueprintType IRType)
+{
+	switch (IRType)
+	{
+	case EOliveIRBlueprintType::Normal:
+		return EOliveBlueprintType::Normal;
+	case EOliveIRBlueprintType::Interface:
+		return EOliveBlueprintType::Interface;
+	case EOliveIRBlueprintType::FunctionLibrary:
+		return EOliveBlueprintType::FunctionLibrary;
+	case EOliveIRBlueprintType::MacroLibrary:
+		return EOliveBlueprintType::MacroLibrary;
+	case EOliveIRBlueprintType::LevelScript:
+		return EOliveBlueprintType::LevelScript;
+	case EOliveIRBlueprintType::ActorComponent:
+		return EOliveBlueprintType::ActorComponent;
+	case EOliveIRBlueprintType::EditorUtility:
+		return EOliveBlueprintType::EditorUtility;
+	case EOliveIRBlueprintType::EditorUtilityWidget:
+		return EOliveBlueprintType::EditorUtilityWidget;
+	case EOliveIRBlueprintType::AnimationBlueprint:
+		return EOliveBlueprintType::AnimationBlueprint;
+	case EOliveIRBlueprintType::WidgetBlueprint:
+		return EOliveBlueprintType::WidgetBlueprint;
+	case EOliveIRBlueprintType::ControlRigBlueprint:
+		return EOliveBlueprintType::ControlRigBlueprint;
+	default:
+		return EOliveBlueprintType::Unknown;
+	}
+}
+
+EOliveIRBlueprintType FOliveBlueprintTypeDetector::ToIRType(EOliveBlueprintType Type)
+{
+	switch (Type)
+	{
+	// Tier 1 - Standard K2 types
+	case EOliveBlueprintType::Normal:
+	case EOliveBlueprintType::AnimNotify:      // Maps to Normal (BPTYPE_Normal with specific parent)
+	case EOliveBlueprintType::AnimNotifyState: // Maps to Normal (BPTYPE_Normal with specific parent)
+	case EOliveBlueprintType::GameplayAbility: // Maps to Normal (BPTYPE_Normal with specific parent)
+		return EOliveIRBlueprintType::Normal;
+
+	case EOliveBlueprintType::Interface:
+		return EOliveIRBlueprintType::Interface;
+
+	case EOliveBlueprintType::FunctionLibrary:
+		return EOliveIRBlueprintType::FunctionLibrary;
+
+	case EOliveBlueprintType::MacroLibrary:
+		return EOliveIRBlueprintType::MacroLibrary;
+
+	case EOliveBlueprintType::LevelScript:
+		return EOliveIRBlueprintType::LevelScript;
+
+	case EOliveBlueprintType::ActorComponent:
+		return EOliveIRBlueprintType::ActorComponent;
+
+	case EOliveBlueprintType::EditorUtility:
+		return EOliveIRBlueprintType::EditorUtility;
+
+	case EOliveBlueprintType::EditorUtilityWidget:
+		return EOliveIRBlueprintType::EditorUtilityWidget;
+
+	// Tier 2 - Extended systems
+	case EOliveBlueprintType::AnimationBlueprint:
+		return EOliveIRBlueprintType::AnimationBlueprint;
+
+	case EOliveBlueprintType::WidgetBlueprint:
+		return EOliveIRBlueprintType::WidgetBlueprint;
+
+	case EOliveBlueprintType::ControlRigBlueprint:
+		return EOliveIRBlueprintType::ControlRigBlueprint;
+
+	default:
+		return EOliveIRBlueprintType::Unknown;
+	}
+}
+
+bool FOliveBlueprintTypeDetector::CanAddVariable(EOliveBlueprintType Type)
+{
+	return GetCapabilities(Type).bHasVariables;
+}
+
+bool FOliveBlueprintTypeDetector::CanAddComponent(EOliveBlueprintType Type)
+{
+	return GetCapabilities(Type).bHasComponents;
+}
+
+bool FOliveBlueprintTypeDetector::CanHaveEventGraph(EOliveBlueprintType Type)
+{
+	return GetCapabilities(Type).bHasEventGraph;
+}
+
+bool FOliveBlueprintTypeDetector::CanHaveFunction(EOliveBlueprintType Type, bool bStatic, bool bPublic)
+{
+	FOliveBlueprintCapabilities Caps = GetCapabilities(Type);
+
+	if (!Caps.bHasFunctions)
+	{
+		return false;
+	}
+
+	if (Caps.bFunctionsMustBeStatic && !bStatic)
+	{
+		return false;
+	}
+
+	if (Caps.bFunctionsMustBePublic && !bPublic)
+	{
+		return false;
+	}
+
+	return true;
+}
+
+bool FOliveBlueprintTypeDetector::CanHaveMacros(EOliveBlueprintType Type)
+{
+	return GetCapabilities(Type).bHasMacros;
+}
+
+// ============================================================================
+// FOliveBlueprintConstraints
+// ============================================================================
+
+FOliveValidationResult FOliveBlueprintConstraints::ValidateAddVariable(
+	EOliveBlueprintType Type,
+	const FString& VarName)
+{
+	FOliveValidationResult Result;
+
+	// Check if type supports variables
+	if (!FOliveBlueprintTypeDetector::CanAddVariable(Type))
+	{
+		FString TypeName = FOliveBlueprintTypeDetector::TypeToString(Type);
+
+		if (Type == EOliveBlueprintType::Interface)
+		{
+			Result.AddError(
+				OliveBPConstraints::InterfaceNoVariables,
+				FString::Printf(TEXT("Cannot add variables to %s"), *TypeName),
+				GetConstraintSuggestion(OliveBPConstraints::InterfaceNoVariables)
+			);
+		}
+		else if (Type == EOliveBlueprintType::FunctionLibrary)
+		{
+			Result.AddError(
+				OliveBPConstraints::FunctionLibraryNoVariables,
+				FString::Printf(TEXT("Cannot add variables to %s"), *TypeName),
+				GetConstraintSuggestion(OliveBPConstraints::FunctionLibraryNoVariables)
+			);
+		}
+		else
+		{
+			Result.AddError(
+				OliveBPConstraints::InvalidVariableName,
+				FString::Printf(TEXT("%s does not support variables"), *TypeName),
+				TEXT("")
+			);
+		}
+
+		return Result;
+	}
+
+	// Validate variable name
+	if (VarName.IsEmpty())
+	{
+		Result.AddError(
+			OliveBPConstraints::InvalidVariableName,
+			TEXT("Variable name cannot be empty"),
+			TEXT("Provide a valid variable name")
+		);
+		return Result;
+	}
+
+	// Check for invalid characters (basic check)
+	static const FString InvalidChars = TEXT(" !@#$%^&*()-+=[]{}|\\:;\"'<>,.?/~`");
+	for (const TCHAR& Char : VarName)
+	{
+		if (InvalidChars.Contains(FString(1, &Char)))
+		{
+			Result.AddError(
+				OliveBPConstraints::InvalidVariableName,
+				FString::Printf(TEXT("Variable name '%s' contains invalid character '%c'"), *VarName, Char),
+				TEXT("Use only alphanumeric characters and underscores")
+			);
+			return Result;
+		}
+	}
+
+	// Check if name starts with a number
+	if (FChar::IsDigit(VarName[0]))
+	{
+		Result.AddError(
+			OliveBPConstraints::InvalidVariableName,
+			FString::Printf(TEXT("Variable name '%s' cannot start with a number"), *VarName),
+			TEXT("Start the name with a letter or underscore")
+		);
+		return Result;
+	}
+
+	return Result;
+}
+
+FOliveValidationResult FOliveBlueprintConstraints::ValidateAddComponent(
+	EOliveBlueprintType Type,
+	const FString& ComponentClass)
+{
+	FOliveValidationResult Result;
+
+	// Check if type supports components
+	if (!FOliveBlueprintTypeDetector::CanAddComponent(Type))
+	{
+		FString TypeName = FOliveBlueprintTypeDetector::TypeToString(Type);
+
+		if (Type == EOliveBlueprintType::Interface)
+		{
+			Result.AddError(
+				OliveBPConstraints::InterfaceNoComponents,
+				FString::Printf(TEXT("Cannot add components to %s"), *TypeName),
+				GetConstraintSuggestion(OliveBPConstraints::InterfaceNoComponents)
+			);
+		}
+		else if (Type == EOliveBlueprintType::FunctionLibrary)
+		{
+			Result.AddError(
+				OliveBPConstraints::FunctionLibraryNoComponents,
+				FString::Printf(TEXT("Cannot add components to %s"), *TypeName),
+				GetConstraintSuggestion(OliveBPConstraints::FunctionLibraryNoComponents)
+			);
+		}
+		else if (Type == EOliveBlueprintType::AnimationBlueprint)
+		{
+			Result.AddError(
+				OliveBPConstraints::AnimBPNoComponents,
+				FString::Printf(TEXT("Cannot add components to %s"), *TypeName),
+				GetConstraintSuggestion(OliveBPConstraints::AnimBPNoComponents)
+			);
+		}
+		else if (Type == EOliveBlueprintType::LevelScript)
+		{
+			Result.AddError(
+				OliveBPConstraints::LevelScriptNoComponents,
+				FString::Printf(TEXT("Cannot add components to %s"), *TypeName),
+				GetConstraintSuggestion(OliveBPConstraints::LevelScriptNoComponents)
+			);
+		}
+		else
+		{
+			Result.AddError(
+				OliveBPConstraints::ComponentClassNotFound,
+				FString::Printf(TEXT("%s does not support components"), *TypeName),
+				TEXT("")
+			);
+		}
+
+		return Result;
+	}
+
+	// Basic component class validation
+	if (ComponentClass.IsEmpty())
+	{
+		Result.AddError(
+			OliveBPConstraints::ComponentClassNotFound,
+			TEXT("Component class name cannot be empty"),
+			TEXT("Provide a valid component class name")
+		);
+	}
+
+	return Result;
+}
+
+FOliveValidationResult FOliveBlueprintConstraints::ValidateAddFunction(
+	EOliveBlueprintType Type,
+	bool bIsStatic,
+	bool bIsPublic)
+{
+	FOliveValidationResult Result;
+
+	FOliveBlueprintCapabilities Caps = FOliveBlueprintTypeDetector::GetCapabilities(Type);
+	FString TypeName = FOliveBlueprintTypeDetector::TypeToString(Type);
+
+	if (!Caps.bHasFunctions)
+	{
+		if (Type == EOliveBlueprintType::MacroLibrary)
+		{
+			Result.AddError(
+				OliveBPConstraints::MacroLibraryOnlyMacros,
+				FString::Printf(TEXT("Cannot add functions to %s - only macros are allowed"), *TypeName),
+				GetConstraintSuggestion(OliveBPConstraints::MacroLibraryOnlyMacros)
+			);
+		}
+		else
+		{
+			Result.AddError(
+				OliveBPConstraints::MacroLibraryOnlyMacros,
+				FString::Printf(TEXT("%s does not support functions"), *TypeName),
+				TEXT("")
+			);
+		}
+		return Result;
+	}
+
+	if (Caps.bFunctionsMustBeStatic && !bIsStatic)
+	{
+		Result.AddError(
+			OliveBPConstraints::FunctionLibraryMustBeStatic,
+			FString::Printf(TEXT("Functions in %s must be static"), *TypeName),
+			GetConstraintSuggestion(OliveBPConstraints::FunctionLibraryMustBeStatic)
+		);
+	}
+
+	return Result;
+}
+
+FOliveValidationResult FOliveBlueprintConstraints::ValidateAddEventGraph(
+	EOliveBlueprintType Type)
+{
+	FOliveValidationResult Result;
+
+	if (!FOliveBlueprintTypeDetector::CanHaveEventGraph(Type))
+	{
+		FString TypeName = FOliveBlueprintTypeDetector::TypeToString(Type);
+
+		if (Type == EOliveBlueprintType::Interface)
+		{
+			Result.AddError(
+				OliveBPConstraints::InterfaceNoEventGraph,
+				FString::Printf(TEXT("Cannot add event graphs to %s"), *TypeName),
+				GetConstraintSuggestion(OliveBPConstraints::InterfaceNoEventGraph)
+			);
+		}
+		else if (Type == EOliveBlueprintType::FunctionLibrary)
+		{
+			Result.AddError(
+				OliveBPConstraints::FunctionLibraryNoEventGraph,
+				FString::Printf(TEXT("Cannot add event graphs to %s"), *TypeName),
+				GetConstraintSuggestion(OliveBPConstraints::FunctionLibraryNoEventGraph)
+			);
+		}
+		else
+		{
+			Result.AddError(
+				OliveBPConstraints::FunctionLibraryNoEventGraph,
+				FString::Printf(TEXT("%s does not support event graphs"), *TypeName),
+				TEXT("")
+			);
+		}
+	}
+
+	return Result;
+}
+
+FString FOliveBlueprintConstraints::GetConstraintMessage(const FString& ConstraintId)
+{
+	if (ConstraintId == OliveBPConstraints::InterfaceNoVariables)
+	{
+		return TEXT("Blueprint Interfaces cannot have member variables. Interfaces define function signatures only.");
+	}
+	if (ConstraintId == OliveBPConstraints::InterfaceNoComponents)
+	{
+		return TEXT("Blueprint Interfaces cannot have components. Interfaces define function signatures only.");
+	}
+	if (ConstraintId == OliveBPConstraints::InterfaceNoEventGraph)
+	{
+		return TEXT("Blueprint Interfaces cannot have event graphs. Interfaces define function signatures only.");
+	}
+	if (ConstraintId == OliveBPConstraints::FunctionLibraryNoEventGraph)
+	{
+		return TEXT("Blueprint Function Libraries cannot have event graphs. They contain static functions only.");
+	}
+	if (ConstraintId == OliveBPConstraints::FunctionLibraryMustBeStatic)
+	{
+		return TEXT("All functions in a Blueprint Function Library must be static.");
+	}
+	if (ConstraintId == OliveBPConstraints::FunctionLibraryNoVariables)
+	{
+		return TEXT("Blueprint Function Libraries cannot have member variables. Use function local variables instead.");
+	}
+	if (ConstraintId == OliveBPConstraints::FunctionLibraryNoComponents)
+	{
+		return TEXT("Blueprint Function Libraries cannot have components.");
+	}
+	if (ConstraintId == OliveBPConstraints::MacroLibraryOnlyMacros)
+	{
+		return TEXT("Blueprint Macro Libraries can only contain macros, not functions.");
+	}
+	if (ConstraintId == OliveBPConstraints::AnimBPNoComponents)
+	{
+		return TEXT("Animation Blueprints cannot have components added directly. Components belong to the owning Actor.");
+	}
+	if (ConstraintId == OliveBPConstraints::LevelScriptNoComponents)
+	{
+		return TEXT("Level Blueprints cannot have components. Place Actors in the level instead.");
+	}
+	if (ConstraintId == OliveBPConstraints::InvalidVariableName)
+	{
+		return TEXT("The variable name is invalid. Names must start with a letter and contain only alphanumeric characters and underscores.");
+	}
+	if (ConstraintId == OliveBPConstraints::VariableNameConflict)
+	{
+		return TEXT("A variable, function, or component with this name already exists.");
+	}
+	if (ConstraintId == OliveBPConstraints::ComponentClassNotFound)
+	{
+		return TEXT("The specified component class could not be found.");
+	}
+	if (ConstraintId == OliveBPConstraints::ActorComponentNoSCS)
+	{
+		return TEXT("Non-scene Actor Components cannot have child components attached. Only SceneComponent subclasses support component hierarchies.");
+	}
+
+	return TEXT("Unknown constraint.");
+}
+
+FString FOliveBlueprintConstraints::GetConstraintSuggestion(const FString& ConstraintId)
+{
+	if (ConstraintId == OliveBPConstraints::InterfaceNoVariables)
+	{
+		return TEXT("Use a regular Blueprint class to add variables, or pass data through function parameters.");
+	}
+	if (ConstraintId == OliveBPConstraints::InterfaceNoComponents)
+	{
+		return TEXT("Use a regular Blueprint class to add components.");
+	}
+	if (ConstraintId == OliveBPConstraints::InterfaceNoEventGraph)
+	{
+		return TEXT("Implement the interface in a regular Blueprint to add event graph logic.");
+	}
+	if (ConstraintId == OliveBPConstraints::FunctionLibraryNoEventGraph)
+	{
+		return TEXT("Use a regular Blueprint class if you need event graph functionality.");
+	}
+	if (ConstraintId == OliveBPConstraints::FunctionLibraryMustBeStatic)
+	{
+		return TEXT("Mark the function as static, or use a regular Blueprint class for instance functions.");
+	}
+	if (ConstraintId == OliveBPConstraints::FunctionLibraryNoVariables)
+	{
+		return TEXT("Use local variables within functions, or use a regular Blueprint class for member variables.");
+	}
+	if (ConstraintId == OliveBPConstraints::FunctionLibraryNoComponents)
+	{
+		return TEXT("Use a regular Blueprint class to add components.");
+	}
+	if (ConstraintId == OliveBPConstraints::MacroLibraryOnlyMacros)
+	{
+		return TEXT("Create a macro instead, or use a Blueprint Function Library for functions.");
+	}
+	if (ConstraintId == OliveBPConstraints::AnimBPNoComponents)
+	{
+		return TEXT("Add components to the Actor Blueprint that uses this Animation Blueprint.");
+	}
+	if (ConstraintId == OliveBPConstraints::LevelScriptNoComponents)
+	{
+		return TEXT("Drag components into the level as part of Actors instead.");
+	}
+	if (ConstraintId == OliveBPConstraints::InvalidVariableName)
+	{
+		return TEXT("Choose a name starting with a letter, using only letters, numbers, and underscores.");
+	}
+	if (ConstraintId == OliveBPConstraints::VariableNameConflict)
+	{
+		return TEXT("Choose a different name that doesn't conflict with existing members.");
+	}
+	if (ConstraintId == OliveBPConstraints::ComponentClassNotFound)
+	{
+		return TEXT("Verify the component class name is correct. Use project.search to find available component classes.");
+	}
+	if (ConstraintId == OliveBPConstraints::ActorComponentNoSCS)
+	{
+		return TEXT("Inherit from SceneComponent instead of ActorComponent if you need to attach child components.");
+	}
+
+	return TEXT("");
+}
+
+FOliveValidationResult FOliveBlueprintConstraints::ValidateAddComponentToComponent(
+	const UBlueprint* Blueprint,
+	const FString& ComponentClass)
+{
+	FOliveValidationResult Result;
+
+	if (!Blueprint)
+	{
+		Result.AddError(
+			OliveBPConstraints::ComponentClassNotFound,
+			TEXT("Blueprint is null"),
+			TEXT("Provide a valid Blueprint")
+		);
+		return Result;
+	}
+
+	// Check if this is an ActorComponent Blueprint
+	EOliveBlueprintType Type = FOliveBlueprintTypeDetector::DetectType(Blueprint);
+	if (Type != EOliveBlueprintType::ActorComponent)
+	{
+		// Not an ActorComponent Blueprint - use regular component validation
+		return ValidateAddComponent(Type, ComponentClass);
+	}
+
+	// Check if it's a SceneComponent (can have child components)
+	FOliveBlueprintCapabilities Caps = FOliveBlueprintTypeDetector::GetCapabilities(Blueprint);
+	if (!Caps.bIsSceneComponent)
+	{
+		Result.AddError(
+			OliveBPConstraints::ActorComponentNoSCS,
+			TEXT("Cannot add child components to non-SceneComponent Actor Component Blueprints"),
+			GetConstraintSuggestion(OliveBPConstraints::ActorComponentNoSCS)
+		);
+		return Result;
+	}
+
+	// Basic component class validation
+	if (ComponentClass.IsEmpty())
+	{
+		Result.AddError(
+			OliveBPConstraints::ComponentClassNotFound,
+			TEXT("Component class name cannot be empty"),
+			TEXT("Provide a valid component class name")
+		);
+	}
+
+	return Result;
+}
