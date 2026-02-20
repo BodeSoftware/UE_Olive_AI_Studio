@@ -35,8 +35,11 @@ void FOliveAIEditorModule::StartupModule()
 	// Register UI elements
 	RegisterUI();
 
-	// Defer initialization until editor is fully ready
-	FCoreDelegates::OnPostEngineInit.AddRaw(this, &FOliveAIEditorModule::OnPostEngineInit);
+	// NOTE: This module loads at PostEngineInit phase (see .uplugin).
+	// By this point, the engine is fully initialized, so we can run
+	// subsystem initialization directly. No need to defer via delegate
+	// (which would fail anyway since OnPostEngineInit has already fired).
+	OnPostEngineInit();
 
 	UE_LOG(LogOliveAI, Log, TEXT("OliveAIEditor module started"));
 }

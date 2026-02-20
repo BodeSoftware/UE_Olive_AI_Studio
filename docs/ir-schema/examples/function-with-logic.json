@@ -1,0 +1,98 @@
+{
+  "name": "ApplyHealing",
+  "graph_type": "Function",
+  "inputs": [
+    {
+      "name": "Target",
+      "type": { "category": "Object", "class_name": "Actor" },
+      "is_input": true
+    }
+  ],
+  "outputs": [
+    {
+      "name": "bSuccess",
+      "type": { "category": "Bool" },
+      "is_input": false
+    }
+  ],
+  "access": "public",
+  "is_pure": false,
+  "is_static": false,
+  "nodes": [
+    {
+      "id": "entry",
+      "type": "FunctionEntry",
+      "title": "Apply Healing",
+      "category": "FunctionEntry",
+      "output_pins": [
+        { "name": "exec", "is_exec": true },
+        { "name": "Target", "type": { "category": "Object", "class_name": "Actor" } }
+      ]
+    },
+    {
+      "id": "node_1",
+      "type": "CallFunction",
+      "title": "Is Valid",
+      "function_name": "IsValid",
+      "owning_class": "KismetSystemLibrary",
+      "category": "IsValid",
+      "input_pins": [
+        { "name": "Object", "type": { "category": "Object" }, "connection": "entry.Target" }
+      ],
+      "output_pins": [
+        { "name": "ReturnValue", "type": { "category": "Bool" } }
+      ]
+    },
+    {
+      "id": "node_2",
+      "type": "Branch",
+      "title": "Branch",
+      "category": "Branch",
+      "input_pins": [
+        { "name": "exec", "is_exec": true, "connection": "entry.exec" },
+        { "name": "Condition", "type": { "category": "Bool" }, "connection": "node_1.ReturnValue" }
+      ],
+      "output_pins": [
+        { "name": "True", "is_exec": true },
+        { "name": "False", "is_exec": true }
+      ]
+    },
+    {
+      "id": "node_3",
+      "type": "CallFunction",
+      "title": "Add Health",
+      "function_name": "AddHealth",
+      "owning_class": "HealthComponent",
+      "category": "CallFunction",
+      "input_pins": [
+        { "name": "exec", "is_exec": true, "connection": "node_2.True" },
+        { "name": "Amount", "type": { "category": "Float" }, "default_value": "50.0" }
+      ],
+      "output_pins": [
+        { "name": "exec", "is_exec": true }
+      ]
+    },
+    {
+      "id": "result_true",
+      "type": "FunctionResult",
+      "title": "Return Node",
+      "category": "FunctionResult",
+      "input_pins": [
+        { "name": "exec", "is_exec": true, "connection": "node_3.exec" },
+        { "name": "bSuccess", "type": { "category": "Bool" }, "default_value": "true" }
+      ]
+    },
+    {
+      "id": "result_false",
+      "type": "FunctionResult",
+      "title": "Return Node",
+      "category": "FunctionResult",
+      "input_pins": [
+        { "name": "exec", "is_exec": true, "connection": "node_2.False" },
+        { "name": "bSuccess", "type": { "category": "Bool" }, "default_value": "false" }
+      ]
+    }
+  ],
+  "node_count": 6,
+  "connection_count": 6
+}

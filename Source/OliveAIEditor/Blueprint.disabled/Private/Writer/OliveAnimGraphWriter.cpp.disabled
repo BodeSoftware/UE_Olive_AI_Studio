@@ -1,0 +1,749 @@
+// Copyright Bode Software. All Rights Reserved.
+
+#include "OliveAnimGraphWriter.h"
+#include "AnimationGraph.h"
+#include "AnimGraphNode_StateMachine.h"
+#include "AnimStateNode.h"
+#include "AnimStateConduitNode.h"
+#include "AnimStateEntryNode.h"
+#include "AnimStateTransitionNode.h"
+#include "AnimationStateMachineGraph.h"
+#include "AnimationStateMachineSchema.h"
+#include "AnimGraphNode_Root.h"
+#include "K2Node_TransitionRuleGetter.h"
+#include "Kismet2/BlueprintEditorUtils.h"
+#include "Editor.h"
+
+DEFINE_LOG_CATEGORY(LogOliveAnimWriter);
+
+// ============================================================================
+// FOliveAnimGraphWriteResult Implementation
+// ============================================================================
+
+FOliveAnimGraphWriteResult FOliveAnimGraphWriteResult::Success(const FString& ItemName)
+{
+	FOliveAnimGraphWriteResult Result;
+	Result.bSuccess = true;
+
+	// Set the appropriate created item field based on context
+	// The caller can override this as needed
+	if (!ItemName.IsEmpty())
+	{
+		Result.CreatedStateMachineName = ItemName;
+	}
+
+	return Result;
+}
+
+FOliveAnimGraphWriteResult FOliveAnimGraphWriteResult::Error(const FString& ErrorMessage)
+{
+	FOliveAnimGraphWriteResult Result;
+	Result.bSuccess = false;
+	Result.Errors.Add(ErrorMessage);
+	return Result;
+}
+
+void FOliveAnimGraphWriteResult::AddWarning(const FString& Warning)
+{
+	Warnings.Add(Warning);
+}
+
+void FOliveAnimGraphWriteResult::AddError(const FString& ErrorMessage)
+{
+	bSuccess = false;
+	Errors.Add(ErrorMessage);
+}
+
+// ============================================================================
+// FOliveAnimGraphWriter Implementation
+// ============================================================================
+
+FOliveAnimGraphWriter& FOliveAnimGraphWriter::Get()
+{
+	static FOliveAnimGraphWriter Instance;
+	return Instance;
+}
+
+// ============================================================================
+// State Machine Operations
+// ============================================================================
+
+FOliveAnimGraphWriteResult FOliveAnimGraphWriter::AddStateMachine(
+	UAnimBlueprint* AnimBlueprint,
+	const FString& StateMachineName)
+{
+	// Validate inputs
+	if (!AnimBlueprint)
+	{
+		return FOliveAnimGraphWriteResult::Error(TEXT("AnimBlueprint is null"));
+	}
+
+	if (StateMachineName.IsEmpty())
+	{
+		return FOliveAnimGraphWriteResult::Error(TEXT("State machine name cannot be empty"));
+	}
+
+	// Check if PIE is active
+	if (IsPIEActive())
+	{
+		return FOliveAnimGraphWriteResult::Error(
+			TEXT("Cannot modify Animation Blueprint while Play-In-Editor is active"));
+	}
+
+	// Find the AnimGraph
+	UEdGraph* AnimGraph = FindAnimGraph(AnimBlueprint);
+	if (!AnimGraph)
+	{
+		return FOliveAnimGraphWriteResult::Error(
+			TEXT("Could not find AnimGraph in Animation Blueprint"));
+	}
+
+	// Generate unique name
+	FString UniqueName = GenerateUniqueStateMachineName(AnimGraph, StateMachineName);
+
+	// Create the state machine node
+	const UAnimationGraphSchema* Schema = Cast<UAnimationGraphSchema>(AnimGraph->GetSchema());
+	if (!Schema)
+	{
+		return FOliveAnimGraphWriteResult::Error(TEXT("Invalid AnimGraph schema"));
+	}
+
+	// Mark for modification
+	AnimGraph->Modify();
+	AnimBlueprint->Modify();
+
+	// Create state machine graph node
+	FGraphNodeCreator<UAnimGraphNode_StateMachine> NodeCreator(*AnimGraph);
+	UAnimGraphNode_StateMachine* StateMachineNode = NodeCreator.CreateNode();
+	StateMachineNode->NodePosX = 0;
+	StateMachineNode->NodePosY = AnimGraph->GetAllNodes().Num() * 150; // Stack vertically
+	NodeCreator.Finalize();
+
+	if (!StateMachineNode)
+	{
+		return FOliveAnimGraphWriteResult::Error(TEXT("Failed to create state machine node"));
+	}
+
+	// Set the name
+	StateMachineNode->EditorStateMachineGraph->Rename(*UniqueName, nullptr, REN_DontCreateRedirectors);
+
+	// Create entry state in the new state machine
+	UAnimationStateMachineGraph* StateMachineGraph = StateMachineNode->EditorStateMachineGraph;
+	if (StateMachineGraph)
+	{
+		StateMachineGraph->Modify();
+
+		// The state machine should already have an entry node created automatically
+		// We just need to ensure it's there
+		bool bHasEntryNode = false;
+		for (UEdGraphNode* Node : StateMachineGraph->Nodes)
+		{
+			if (Cast<UAnimStateEntryNode>(Node))
+			{
+				bHasEntryNode = true;
+				break;
+			}
+		}
+
+		if (!bHasEntryNode)
+		{
+			UE_LOG(LogOliveAnimWriter, Warning,
+				TEXT("State machine '%s' created without entry node"), *UniqueName);
+		}
+	}
+
+	// Mark the Blueprint as modified
+	MarkDirty(AnimBlueprint);
+
+	UE_LOG(LogOliveAnimWriter, Log,
+		TEXT("Created state machine '%s' in AnimGraph"), *UniqueName);
+
+	FOliveAnimGraphWriteResult Result = FOliveAnimGraphWriteResult::Success();
+	Result.CreatedStateMachineName = UniqueName;
+	return Result;
+}
+
+FOliveAnimGraphWriteResult FOliveAnimGraphWriter::AddState(
+	UAnimBlueprint* AnimBlueprint,
+	const FString& StateMachineName,
+	const FString& StateName,
+	const FString& AnimationAsset)
+{
+	// Validate inputs
+	if (!AnimBlueprint)
+	{
+		return FOliveAnimGraphWriteResult::Error(TEXT("AnimBlueprint is null"));
+	}
+
+	if (StateMachineName.IsEmpty())
+	{
+		return FOliveAnimGraphWriteResult::Error(TEXT("State machine name cannot be empty"));
+	}
+
+	if (StateName.IsEmpty())
+	{
+		return FOliveAnimGraphWriteResult::Error(TEXT("State name cannot be empty"));
+	}
+
+	// Check if PIE is active
+	if (IsPIEActive())
+	{
+		return FOliveAnimGraphWriteResult::Error(
+			TEXT("Cannot modify Animation Blueprint while Play-In-Editor is active"));
+	}
+
+	// Find the state machine
+	UAnimGraphNode_StateMachine* StateMachineNode = FindStateMachine(AnimBlueprint, StateMachineName);
+	if (!StateMachineNode)
+	{
+		return FOliveAnimGraphWriteResult::Error(
+			FString::Printf(TEXT("State machine '%s' not found"), *StateMachineName));
+	}
+
+	UAnimationStateMachineGraph* StateMachineGraph = StateMachineNode->EditorStateMachineGraph;
+	if (!StateMachineGraph)
+	{
+		return FOliveAnimGraphWriteResult::Error(
+			FString::Printf(TEXT("State machine '%s' has no graph"), *StateMachineName));
+	}
+
+	// Generate unique state name
+	FString UniqueName = GenerateUniqueStateName(StateMachineGraph, StateName);
+
+	// Mark for modification
+	StateMachineGraph->Modify();
+	AnimBlueprint->Modify();
+
+	// Create the state node
+	const UAnimationStateMachineSchema* Schema = Cast<UAnimationStateMachineSchema>(
+		StateMachineGraph->GetSchema());
+	if (!Schema)
+	{
+		return FOliveAnimGraphWriteResult::Error(TEXT("Invalid state machine schema"));
+	}
+
+	// Create state node
+	FGraphNodeCreator<UAnimStateNode> NodeCreator(*StateMachineGraph);
+	UAnimStateNode* StateNode = NodeCreator.CreateNode();
+	StateNode->NodePosX = StateMachineGraph->GetAllNodes().Num() * 250;
+	StateNode->NodePosY = 0;
+	NodeCreator.Finalize();
+
+	if (!StateNode)
+	{
+		return FOliveAnimGraphWriteResult::Error(TEXT("Failed to create state node"));
+	}
+
+	// Set the state name
+	StateNode->GetBoundGraph()->Rename(*UniqueName, nullptr, REN_DontCreateRedirectors);
+
+	// TODO: If AnimationAsset is provided, we would need to:
+	// 1. Load the animation asset
+	// 2. Add an animation node to the state's bound graph
+	// 3. Connect it to the output
+	// This is complex and would require additional AnimGraph node manipulation
+	if (!AnimationAsset.IsEmpty())
+	{
+		UE_LOG(LogOliveAnimWriter, Warning,
+			TEXT("Animation asset assignment not yet implemented for state '%s'"), *UniqueName);
+	}
+
+	// Mark the Blueprint as modified
+	MarkDirty(AnimBlueprint);
+
+	UE_LOG(LogOliveAnimWriter, Log,
+		TEXT("Created state '%s' in state machine '%s'"), *UniqueName, *StateMachineName);
+
+	FOliveAnimGraphWriteResult Result = FOliveAnimGraphWriteResult::Success();
+	Result.CreatedStateName = UniqueName;
+	return Result;
+}
+
+FOliveAnimGraphWriteResult FOliveAnimGraphWriter::AddTransition(
+	UAnimBlueprint* AnimBlueprint,
+	const FString& StateMachineName,
+	const FString& FromStateName,
+	const FString& ToStateName)
+{
+	// Validate inputs
+	if (!AnimBlueprint)
+	{
+		return FOliveAnimGraphWriteResult::Error(TEXT("AnimBlueprint is null"));
+	}
+
+	if (StateMachineName.IsEmpty())
+	{
+		return FOliveAnimGraphWriteResult::Error(TEXT("State machine name cannot be empty"));
+	}
+
+	if (FromStateName.IsEmpty() || ToStateName.IsEmpty())
+	{
+		return FOliveAnimGraphWriteResult::Error(TEXT("State names cannot be empty"));
+	}
+
+	// Check if PIE is active
+	if (IsPIEActive())
+	{
+		return FOliveAnimGraphWriteResult::Error(
+			TEXT("Cannot modify Animation Blueprint while Play-In-Editor is active"));
+	}
+
+	// Find the state machine
+	UAnimGraphNode_StateMachine* StateMachineNode = FindStateMachine(AnimBlueprint, StateMachineName);
+	if (!StateMachineNode)
+	{
+		return FOliveAnimGraphWriteResult::Error(
+			FString::Printf(TEXT("State machine '%s' not found"), *StateMachineName));
+	}
+
+	UAnimationStateMachineGraph* StateMachineGraph = StateMachineNode->EditorStateMachineGraph;
+	if (!StateMachineGraph)
+	{
+		return FOliveAnimGraphWriteResult::Error(
+			FString::Printf(TEXT("State machine '%s' has no graph"), *StateMachineName));
+	}
+
+	// Find the source and destination states
+	UAnimStateNodeBase* FromState = FindState(StateMachineGraph, FromStateName);
+	if (!FromState)
+	{
+		return FOliveAnimGraphWriteResult::Error(
+			FString::Printf(TEXT("Source state '%s' not found"), *FromStateName));
+	}
+
+	UAnimStateNodeBase* ToState = FindState(StateMachineGraph, ToStateName);
+	if (!ToState)
+	{
+		return FOliveAnimGraphWriteResult::Error(
+			FString::Printf(TEXT("Destination state '%s' not found"), *ToStateName));
+	}
+
+	// Check if transition already exists
+	UAnimStateTransitionNode* ExistingTransition = FindTransition(
+		StateMachineGraph, FromStateName, ToStateName);
+	if (ExistingTransition)
+	{
+		return FOliveAnimGraphWriteResult::Error(
+			FString::Printf(TEXT("Transition from '%s' to '%s' already exists"),
+				*FromStateName, *ToStateName));
+	}
+
+	// Mark for modification
+	StateMachineGraph->Modify();
+	AnimBlueprint->Modify();
+
+	// Create the transition node
+	const UAnimationStateMachineSchema* Schema = Cast<UAnimationStateMachineSchema>(
+		StateMachineGraph->GetSchema());
+	if (!Schema)
+	{
+		return FOliveAnimGraphWriteResult::Error(TEXT("Invalid state machine schema"));
+	}
+
+	FGraphNodeCreator<UAnimStateTransitionNode> NodeCreator(*StateMachineGraph);
+	UAnimStateTransitionNode* TransitionNode = NodeCreator.CreateNode();
+	NodeCreator.Finalize();
+
+	if (!TransitionNode)
+	{
+		return FOliveAnimGraphWriteResult::Error(TEXT("Failed to create transition node"));
+	}
+
+	// Connect the transition
+	// Create pins if they don't exist
+	TransitionNode->CreatePinsForTransition(FromState, ToState);
+
+	// Create connections
+	UEdGraphPin* FromPin = TransitionNode->GetPreviousStatePin();
+	UEdGraphPin* ToPin = TransitionNode->GetNextStatePin();
+
+	if (FromPin && ToPin)
+	{
+		// Connect transition to states
+		UEdGraphPin* FromStateOutputPin = FromState->GetOutputPin();
+		UEdGraphPin* ToStateInputPin = ToState->GetInputPin();
+
+		if (FromStateOutputPin && ToStateInputPin)
+		{
+			FromStateOutputPin->MakeLinkTo(FromPin);
+			ToPin->MakeLinkTo(ToStateInputPin);
+		}
+		else
+		{
+			return FOliveAnimGraphWriteResult::Error(
+				TEXT("Failed to find state input/output pins"));
+		}
+	}
+	else
+	{
+		return FOliveAnimGraphWriteResult::Error(
+			TEXT("Failed to create transition pins"));
+	}
+
+	// Position the transition node between the two states
+	TransitionNode->NodePosX = (FromState->NodePosX + ToState->NodePosX) / 2;
+	TransitionNode->NodePosY = (FromState->NodePosY + ToState->NodePosY) / 2;
+
+	// Mark the Blueprint as modified
+	MarkDirty(AnimBlueprint);
+
+	// Generate transition ID
+	FString TransitionId = FString::Printf(TEXT("%s_to_%s"), *FromStateName, *ToStateName);
+
+	UE_LOG(LogOliveAnimWriter, Log,
+		TEXT("Created transition from '%s' to '%s' in state machine '%s'"),
+		*FromStateName, *ToStateName, *StateMachineName);
+
+	FOliveAnimGraphWriteResult Result = FOliveAnimGraphWriteResult::Success();
+	Result.CreatedTransitionId = TransitionId;
+	return Result;
+}
+
+FOliveAnimGraphWriteResult FOliveAnimGraphWriter::SetTransitionRule(
+	UAnimBlueprint* AnimBlueprint,
+	const FString& StateMachineName,
+	const FString& FromStateName,
+	const FString& ToStateName,
+	const TSharedPtr<FJsonObject>& RuleExpression)
+{
+	// Validate inputs
+	if (!AnimBlueprint)
+	{
+		return FOliveAnimGraphWriteResult::Error(TEXT("AnimBlueprint is null"));
+	}
+
+	if (StateMachineName.IsEmpty())
+	{
+		return FOliveAnimGraphWriteResult::Error(TEXT("State machine name cannot be empty"));
+	}
+
+	if (FromStateName.IsEmpty() || ToStateName.IsEmpty())
+	{
+		return FOliveAnimGraphWriteResult::Error(TEXT("State names cannot be empty"));
+	}
+
+	// Check if PIE is active
+	if (IsPIEActive())
+	{
+		return FOliveAnimGraphWriteResult::Error(
+			TEXT("Cannot modify Animation Blueprint while Play-In-Editor is active"));
+	}
+
+	// Find the state machine
+	UAnimGraphNode_StateMachine* StateMachineNode = FindStateMachine(AnimBlueprint, StateMachineName);
+	if (!StateMachineNode)
+	{
+		return FOliveAnimGraphWriteResult::Error(
+			FString::Printf(TEXT("State machine '%s' not found"), *StateMachineName));
+	}
+
+	UAnimationStateMachineGraph* StateMachineGraph = StateMachineNode->EditorStateMachineGraph;
+	if (!StateMachineGraph)
+	{
+		return FOliveAnimGraphWriteResult::Error(
+			FString::Printf(TEXT("State machine '%s' has no graph"), *StateMachineName));
+	}
+
+	// Find the transition
+	UAnimStateTransitionNode* TransitionNode = FindTransition(
+		StateMachineGraph, FromStateName, ToStateName);
+	if (!TransitionNode)
+	{
+		return FOliveAnimGraphWriteResult::Error(
+			FString::Printf(TEXT("Transition from '%s' to '%s' not found"),
+				*FromStateName, *ToStateName));
+	}
+
+	// Mark for modification
+	TransitionNode->Modify();
+	AnimBlueprint->Modify();
+
+	// Get the transition rule graph (the graph inside the transition)
+	UEdGraph* BoundGraph = TransitionNode->GetBoundGraph();
+	if (!BoundGraph)
+	{
+		return FOliveAnimGraphWriteResult::Error(
+			TEXT("Transition has no bound graph for rule"));
+	}
+
+	BoundGraph->Modify();
+
+	// TODO: Parse RuleExpression and create nodes in the transition rule graph
+	// This is complex and would require:
+	// 1. Parsing the JSON rule expression
+	// 2. Creating appropriate nodes (comparisons, getters, etc.)
+	// 3. Connecting them to the output result node
+	// For now, we'll just log a warning that this is not fully implemented
+
+	UE_LOG(LogOliveAnimWriter, Warning,
+		TEXT("Transition rule setting not fully implemented. Transition exists but rule graph not populated."));
+
+	// Mark the Blueprint as modified
+	MarkDirty(AnimBlueprint);
+
+	UE_LOG(LogOliveAnimWriter, Log,
+		TEXT("Attempted to set rule for transition from '%s' to '%s'"),
+		*FromStateName, *ToStateName);
+
+	return FOliveAnimGraphWriteResult::Success();
+}
+
+// ============================================================================
+// Helper Methods
+// ============================================================================
+
+UEdGraph* FOliveAnimGraphWriter::FindAnimGraph(UAnimBlueprint* AnimBlueprint) const
+{
+	if (!AnimBlueprint)
+	{
+		return nullptr;
+	}
+
+	// The AnimGraph is one of the function graphs in the Blueprint
+	for (UEdGraph* Graph : AnimBlueprint->FunctionGraphs)
+	{
+		// AnimGraph typically has a specific name
+		if (Graph->GetName() == TEXT("AnimGraph"))
+		{
+			return Graph;
+		}
+	}
+
+	// Also check UbergraphPages
+	for (UEdGraph* Graph : AnimBlueprint->UbergraphPages)
+	{
+		if (Graph->GetName() == TEXT("AnimGraph"))
+		{
+			return Graph;
+		}
+	}
+
+	return nullptr;
+}
+
+UAnimGraphNode_StateMachine* FOliveAnimGraphWriter::FindStateMachine(
+	UAnimBlueprint* AnimBlueprint,
+	const FString& StateMachineName) const
+{
+	UEdGraph* AnimGraph = FindAnimGraph(AnimBlueprint);
+	if (!AnimGraph)
+	{
+		return nullptr;
+	}
+
+	// Search for state machine node with matching name
+	for (UEdGraphNode* Node : AnimGraph->Nodes)
+	{
+		UAnimGraphNode_StateMachine* StateMachineNode = Cast<UAnimGraphNode_StateMachine>(Node);
+		if (StateMachineNode && StateMachineNode->EditorStateMachineGraph)
+		{
+			if (StateMachineNode->EditorStateMachineGraph->GetName() == StateMachineName)
+			{
+				return StateMachineNode;
+			}
+		}
+	}
+
+	return nullptr;
+}
+
+UAnimStateNodeBase* FOliveAnimGraphWriter::FindState(
+	UAnimationStateMachineGraph* StateMachineGraph,
+	const FString& StateName) const
+{
+	if (!StateMachineGraph)
+	{
+		return nullptr;
+	}
+
+	for (UEdGraphNode* Node : StateMachineGraph->Nodes)
+	{
+		UAnimStateNodeBase* StateNode = Cast<UAnimStateNodeBase>(Node);
+		if (StateNode && StateNode->GetBoundGraph())
+		{
+			if (StateNode->GetBoundGraph()->GetName() == StateName)
+			{
+				return StateNode;
+			}
+		}
+	}
+
+	return nullptr;
+}
+
+UAnimStateTransitionNode* FOliveAnimGraphWriter::FindTransition(
+	UAnimationStateMachineGraph* StateMachineGraph,
+	const FString& FromStateName,
+	const FString& ToStateName) const
+{
+	if (!StateMachineGraph)
+	{
+		return nullptr;
+	}
+
+	// Find the states first
+	UAnimStateNodeBase* FromState = FindState(StateMachineGraph, FromStateName);
+	UAnimStateNodeBase* ToState = FindState(StateMachineGraph, ToStateName);
+
+	if (!FromState || !ToState)
+	{
+		return nullptr;
+	}
+
+	// Search through all transitions
+	for (UEdGraphNode* Node : StateMachineGraph->Nodes)
+	{
+		UAnimStateTransitionNode* TransitionNode = Cast<UAnimStateTransitionNode>(Node);
+		if (TransitionNode)
+		{
+			// Check if this transition connects our two states
+			UEdGraphPin* PrevPin = TransitionNode->GetPreviousStatePin();
+			UEdGraphPin* NextPin = TransitionNode->GetNextStatePin();
+
+			if (PrevPin && NextPin)
+			{
+				// Check if the pins are connected to our states
+				for (UEdGraphPin* LinkedPin : PrevPin->LinkedTo)
+				{
+					if (LinkedPin->GetOwningNode() == FromState)
+					{
+						for (UEdGraphPin* NextLinkedPin : NextPin->LinkedTo)
+						{
+							if (NextLinkedPin->GetOwningNode() == ToState)
+							{
+								return TransitionNode;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return nullptr;
+}
+
+void FOliveAnimGraphWriter::MarkDirty(UAnimBlueprint* AnimBlueprint)
+{
+	if (AnimBlueprint)
+	{
+		FBlueprintEditorUtils::MarkBlueprintAsModified(AnimBlueprint);
+	}
+}
+
+bool FOliveAnimGraphWriter::IsPIEActive() const
+{
+	return GEditor && GEditor->PlayWorld != nullptr;
+}
+
+FString FOliveAnimGraphWriter::GenerateUniqueStateMachineName(
+	UEdGraph* AnimGraph,
+	const FString& BaseName) const
+{
+	if (!AnimGraph)
+	{
+		return BaseName;
+	}
+
+	// Check if base name is already unique
+	bool bNameExists = false;
+	for (UEdGraphNode* Node : AnimGraph->Nodes)
+	{
+		UAnimGraphNode_StateMachine* StateMachineNode = Cast<UAnimGraphNode_StateMachine>(Node);
+		if (StateMachineNode && StateMachineNode->EditorStateMachineGraph)
+		{
+			if (StateMachineNode->EditorStateMachineGraph->GetName() == BaseName)
+			{
+				bNameExists = true;
+				break;
+			}
+		}
+	}
+
+	if (!bNameExists)
+	{
+		return BaseName;
+	}
+
+	// Generate numbered variant
+	int32 Counter = 1;
+	FString UniqueName;
+	do
+	{
+		UniqueName = FString::Printf(TEXT("%s_%d"), *BaseName, Counter);
+		bNameExists = false;
+
+		for (UEdGraphNode* Node : AnimGraph->Nodes)
+		{
+			UAnimGraphNode_StateMachine* StateMachineNode = Cast<UAnimGraphNode_StateMachine>(Node);
+			if (StateMachineNode && StateMachineNode->EditorStateMachineGraph)
+			{
+				if (StateMachineNode->EditorStateMachineGraph->GetName() == UniqueName)
+				{
+					bNameExists = true;
+					break;
+				}
+			}
+		}
+
+		Counter++;
+	} while (bNameExists && Counter < 1000); // Safety limit
+
+	return UniqueName;
+}
+
+FString FOliveAnimGraphWriter::GenerateUniqueStateName(
+	UAnimationStateMachineGraph* StateMachineGraph,
+	const FString& BaseName) const
+{
+	if (!StateMachineGraph)
+	{
+		return BaseName;
+	}
+
+	// Check if base name is already unique
+	bool bNameExists = false;
+	for (UEdGraphNode* Node : StateMachineGraph->Nodes)
+	{
+		UAnimStateNodeBase* StateNode = Cast<UAnimStateNodeBase>(Node);
+		if (StateNode && StateNode->GetBoundGraph())
+		{
+			if (StateNode->GetBoundGraph()->GetName() == BaseName)
+			{
+				bNameExists = true;
+				break;
+			}
+		}
+	}
+
+	if (!bNameExists)
+	{
+		return BaseName;
+	}
+
+	// Generate numbered variant
+	int32 Counter = 1;
+	FString UniqueName;
+	do
+	{
+		UniqueName = FString::Printf(TEXT("%s_%d"), *BaseName, Counter);
+		bNameExists = false;
+
+		for (UEdGraphNode* Node : StateMachineGraph->Nodes)
+		{
+			UAnimStateNodeBase* StateNode = Cast<UAnimStateNodeBase>(Node);
+			if (StateNode && StateNode->GetBoundGraph())
+			{
+				if (StateNode->GetBoundGraph()->GetName() == UniqueName)
+				{
+					bNameExists = true;
+					break;
+				}
+			}
+		}
+
+		Counter++;
+	} while (bNameExists && Counter < 1000); // Safety limit
+
+	return UniqueName;
+}

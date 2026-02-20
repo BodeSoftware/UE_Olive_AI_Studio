@@ -29,6 +29,7 @@ enum class EOliveIRTypeCategory : uint8
 	LinearColor,
 	Object,		// UObject*
 	Class,		// TSubclassOf<T>
+	Interface,	// Interface reference (TScriptInterface)
 	Struct,		// USTRUCT
 	Enum,		// UENUM
 	Delegate,

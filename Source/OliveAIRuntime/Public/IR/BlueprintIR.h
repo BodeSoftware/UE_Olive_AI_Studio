@@ -7,16 +7,27 @@
 #include "BlueprintIR.generated.h"
 
 /**
- * Blueprint type enum
+ * Blueprint type enum for IR serialization.
+ * Maps to EOliveBlueprintType in editor module.
  */
 UENUM(BlueprintType)
 enum class EOliveIRBlueprintType : uint8
 {
-	Normal,
-	Interface,
-	FunctionLibrary,
-	MacroLibrary,
-	LevelScript,
+	// Standard K2 types (Tier 1 - full read/write)
+	Normal,              // Standard Blueprint (Actor, Pawn, etc.) + AnimNotify, AnimNotifyState, GameplayAbility
+	Interface,           // Blueprint Interface
+	FunctionLibrary,     // Blueprint Function Library
+	MacroLibrary,        // Blueprint Macro Library
+	LevelScript,         // Level Blueprint
+	ActorComponent,      // Actor Component Blueprint
+	EditorUtility,       // Editor Utility Blueprint (Blutility)
+	EditorUtilityWidget, // Editor Utility Widget Blueprint
+
+	// Extended systems (Tier 2 - read full, write partial)
+	AnimationBlueprint,  // Animation Blueprint (event graph writable, anim graph read-only)
+	WidgetBlueprint,     // Widget Blueprint (event graph writable, widget tree read-only)
+	ControlRigBlueprint, // Control Rig Blueprint (read-only for Phase 1)
+
 	Unknown
 };
 
@@ -147,6 +158,10 @@ USTRUCT(BlueprintType)
 struct OLIVEAIRUNTIME_API FOliveIRBlueprint
 {
 	GENERATED_BODY()
+
+	/** IR schema version for compatibility checking */
+	UPROPERTY()
+	FString SchemaVersion = TEXT("1.0");
 
 	/** Blueprint name */
 	UPROPERTY()

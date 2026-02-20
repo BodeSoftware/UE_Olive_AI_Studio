@@ -12,9 +12,6 @@
 
 ---
 
-Implementation Plan
-The full plan is at plans/ue-ai-agent-plugin-plan-v2. Read it before making architectural decisions.
-
 ## Project Overview
 
 Olive AI Studio is an AI-powered development assistant for Unreal Engine. It provides:
@@ -413,6 +410,7 @@ Use the `architect` subagent to:
 ### Important Rules
 
 - **Never skip the architect for new modules.** Writing code without a design leads to rework.
+- **One explorer at a time. NEVER spawn multiple.** Do not run parallel explorer subagents — they will all read the same large files and waste tokens. If you need to find multiple things, give the explorer ALL your questions in a single invocation. It handles them sequentially. This is a hard rule, not a suggestion.
 - **The coder follows the architect's design.** If the design has a gap, the coder documents it with a `// DESIGN NOTE` comment rather than making architectural decisions.
 - **The debugger does minimal fixes.** It doesn't refactor or redesign — it fixes the specific issue.
 - **Architectural decisions get documented.** Every significant decision goes in `docs/design/decisions.md` with rationale.

@@ -8,6 +8,9 @@ public class OliveAIEditor : ModuleRules
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
+		// NOTE: Blueprint folder is temporarily excluded until UE 5.5 API compatibility is fixed.
+		// Core MCP server and chat UI work without it.
+
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
 			"Core",
@@ -49,11 +52,9 @@ public class OliveAIEditor : ModuleRules
 			"AssetTools",
 			"ContentBrowser",
 
-			// Blueprint (for future phases, register dependencies now)
+			// Blueprint (minimal - for project index)
 			"BlueprintGraph",
 			"Kismet",
-			"KismetWidgets",
-			"GraphEditor",
 
 			// Configuration
 			"Projects",

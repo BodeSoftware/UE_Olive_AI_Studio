@@ -29,6 +29,7 @@ TSharedPtr<FJsonObject> FOliveIRType::ToJson() const
 		case EOliveIRTypeCategory::LinearColor: CategoryStr = TEXT("linearcolor"); break;
 		case EOliveIRTypeCategory::Object: CategoryStr = TEXT("object"); break;
 		case EOliveIRTypeCategory::Class: CategoryStr = TEXT("class"); break;
+		case EOliveIRTypeCategory::Interface: CategoryStr = TEXT("interface"); break;
 		case EOliveIRTypeCategory::Struct: CategoryStr = TEXT("struct"); break;
 		case EOliveIRTypeCategory::Enum: CategoryStr = TEXT("enum"); break;
 		case EOliveIRTypeCategory::Delegate: CategoryStr = TEXT("delegate"); break;
@@ -105,6 +106,7 @@ FOliveIRType FOliveIRType::FromJson(const TSharedPtr<FJsonObject>& JsonObject)
 	else if (CategoryStr == TEXT("linearcolor")) Type.Category = EOliveIRTypeCategory::LinearColor;
 	else if (CategoryStr == TEXT("object")) Type.Category = EOliveIRTypeCategory::Object;
 	else if (CategoryStr == TEXT("class")) Type.Category = EOliveIRTypeCategory::Class;
+	else if (CategoryStr == TEXT("interface")) Type.Category = EOliveIRTypeCategory::Interface;
 	else if (CategoryStr == TEXT("struct")) Type.Category = EOliveIRTypeCategory::Struct;
 	else if (CategoryStr == TEXT("enum")) Type.Category = EOliveIRTypeCategory::Enum;
 	else if (CategoryStr == TEXT("delegate")) Type.Category = EOliveIRTypeCategory::Delegate;
@@ -149,6 +151,7 @@ FString FOliveIRType::GetDisplayName() const
 		case EOliveIRTypeCategory::LinearColor: return TEXT("Linear Color");
 		case EOliveIRTypeCategory::Object: return FString::Printf(TEXT("%s*"), *ClassName);
 		case EOliveIRTypeCategory::Class: return FString::Printf(TEXT("TSubclassOf<%s>"), *ClassName);
+		case EOliveIRTypeCategory::Interface: return FString::Printf(TEXT("TScriptInterface<%s>"), *ClassName);
 		case EOliveIRTypeCategory::Struct: return StructName;
 		case EOliveIRTypeCategory::Enum: return EnumName;
 		case EOliveIRTypeCategory::Delegate: return TEXT("Delegate");
