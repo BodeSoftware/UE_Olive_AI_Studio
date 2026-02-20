@@ -90,6 +90,7 @@ private:
 	void HandleProcessingStarted();
 	void HandleProcessingComplete();
 	void HandleError(const FString& ErrorMessage);
+	void HandleConfirmationRequired(const FString& ToolCallId, const FString& ToolName, const FString& Plan);
 
 	// ==========================================
 	// Context Updates
@@ -116,6 +117,9 @@ private:
 
 	/** Is the send button enabled */
 	bool IsSendEnabled() const;
+
+	/** Refresh provider selection/config from current plugin settings */
+	bool ConfigureProviderFromSettings(FString& OutError);
 
 	// ==========================================
 	// State

@@ -575,13 +575,19 @@ bool FOliveWidgetWriter::CreatePropertyBinding(
 		return false;
 	}
 
-	// Note: Full property binding implementation would use FWidgetBlueprintEditorUtils::CreateWidgetPropertyBinding
-	// or similar UMG editor utilities. This is a simplified version that documents the requirement.
+	// PHASE2_DEFERRED: Full property binding requires FWidgetBlueprintEditorUtils::CreateWidgetPropertyBinding
+	// or similar UMG editor utilities. The function and property were validated but the actual binding
+	// delegate connection is deferred to Phase 2.
 
 	UE_LOG(LogOliveWidgetWriter, Warning,
-		TEXT("Property binding created (basic). Full binding support requires UMG editor integration."));
+		TEXT("[PHASE2_DEFERRED] Property binding for '%s' on widget validated but not fully wired. "
+		     "Full binding support requires UMG editor integration (Phase 2)."),
+		*PropertyName);
 
-	// For now, log success but note this is a partial implementation
-	OutError = TEXT("Property binding created successfully (note: advanced binding features may require additional UMG integration)");
+	OutError = FString::Printf(
+		TEXT("[PHASE2_DEFERRED] Property binding validated but not fully wired. "
+		     "Function '%s' and property '%s' exist but the delegate connection requires Phase 2 UMG integration. "
+		     "Please create the binding manually in the Widget Blueprint editor."),
+		*FunctionName, *PropertyName);
 	return true;
 }

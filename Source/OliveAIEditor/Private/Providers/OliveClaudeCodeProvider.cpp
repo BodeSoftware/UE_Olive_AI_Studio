@@ -79,9 +79,18 @@ FOliveClaudeCodeProvider::FOliveClaudeCodeProvider()
 	: bStopReading(false)
 	, bIsBusy(false)
 {
-	// Set working directory to project root
-	// This is where Claude Code should run to have access to the full project
-	WorkingDirectory = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+	// Prefer plugin directory so Claude can discover this plugin's .mcp.json.
+	// We still grant full project access with --add-dir when launching.
+	const FString PluginDir = FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("UE_Olive_AI_Studio")));
+	if (IFileManager::Get().DirectoryExists(*PluginDir))
+	{
+		WorkingDirectory = PluginDir;
+	}
+	else
+	{
+		WorkingDirectory = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+	}
 
 	UE_LOG(LogOliveClaudeCode, Log, TEXT("Claude Code working directory: %s"), *WorkingDirectory);
 }
@@ -252,8 +261,8 @@ void FOliveClaudeCodeProvider::SendMessage(
 	bIsBusy = true;
 	AccumulatedResponse.Empty();
 
-	// Build the prompt from messages
-	FString Prompt = BuildPrompt(Messages);
+	// Build the prompt from messages and currently available tools
+	FString Prompt = BuildPrompt(Messages, Tools);
 
 	// Spawn claude process with --print flag for JSON output
 	// Use --dangerously-skip-permissions to avoid interactive prompts
@@ -276,15 +285,39 @@ void FOliveClaudeCodeProvider::SendMessage(
 		EscapedPrompt.ReplaceInline(TEXT("\\"), TEXT("\\\\"));
 		EscapedPrompt.ReplaceInline(TEXT("\""), TEXT("\\\""));
 
+		const FString ProjectDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+		const FString MCPConfigPath = FPaths::Combine(WorkingDirectory, TEXT(".mcp.json"));
+		const bool bHasMCPConfig = IFileManager::Get().FileExists(*MCPConfigPath);
+
 		// Build arguments for claude
 		// --print: Output text instead of interactive UI
 		// --output-format stream-json: for real-time JSON output (requires --verbose)
 		// --verbose: Required when using stream-json output format
 		// --dangerously-skip-permissions: avoid interactive prompts in editor context
-		FString ClaudeArgs = FString::Printf(
-			TEXT("--print --output-format stream-json --verbose --dangerously-skip-permissions -p \"%s\""),
-			*EscapedPrompt
-		);
+		// --add-dir: allow access to the full Unreal project even when running from plugin dir
+		// --mcp-config: force-load plugin MCP bridge so olive-ai-studio tools are available
+		FString ClaudeArgs;
+		if (bHasMCPConfig)
+		{
+			ClaudeArgs = FString::Printf(
+				TEXT("--print --output-format stream-json --verbose --dangerously-skip-permissions --add-dir \"%s\" --mcp-config \"%s\" --strict-mcp-config -p \"%s\""),
+				*ProjectDir,
+				*MCPConfigPath,
+				*EscapedPrompt
+			);
+
+			UE_LOG(LogOliveClaudeCode, Log, TEXT("Using MCP config: %s"), *MCPConfigPath);
+		}
+		else
+		{
+			ClaudeArgs = FString::Printf(
+				TEXT("--print --output-format stream-json --verbose --dangerously-skip-permissions --add-dir \"%s\" -p \"%s\""),
+				*ProjectDir,
+				*EscapedPrompt
+			);
+
+			UE_LOG(LogOliveClaudeCode, Warning, TEXT("No .mcp.json found at %s. Claude may not have Olive MCP tools."), *MCPConfigPath);
+		}
 
 		// Determine executable and args
 		FString Executable;
@@ -442,19 +475,52 @@ void FOliveClaudeCodeProvider::SendMessage(
 	});
 }
 
-FString FOliveClaudeCodeProvider::BuildPrompt(const TArray<FOliveChatMessage>& Messages) const
+FString FOliveClaudeCodeProvider::BuildPrompt(const TArray<FOliveChatMessage>& Messages, const TArray<FOliveToolDefinition>& Tools) const
 {
-	// For Claude CLI, we just send the last user message
-	// The conversation history is managed by Claude Code internally
+	// Claude CLI in print mode is stateless here, so we build a compact instruction prompt
+	// around the latest user request and available Olive MCP tools.
+	FString LastUserMessage;
 	for (int32 i = Messages.Num() - 1; i >= 0; --i)
 	{
 		if (Messages[i].Role == EOliveChatRole::User)
 		{
-			return Messages[i].Content;
+			LastUserMessage = Messages[i].Content;
+			break;
 		}
 	}
 
-	return TEXT("");
+	if (LastUserMessage.IsEmpty())
+	{
+		return TEXT("");
+	}
+
+	FString ToolNames;
+	for (const FOliveToolDefinition& Tool : Tools)
+	{
+		if (!ToolNames.IsEmpty())
+		{
+			ToolNames += TEXT(", ");
+		}
+		ToolNames += Tool.Name;
+	}
+
+	const FString Header =
+		TEXT("You are Olive AI running inside Unreal Editor.\n")
+		TEXT("For Unreal asset operations, use available MCP tools instead of giving manual editor steps.\n")
+		TEXT("Do not claim you cannot edit .uasset files directly when tools exist; call the appropriate tool.\n")
+		TEXT("Keep responses concise. Do not narrate internal step-by-step tool troubleshooting.\n")
+		TEXT("After completing operations, return one short final outcome summary.\n");
+
+	if (!ToolNames.IsEmpty())
+	{
+		return FString::Printf(
+			TEXT("%s\nAvailable tools: %s\n\nUser request:\n%s"),
+			*Header,
+			*ToolNames,
+			*LastUserMessage);
+	}
+
+	return FString::Printf(TEXT("%s\nUser request:\n%s"), *Header, *LastUserMessage);
 }
 
 void FOliveClaudeCodeProvider::ParseOutputLine(const FString& Line)
@@ -525,20 +591,12 @@ void FOliveClaudeCodeProvider::ParseOutputLine(const FString& Line)
 	}
 	else if (Type == TEXT("tool_use") || Type == TEXT("tool_call"))
 	{
-		// Tool call
-		FScopeLock Lock(&CallbackLock);
-		FOliveStreamChunk Chunk;
-		Chunk.bIsToolCall = true;
-		Chunk.ToolName = JsonObject->GetStringField(TEXT("name"));
-		Chunk.ToolCallId = JsonObject->GetStringField(TEXT("id"));
-
-		const TSharedPtr<FJsonObject>* InputObj;
-		if (JsonObject->TryGetObjectField(TEXT("input"), InputObj))
-		{
-			Chunk.ToolArguments = *InputObj;
-		}
-
-		CurrentOnToolCall.ExecuteIfBound(Chunk);
+		// Claude Code CLI already executes MCP tools internally.
+		// Do NOT forward tool calls into Olive's provider-agnostic tool loop,
+		// otherwise operations execute twice and responses repeat.
+		FString ToolName;
+		JsonObject->TryGetStringField(TEXT("name"), ToolName);
+		UE_LOG(LogOliveClaudeCode, Verbose, TEXT("Claude internal tool call: %s"), *ToolName);
 	}
 	else if (Type == TEXT("result") || Type == TEXT("message_stop"))
 	{

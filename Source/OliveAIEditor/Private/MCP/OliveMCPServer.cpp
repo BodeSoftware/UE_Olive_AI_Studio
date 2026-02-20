@@ -4,6 +4,7 @@
 #include "MCP/OliveJsonRpc.h"
 #include "MCP/OliveToolRegistry.h"
 #include "Index/OliveProjectIndex.h"
+#include "Catalog/OliveNodeCatalog.h"
 #include "OliveAIEditorModule.h"
 #include "HttpPath.h"
 #include "HttpServerModule.h"
@@ -532,6 +533,26 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleResourcesList(const TSharedPtr<FJ
 		Resources.Add(MakeShared<FJsonValueObject>(Resource));
 	}
 
+	// Node catalog resource
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://blueprint/node-catalog"));
+		Resource->SetStringField(TEXT("name"), TEXT("Blueprint Node Catalog"));
+		Resource->SetStringField(TEXT("description"), TEXT("Available Blueprint node types with categories and metadata"));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("application/json"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
+	// Node catalog search resource
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://blueprint/node-catalog/search"));
+		Resource->SetStringField(TEXT("name"), TEXT("Node Catalog Search"));
+		Resource->SetStringField(TEXT("description"), TEXT("Search Blueprint node catalog by query (append ?q=<query>)"));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("application/json"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
 	Result->SetArrayField(TEXT("resources"), Resources);
 
 	return Result;
@@ -575,6 +596,22 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleResourcesRead(const TSharedPtr<FJ
 		}
 
 		ContentText = FOliveProjectIndex::Get().GetSearchResultsJson(Query, 50);
+	}
+	else if (Uri.StartsWith(TEXT("olive://blueprint/node-catalog/search")))
+	{
+		// Parse query from URI
+		FString Query;
+		int32 QueryStart = Uri.Find(TEXT("?q="));
+		if (QueryStart != INDEX_NONE)
+		{
+			Query = Uri.RightChop(QueryStart + 3);
+		}
+
+		ContentText = FOliveNodeCatalog::Get().SearchToJson(Query);
+	}
+	else if (Uri == TEXT("olive://blueprint/node-catalog"))
+	{
+		ContentText = FOliveNodeCatalog::Get().ToJson();
 	}
 	else
 	{

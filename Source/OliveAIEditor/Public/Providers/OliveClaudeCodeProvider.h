@@ -102,7 +102,7 @@ private:
 	/**
 	 * Build the prompt/message to send to claude
 	 */
-	FString BuildPrompt(const TArray<FOliveChatMessage>& Messages) const;
+	FString BuildPrompt(const TArray<FOliveChatMessage>& Messages, const TArray<FOliveToolDefinition>& Tools) const;
 
 	// ==========================================
 	// Process Management

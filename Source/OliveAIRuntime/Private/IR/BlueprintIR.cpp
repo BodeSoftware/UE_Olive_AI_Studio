@@ -1,6 +1,7 @@
 // Copyright Bode Software. All Rights Reserved.
 
 #include "IR/BlueprintIR.h"
+#include "IR/OliveIRSchema.h"
 #include "Serialization/JsonSerializer.h"
 
 // FOliveIRBlueprintCapabilities
@@ -158,6 +159,7 @@ FOliveIREventDispatcher FOliveIREventDispatcher::FromJson(const TSharedPtr<FJson
 TSharedPtr<FJsonObject> FOliveIRBlueprint::ToJson() const
 {
 	TSharedPtr<FJsonObject> Json = MakeShared<FJsonObject>();
+	Json->SetStringField(TEXT("schema_version"), OliveIR::SchemaVersion);
 	Json->SetStringField(TEXT("name"), Name);
 	Json->SetStringField(TEXT("path"), Path);
 
@@ -293,6 +295,12 @@ FOliveIRBlueprint FOliveIRBlueprint::FromJson(const TSharedPtr<FJsonObject>& Jso
 	if (!JsonObject.IsValid())
 	{
 		return BP;
+	}
+
+	// Parse schema version if present
+	if (JsonObject->HasField(TEXT("schema_version")))
+	{
+		BP.SchemaVersion = JsonObject->GetStringField(TEXT("schema_version"));
 	}
 
 	BP.Name = JsonObject->GetStringField(TEXT("name"));

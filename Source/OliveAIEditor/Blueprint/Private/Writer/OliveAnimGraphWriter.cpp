@@ -238,15 +238,17 @@ FOliveAnimGraphWriteResult FOliveAnimGraphWriter::AddState(
 	// Set the state name
 	StateNode->GetBoundGraph()->Rename(*UniqueName, nullptr, REN_DontCreateRedirectors);
 
-	// TODO: If AnimationAsset is provided, we would need to:
-	// 1. Load the animation asset
-	// 2. Add an animation node to the state's bound graph
-	// 3. Connect it to the output
-	// This is complex and would require additional AnimGraph node manipulation
+	// PHASE2_DEFERRED: Animation asset assignment to state bound graphs requires
+	// loading the animation asset, creating an AnimGraph player node, and wiring it
+	// to the output pose. This is deferred to Phase 2.
 	if (!AnimationAsset.IsEmpty())
 	{
-		UE_LOG(LogOliveAnimWriter, Warning,
-			TEXT("Animation asset assignment not yet implemented for state '%s'"), *UniqueName);
+		FString WarningMsg = FString::Printf(
+			TEXT("[PHASE2_DEFERRED] Animation asset assignment not yet implemented for state '%s'. "
+			     "The state was created but no animation was assigned. "
+			     "Manually assign the animation asset '%s' in the AnimGraph editor."),
+			*UniqueName, *AnimationAsset);
+		UE_LOG(LogOliveAnimWriter, Warning, TEXT("%s"), *WarningMsg);
 	}
 
 	// Mark the Blueprint as modified
@@ -257,6 +259,12 @@ FOliveAnimGraphWriteResult FOliveAnimGraphWriter::AddState(
 
 	FOliveAnimGraphWriteResult Result = FOliveAnimGraphWriteResult::Success();
 	Result.CreatedStateName = UniqueName;
+	if (!AnimationAsset.IsEmpty())
+	{
+		Result.AddWarning(FString::Printf(
+			TEXT("[PHASE2_DEFERRED] Animation asset '%s' was not assigned to state '%s'. Assign manually in the AnimGraph editor."),
+			*AnimationAsset, *UniqueName));
+	}
 	return Result;
 }
 
@@ -469,24 +477,27 @@ FOliveAnimGraphWriteResult FOliveAnimGraphWriter::SetTransitionRule(
 
 	BoundGraph->Modify();
 
-	// TODO: Parse RuleExpression and create nodes in the transition rule graph
-	// This is complex and would require:
-	// 1. Parsing the JSON rule expression
-	// 2. Creating appropriate nodes (comparisons, getters, etc.)
-	// 3. Connecting them to the output result node
-	// For now, we'll just log a warning that this is not fully implemented
+	// PHASE2_DEFERRED: Transition rule expression parsing requires creating comparison
+	// nodes, variable getter nodes, and wiring them in the transition rule graph.
+	// The transition exists but its rule graph is left at the default (always true).
 
 	UE_LOG(LogOliveAnimWriter, Warning,
-		TEXT("Transition rule setting not fully implemented. Transition exists but rule graph not populated."));
+		TEXT("[PHASE2_DEFERRED] Transition rule graph not populated for '%s' -> '%s'. Configure rules manually in the AnimGraph editor."),
+		*FromStateName, *ToStateName);
 
 	// Mark the Blueprint as modified
 	MarkDirty(AnimBlueprint);
 
 	UE_LOG(LogOliveAnimWriter, Log,
-		TEXT("Attempted to set rule for transition from '%s' to '%s'"),
+		TEXT("Set transition rule placeholder from '%s' to '%s'"),
 		*FromStateName, *ToStateName);
 
-	return FOliveAnimGraphWriteResult::Success();
+	FOliveAnimGraphWriteResult Result = FOliveAnimGraphWriteResult::Success();
+	Result.AddWarning(FString::Printf(
+		TEXT("[PHASE2_DEFERRED] Transition rule from '%s' to '%s' was not populated. "
+		     "The transition defaults to 'always true'. Configure the rule manually in the AnimGraph editor."),
+		*FromStateName, *ToStateName));
+	return Result;
 }
 
 // ============================================================================

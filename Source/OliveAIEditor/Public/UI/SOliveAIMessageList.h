@@ -9,6 +9,25 @@
 
 class SScrollBox;
 class SVerticalBox;
+class STextBlock;
+class SImage;
+
+/** Tool call display status */
+enum class EOliveToolCallStatus : uint8
+{
+	Running,
+	Completed,
+	Failed
+};
+
+/** State for a tool call indicator widget */
+struct FOliveToolCallWidgetState
+{
+	TSharedPtr<SImage> StatusIcon;
+	TSharedPtr<STextBlock> StatusText;
+	TSharedPtr<STextBlock> SummaryText;
+	EOliveToolCallStatus Status = EOliveToolCallStatus::Running;
+};
 
 /**
  * UI Message Data
@@ -88,8 +107,18 @@ public:
 	/** Add a tool call indicator to the current message */
 	void AddToolCallIndicator(const FString& ToolName, const FString& ToolCallId);
 
-	/** Update tool call status */
+	/** Update tool call status (spinner -> checkmark/error, show summary) */
 	void UpdateToolCallStatus(const FString& ToolCallId, bool bSuccess, const FString& ResultSummary);
+
+	// ==========================================
+	// Confirmation Display
+	// ==========================================
+
+	/** Delegate for confirmation action (true = confirm, false = deny) */
+	DECLARE_DELEGATE_OneParam(FOnConfirmationAction, bool);
+
+	/** Add a confirmation widget with confirm/deny buttons */
+	void AddConfirmationWidget(const FString& ToolCallId, const FString& Plan, FOnConfirmationAction OnAction);
 
 	// ==========================================
 	// Navigation
@@ -128,8 +157,8 @@ private:
 	TSharedPtr<SScrollBox> ScrollBox;
 	TSharedPtr<SVerticalBox> MessagesContainer;
 
-	/** Map of tool call ID to widget for status updates */
-	TMap<FString, TSharedPtr<SWidget>> ToolCallWidgets;
+	/** Map of tool call ID to widget state for status updates */
+	TMap<FString, FOliveToolCallWidgetState> ToolCallWidgetStates;
 
 	/** Currently streaming message widget */
 	TWeakPtr<SWidget> StreamingMessageWidget;

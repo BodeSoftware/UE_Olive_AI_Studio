@@ -10,6 +10,8 @@
 #include "Chat/OlivePromptAssembler.h"
 #include "Profiles/OliveFocusProfileManager.h"
 #include "Services/OliveValidationEngine.h"
+#include "Catalog/OliveNodeCatalog.h"
+#include "MCP/OliveBlueprintToolHandlers.h"
 #include "UI/SOliveAIChatPanel.h"
 
 #include "Framework/Docking/TabManager.h"
@@ -50,6 +52,12 @@ void FOliveAIEditorModule::ShutdownModule()
 
 	// Unregister UI
 	UnregisterUI();
+
+	// Unregister Blueprint tools
+	FOliveBlueprintToolHandlers::Get().UnregisterAllTools();
+
+	// Shutdown node catalog
+	FOliveNodeCatalog::Get().Shutdown();
 
 	// Stop MCP server (singleton)
 	FOliveMCPServer::Get().Stop();
@@ -157,6 +165,12 @@ void FOliveAIEditorModule::OnPostEngineInit()
 
 	// Register built-in tools
 	FOliveToolRegistry::Get().RegisterBuiltInTools();
+
+	// Initialize node catalog
+	FOliveNodeCatalog::Get().Initialize();
+
+	// Register Blueprint tools (replaces stubs with real handlers)
+	FOliveBlueprintToolHandlers::Get().RegisterAllTools();
 
 	// Start MCP server if configured
 	const UOliveAISettings* Settings = UOliveAISettings::Get();

@@ -572,10 +572,8 @@ bool FOliveWidgetTreeSerializer::HasBindings(const UWidgetBlueprint* WidgetBluep
 	// This is a simplified check - in a full implementation, we would iterate
 	// through the bindings and check if any match this widget
 
-	// For now, return false as binding reading is a Phase 2 feature
-	// DESIGN NOTE: Widget binding extraction requires access to the WidgetBlueprint's
-	// binding data structures. This is marked for Phase 2 implementation when
-	// write support for bindings is added.
+	// PHASE2_DEFERRED: Widget binding extraction requires access to the WidgetBlueprint's
+	// binding data structures. Deferred to Phase 2 when write support for bindings is added.
 
 	return false;
 }
@@ -591,13 +589,11 @@ TMap<FString, FString> FOliveWidgetTreeSerializer::GetWidgetBindings(
 		return Bindings;
 	}
 
-	// DESIGN NOTE: Widget binding extraction is deferred to Phase 2.
-	// Bindings in UMG are stored as delegate bindings in the WidgetBlueprint.
-	// Full implementation would iterate through the blueprint's bindings and
-	// extract those that reference this widget.
+	// PHASE2_DEFERRED: Widget binding extraction requires iterating through the
+	// WidgetBlueprint's delegate bindings and matching them to this widget.
 
 	UE_LOG(LogOliveWidgetSerializer, Verbose,
-		TEXT("Widget binding extraction not yet implemented (Phase 2 feature)"));
+		TEXT("[PHASE2_DEFERRED] Widget binding extraction deferred to Phase 2"));
 
 	return Bindings;
 }
@@ -642,12 +638,11 @@ TMap<FString, FString> FOliveWidgetTreeSerializer::GetNamedSlots(const UWidget* 
 		return NamedSlots;
 	}
 
-	// DESIGN NOTE: Named slot extraction is a specialized feature for compound widgets.
-	// Full implementation would check for INamedSlotInterface and extract slot metadata.
-	// This is deferred as it's not critical for basic widget tree reading.
+	// PHASE2_DEFERRED: Named slot extraction requires checking for INamedSlotInterface
+	// and extracting slot metadata. Not critical for basic widget tree reading.
 
 	UE_LOG(LogOliveWidgetSerializer, Verbose,
-		TEXT("Named slot extraction not yet implemented (advanced feature)"));
+		TEXT("[PHASE2_DEFERRED] Named slot extraction deferred to Phase 2"));
 
 	return NamedSlots;
 }

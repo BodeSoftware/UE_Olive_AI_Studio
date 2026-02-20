@@ -818,7 +818,28 @@ void FOliveBlueprintReader::ReadCompilationStatus(const UBlueprint* Blueprint, F
 		break;
 	}
 
-	// TODO: Read actual compile messages from Blueprint compiler results
+	// Provide basic compile status messages based on Blueprint status.
+	// PHASE2_DEFERRED: Full compile message extraction requires hooking into
+	// FKismetCompilerContext or capturing the message log during compilation.
+	// For now, provide summary messages based on the compile status enum.
+	if (Blueprint->Status == BS_Error)
+	{
+		FOliveIRMessage ErrorMsg;
+		ErrorMsg.Severity = EOliveIRSeverity::Error;
+		ErrorMsg.Code = TEXT("COMPILE_ERROR");
+		ErrorMsg.Message = TEXT("Blueprint has compile errors. Open in Blueprint editor to see details.");
+		ErrorMsg.Details.Add(TEXT("phase2_deferred"), TEXT("true"));
+		OutIR.CompileMessages.Add(ErrorMsg);
+	}
+	else if (Blueprint->Status == BS_UpToDateWithWarnings)
+	{
+		FOliveIRMessage WarnMsg;
+		WarnMsg.Severity = EOliveIRSeverity::Warning;
+		WarnMsg.Code = TEXT("COMPILE_WARNING");
+		WarnMsg.Message = TEXT("Blueprint compiled with warnings. Open in Blueprint editor to see details.");
+		WarnMsg.Details.Add(TEXT("phase2_deferred"), TEXT("true"));
+		OutIR.CompileMessages.Add(WarnMsg);
+	}
 }
 
 void FOliveBlueprintReader::ReadParentClassInfo(const UBlueprint* Blueprint, FOliveIRBlueprint& OutIR) const
@@ -866,8 +887,9 @@ void FOliveBlueprintReader::ReadEventDispatchers(const UBlueprint* Blueprint, FO
 				Dispatcher.Description = VarDesc.GetMetaData(FBlueprintMetadata::MD_Tooltip);
 			}
 
-			// TODO: Extract delegate signature parameters
-			// Would need to look at the delegate signature function
+			// PHASE2_DEFERRED: Delegate signature parameter extraction requires finding
+			// the delegate's signature function and reading its parameter list.
+			// For now, the dispatcher is recorded without parameter info.
 
 			OutIR.EventDispatchers.Add(MoveTemp(Dispatcher));
 		}

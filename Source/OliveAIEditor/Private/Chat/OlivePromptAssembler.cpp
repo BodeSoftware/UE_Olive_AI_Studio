@@ -3,6 +3,7 @@
 #include "Chat/OlivePromptAssembler.h"
 #include "Index/OliveProjectIndex.h"
 #include "Profiles/OliveFocusProfileManager.h"
+#include "Settings/OliveAISettings.h"
 #include "OliveAIEditorModule.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -30,13 +31,28 @@ FString FOlivePromptAssembler::AssembleSystemPrompt(
 	const TArray<FString>& ContextAssetPaths,
 	int32 MaxTokens)
 {
-	FString FullPrompt;
+	return AssembleSystemPromptInternal(BasePromptTemplate, FocusProfileName, ContextAssetPaths, MaxTokens);
+}
 
-	// Start with base prompt
-	FullPrompt = SubstituteVariables(BasePromptTemplate);
+FString FOlivePromptAssembler::AssembleSystemPromptWithBase(
+	const FString& BasePromptOverride,
+	const FString& FocusProfileName,
+	const TArray<FString>& ContextAssetPaths,
+	int32 MaxTokens)
+{
+	return AssembleSystemPromptInternal(BasePromptOverride, FocusProfileName, ContextAssetPaths, MaxTokens);
+}
+
+FString FOlivePromptAssembler::AssembleSystemPromptInternal(
+	const FString& BasePrompt,
+	const FString& FocusProfileName,
+	const TArray<FString>& ContextAssetPaths,
+	int32 MaxTokens)
+{
+	FString FullPrompt = SubstituteVariables(BasePrompt);
 
 	// Add profile-specific guidance
-	FString ProfileAddition = GetProfilePromptAddition(FocusProfileName);
+	const FString ProfileAddition = GetProfilePromptAddition(FocusProfileName);
 	if (!ProfileAddition.IsEmpty())
 	{
 		FullPrompt += TEXT("\n\n## Focus Mode\n");
@@ -44,21 +60,29 @@ FString FOlivePromptAssembler::AssembleSystemPrompt(
 	}
 
 	// Add project context
-	FString ProjectContext = GetProjectContext();
+	const FString ProjectContext = GetProjectContext();
 	if (!ProjectContext.IsEmpty())
 	{
 		FullPrompt += TEXT("\n\n## Project Context\n");
 		FullPrompt += ProjectContext;
 	}
 
+	// Add policy context
+	const FString PolicyContext = GetPolicyContext();
+	if (!PolicyContext.IsEmpty())
+	{
+		FullPrompt += TEXT("\n\n## Project Policies\n");
+		FullPrompt += PolicyContext;
+	}
+
 	// Calculate remaining tokens for asset context
-	int32 UsedTokens = EstimateTokenCount(FullPrompt);
-	int32 RemainingTokens = MaxTokens - UsedTokens - 100; // Reserve 100 tokens for safety
+	const int32 UsedTokens = EstimateTokenCount(FullPrompt);
+	const int32 RemainingTokens = MaxTokens - UsedTokens - 100; // Reserve 100 tokens for safety
 
 	// Add asset context if we have room
 	if (RemainingTokens > 200 && ContextAssetPaths.Num() > 0)
 	{
-		FString AssetContext = GetActiveContext(ContextAssetPaths, RemainingTokens);
+		const FString AssetContext = GetActiveContext(ContextAssetPaths, RemainingTokens);
 		if (!AssetContext.IsEmpty())
 		{
 			FullPrompt += TEXT("\n\n## Active Context Assets\n");
@@ -75,6 +99,12 @@ FString FOlivePromptAssembler::AssembleSystemPrompt(
 
 FString FOlivePromptAssembler::GetProfilePromptAddition(const FString& ProfileName) const
 {
+	const FString* FilePrompt = ProfilePrompts.Find(ProfileName);
+	if (FilePrompt && !FilePrompt->IsEmpty())
+	{
+		return *FilePrompt;
+	}
+
 	return FOliveFocusProfileManager::Get().GetSystemPromptAddition(ProfileName);
 }
 
@@ -108,6 +138,23 @@ FString FOlivePromptAssembler::GetProjectContext() const
 	}
 
 	Context += FString::Printf(TEXT("- Assets: %d indexed\n"), FOliveProjectIndex::Get().GetAssetCount());
+
+	return Context;
+}
+
+FString FOlivePromptAssembler::GetPolicyContext() const
+{
+	const UOliveAISettings* Settings = UOliveAISettings::Get();
+	if (!Settings)
+	{
+		return TEXT("");
+	}
+
+	FString Context;
+	Context += FString::Printf(TEXT("- MaxVariablesPerBlueprint: %d\n"), Settings->MaxVariablesPerBlueprint);
+	Context += FString::Printf(TEXT("- MaxNodesPerFunction: %d\n"), Settings->MaxNodesPerFunction);
+	Context += FString::Printf(TEXT("- EnforceNamingConventions: %s\n"), Settings->bEnforceNamingConventions ? TEXT("true") : TEXT("false"));
+	Context += FString::Printf(TEXT("- AutoCompileAfterWrite: %s\n"), Settings->bAutoCompileAfterWrite ? TEXT("true") : TEXT("false"));
 
 	return Context;
 }
@@ -199,6 +246,8 @@ void FOlivePromptAssembler::ReloadTemplates()
 
 void FOlivePromptAssembler::LoadPromptTemplates()
 {
+	ProfilePrompts.Empty();
+
 	// Set default base prompt (can be overridden from file)
 	BasePromptTemplate = TEXT(R"(You are Olive AI, an expert AI assistant for Unreal Engine development integrated directly into the editor.
 
@@ -241,6 +290,36 @@ Project Name: {PROJECT_NAME}
 		{
 			BasePromptTemplate = FileContent;
 			UE_LOG(LogOliveAI, Log, TEXT("Loaded base system prompt from file"));
+		}
+	}
+
+	// Optional profile-specific prompts
+	struct FProfilePromptFile
+	{
+		FString ProfileName;
+		FString FileName;
+	};
+
+	const TArray<FProfilePromptFile> PromptFiles = {
+		{ TEXT("Blueprint"), TEXT("ProfileBlueprint.txt") },
+		{ TEXT("AI & Behavior"), TEXT("ProfileAIBehavior.txt") },
+		{ TEXT("Level & PCG"), TEXT("ProfileLevelPCG.txt") },
+		{ TEXT("C++ & Blueprint"), TEXT("ProfileCppBlueprint.txt") }
+	};
+
+	for (const FProfilePromptFile& Entry : PromptFiles)
+	{
+		const FString ProfilePromptPath = FPaths::Combine(PluginDir, TEXT("Content/SystemPrompts"), Entry.FileName);
+		if (!FPaths::FileExists(ProfilePromptPath))
+		{
+			continue;
+		}
+
+		FString FileContent;
+		if (FFileHelper::LoadFileToString(FileContent, *ProfilePromptPath) && !FileContent.IsEmpty())
+		{
+			ProfilePrompts.Add(Entry.ProfileName, FileContent);
+			UE_LOG(LogOliveAI, Verbose, TEXT("Loaded profile prompt: %s"), *Entry.ProfileName);
 		}
 	}
 }

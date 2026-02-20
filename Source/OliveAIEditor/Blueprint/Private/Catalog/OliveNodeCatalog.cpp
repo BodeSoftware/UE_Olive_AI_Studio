@@ -645,25 +645,36 @@ void FOliveNodeCatalog::BuildFromK2NodeClasses()
 			continue;
 		}
 
-		// Create default object to query metadata
-		UK2Node* DefaultNode = Class->GetDefaultObject<UK2Node>();
-		if (!DefaultNode)
-		{
-			continue;
-		}
-
-		// Skip nodes that explicitly don't want to be in palette
-		if (!DefaultNode->ShouldShowNodeProperties())
+		// Skip transient/reinstanced blueprint classes
+		const FString ClassName = Class->GetName();
+		if (ClassName.StartsWith(TEXT("REINST_")) ||
+			ClassName.StartsWith(TEXT("SKEL_")) ||
+			ClassName.StartsWith(TEXT("TRASHCLASS_")))
 		{
 			continue;
 		}
 
 		FOliveNodeTypeInfo Info;
-		Info.TypeId = Class->GetName();
-		Info.DisplayName = DefaultNode->GetNodeTitle(ENodeTitleType::ListView).ToString();
-		Info.Category = DefaultNode->GetMenuCategory().ToString();
-		Info.Description = DefaultNode->GetTooltipText().ToString();
-		Info.bIsPure = DefaultNode->IsNodePure();
+		Info.TypeId = ClassName;
+
+		// IMPORTANT: Do not call UK2Node virtuals (GetNodeTitle/GetMenuCategory/etc.) on CDOs here.
+		// Some nodes (e.g. K2Node_MathExpression) assert if no owning Blueprint context exists.
+		Info.DisplayName = Class->GetDisplayNameText().ToString();
+		if (Info.DisplayName.IsEmpty())
+		{
+			Info.DisplayName = ClassName;
+			Info.DisplayName.RemoveFromStart(TEXT("K2Node_"));
+		}
+
+		Info.Category = Class->GetMetaData(TEXT("Category"));
+		if (Info.Category.IsEmpty())
+		{
+			Info.Category = TEXT("K2Node");
+		}
+
+		Info.Description = Class->GetMetaData(TEXT("ToolTip"));
+		Info.bIsPure = false; // Unknown without an instantiated node context
+		Info.bIsEvent = Class->IsChildOf(UK2Node_Event::StaticClass()) || Class->IsChildOf(UK2Node_CustomEvent::StaticClass());
 		Info.Source = TEXT("K2Node");
 
 		// Check for latent functions

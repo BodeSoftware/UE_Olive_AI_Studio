@@ -4,6 +4,7 @@
 #include "Index/OliveProjectIndex.h"
 #include "Services/OliveValidationEngine.h"
 #include "Services/OliveErrorBuilder.h"
+#include "Profiles/OliveFocusProfileManager.h"
 #include "OliveAIEditorModule.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -221,9 +222,20 @@ TOptional<FOliveToolDefinition> FOliveToolRegistry::GetTool(const FString& Name)
 
 TArray<FOliveToolDefinition> FOliveToolRegistry::GetToolsForProfile(const FString& ProfileName) const
 {
-	// For Phase 0, return all tools. Focus profile filtering will be implemented with Focus Profile Manager.
-	// TODO: Integrate with FOliveFocusProfileManager when implemented
-	return GetAllTools();
+	TArray<FOliveToolDefinition> Result;
+	const FOliveFocusProfileManager& FocusManager = FOliveFocusProfileManager::Get();
+
+	FRWScopeLock ReadLock(ToolsLock, SLT_ReadOnly);
+	for (const auto& Pair : Tools)
+	{
+		const FOliveToolDefinition& Definition = Pair.Value.Definition;
+		if (FocusManager.IsToolAllowedForProfile(ProfileName, Definition.Name, Definition.Category))
+		{
+			Result.Add(Definition);
+		}
+	}
+
+	return Result;
 }
 
 TArray<FOliveToolDefinition> FOliveToolRegistry::GetToolsByCategory(const FString& Category) const
@@ -383,7 +395,6 @@ TSharedPtr<FJsonObject> FOliveToolRegistry::GetToolsListMCP(const FString& Profi
 void FOliveToolRegistry::RegisterBuiltInTools()
 {
 	RegisterProjectTools();
-	RegisterBlueprintToolStubs();
 
 	UE_LOG(LogOliveAI, Log, TEXT("Registered %d built-in tools"), GetToolCount());
 }
@@ -558,75 +569,6 @@ void FOliveToolRegistry::RegisterProjectTools()
 	}
 }
 
-void FOliveToolRegistry::RegisterBlueprintToolStubs()
-{
-	// blueprint.read (stub)
-	{
-		TSharedPtr<FJsonObject> Schema = MakeShared<FJsonObject>();
-		Schema->SetStringField(TEXT("type"), TEXT("object"));
-
-		TSharedPtr<FJsonObject> Properties = MakeShared<FJsonObject>();
-
-		TSharedPtr<FJsonObject> PathProp = MakeShared<FJsonObject>();
-		PathProp->SetStringField(TEXT("type"), TEXT("string"));
-		PathProp->SetStringField(TEXT("description"), TEXT("Blueprint asset path"));
-		Properties->SetObjectField(TEXT("path"), PathProp);
-
-		Schema->SetObjectField(TEXT("properties"), Properties);
-
-		TArray<TSharedPtr<FJsonValue>> Required;
-		Required.Add(MakeShared<FJsonValueString>(TEXT("path")));
-		Schema->SetArrayField(TEXT("required"), Required);
-
-		RegisterTool(
-			TEXT("blueprint.read"),
-			TEXT("Read a Blueprint's structure including components, variables, functions, and graphs. [Phase 1 - Not Yet Implemented]"),
-			Schema,
-			FOliveToolHandler::CreateRaw(this, &FOliveToolRegistry::HandleBlueprintReadStub),
-			{ TEXT("blueprint"), TEXT("read") },
-			TEXT("blueprint")
-		);
-	}
-
-	// blueprint.create (stub)
-	{
-		TSharedPtr<FJsonObject> Schema = MakeShared<FJsonObject>();
-		Schema->SetStringField(TEXT("type"), TEXT("object"));
-
-		TSharedPtr<FJsonObject> Properties = MakeShared<FJsonObject>();
-
-		TSharedPtr<FJsonObject> NameProp = MakeShared<FJsonObject>();
-		NameProp->SetStringField(TEXT("type"), TEXT("string"));
-		NameProp->SetStringField(TEXT("description"), TEXT("Name for the new Blueprint"));
-		Properties->SetObjectField(TEXT("name"), NameProp);
-
-		TSharedPtr<FJsonObject> PathProp = MakeShared<FJsonObject>();
-		PathProp->SetStringField(TEXT("type"), TEXT("string"));
-		PathProp->SetStringField(TEXT("description"), TEXT("Directory path to create in (e.g., /Game/Blueprints)"));
-		Properties->SetObjectField(TEXT("path"), PathProp);
-
-		TSharedPtr<FJsonObject> ParentProp = MakeShared<FJsonObject>();
-		ParentProp->SetStringField(TEXT("type"), TEXT("string"));
-		ParentProp->SetStringField(TEXT("description"), TEXT("Parent class (e.g., Actor, Pawn, Character)"));
-		Properties->SetObjectField(TEXT("parent_class"), ParentProp);
-
-		Schema->SetObjectField(TEXT("properties"), Properties);
-
-		TArray<TSharedPtr<FJsonValue>> Required;
-		Required.Add(MakeShared<FJsonValueString>(TEXT("name")));
-		Required.Add(MakeShared<FJsonValueString>(TEXT("path")));
-		Schema->SetArrayField(TEXT("required"), Required);
-
-		RegisterTool(
-			TEXT("blueprint.create"),
-			TEXT("Create a new Blueprint asset. [Phase 1 - Not Yet Implemented]"),
-			Schema,
-			FOliveToolHandler::CreateRaw(this, &FOliveToolRegistry::HandleBlueprintCreateStub),
-			{ TEXT("blueprint"), TEXT("create") },
-			TEXT("blueprint")
-		);
-	}
-}
 
 // ==========================================
 // Tool Handlers - Project
@@ -831,24 +773,3 @@ FOliveToolResult FOliveToolRegistry::HandleProjectGetConfig(const TSharedPtr<FJs
 	return FOliveToolResult::Success(EmptyData);
 }
 
-// ==========================================
-// Tool Handlers - Blueprint Stubs
-// ==========================================
-
-FOliveToolResult FOliveToolRegistry::HandleBlueprintReadStub(const TSharedPtr<FJsonObject>& Params)
-{
-	return FOliveToolResult::Error(
-		FOliveErrorBuilder::ERR_NOT_IMPLEMENTED,
-		TEXT("blueprint.read is not yet implemented"),
-		TEXT("This tool will be available in Phase 1. Use project.search to find Blueprints by name.")
-	);
-}
-
-FOliveToolResult FOliveToolRegistry::HandleBlueprintCreateStub(const TSharedPtr<FJsonObject>& Params)
-{
-	return FOliveToolResult::Error(
-		FOliveErrorBuilder::ERR_NOT_IMPLEMENTED,
-		TEXT("blueprint.create is not yet implemented"),
-		TEXT("This tool will be available in Phase 1. You can manually create Blueprints in the Content Browser.")
-	);
-}

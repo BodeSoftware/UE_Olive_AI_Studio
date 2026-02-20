@@ -7,6 +7,7 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Text/SRichTextBlock.h"
 #include "Widgets/Images/SImage.h"
+#include "Widgets/Input/SButton.h"
 #include "Styling/AppStyle.h"
 
 #define LOCTEXT_NAMESPACE "OliveAIMessageList"
@@ -215,36 +216,50 @@ void SOliveAIMessageList::UpdateMessage(const FGuid& MessageId, const FString& N
 
 void SOliveAIMessageList::AddToolCallIndicator(const FString& ToolName, const FString& ToolCallId)
 {
-	// Create a tool indicator widget
-	TSharedPtr<SHorizontalBox> ToolWidget;
+	FOliveToolCallWidgetState WidgetState;
 
 	TSharedRef<SWidget> Indicator = SNew(SBorder)
 		.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
 		.Padding(4.0f)
 		[
-			SAssignNew(ToolWidget, SHorizontalBox)
+			SNew(SHorizontalBox)
 
+			// Status icon (spinner initially)
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
 			.Padding(0, 0, 4, 0)
 			[
-				SNew(SImage)
+				SAssignNew(WidgetState.StatusIcon, SImage)
 				.Image(FAppStyle::GetBrush("Icons.Refresh"))
 				.DesiredSizeOverride(FVector2D(12, 12))
 			]
 
+			// Status text
 			+ SHorizontalBox::Slot()
-			.FillWidth(1.0f)
+			.AutoWidth()
 			.VAlign(VAlign_Center)
 			[
-				SNew(STextBlock)
+				SAssignNew(WidgetState.StatusText, STextBlock)
 				.Text(FText::Format(LOCTEXT("ToolCalling", "Calling {0}..."), FText::FromString(ToolName)))
 				.TextStyle(FAppStyle::Get(), "SmallText")
 			]
+
+			// Summary text (hidden initially)
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.VAlign(VAlign_Center)
+			.Padding(8, 0, 0, 0)
+			[
+				SAssignNew(WidgetState.SummaryText, STextBlock)
+				.TextStyle(FAppStyle::Get(), "SmallText")
+				.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+				.Visibility(EVisibility::Collapsed)
+			]
 		];
 
-	ToolCallWidgets.Add(ToolCallId, Indicator);
+	WidgetState.Status = EOliveToolCallStatus::Running;
+	ToolCallWidgetStates.Add(ToolCallId, WidgetState);
 
 	MessagesContainer->AddSlot()
 		.AutoHeight()
@@ -256,8 +271,132 @@ void SOliveAIMessageList::AddToolCallIndicator(const FString& ToolName, const FS
 
 void SOliveAIMessageList::UpdateToolCallStatus(const FString& ToolCallId, bool bSuccess, const FString& ResultSummary)
 {
-	// For now, tool status is shown through the messages
-	// Future: Update the indicator widget directly
+	FOliveToolCallWidgetState* WidgetState = ToolCallWidgetStates.Find(ToolCallId);
+	if (!WidgetState)
+	{
+		return;
+	}
+
+	WidgetState->Status = bSuccess ? EOliveToolCallStatus::Completed : EOliveToolCallStatus::Failed;
+
+	// Update icon: checkmark for success, error for failure
+	if (WidgetState->StatusIcon.IsValid())
+	{
+		const FSlateBrush* NewBrush = bSuccess
+			? FAppStyle::GetBrush("Icons.Check")
+			: FAppStyle::GetBrush("Icons.Error");
+		WidgetState->StatusIcon->SetImage(NewBrush);
+	}
+
+	// Update status text
+	if (WidgetState->StatusText.IsValid())
+	{
+		FString StatusLabel = bSuccess ? TEXT("Completed") : TEXT("Failed");
+		// Extract tool name from existing text and update
+		WidgetState->StatusText->SetText(FText::FromString(StatusLabel));
+		WidgetState->StatusText->SetColorAndOpacity(
+			bSuccess ? FLinearColor(0.2f, 0.8f, 0.4f) : FLinearColor::Red);
+	}
+
+	// Show summary
+	if (WidgetState->SummaryText.IsValid() && !ResultSummary.IsEmpty())
+	{
+		WidgetState->SummaryText->SetText(FText::FromString(ResultSummary));
+		WidgetState->SummaryText->SetVisibility(EVisibility::Visible);
+	}
+}
+
+void SOliveAIMessageList::AddConfirmationWidget(const FString& ToolCallId, const FString& Plan, FOnConfirmationAction OnAction)
+{
+	TSharedPtr<SVerticalBox> ConfirmWidget;
+
+	// Store action delegate as shared ptr so it survives lambda capture
+	TSharedRef<FOnConfirmationAction> ActionDelegate = MakeShared<FOnConfirmationAction>(OnAction);
+
+	TSharedRef<SWidget> ConfirmationUI = SNew(SBorder)
+		.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+		.BorderBackgroundColor(FLinearColor(0.3f, 0.3f, 0.1f, 1.0f))
+		.Padding(8.0f)
+		[
+			SAssignNew(ConfirmWidget, SVerticalBox)
+
+			// Plan description
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(0, 0, 0, 8)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(Plan))
+				.AutoWrapText(true)
+			]
+
+			// Buttons
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			[
+				SNew(SHorizontalBox)
+
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(0, 0, 8, 0)
+				[
+					SNew(SButton)
+					.Text(LOCTEXT("Confirm", "Confirm"))
+					.ButtonColorAndOpacity(FLinearColor(0.2f, 0.6f, 0.2f))
+					.OnClicked_Lambda([ActionDelegate, ConfirmWidget]()
+					{
+						ActionDelegate->ExecuteIfBound(true);
+						// Replace buttons with status text
+						if (ConfirmWidget.IsValid())
+						{
+							ConfirmWidget->ClearChildren();
+							ConfirmWidget->AddSlot()
+								.AutoHeight()
+								[
+									SNew(STextBlock)
+									.Text(LOCTEXT("Confirmed", "Confirmed"))
+									.ColorAndOpacity(FLinearColor(0.2f, 0.8f, 0.4f))
+								];
+						}
+						return FReply::Handled();
+					})
+				]
+
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				[
+					SNew(SButton)
+					.Text(LOCTEXT("Deny", "Deny"))
+					.ButtonColorAndOpacity(FLinearColor(0.6f, 0.2f, 0.2f))
+					.OnClicked_Lambda([ActionDelegate, ConfirmWidget]()
+					{
+						ActionDelegate->ExecuteIfBound(false);
+						// Replace buttons with status text
+						if (ConfirmWidget.IsValid())
+						{
+							ConfirmWidget->ClearChildren();
+							ConfirmWidget->AddSlot()
+								.AutoHeight()
+								[
+									SNew(STextBlock)
+									.Text(LOCTEXT("Denied", "Denied"))
+									.ColorAndOpacity(FLinearColor(0.8f, 0.2f, 0.2f))
+								];
+						}
+						return FReply::Handled();
+					})
+				]
+			]
+		];
+
+	MessagesContainer->AddSlot()
+		.AutoHeight()
+		.Padding(16, 4, 0, 4)
+		[
+			ConfirmationUI
+		];
+
+	ScrollToBottom();
 }
 
 // ==========================================
@@ -268,7 +407,7 @@ void SOliveAIMessageList::ClearMessages()
 {
 	Messages.Empty();
 	MessagesContainer->ClearChildren();
-	ToolCallWidgets.Empty();
+	ToolCallWidgetStates.Empty();
 	StreamingMessageWidget.Reset();
 }
 

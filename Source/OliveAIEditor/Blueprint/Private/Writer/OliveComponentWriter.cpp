@@ -715,12 +715,29 @@ USCS_Node* FOliveComponentWriter::FindSCSNode(const UBlueprint* Blueprint, const
 
 	USimpleConstructionScript* SCS = Blueprint->SimpleConstructionScript;
 
-	// Search all nodes
-	for (USCS_Node* Node : SCS->GetAllNodes())
+	// Recursive traversal using GetRootNodes() + GetChildNodes() (GetAllNodes() is deprecated in UE 5.5)
+	TArray<USCS_Node*> NodesToSearch;
+	for (USCS_Node* RootNode : SCS->GetRootNodes())
 	{
-		if (Node && Node->GetVariableName().ToString() == ComponentName)
+		NodesToSearch.Add(RootNode);
+	}
+
+	while (NodesToSearch.Num() > 0)
+	{
+		USCS_Node* Current = NodesToSearch.Pop();
+		if (!Current)
 		{
-			return Node;
+			continue;
+		}
+
+		if (Current->GetVariableName().ToString() == ComponentName)
+		{
+			return Current;
+		}
+
+		for (USCS_Node* Child : Current->GetChildNodes())
+		{
+			NodesToSearch.Add(Child);
 		}
 	}
 

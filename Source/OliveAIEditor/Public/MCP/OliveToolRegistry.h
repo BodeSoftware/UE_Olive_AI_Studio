@@ -239,7 +239,6 @@ private:
 	// ==========================================
 
 	void RegisterProjectTools();
-	void RegisterBlueprintToolStubs();
 
 	// ==========================================
 	// Built-in Tool Handlers
@@ -252,8 +251,4 @@ private:
 	FOliveToolResult HandleProjectGetDependencies(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleProjectGetReferencers(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleProjectGetConfig(const TSharedPtr<FJsonObject>& Params);
-
-	// Blueprint stubs (Phase 1)
-	FOliveToolResult HandleBlueprintReadStub(const TSharedPtr<FJsonObject>& Params);
-	FOliveToolResult HandleBlueprintCreateStub(const TSharedPtr<FJsonObject>& Params);
 };

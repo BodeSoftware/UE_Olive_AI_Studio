@@ -2,6 +2,7 @@
 
 #include "Providers/IOliveAIProvider.h"
 #include "Providers/OliveOpenRouterProvider.h"
+#include "Providers/OliveAnthropicProvider.h"
 #include "Providers/OliveClaudeCodeProvider.h"
 #include "Serialization/JsonSerializer.h"
 
@@ -126,7 +127,13 @@ TSharedPtr<IOliveAIProvider> FOliveProviderFactory::CreateProvider(const FString
 		return MakeShared<FOliveClaudeCodeProvider>();
 	}
 
-	// TODO: Add Anthropic, OpenAI, Google, Ollama providers
+	if (ProviderName.Equals(TEXT("anthropic"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("Anthropic"), ESearchCase::CaseSensitive))
+	{
+		return MakeShared<FOliveAnthropicProvider>();
+	}
+
+	// TODO: Add OpenAI, Google, Ollama providers
 
 	return nullptr;
 }
@@ -144,7 +151,10 @@ TArray<FString> FOliveProviderFactory::GetAvailableProviders()
 	// OpenRouter - API key required
 	Providers.Add(TEXT("OpenRouter"));
 
-	// Future: Anthropic, OpenAI, Google, Ollama
+	// Anthropic direct - API key required
+	Providers.Add(TEXT("Anthropic"));
+
+	// Future: OpenAI, Google, Ollama
 
 	return Providers;
 }

@@ -50,65 +50,30 @@ void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 	// Create conversation manager
 	ConversationManager = MakeShared<FOliveConversationManager>();
 
-	// Set up provider from settings
+	// Set up provider and profile from settings
 	UOliveAISettings* Settings = UOliveAISettings::Get();
 	if (Settings)
 	{
-		FString ProviderName;
-		switch (Settings->Provider)
+		for (const TSharedPtr<FString>& ProfileOption : FocusProfiles)
 		{
-		case EOliveAIProvider::ClaudeCode:
-			ProviderName = TEXT("Claude Code CLI");
-			break;
-		case EOliveAIProvider::OpenRouter:
-			ProviderName = TEXT("OpenRouter");
-			break;
-		case EOliveAIProvider::Anthropic:
-			ProviderName = TEXT("Anthropic");
-			break;
-		case EOliveAIProvider::OpenAI:
-			ProviderName = TEXT("OpenAI");
-			break;
-		case EOliveAIProvider::Google:
-			ProviderName = TEXT("Google");
-			break;
-		case EOliveAIProvider::Ollama:
-			ProviderName = TEXT("Ollama");
-			break;
-		default:
-			ProviderName = TEXT("OpenRouter");
-			break;
-		}
-
-		TSharedPtr<IOliveAIProvider> Provider = FOliveProviderFactory::CreateProvider(ProviderName);
-		if (Provider.IsValid())
-		{
-			FOliveProviderConfig ProviderConfig;
-			ProviderConfig.ProviderName = ProviderName;
-			ProviderConfig.ApiKey = Settings->GetCurrentApiKey();
-			ProviderConfig.BaseUrl = Settings->GetCurrentBaseUrl();
-			ProviderConfig.ModelId = Settings->SelectedModel;
-			ProviderConfig.Temperature = Settings->Temperature;
-			ProviderConfig.MaxTokens = Settings->MaxTokens;
-			ProviderConfig.TimeoutSeconds = Settings->RequestTimeoutSeconds;
-			Provider->Configure(ProviderConfig);
-
-			ConversationManager->SetProvider(Provider);
+			if (ProfileOption.IsValid() && ProfileOption->Equals(Settings->DefaultFocusProfile, ESearchCase::IgnoreCase))
+			{
+				CurrentFocusProfile = ProfileOption;
+				break;
+			}
 		}
 	}
 
-	// Set default system prompt
-	ConversationManager->SetSystemPrompt(
-		TEXT("You are Olive AI, an expert AI assistant for Unreal Engine development integrated directly into the editor.\n\n")
-		TEXT("## Your Capabilities\n")
-		TEXT("- Search the project for assets by name or type\n")
-		TEXT("- Read and understand Blueprint structures\n")
-		TEXT("- Get project configuration and class hierarchies\n\n")
-		TEXT("## Guidelines\n")
-		TEXT("- Be concise and helpful\n")
-		TEXT("- Use tools to gather information before answering\n")
-		TEXT("- If uncertain, ask clarifying questions\n")
-	);
+	FString ProviderError;
+	if (!ConfigureProviderFromSettings(ProviderError))
+	{
+		CurrentErrorMessage = ProviderError;
+	}
+
+	if (ConversationManager.IsValid() && CurrentFocusProfile.IsValid())
+	{
+		ConversationManager->SetFocusProfile(*CurrentFocusProfile);
+	}
 
 	// Bind conversation manager events
 	ConversationManager->OnMessageAdded.AddSP(this, &SOliveAIChatPanel::HandleMessageAdded);
@@ -118,6 +83,7 @@ void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 	ConversationManager->OnProcessingStarted.AddSP(this, &SOliveAIChatPanel::HandleProcessingStarted);
 	ConversationManager->OnProcessingComplete.AddSP(this, &SOliveAIChatPanel::HandleProcessingComplete);
 	ConversationManager->OnError.AddSP(this, &SOliveAIChatPanel::HandleError);
+	ConversationManager->OnConfirmationRequired.AddSP(this, &SOliveAIChatPanel::HandleConfirmationRequired);
 
 	// Build UI
 	ChildSlot
@@ -188,6 +154,7 @@ SOliveAIChatPanel::~SOliveAIChatPanel()
 		ConversationManager->OnProcessingStarted.RemoveAll(this);
 		ConversationManager->OnProcessingComplete.RemoveAll(this);
 		ConversationManager->OnError.RemoveAll(this);
+		ConversationManager->OnConfirmationRequired.RemoveAll(this);
 	}
 }
 
@@ -353,6 +320,14 @@ void SOliveAIChatPanel::OnMessageSubmitted(const FString& Message)
 		return;
 	}
 
+	// Refresh provider from current settings so key/provider changes apply immediately.
+	FString ProviderError;
+	if (!ConfigureProviderFromSettings(ProviderError))
+	{
+		HandleError(ProviderError);
+		return;
+	}
+
 	// Update context from context bar
 	if (ContextBar.IsValid())
 	{
@@ -399,6 +374,74 @@ FReply SOliveAIChatPanel::OnNewChatClicked()
 
 	CurrentErrorMessage.Empty();
 	return FReply::Handled();
+}
+
+bool SOliveAIChatPanel::ConfigureProviderFromSettings(FString& OutError)
+{
+	OutError.Empty();
+
+	if (!ConversationManager.IsValid())
+	{
+		OutError = TEXT("Conversation manager is not initialized.");
+		return false;
+	}
+
+	UOliveAISettings* Settings = UOliveAISettings::Get();
+	if (!Settings)
+	{
+		OutError = TEXT("Olive AI settings are unavailable.");
+		return false;
+	}
+
+	FString ProviderName;
+	switch (Settings->Provider)
+	{
+	case EOliveAIProvider::ClaudeCode:
+		ProviderName = TEXT("Claude Code CLI");
+		break;
+	case EOliveAIProvider::OpenRouter:
+		ProviderName = TEXT("OpenRouter");
+		break;
+	case EOliveAIProvider::Anthropic:
+		ProviderName = TEXT("Anthropic");
+		break;
+	case EOliveAIProvider::OpenAI:
+		OutError = TEXT("OpenAI direct provider is not implemented yet. Use OpenRouter or Anthropic.");
+		ConversationManager->SetProvider(nullptr);
+		return false;
+	case EOliveAIProvider::Google:
+		OutError = TEXT("Google direct provider is not implemented yet. Use OpenRouter or Anthropic.");
+		ConversationManager->SetProvider(nullptr);
+		return false;
+	case EOliveAIProvider::Ollama:
+		OutError = TEXT("Ollama provider is not implemented yet. Use OpenRouter or Anthropic.");
+		ConversationManager->SetProvider(nullptr);
+		return false;
+	default:
+		ProviderName = TEXT("OpenRouter");
+		break;
+	}
+
+	TSharedPtr<IOliveAIProvider> Provider = FOliveProviderFactory::CreateProvider(ProviderName);
+	if (!Provider.IsValid())
+	{
+		OutError = FString::Printf(TEXT("Provider '%s' is unavailable."), *ProviderName);
+		ConversationManager->SetProvider(nullptr);
+		return false;
+	}
+
+	FOliveProviderConfig ProviderConfig;
+	ProviderConfig.ProviderName = ProviderName;
+	ProviderConfig.ApiKey = Settings->GetCurrentApiKey();
+	ProviderConfig.BaseUrl = Settings->GetCurrentBaseUrl();
+	ProviderConfig.ModelId = Settings->SelectedModel;
+	ProviderConfig.Temperature = Settings->Temperature;
+	ProviderConfig.MaxTokens = Settings->MaxTokens;
+	ProviderConfig.TimeoutSeconds = Settings->RequestTimeoutSeconds;
+	Provider->Configure(ProviderConfig);
+
+	ConversationManager->SetProvider(Provider);
+	return true;
 }
 
 // ==========================================
@@ -476,6 +519,35 @@ void SOliveAIChatPanel::HandleError(const FString& ErrorMessage)
 	{
 		MessageList->AddErrorMessage(ErrorMessage);
 	}
+}
+
+void SOliveAIChatPanel::HandleConfirmationRequired(const FString& ToolCallId, const FString& ToolName, const FString& Plan)
+{
+	if (!MessageList.IsValid() || !ConversationManager.IsValid())
+	{
+		return;
+	}
+
+	TWeakPtr<FOliveConversationManager> WeakManager = ConversationManager;
+
+	SOliveAIMessageList::FOnConfirmationAction OnAction;
+	OnAction.BindLambda([WeakManager](bool bConfirmed)
+	{
+		if (TSharedPtr<FOliveConversationManager> Manager = WeakManager.Pin())
+		{
+			if (bConfirmed)
+			{
+				Manager->ConfirmPendingOperation();
+			}
+			else
+			{
+				Manager->DenyPendingOperation();
+			}
+		}
+	});
+
+	FString DisplayPlan = FString::Printf(TEXT("[%s] %s"), *ToolName, *Plan);
+	MessageList->AddConfirmationWidget(ToolCallId, DisplayPlan, OnAction);
 }
 
 // ==========================================

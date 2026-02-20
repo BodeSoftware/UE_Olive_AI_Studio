@@ -149,7 +149,7 @@ bool FOliveComponentReader::HasComponents(const UBlueprint* Blueprint) const
 		return false;
 	}
 
-	return SCS->GetAllNodes().Num() > 0;
+	return SCS->GetRootNodes().Num() > 0;
 }
 
 // ============================================================================

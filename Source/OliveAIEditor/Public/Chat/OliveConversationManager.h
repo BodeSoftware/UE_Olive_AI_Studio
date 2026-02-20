@@ -16,6 +16,7 @@ DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnOliveChatToolCallCompleted, const FStr
 DECLARE_MULTICAST_DELEGATE(FOnOliveChatProcessingStarted);
 DECLARE_MULTICAST_DELEGATE(FOnOliveChatProcessingComplete);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnOliveChatError, const FString&);
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnOliveChatConfirmationRequired, const FString& /* ToolCallId */, const FString& /* ToolName */, const FString& /* Plan */);
 
 /**
  * Conversation Manager
@@ -139,6 +140,22 @@ public:
 	/** Fired on error */
 	FOnOliveChatError OnError;
 
+	/** Fired when a tool call requires user confirmation */
+	FOnOliveChatConfirmationRequired OnConfirmationRequired;
+
+	// ==========================================
+	// Confirmation Flow
+	// ==========================================
+
+	/** Confirm pending operation and resume agentic loop */
+	void ConfirmPendingOperation();
+
+	/** Deny pending operation and resume agentic loop with denial result */
+	void DenyPendingOperation();
+
+	/** Check if waiting for user confirmation */
+	bool IsWaitingForConfirmation() const { return bWaitingForConfirmation; }
+
 	// ==========================================
 	// Configuration
 	// ==========================================
@@ -240,6 +257,32 @@ private:
 
 	/** Number of pending tool executions */
 	int32 PendingToolExecutions = 0;
+
+	// ==========================================
+	// Confirmation State
+	// ==========================================
+
+	/** Whether we are waiting for user confirmation */
+	bool bWaitingForConfirmation = false;
+
+	/** Pending confirmation tool call ID */
+	FString PendingConfirmationToolCallId;
+
+	/** Pending confirmation tool name */
+	FString PendingConfirmationToolName;
+
+	/** Pending confirmation tool arguments */
+	TSharedPtr<FJsonObject> PendingConfirmationArguments;
+
+	// ==========================================
+	// Compile Self-Correction
+	// ==========================================
+
+	/** Number of compile retries in current agentic loop */
+	int32 CompileRetryCount = 0;
+
+	/** Maximum compile retries before giving up */
+	static constexpr int32 MaxCompileRetries = 3;
 
 	// ==========================================
 	// Token Management

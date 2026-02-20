@@ -36,6 +36,21 @@ public:
 		int32 MaxTokens = 4000
 	);
 
+	/**
+	 * Assemble full prompt with a base override.
+	 * @param BasePromptOverride Prompt text to use as the base component
+	 * @param FocusProfileName Active focus profile
+	 * @param ContextAssetPaths Assets in context
+	 * @param MaxTokens Maximum tokens for context
+	 * @return Assembled system prompt
+	 */
+	FString AssembleSystemPromptWithBase(
+		const FString& BasePromptOverride,
+		const FString& FocusProfileName,
+		const TArray<FString>& ContextAssetPaths,
+		int32 MaxTokens = 4000
+	);
+
 	// ==========================================
 	// Components
 	// ==========================================
@@ -48,6 +63,9 @@ public:
 
 	/** Get project context as string */
 	FString GetProjectContext() const;
+
+	/** Get policy context as string */
+	FString GetPolicyContext() const;
 
 	/** Get active asset context as string */
 	FString GetActiveContext(const TArray<FString>& AssetPaths, int32 MaxTokens) const;
@@ -74,6 +92,14 @@ public:
 
 private:
 	FOlivePromptAssembler() = default;
+
+	/** Shared internal prompt assembly implementation */
+	FString AssembleSystemPromptInternal(
+		const FString& BasePrompt,
+		const FString& FocusProfileName,
+		const TArray<FString>& ContextAssetPaths,
+		int32 MaxTokens
+	);
 
 	/** Load prompt templates from Content folder */
 	void LoadPromptTemplates();

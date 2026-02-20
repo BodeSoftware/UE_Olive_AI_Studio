@@ -1,8 +1,10 @@
 // Copyright Bode Software. All Rights Reserved.
 
 #include "Chat/OliveConversationManager.h"
+#include "Chat/OlivePromptAssembler.h"
 #include "MCP/OliveToolRegistry.h"
 #include "Index/OliveProjectIndex.h"
+#include "Settings/OliveAISettings.h"
 #include "OliveAIEditorModule.h"
 #include "Misc/Guid.h"
 
@@ -69,8 +71,9 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 	UserMessage.Timestamp = FDateTime::UtcNow();
 	AddMessage(UserMessage);
 
-	// Reset tool iteration counter
+	// Reset tool iteration counter and compile retry counter
 	CurrentToolIteration = 0;
+	CompileRetryCount = 0;
 
 	// Send to provider
 	SendToProvider();
@@ -84,10 +87,14 @@ void FOliveConversationManager::CancelCurrentRequest()
 	}
 
 	bIsProcessing = false;
+	bWaitingForConfirmation = false;
 	PendingToolCalls.Empty();
 	PendingToolResults.Empty();
 	PendingToolExecutions = 0;
 	CurrentStreamingContent.Empty();
+	PendingConfirmationToolCallId.Empty();
+	PendingConfirmationToolName.Empty();
+	PendingConfirmationArguments.Reset();
 }
 
 // ==========================================
@@ -140,40 +147,26 @@ FOliveChatMessage FOliveConversationManager::BuildSystemMessage()
 	SystemMessage.Role = EOliveChatRole::System;
 	SystemMessage.Timestamp = FDateTime::UtcNow();
 
-	// Start with base system prompt
-	FString FullPrompt = SystemPrompt;
+	const UOliveAISettings* Settings = UOliveAISettings::Get();
+	const int32 MaxPromptTokens = Settings ? FMath::Max(512, Settings->MaxTokens) : 4000;
 
-	// Add project context if available
-	if (FOliveProjectIndex::Get().IsReady())
+	FOlivePromptAssembler& PromptAssembler = FOlivePromptAssembler::Get();
+	if (SystemPrompt.IsEmpty())
 	{
-		const FOliveProjectConfig& Config = FOliveProjectIndex::Get().GetProjectConfig();
-		FullPrompt += FString::Printf(TEXT("\n\n## Project Context\n"));
-		FullPrompt += FString::Printf(TEXT("Project: %s\n"), *Config.ProjectName);
-		FullPrompt += FString::Printf(TEXT("Engine: %s\n"), *Config.EngineVersion);
+		SystemMessage.Content = PromptAssembler.AssembleSystemPrompt(
+			ActiveFocusProfile,
+			ActiveContextPaths,
+			MaxPromptTokens);
+	}
+	else
+	{
+		SystemMessage.Content = PromptAssembler.AssembleSystemPromptWithBase(
+			SystemPrompt,
+			ActiveFocusProfile,
+			ActiveContextPaths,
+			MaxPromptTokens);
 	}
 
-	// Add active asset context
-	if (ActiveContextPaths.Num() > 0)
-	{
-		FullPrompt += TEXT("\n\n## Active Context Assets\n");
-		for (const FString& Path : ActiveContextPaths)
-		{
-			TOptional<FOliveAssetInfo> AssetInfo = FOliveProjectIndex::Get().GetAssetByPath(Path);
-			if (AssetInfo.IsSet())
-			{
-				FullPrompt += FString::Printf(TEXT("- %s (%s): %s\n"),
-					*AssetInfo->Name,
-					*AssetInfo->AssetClass.ToString(),
-					*Path);
-			}
-			else
-			{
-				FullPrompt += FString::Printf(TEXT("- %s\n"), *Path);
-			}
-		}
-	}
-
-	SystemMessage.Content = FullPrompt;
 	return SystemMessage;
 }
 
@@ -355,17 +348,169 @@ void FOliveConversationManager::HandleToolResult(
 {
 	OnToolCallCompleted.Broadcast(ToolName, ToolCallId, Result);
 
+	// Check if this result requires user confirmation
+	if (Result.bSuccess && Result.Data.IsValid() && Result.Data->HasField(TEXT("requires_confirmation")))
+	{
+		bool bRequiresConfirmation = Result.Data->GetBoolField(TEXT("requires_confirmation"));
+		if (bRequiresConfirmation)
+		{
+			FString Plan = Result.Data->HasField(TEXT("plan"))
+				? Result.Data->GetStringField(TEXT("plan"))
+				: TEXT("This operation requires confirmation.");
+
+			// Store pending state
+			bWaitingForConfirmation = true;
+			PendingConfirmationToolCallId = ToolCallId;
+			PendingConfirmationToolName = ToolName;
+
+			// Find the matching tool call arguments for re-execution
+			for (const FOliveStreamChunk& TC : PendingToolCalls)
+			{
+				if (TC.ToolCallId == ToolCallId)
+				{
+					PendingConfirmationArguments = TC.ToolArguments;
+					break;
+				}
+			}
+
+			// Fire confirmation delegate for UI
+			OnConfirmationRequired.Broadcast(ToolCallId, ToolName, Plan);
+
+			UE_LOG(LogOliveAI, Log, TEXT("Confirmation required for tool '%s' (id: %s)"), *ToolName, *ToolCallId);
+			return; // Pause the agentic loop
+		}
+	}
+
+	// Check for compile failure and enrich with retry hint
+	FString ResultContent = Result.ToJsonString();
+	if (Result.bSuccess && Result.Data.IsValid())
+	{
+		const TSharedPtr<FJsonObject>* CompileResult;
+		if (Result.Data->TryGetObjectField(TEXT("compile_result"), CompileResult))
+		{
+			bool bCompileSuccess = (*CompileResult)->GetBoolField(TEXT("success"));
+			if (!bCompileSuccess && CompileRetryCount < MaxCompileRetries)
+			{
+				CompileRetryCount++;
+
+				// Enrich the tool result with retry hint
+				FString CompileErrors;
+				const TArray<TSharedPtr<FJsonValue>>* ErrorsArray;
+				if ((*CompileResult)->TryGetArrayField(TEXT("errors"), ErrorsArray))
+				{
+					for (const auto& ErrVal : *ErrorsArray)
+					{
+						if (ErrVal->Type == EJson::String)
+						{
+							CompileErrors += ErrVal->AsString() + TEXT("\n");
+						}
+						else if (ErrVal->AsObject().IsValid())
+						{
+							CompileErrors += ErrVal->AsObject()->GetStringField(TEXT("message")) + TEXT("\n");
+						}
+					}
+				}
+
+				ResultContent = FString::Printf(
+					TEXT("%s\n\n[COMPILE FAILED - Attempt %d/%d] The Blueprint failed to compile. Errors:\n%s\nPlease analyze the errors and fix the issue. You may re-call the write tool with corrections."),
+					*ResultContent, CompileRetryCount, MaxCompileRetries, *CompileErrors);
+
+				UE_LOG(LogOliveAI, Log, TEXT("Compile failed, retry %d/%d for tool '%s'"),
+					CompileRetryCount, MaxCompileRetries, *ToolName);
+			}
+		}
+	}
+
 	// Create tool result message
 	FOliveChatMessage ToolResultMessage;
 	ToolResultMessage.Role = EOliveChatRole::Tool;
 	ToolResultMessage.ToolCallId = ToolCallId;
 	ToolResultMessage.ToolName = ToolName;
-	ToolResultMessage.Content = Result.ToJsonString();
+	ToolResultMessage.Content = ResultContent;
 	ToolResultMessage.Timestamp = FDateTime::UtcNow();
 
 	PendingToolResults.Add(ToolResultMessage);
 
 	// Check if all tools completed
+	PendingToolExecutions--;
+	if (PendingToolExecutions <= 0)
+	{
+		ContinueAfterToolResults();
+	}
+}
+
+void FOliveConversationManager::ConfirmPendingOperation()
+{
+	if (!bWaitingForConfirmation)
+	{
+		return;
+	}
+
+	UE_LOG(LogOliveAI, Log, TEXT("User confirmed operation '%s' (id: %s)"),
+		*PendingConfirmationToolName, *PendingConfirmationToolCallId);
+
+	bWaitingForConfirmation = false;
+
+	// Re-execute the tool with confirmed flag
+	TSharedPtr<FJsonObject> ConfirmedArgs = PendingConfirmationArguments.IsValid()
+		? MakeShared<FJsonObject>(*PendingConfirmationArguments)
+		: MakeShared<FJsonObject>();
+	ConfirmedArgs->SetBoolField(TEXT("confirmed"), true);
+
+	FOliveToolResult Result = FOliveToolRegistry::Get().ExecuteTool(PendingConfirmationToolName, ConfirmedArgs);
+
+	// Create result message
+	FOliveChatMessage ToolResultMessage;
+	ToolResultMessage.Role = EOliveChatRole::Tool;
+	ToolResultMessage.ToolCallId = PendingConfirmationToolCallId;
+	ToolResultMessage.ToolName = PendingConfirmationToolName;
+	ToolResultMessage.Content = Result.ToJsonString();
+	ToolResultMessage.Timestamp = FDateTime::UtcNow();
+
+	// Clear pending state
+	PendingConfirmationToolCallId.Empty();
+	PendingConfirmationToolName.Empty();
+	PendingConfirmationArguments.Reset();
+
+	// Add result and continue
+	PendingToolResults.Add(ToolResultMessage);
+	OnToolCallCompleted.Broadcast(ToolResultMessage.ToolName, ToolResultMessage.ToolCallId, Result);
+
+	PendingToolExecutions--;
+	if (PendingToolExecutions <= 0)
+	{
+		ContinueAfterToolResults();
+	}
+}
+
+void FOliveConversationManager::DenyPendingOperation()
+{
+	if (!bWaitingForConfirmation)
+	{
+		return;
+	}
+
+	UE_LOG(LogOliveAI, Log, TEXT("User denied operation '%s' (id: %s)"),
+		*PendingConfirmationToolName, *PendingConfirmationToolCallId);
+
+	bWaitingForConfirmation = false;
+
+	// Create denial result message
+	FOliveChatMessage ToolResultMessage;
+	ToolResultMessage.Role = EOliveChatRole::Tool;
+	ToolResultMessage.ToolCallId = PendingConfirmationToolCallId;
+	ToolResultMessage.ToolName = PendingConfirmationToolName;
+	ToolResultMessage.Content = TEXT("{\"success\":false,\"error\":{\"code\":\"USER_DENIED\",\"message\":\"User denied this operation. Please ask the user how they would like to proceed.\"}}");
+	ToolResultMessage.Timestamp = FDateTime::UtcNow();
+
+	// Clear pending state
+	PendingConfirmationToolCallId.Empty();
+	PendingConfirmationToolName.Empty();
+	PendingConfirmationArguments.Reset();
+
+	// Add result and continue
+	PendingToolResults.Add(ToolResultMessage);
+
 	PendingToolExecutions--;
 	if (PendingToolExecutions <= 0)
 	{
