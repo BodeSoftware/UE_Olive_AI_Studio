@@ -42,6 +42,7 @@ public:
 	virtual void CancelRequest() override;
 	virtual bool IsBusy() const override { return bIsBusy; }
 	virtual FString GetLastError() const override { return LastError; }
+	virtual void ValidateConnection(TFunction<void(bool bSuccess, const FString& Message)> Callback) const override;
 
 private:
 	// ==========================================

@@ -178,12 +178,6 @@ void FOliveAIEditorModule::OnPostEngineInit()
 {
 	UE_LOG(LogOliveAI, Log, TEXT("Post-engine initialization..."));
 
-	// Initialize focus profiles
-	FOliveFocusProfileManager::Get().Initialize();
-
-	// Initialize prompt assembler
-	FOlivePromptAssembler::Get().Initialize();
-
 	// Register core validation rules
 	FOliveValidationEngine::Get().RegisterCoreRules();
 
@@ -233,6 +227,12 @@ void FOliveAIEditorModule::OnPostEngineInit()
 
 	// Register Cross-System validation rules
 	FOliveValidationEngine::Get().RegisterCrossSystemRules();
+
+	// Initialize focus profiles after tool registration so validation has complete category/tool coverage.
+	FOliveFocusProfileManager::Get().Initialize();
+
+	// Initialize prompt assembler after focus profile registration.
+	FOlivePromptAssembler::Get().Initialize();
 
 	// Initialize prompt templates
 	FOliveMCPPromptTemplates::Get().Initialize();

@@ -258,6 +258,18 @@ public:
 
 	/** Get last error message */
 	virtual FString GetLastError() const = 0;
+
+	/**
+	 * Async connection validation. Tests if the provider is reachable and configured correctly.
+	 * @param Callback Called with (bSuccess, Message) — message is error detail on failure or "Connected" on success
+	 */
+	virtual void ValidateConnection(TFunction<void(bool bSuccess, const FString& Message)> Callback) const
+	{
+		// Default implementation: just validate config
+		FString Error;
+		bool bValid = ValidateConfig(Error);
+		Callback(bValid, bValid ? TEXT("Configuration valid") : Error);
+	}
 };
 
 /**

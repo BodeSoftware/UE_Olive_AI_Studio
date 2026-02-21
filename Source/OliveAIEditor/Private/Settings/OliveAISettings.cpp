@@ -41,6 +41,8 @@ FString UOliveAISettings::GetCurrentApiKey() const
 			return GoogleApiKey;
 		case EOliveAIProvider::Ollama:
 			return TEXT(""); // Ollama doesn't need an API key
+		case EOliveAIProvider::OpenAICompatible:
+			return OpenAICompatibleApiKey;
 		default:
 			return TEXT("");
 	}
@@ -53,15 +55,17 @@ FString UOliveAISettings::GetCurrentBaseUrl() const
 		case EOliveAIProvider::ClaudeCode:
 			return TEXT(""); // Claude Code CLI is a local process, no URL
 		case EOliveAIProvider::OpenRouter:
-			return TEXT("https://openrouter.ai/api/v1");
+			return TEXT("https://openrouter.ai/api/v1/chat/completions");
 		case EOliveAIProvider::Anthropic:
-			return TEXT("https://api.anthropic.com/v1");
+			return TEXT("https://api.anthropic.com/v1/messages");
 		case EOliveAIProvider::OpenAI:
-			return TEXT("https://api.openai.com/v1");
+			return TEXT("https://api.openai.com/v1/chat/completions");
 		case EOliveAIProvider::Google:
-			return TEXT("https://generativelanguage.googleapis.com/v1beta");
+			return TEXT("https://generativelanguage.googleapis.com/v1beta/models/");
 		case EOliveAIProvider::Ollama:
 			return OllamaUrl;
+		case EOliveAIProvider::OpenAICompatible:
+			return OpenAICompatibleUrl;
 		default:
 			return TEXT("");
 	}
@@ -80,6 +84,12 @@ bool UOliveAISettings::IsProviderConfigured() const
 	if (Provider == EOliveAIProvider::Ollama)
 	{
 		return !OllamaUrl.IsEmpty();
+	}
+
+	// OpenAI Compatible needs a URL (key is optional)
+	if (Provider == EOliveAIProvider::OpenAICompatible)
+	{
+		return !OpenAICompatibleUrl.IsEmpty();
 	}
 
 	return !GetCurrentApiKey().IsEmpty();

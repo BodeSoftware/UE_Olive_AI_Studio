@@ -4,6 +4,10 @@
 #include "Providers/OliveOpenRouterProvider.h"
 #include "Providers/OliveAnthropicProvider.h"
 #include "Providers/OliveClaudeCodeProvider.h"
+#include "Providers/OliveOpenAIProvider.h"
+#include "Providers/OliveOllamaProvider.h"
+#include "Providers/OliveOpenAICompatibleProvider.h"
+#include "Providers/OliveGoogleProvider.h"
 #include "Serialization/JsonSerializer.h"
 
 // ==========================================
@@ -133,7 +137,29 @@ TSharedPtr<IOliveAIProvider> FOliveProviderFactory::CreateProvider(const FString
 		return MakeShared<FOliveAnthropicProvider>();
 	}
 
-	// TODO: Add OpenAI, Google, Ollama providers
+	if (ProviderName.Equals(TEXT("openai"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("OpenAI"), ESearchCase::CaseSensitive))
+	{
+		return MakeShared<FOliveOpenAIProvider>();
+	}
+
+	if (ProviderName.Equals(TEXT("google"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("Google"), ESearchCase::CaseSensitive))
+	{
+		return MakeShared<FOliveGoogleProvider>();
+	}
+
+	if (ProviderName.Equals(TEXT("ollama"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("Ollama"), ESearchCase::CaseSensitive))
+	{
+		return MakeShared<FOliveOllamaProvider>();
+	}
+
+	if (ProviderName.Equals(TEXT("openai_compatible"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("OpenAI Compatible"), ESearchCase::IgnoreCase))
+	{
+		return MakeShared<FOliveOpenAICompatibleProvider>();
+	}
 
 	return nullptr;
 }
@@ -154,7 +180,17 @@ TArray<FString> FOliveProviderFactory::GetAvailableProviders()
 	// Anthropic direct - API key required
 	Providers.Add(TEXT("Anthropic"));
 
-	// Future: OpenAI, Google, Ollama
+	// OpenAI direct - API key required
+	Providers.Add(TEXT("OpenAI"));
+
+	// Google AI - API key required
+	Providers.Add(TEXT("Google"));
+
+	// Ollama - local models, no API key required
+	Providers.Add(TEXT("Ollama"));
+
+	// OpenAI Compatible - custom endpoint (LM Studio, vLLM, Groq, etc.)
+	Providers.Add(TEXT("OpenAI Compatible"));
 
 	return Providers;
 }

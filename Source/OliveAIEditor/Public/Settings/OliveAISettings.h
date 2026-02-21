@@ -17,7 +17,8 @@ enum class EOliveAIProvider : uint8
 	Anthropic UMETA(DisplayName = "Anthropic (API Key)"),
 	OpenAI UMETA(DisplayName = "OpenAI (API Key)"),
 	Google UMETA(DisplayName = "Google AI (API Key)"),
-	Ollama UMETA(DisplayName = "Ollama (Local)")
+	Ollama UMETA(DisplayName = "Ollama (Local)"),
+	OpenAICompatible UMETA(DisplayName = "OpenAI Compatible (Custom Endpoint)")
 };
 
 /**
@@ -101,6 +102,16 @@ public:
 		meta=(DisplayName="Ollama URL"))
 	FString OllamaUrl = TEXT("http://localhost:11434");
 
+	/** Custom OpenAI-compatible endpoint URL (e.g., http://localhost:1234/v1) */
+	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
+		meta=(DisplayName="Custom Endpoint URL"))
+	FString OpenAICompatibleUrl;
+
+	/** API key for custom endpoint (optional) */
+	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
+		meta=(DisplayName="Custom Endpoint API Key", PasswordField=true))
+	FString OpenAICompatibleApiKey;
+
 	/** The model to use. For OpenRouter, use format: provider/model (e.g., anthropic/claude-sonnet-4) */
 	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
 		meta=(DisplayName="Model"))
@@ -173,6 +184,14 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category="User Interface",
 		meta=(DisplayName="Default Focus Profile"))
 	FString DefaultFocusProfile = TEXT("Auto");
+
+	/** Internal JSON storage for custom focus profiles (managed by FocusProfileManager) */
+	UPROPERTY(Config)
+	FString CustomFocusProfilesJson;
+
+	/** Internal schema version for custom focus profile payload */
+	UPROPERTY(Config)
+	int32 CustomFocusProfilesSchemaVersion = 1;
 
 	// ==========================================
 	// Confirmation Settings

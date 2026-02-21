@@ -1,6 +1,7 @@
 // Copyright Bode Software. All Rights Reserved.
 
 #include "UI/SOliveAIChatPanel.h"
+#include "Async/Async.h"
 #include "UI/SOliveAIMessageList.h"
 #include "UI/SOliveAIContextBar.h"
 #include "UI/SOliveAIInputField.h"
@@ -19,6 +20,7 @@
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Images/SImage.h"
+#include "Widgets/Images/SThrobber.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Framework/Docking/TabManager.h"
 #include "Styling/AppStyle.h"
@@ -80,13 +82,34 @@ void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 	UOliveAISettings* Settings = UOliveAISettings::Get();
 	if (Settings)
 	{
+		const FString NormalizedDefaultProfile = FOliveFocusProfileManager::Get().NormalizeProfileName(Settings->DefaultFocusProfile);
+		bool bMatchedConfiguredDefault = false;
 		for (const TSharedPtr<FString>& ProfileOption : FocusProfiles)
 		{
-			if (ProfileOption.IsValid() && ProfileOption->Equals(Settings->DefaultFocusProfile, ESearchCase::IgnoreCase))
+			if (ProfileOption.IsValid() && ProfileOption->Equals(NormalizedDefaultProfile, ESearchCase::IgnoreCase))
 			{
 				CurrentFocusProfile = ProfileOption;
+				bMatchedConfiguredDefault = true;
 				break;
 			}
+		}
+
+		bool bSettingsChanged = false;
+		if (!Settings->DefaultFocusProfile.Equals(NormalizedDefaultProfile, ESearchCase::CaseSensitive))
+		{
+			Settings->DefaultFocusProfile = NormalizedDefaultProfile;
+			bSettingsChanged = true;
+		}
+
+		if (!bMatchedConfiguredDefault && !Settings->DefaultFocusProfile.Equals(TEXT("Auto"), ESearchCase::CaseSensitive))
+		{
+			Settings->DefaultFocusProfile = TEXT("Auto");
+			bSettingsChanged = true;
+		}
+
+		if (bSettingsChanged)
+		{
+			Settings->SaveConfig();
 		}
 	}
 
@@ -351,16 +374,49 @@ TSharedRef<SWidget> SOliveAIChatPanel::BuildStatusBar()
 {
 	return SNew(SHorizontalBox)
 
-		// Status indicator
+		// Spinner (visible during validation)
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		.Padding(0, 0, 4, 0)
+		[
+			SNew(SCircularThrobber)
+			.Radius(6.0f)
+			.Visibility_Lambda([this]() -> EVisibility
+			{
+				return bIsValidating ? EVisibility::Visible : EVisibility::Collapsed;
+			})
+		]
+
+		// Status indicator (check/X/circle — hidden during validation)
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
 		.Padding(0, 0, 4, 0)
 		[
 			SNew(SImage)
-			.Image(FAppStyle::GetBrush("Icons.FilledCircle"))
+			.Image_Lambda([this]() -> const FSlateBrush*
+			{
+				if (bIsValidating)
+				{
+					return FAppStyle::GetBrush("NoBrush");
+				}
+				if (!CurrentErrorMessage.IsEmpty() || (!bValidationSuccess && !ValidationMessage.IsEmpty()))
+				{
+					return FAppStyle::GetBrush("Icons.ErrorWithColor");
+				}
+				if (bValidationSuccess)
+				{
+					return FAppStyle::GetBrush("Icons.SuccessWithColor");
+				}
+				return FAppStyle::GetBrush("Icons.FilledCircle");
+			})
 			.ColorAndOpacity(this, &SOliveAIChatPanel::GetStatusColor)
-			.DesiredSizeOverride(FVector2D(8, 8))
+			.DesiredSizeOverride(FVector2D(12, 12))
+			.Visibility_Lambda([this]() -> EVisibility
+			{
+				return bIsValidating ? EVisibility::Collapsed : EVisibility::Visible;
+			})
 		]
 
 		// Status text
@@ -421,10 +477,24 @@ void SOliveAIChatPanel::OnMessageSubmitted(const FString& Message)
 
 void SOliveAIChatPanel::OnFocusProfileChanged(TSharedPtr<FString> NewProfile, ESelectInfo::Type SelectInfo)
 {
-	CurrentFocusProfile = NewProfile;
-	if (ConversationManager.IsValid() && NewProfile.IsValid())
+	if (!NewProfile.IsValid())
 	{
-		ConversationManager->SetFocusProfile(*NewProfile);
+		return;
+	}
+
+	const FString NormalizedProfile = FOliveFocusProfileManager::Get().NormalizeProfileName(*NewProfile);
+	for (const TSharedPtr<FString>& ProfileOption : FocusProfiles)
+	{
+		if (ProfileOption.IsValid() && ProfileOption->Equals(NormalizedProfile, ESearchCase::IgnoreCase))
+		{
+			CurrentFocusProfile = ProfileOption;
+			break;
+		}
+	}
+
+	if (ConversationManager.IsValid())
+	{
+		ConversationManager->SetFocusProfile(NormalizedProfile);
 	}
 }
 
@@ -481,17 +551,17 @@ bool SOliveAIChatPanel::ConfigureProviderFromSettings(FString& OutError)
 		ProviderName = TEXT("Anthropic");
 		break;
 	case EOliveAIProvider::OpenAI:
-		OutError = TEXT("OpenAI direct provider is not implemented yet. Use OpenRouter or Anthropic.");
-		ConversationManager->SetProvider(nullptr);
-		return false;
+		ProviderName = TEXT("OpenAI");
+		break;
 	case EOliveAIProvider::Google:
-		OutError = TEXT("Google direct provider is not implemented yet. Use OpenRouter or Anthropic.");
-		ConversationManager->SetProvider(nullptr);
-		return false;
+		ProviderName = TEXT("Google");
+		break;
 	case EOliveAIProvider::Ollama:
-		OutError = TEXT("Ollama provider is not implemented yet. Use OpenRouter or Anthropic.");
-		ConversationManager->SetProvider(nullptr);
-		return false;
+		ProviderName = TEXT("Ollama");
+		break;
+	case EOliveAIProvider::OpenAICompatible:
+		ProviderName = TEXT("OpenAI Compatible");
+		break;
 	default:
 		ProviderName = TEXT("OpenRouter");
 		break;
@@ -516,6 +586,29 @@ bool SOliveAIChatPanel::ConfigureProviderFromSettings(FString& OutError)
 	Provider->Configure(ProviderConfig);
 
 	ConversationManager->SetProvider(Provider);
+
+	// Trigger async connection validation
+	bIsValidating = true;
+	ValidationMessage = TEXT("Checking connection...");
+	Provider->ValidateConnection([this](bool bSuccess, const FString& Message)
+	{
+		// Must dispatch to game thread if called from HTTP thread
+		AsyncTask(ENamedThreads::GameThread, [this, bSuccess, Message]()
+		{
+			bIsValidating = false;
+			bValidationSuccess = bSuccess;
+			ValidationMessage = Message;
+			if (!bSuccess)
+			{
+				UE_LOG(LogOliveAI, Warning, TEXT("Provider validation failed: %s"), *Message);
+			}
+			else
+			{
+				UE_LOG(LogOliveAI, Log, TEXT("Provider validation passed: %s"), *Message);
+			}
+		});
+	});
+
 	return true;
 }
 
@@ -747,9 +840,23 @@ FText SOliveAIChatPanel::GetStatusText() const
 		return LOCTEXT("StatusProcessing", "Processing...");
 	}
 
+	if (bIsValidating)
+	{
+		return FText::FromString(ValidationMessage);
+	}
+
+	if (!bValidationSuccess && !ValidationMessage.IsEmpty())
+	{
+		return FText::FromString(ValidationMessage);
+	}
+
 	if (ConversationManager.IsValid() && ConversationManager->GetProvider().IsValid())
 	{
 		FString ProviderName = ConversationManager->GetProvider()->GetProviderName();
+		if (bValidationSuccess && !ValidationMessage.IsEmpty())
+		{
+			return FText::Format(LOCTEXT("StatusReadyValidated", "{0} - {1}"), FText::FromString(ProviderName), FText::FromString(ValidationMessage));
+		}
 		return FText::Format(LOCTEXT("StatusReady", "Ready - {0}"), FText::FromString(ProviderName));
 	}
 
@@ -766,6 +873,16 @@ FSlateColor SOliveAIChatPanel::GetStatusColor() const
 	if (bIsProcessing)
 	{
 		return FLinearColor::Yellow;
+	}
+
+	if (bIsValidating)
+	{
+		return FLinearColor::Yellow;
+	}
+
+	if (!bValidationSuccess && !ValidationMessage.IsEmpty())
+	{
+		return FLinearColor::Red;
 	}
 
 	if (ConversationManager.IsValid() && ConversationManager->GetProvider().IsValid())

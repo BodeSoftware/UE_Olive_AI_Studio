@@ -188,4 +188,13 @@ private:
 
 	bool bIsProcessing = false;
 	FString CurrentErrorMessage;
+
+	/** Whether a connection validation is in progress */
+	bool bIsValidating = false;
+
+	/** Last validation result message */
+	FString ValidationMessage;
+
+	/** Whether last validation succeeded */
+	bool bValidationSuccess = false;
 };

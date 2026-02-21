@@ -7,28 +7,31 @@
 #include "Interfaces/IHttpRequest.h"
 
 /**
- * Anthropic Direct Provider
+ * OpenAI-Compatible Provider
  *
- * Implements direct Anthropic Messages API access with SSE streaming.
- * Supports real-time text streaming and tool use via content block deltas.
+ * A generic AI provider client for any OpenAI-compatible API endpoint.
+ * Works with LM Studio, vLLM, Together AI, Groq, Fireworks, text-generation-webui,
+ * and any other server that implements the OpenAI Chat Completions API.
  *
- * Anthropic SSE format uses event/data line pairs:
- *   event: content_block_delta
- *   data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
+ * Key differences from the OpenAI provider:
+ * - Base URL is fully user-configurable (not hardcoded)
+ * - API key is optional (skip Authorization header if empty)
+ * - No hardcoded model list — user types the model name
+ * - Error messages reference "your endpoint" / "the server" instead of "OpenAI"
  */
-class OLIVEAIEDITOR_API FOliveAnthropicProvider : public IOliveAIProvider
+class OLIVEAIEDITOR_API FOliveOpenAICompatibleProvider : public IOliveAIProvider
 {
 public:
-	FOliveAnthropicProvider();
-	virtual ~FOliveAnthropicProvider();
+	FOliveOpenAICompatibleProvider();
+	virtual ~FOliveOpenAICompatibleProvider();
 
 	// ==========================================
 	// IOliveAIProvider Interface
 	// ==========================================
 
-	virtual FString GetProviderName() const override { return TEXT("Anthropic"); }
+	virtual FString GetProviderName() const override { return TEXT("OpenAI Compatible"); }
 	virtual TArray<FString> GetAvailableModels() const override;
-	virtual FString GetRecommendedModel() const override { return TEXT("claude-sonnet-4-5"); }
+	virtual FString GetRecommendedModel() const override { return FString(); }
 
 	virtual void Configure(const FOliveProviderConfig& InConfig) override;
 	virtual bool ValidateConfig(FString& OutError) const override;
@@ -53,13 +56,24 @@ private:
 	// Request Building
 	// ==========================================
 
-	/** Build the request body JSON (Anthropic Messages API format) */
+	/** Build the request body JSON */
 	TSharedPtr<FJsonObject> BuildRequestBody(
 		const TArray<FOliveChatMessage>& Messages,
-		const TArray<FOliveToolDefinition>& Tools) const;
+		const TArray<FOliveToolDefinition>& Tools
+	);
 
-	/** Normalize model name (strip "anthropic/" prefix if present) */
-	FString NormalizeModelName(const FString& InModel) const;
+	/** Convert messages to JSON format */
+	TArray<TSharedPtr<FJsonValue>> ConvertMessagesToJson(const TArray<FOliveChatMessage>& Messages);
+
+	/** Convert tools to OpenAI function calling format */
+	TArray<TSharedPtr<FJsonValue>> ConvertToolsToJson(const TArray<FOliveToolDefinition>& Tools);
+
+	// ==========================================
+	// URL Helpers
+	// ==========================================
+
+	/** Get the full chat completions URL, appending /chat/completions if needed */
+	FString GetCompletionsUrl() const;
 
 	// ==========================================
 	// Response Handling
@@ -68,23 +82,30 @@ private:
 	/** Handle HTTP response complete */
 	void OnResponseReceived(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bSuccess);
 
-	/** Process raw SSE data from the progress callback */
+	/** Process SSE data chunks */
 	void ProcessSSEData(const FString& Data);
 
-	/** Process a single SSE line (event: or data: prefix) */
+	/** Process a single SSE line */
 	void ProcessSSELine(const FString& Line);
 
-	/** Parse a stream event with its type and JSON payload */
-	void ParseStreamEvent(const FString& EventType, const TSharedPtr<FJsonObject>& Data);
+	/** Parse a streamed chunk */
+	void ParseStreamChunk(const TSharedPtr<FJsonObject>& ChunkJson);
 
-	/** Finalize all pending tool calls and fire callbacks */
-	void FinalizePendingToolCalls();
-
-	/** Complete the streaming response */
+	/** Handle streaming completion */
 	void CompleteStreaming();
 
 	/** Handle error */
 	void HandleError(const FString& ErrorMessage);
+
+	// ==========================================
+	// Tool Call Parsing
+	// ==========================================
+
+	/** Parse tool call from delta */
+	void ParseToolCallDelta(const TSharedPtr<FJsonObject>& Delta);
+
+	/** Finalize pending tool calls */
+	void FinalizePendingToolCalls();
 
 	// ==========================================
 	// State
@@ -106,25 +127,16 @@ private:
 	// Streaming State
 	// ==========================================
 
-	/** Buffer for incomplete SSE data (full response content for progress delta calculation) */
+	/** Buffer for incomplete SSE data */
 	FString SSEBuffer;
-
-	/** Current SSE event type (Anthropic sends event: lines before data: lines) */
-	FString CurrentEventType;
 
 	/** Accumulated full response text */
 	FString AccumulatedResponse;
 
-	/** Pending tool calls being assembled, keyed by content block index */
+	/** Pending tool calls being built */
 	TMap<int32, FOliveStreamChunk> PendingToolCalls;
 
-	/** Accumulated partial JSON for tool arguments per block index */
-	TMap<int32, FString> PendingToolArgsJson;
-
-	/** Current content block index being processed */
-	int32 CurrentBlockIndex = -1;
-
-	/** Usage statistics accumulated from message_start and message_delta */
+	/** Usage statistics */
 	FOliveProviderUsage CurrentUsage;
 
 	// ==========================================
@@ -135,11 +147,4 @@ private:
 	FOnOliveToolCall OnToolCallCallback;
 	FOnOliveComplete OnCompleteCallback;
 	FOnOliveError OnErrorCallback;
-
-	// ==========================================
-	// Constants
-	// ==========================================
-
-	static const FString AnthropicApiUrl;
-	static const FString DefaultModel;
 };

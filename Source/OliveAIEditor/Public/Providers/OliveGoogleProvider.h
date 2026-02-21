@@ -7,28 +7,32 @@
 #include "Interfaces/IHttpRequest.h"
 
 /**
- * Anthropic Direct Provider
+ * Google Gemini Provider
  *
- * Implements direct Anthropic Messages API access with SSE streaming.
- * Supports real-time text streaming and tool use via content block deltas.
+ * AI provider client for Google Generative Language API (Gemini).
+ * Supports SSE streaming and tool calling via Google's unique message format.
  *
- * Anthropic SSE format uses event/data line pairs:
- *   event: content_block_delta
- *   data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
+ * Key differences from OpenAI format:
+ * - Uses `contents[]` instead of `messages[]`
+ * - Roles: "user" and "model" (not "assistant")
+ * - System messages go in top-level `systemInstruction` field
+ * - Tool calls use `functionCall` / `functionResponse` parts
+ * - API key is passed as URL query parameter, not Authorization header
+ * - SSE data contains `candidates[0].content.parts[]` structure
  */
-class OLIVEAIEDITOR_API FOliveAnthropicProvider : public IOliveAIProvider
+class OLIVEAIEDITOR_API FOliveGoogleProvider : public IOliveAIProvider
 {
 public:
-	FOliveAnthropicProvider();
-	virtual ~FOliveAnthropicProvider();
+	FOliveGoogleProvider();
+	virtual ~FOliveGoogleProvider();
 
 	// ==========================================
 	// IOliveAIProvider Interface
 	// ==========================================
 
-	virtual FString GetProviderName() const override { return TEXT("Anthropic"); }
+	virtual FString GetProviderName() const override { return TEXT("Google"); }
 	virtual TArray<FString> GetAvailableModels() const override;
-	virtual FString GetRecommendedModel() const override { return TEXT("claude-sonnet-4-5"); }
+	virtual FString GetRecommendedModel() const override { return TEXT("gemini-2.0-flash"); }
 
 	virtual void Configure(const FOliveProviderConfig& InConfig) override;
 	virtual bool ValidateConfig(FString& OutError) const override;
@@ -53,13 +57,26 @@ private:
 	// Request Building
 	// ==========================================
 
-	/** Build the request body JSON (Anthropic Messages API format) */
+	/** Build the full request body JSON in Google Gemini format */
 	TSharedPtr<FJsonObject> BuildRequestBody(
 		const TArray<FOliveChatMessage>& Messages,
-		const TArray<FOliveToolDefinition>& Tools) const;
+		const TArray<FOliveToolDefinition>& Tools
+	);
 
-	/** Normalize model name (strip "anthropic/" prefix if present) */
-	FString NormalizeModelName(const FString& InModel) const;
+	/**
+	 * Convert FOliveChatMessage array to Google contents[] format.
+	 * System messages are extracted and returned separately via OutSystemText.
+	 */
+	TArray<TSharedPtr<FJsonValue>> ConvertMessagesToContents(
+		const TArray<FOliveChatMessage>& Messages,
+		FString& OutSystemText
+	);
+
+	/** Convert tools to Google functionDeclarations format */
+	TArray<TSharedPtr<FJsonValue>> ConvertToolsToJson(const TArray<FOliveToolDefinition>& Tools);
+
+	/** Build the streaming API URL with model name and API key */
+	FString BuildRequestUrl() const;
 
 	// ==========================================
 	// Response Handling
@@ -71,19 +88,16 @@ private:
 	/** Process raw SSE data from the progress callback */
 	void ProcessSSEData(const FString& Data);
 
-	/** Process a single SSE line (event: or data: prefix) */
+	/** Process a single SSE line */
 	void ProcessSSELine(const FString& Line);
 
-	/** Parse a stream event with its type and JSON payload */
-	void ParseStreamEvent(const FString& EventType, const TSharedPtr<FJsonObject>& Data);
+	/** Parse a streamed chunk from Google's candidate format */
+	void ParseStreamChunk(const TSharedPtr<FJsonObject>& ChunkJson);
 
-	/** Finalize all pending tool calls and fire callbacks */
-	void FinalizePendingToolCalls();
-
-	/** Complete the streaming response */
+	/** Handle streaming completion */
 	void CompleteStreaming();
 
-	/** Handle error */
+	/** Handle error with provider-specific messages */
 	void HandleError(const FString& ErrorMessage);
 
 	// ==========================================
@@ -106,26 +120,17 @@ private:
 	// Streaming State
 	// ==========================================
 
-	/** Buffer for incomplete SSE data (full response content for progress delta calculation) */
+	/** Buffer for tracking how much of the response has been processed */
 	FString SSEBuffer;
-
-	/** Current SSE event type (Anthropic sends event: lines before data: lines) */
-	FString CurrentEventType;
 
 	/** Accumulated full response text */
 	FString AccumulatedResponse;
 
-	/** Pending tool calls being assembled, keyed by content block index */
-	TMap<int32, FOliveStreamChunk> PendingToolCalls;
-
-	/** Accumulated partial JSON for tool arguments per block index */
-	TMap<int32, FString> PendingToolArgsJson;
-
-	/** Current content block index being processed */
-	int32 CurrentBlockIndex = -1;
-
-	/** Usage statistics accumulated from message_start and message_delta */
+	/** Usage statistics */
 	FOliveProviderUsage CurrentUsage;
+
+	/** Finish reason from the last candidate */
+	FString LastFinishReason;
 
 	// ==========================================
 	// Callbacks
@@ -140,6 +145,6 @@ private:
 	// Constants
 	// ==========================================
 
-	static const FString AnthropicApiUrl;
+	static const FString GoogleApiBaseUrl;
 	static const FString DefaultModel;
 };

@@ -5,6 +5,7 @@
 #include "MCP/OliveToolRegistry.h"
 #include "Index/OliveProjectIndex.h"
 #include "Settings/OliveAISettings.h"
+#include "Profiles/OliveFocusProfileManager.h"
 #include "OliveAIEditorModule.h"
 #include "Chat/OliveRunManager.h"
 #include "Misc/Guid.h"
@@ -115,7 +116,7 @@ void FOliveConversationManager::SetActiveContext(const TArray<FString>& AssetPat
 
 void FOliveConversationManager::SetFocusProfile(const FString& ProfileName)
 {
-	ActiveFocusProfile = ProfileName;
+	ActiveFocusProfile = FOliveFocusProfileManager::Get().NormalizeProfileName(ProfileName);
 }
 
 // ==========================================

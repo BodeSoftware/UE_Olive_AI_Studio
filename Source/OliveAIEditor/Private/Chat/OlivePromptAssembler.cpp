@@ -330,23 +330,16 @@ Project Name: {PROJECT_NAME}
 		}
 	}
 
-	// Optional profile-specific prompts
-	struct FProfilePromptFile
+	// Optional profile-specific prompts sourced from the profile manager.
+	const TArray<FOliveFocusProfile> Profiles = FOliveFocusProfileManager::Get().GetAllProfiles();
+	for (const FOliveFocusProfile& Profile : Profiles)
 	{
-		FString ProfileName;
-		FString FileName;
-	};
+		if (Profile.PromptTemplateFile.IsEmpty())
+		{
+			continue;
+		}
 
-	const TArray<FProfilePromptFile> PromptFiles = {
-		{ TEXT("Blueprint"), TEXT("ProfileBlueprint.txt") },
-		{ TEXT("AI & Behavior"), TEXT("ProfileAIBehavior.txt") },
-		{ TEXT("Level & PCG"), TEXT("ProfileLevelPCG.txt") },
-		{ TEXT("C++ & Blueprint"), TEXT("ProfileCppBlueprint.txt") }
-	};
-
-	for (const FProfilePromptFile& Entry : PromptFiles)
-	{
-		const FString ProfilePromptPath = FPaths::Combine(PluginDir, TEXT("Content/SystemPrompts"), Entry.FileName);
+		const FString ProfilePromptPath = FPaths::Combine(PluginDir, TEXT("Content/SystemPrompts"), Profile.PromptTemplateFile);
 		if (!FPaths::FileExists(ProfilePromptPath))
 		{
 			continue;
@@ -355,8 +348,8 @@ Project Name: {PROJECT_NAME}
 		FString FileContent;
 		if (FFileHelper::LoadFileToString(FileContent, *ProfilePromptPath) && !FileContent.IsEmpty())
 		{
-			ProfilePrompts.Add(Entry.ProfileName, FileContent);
-			UE_LOG(LogOliveAI, Verbose, TEXT("Loaded profile prompt: %s"), *Entry.ProfileName);
+			ProfilePrompts.Add(Profile.Name, FileContent);
+			UE_LOG(LogOliveAI, Verbose, TEXT("Loaded profile prompt: %s"), *Profile.Name);
 		}
 	}
 }

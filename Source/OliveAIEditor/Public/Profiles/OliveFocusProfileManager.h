@@ -48,6 +48,14 @@ struct OLIVEAIEDITOR_API FOliveFocusProfile
 	UPROPERTY()
 	int32 SortOrder = 0;
 
+	/** Custom profile schema version */
+	UPROPERTY()
+	int32 SchemaVersion = 1;
+
+	/** Optional file name under Content/SystemPrompts for profile-specific prompt text */
+	UPROPERTY()
+	FString PromptTemplateFile;
+
 	/** Is this a built-in profile */
 	bool bIsBuiltIn = true;
 };
@@ -82,6 +90,12 @@ public:
 
 	/** Check if a profile exists */
 	bool HasProfile(const FString& Name) const;
+
+	/** Normalize legacy profile aliases to canonical names */
+	FString NormalizeProfileName(const FString& InName) const;
+
+	/** Check if profile name is a legacy alias */
+	bool IsLegacyProfileName(const FString& InName) const;
 
 	/** Get default profile */
 	const FOliveFocusProfile& GetDefaultProfile() const;
@@ -127,6 +141,12 @@ public:
 	/** Add a custom profile */
 	void AddCustomProfile(const FOliveFocusProfile& Profile);
 
+	/** Add or update a custom profile with validation */
+	bool UpsertCustomProfile(const FOliveFocusProfile& Profile, TArray<FString>& OutErrors);
+
+	/** Validate profile definition */
+	bool ValidateProfile(const FOliveFocusProfile& Profile, TArray<FString>& OutErrors) const;
+
 	/** Remove a custom profile (cannot remove built-in) */
 	bool RemoveCustomProfile(const FString& Name);
 
@@ -135,6 +155,9 @@ public:
 
 	/** Load custom profiles from config */
 	void LoadCustomProfiles();
+
+	/** Current schema version used for custom profile persistence */
+	int32 GetCustomProfileSchemaVersion() const;
 
 private:
 	FOliveFocusProfileManager() = default;
@@ -147,4 +170,7 @@ private:
 
 	/** Names of custom (non-built-in) profiles */
 	TArray<FString> CustomProfileNames;
+
+	/** Supported schema version for custom profile serialization */
+	static constexpr int32 CustomProfileSchemaVersion = 1;
 };

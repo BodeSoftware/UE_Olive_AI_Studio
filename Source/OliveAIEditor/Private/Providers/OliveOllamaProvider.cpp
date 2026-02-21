@@ -1,56 +1,73 @@
 // Copyright Bode Software. All Rights Reserved.
 
-#include "Providers/OliveOpenRouterProvider.h"
+#include "Providers/OliveOllamaProvider.h"
 #include "OliveAIEditorModule.h"
 #include "HttpModule.h"
 #include "Interfaces/IHttpResponse.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 
-const FString FOliveOpenRouterProvider::OpenRouterApiUrl = TEXT("https://openrouter.ai/api/v1/chat/completions");
-const FString FOliveOpenRouterProvider::DefaultModel = TEXT("anthropic/claude-sonnet-4");
+const FString FOliveOllamaProvider::DefaultBaseUrl = TEXT("http://localhost:11434");
+const FString FOliveOllamaProvider::DefaultModel = TEXT("llama3.1");
 
-FOliveOpenRouterProvider::FOliveOpenRouterProvider()
+FOliveOllamaProvider::FOliveOllamaProvider()
 {
-	Config.ProviderName = TEXT("openrouter");
-	Config.BaseUrl = OpenRouterApiUrl;
+	Config.ProviderName = TEXT("ollama");
+	Config.BaseUrl = DefaultBaseUrl;
 	Config.ModelId = DefaultModel;
 }
 
-FOliveOpenRouterProvider::~FOliveOpenRouterProvider()
+FOliveOllamaProvider::~FOliveOllamaProvider()
 {
 	CancelRequest();
+}
+
+// ==========================================
+// URL Helpers
+// ==========================================
+
+FString FOliveOllamaProvider::GetCompletionsUrl() const
+{
+	FString BaseUrl = Config.BaseUrl;
+
+	// Remove trailing slash
+	while (BaseUrl.EndsWith(TEXT("/")))
+	{
+		BaseUrl.LeftChopInline(1);
+	}
+
+	// If the URL already contains the completions path, use as-is
+	if (BaseUrl.Contains(TEXT("/v1/chat/completions")))
+	{
+		return BaseUrl;
+	}
+
+	// Append the OpenAI-compatible completions endpoint
+	return BaseUrl + TEXT("/v1/chat/completions");
 }
 
 // ==========================================
 // Configuration
 // ==========================================
 
-TArray<FString> FOliveOpenRouterProvider::GetAvailableModels() const
+TArray<FString> FOliveOllamaProvider::GetAvailableModels() const
 {
-	// Popular models on OpenRouter
 	return {
-		TEXT("anthropic/claude-sonnet-4"),
-		TEXT("anthropic/claude-opus-4"),
-		TEXT("anthropic/claude-3.5-sonnet"),
-		TEXT("anthropic/claude-3-opus"),
-		TEXT("openai/gpt-4-turbo"),
-		TEXT("openai/gpt-4o"),
-		TEXT("openai/gpt-4o-mini"),
-		TEXT("google/gemini-pro-1.5"),
-		TEXT("meta-llama/llama-3.1-70b-instruct"),
-		TEXT("meta-llama/llama-3.1-405b-instruct")
+		TEXT("llama3.1"),
+		TEXT("codellama"),
+		TEXT("mistral"),
+		TEXT("deepseek-coder")
 	};
 }
 
-void FOliveOpenRouterProvider::Configure(const FOliveProviderConfig& InConfig)
+void FOliveOllamaProvider::Configure(const FOliveProviderConfig& InConfig)
 {
 	Config = InConfig;
 
 	// Use default URL if not specified
 	if (Config.BaseUrl.IsEmpty())
 	{
-		Config.BaseUrl = OpenRouterApiUrl;
+		Config.BaseUrl = DefaultBaseUrl;
 	}
 
 	// Use default model if not specified
@@ -60,20 +77,21 @@ void FOliveOpenRouterProvider::Configure(const FOliveProviderConfig& InConfig)
 	}
 }
 
-bool FOliveOpenRouterProvider::ValidateConfig(FString& OutError) const
+bool FOliveOllamaProvider::ValidateConfig(FString& OutError) const
 {
-	if (Config.ApiKey.IsEmpty())
+	if (Config.BaseUrl.IsEmpty())
 	{
-		OutError = TEXT("API key is required. Get one at https://openrouter.ai/keys");
+		OutError = TEXT("Ollama URL is required. Default is http://localhost:11434");
 		return false;
 	}
 
 	if (Config.ModelId.IsEmpty())
 	{
-		OutError = TEXT("Model ID is required");
+		OutError = TEXT("Model ID is required. Try 'llama3.1' or run 'ollama list' to see available models.");
 		return false;
 	}
 
+	// No API key required for Ollama (local only)
 	return true;
 }
 
@@ -81,7 +99,7 @@ bool FOliveOpenRouterProvider::ValidateConfig(FString& OutError) const
 // Request
 // ==========================================
 
-void FOliveOpenRouterProvider::SendMessage(
+void FOliveOllamaProvider::SendMessage(
 	const TArray<FOliveChatMessage>& Messages,
 	const TArray<FOliveToolDefinition>& Tools,
 	FOnOliveStreamChunk OnChunk,
@@ -125,13 +143,12 @@ void FOliveOpenRouterProvider::SendMessage(
 	FJsonSerializer::Serialize(RequestBody.ToSharedRef(), Writer);
 
 	// Create HTTP request
+	FString CompletionsUrl = GetCompletionsUrl();
 	CurrentRequest = FHttpModule::Get().CreateRequest();
-	CurrentRequest->SetURL(Config.BaseUrl);
+	CurrentRequest->SetURL(CompletionsUrl);
 	CurrentRequest->SetVerb(TEXT("POST"));
 	CurrentRequest->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
-	CurrentRequest->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *Config.ApiKey));
-	CurrentRequest->SetHeader(TEXT("HTTP-Referer"), TEXT("https://olivestudio.ai"));
-	CurrentRequest->SetHeader(TEXT("X-Title"), TEXT("Olive AI Studio"));
+	// No Authorization header — Ollama is local and requires no API key
 	CurrentRequest->SetContentAsString(RequestBodyString);
 	CurrentRequest->SetTimeout(Config.TimeoutSeconds);
 
@@ -152,21 +169,21 @@ void FOliveOpenRouterProvider::SendMessage(
 		}
 	);
 
-	CurrentRequest->OnProcessRequestComplete().BindRaw(this, &FOliveOpenRouterProvider::OnResponseReceived);
+	CurrentRequest->OnProcessRequestComplete().BindRaw(this, &FOliveOllamaProvider::OnResponseReceived);
 
 	// Send request
-	UE_LOG(LogOliveAI, Log, TEXT("Sending request to OpenRouter: %s"), *Config.ModelId);
+	UE_LOG(LogOliveAI, Log, TEXT("Sending request to Ollama: %s (URL: %s)"), *Config.ModelId, *CompletionsUrl);
 	CurrentRequest->ProcessRequest();
 }
 
-void FOliveOpenRouterProvider::CancelRequest()
+void FOliveOllamaProvider::CancelRequest()
 {
 	if (CurrentRequest.IsValid() && bIsBusy)
 	{
 		CurrentRequest->CancelRequest();
 		CurrentRequest.Reset();
 		bIsBusy = false;
-		UE_LOG(LogOliveAI, Log, TEXT("OpenRouter request cancelled"));
+		UE_LOG(LogOliveAI, Log, TEXT("Ollama request cancelled"));
 	}
 }
 
@@ -174,7 +191,7 @@ void FOliveOpenRouterProvider::CancelRequest()
 // Request Building
 // ==========================================
 
-TSharedPtr<FJsonObject> FOliveOpenRouterProvider::BuildRequestBody(
+TSharedPtr<FJsonObject> FOliveOllamaProvider::BuildRequestBody(
 	const TArray<FOliveChatMessage>& Messages,
 	const TArray<FOliveToolDefinition>& Tools)
 {
@@ -186,18 +203,21 @@ TSharedPtr<FJsonObject> FOliveOpenRouterProvider::BuildRequestBody(
 	if (Tools.Num() > 0)
 	{
 		Body->SetArrayField(TEXT("tools"), ConvertToolsToJson(Tools));
-		// Let the model choose when to use tools
 		Body->SetStringField(TEXT("tool_choice"), TEXT("auto"));
 	}
 
 	Body->SetBoolField(TEXT("stream"), true);
 	Body->SetNumberField(TEXT("temperature"), Config.Temperature);
-	Body->SetNumberField(TEXT("max_tokens"), Config.MaxTokens);
+
+	if (Config.MaxTokens > 0)
+	{
+		Body->SetNumberField(TEXT("max_tokens"), Config.MaxTokens);
+	}
 
 	return Body;
 }
 
-TArray<TSharedPtr<FJsonValue>> FOliveOpenRouterProvider::ConvertMessagesToJson(const TArray<FOliveChatMessage>& Messages)
+TArray<TSharedPtr<FJsonValue>> FOliveOllamaProvider::ConvertMessagesToJson(const TArray<FOliveChatMessage>& Messages)
 {
 	TArray<TSharedPtr<FJsonValue>> JsonMessages;
 
@@ -213,7 +233,7 @@ TArray<TSharedPtr<FJsonValue>> FOliveOpenRouterProvider::ConvertMessagesToJson(c
 	return JsonMessages;
 }
 
-TArray<TSharedPtr<FJsonValue>> FOliveOpenRouterProvider::ConvertToolsToJson(const TArray<FOliveToolDefinition>& Tools)
+TArray<TSharedPtr<FJsonValue>> FOliveOllamaProvider::ConvertToolsToJson(const TArray<FOliveToolDefinition>& Tools)
 {
 	TArray<TSharedPtr<FJsonValue>> JsonTools;
 
@@ -233,7 +253,7 @@ TArray<TSharedPtr<FJsonValue>> FOliveOpenRouterProvider::ConvertToolsToJson(cons
 // Response Handling
 // ==========================================
 
-void FOliveOpenRouterProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bSuccess)
+void FOliveOllamaProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bSuccess)
 {
 	if (!bIsBusy)
 	{
@@ -242,29 +262,38 @@ void FOliveOpenRouterProvider::OnResponseReceived(FHttpRequestPtr Request, FHttp
 
 	if (!bSuccess || !Response.IsValid())
 	{
-		HandleError(TEXT("Network error: Failed to connect to OpenRouter"));
+		// Ollama-specific: connection refused means the daemon isn't running
+		HandleError(TEXT("Ollama is not running. Start it with `ollama serve`."));
 		return;
 	}
 
 	int32 StatusCode = Response->GetResponseCode();
 
-	if (StatusCode == 401)
+	// Connection-level failure (no response code)
+	if (StatusCode == 0)
 	{
-		HandleError(TEXT("Invalid API key. Please check your OpenRouter API key in settings."));
+		HandleError(TEXT("Ollama is not running. Start it with `ollama serve`."));
+		return;
+	}
+
+	if (StatusCode == 404)
+	{
+		// Ollama returns 404 when the model isn't available
+		HandleError(FString::Printf(
+			TEXT("Model '%s' not found. Pull it with `ollama pull %s`."),
+			*Config.ModelId, *Config.ModelId));
+		return;
+	}
+
+	if (StatusCode == 408 || StatusCode == 504)
+	{
+		HandleError(TEXT("Request timed out. Check if Ollama is still running."));
 		return;
 	}
 
 	if (StatusCode == 429)
 	{
-		FString RetryAfter = Response->GetHeader(TEXT("Retry-After"));
-		if (!RetryAfter.IsEmpty())
-		{
-			HandleError(FString::Printf(TEXT("Rate limited. Try again in %s seconds."), *RetryAfter));
-		}
-		else
-		{
-			HandleError(TEXT("Rate limited. Please wait before trying again."));
-		}
+		HandleError(TEXT("Ollama is overloaded. Wait a moment and try again."));
 		return;
 	}
 
@@ -272,21 +301,50 @@ void FOliveOpenRouterProvider::OnResponseReceived(FHttpRequestPtr Request, FHttp
 	{
 		FString ErrorBody = Response->GetContentAsString();
 
-		// Try to parse error message
+		// Try to parse Ollama error response (can be OpenAI-format or Ollama-native)
 		TSharedPtr<FJsonObject> ErrorJson;
 		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ErrorBody);
 		if (FJsonSerializer::Deserialize(Reader, ErrorJson) && ErrorJson.IsValid())
 		{
+			// OpenAI-compatible error format
 			const TSharedPtr<FJsonObject>* ErrorObj;
 			if (ErrorJson->TryGetObjectField(TEXT("error"), ErrorObj))
 			{
 				FString ErrorMessage = (*ErrorObj)->GetStringField(TEXT("message"));
-				HandleError(FString::Printf(TEXT("API Error: %s"), *ErrorMessage));
+				if (!ErrorMessage.IsEmpty())
+				{
+					// Check for model-not-found in the error message
+					if (ErrorMessage.Contains(TEXT("not found")) || ErrorMessage.Contains(TEXT("does not exist")))
+					{
+						HandleError(FString::Printf(
+							TEXT("Model '%s' not found. Pull it with `ollama pull %s`."),
+							*Config.ModelId, *Config.ModelId));
+						return;
+					}
+
+					HandleError(FString::Printf(TEXT("Ollama error: %s"), *ErrorMessage));
+					return;
+				}
+			}
+
+			// Ollama native error format: {"error": "message string"}
+			FString NativeError;
+			if (ErrorJson->TryGetStringField(TEXT("error"), NativeError) && !NativeError.IsEmpty())
+			{
+				if (NativeError.Contains(TEXT("not found")) || NativeError.Contains(TEXT("does not exist")))
+				{
+					HandleError(FString::Printf(
+						TEXT("Model '%s' not found. Pull it with `ollama pull %s`."),
+						*Config.ModelId, *Config.ModelId));
+					return;
+				}
+
+				HandleError(FString::Printf(TEXT("Ollama error: %s"), *NativeError));
 				return;
 			}
 		}
 
-		HandleError(FString::Printf(TEXT("HTTP Error %d"), StatusCode));
+		HandleError(FString::Printf(TEXT("Ollama HTTP error %d"), StatusCode));
 		return;
 	}
 
@@ -297,7 +355,7 @@ void FOliveOpenRouterProvider::OnResponseReceived(FHttpRequestPtr Request, FHttp
 	CompleteStreaming();
 }
 
-void FOliveOpenRouterProvider::ProcessSSEData(const FString& Data)
+void FOliveOllamaProvider::ProcessSSEData(const FString& Data)
 {
 	// Split by newlines and process each line
 	TArray<FString> Lines;
@@ -309,7 +367,7 @@ void FOliveOpenRouterProvider::ProcessSSEData(const FString& Data)
 	}
 }
 
-void FOliveOpenRouterProvider::ProcessSSELine(const FString& Line)
+void FOliveOllamaProvider::ProcessSSELine(const FString& Line)
 {
 	// SSE format: "data: {...json...}"
 	if (!Line.StartsWith(TEXT("data: ")))
@@ -336,7 +394,7 @@ void FOliveOpenRouterProvider::ProcessSSELine(const FString& Line)
 	ParseStreamChunk(ChunkJson);
 }
 
-void FOliveOpenRouterProvider::ParseStreamChunk(const TSharedPtr<FJsonObject>& ChunkJson)
+void FOliveOllamaProvider::ParseStreamChunk(const TSharedPtr<FJsonObject>& ChunkJson)
 {
 	// Get choices array
 	const TArray<TSharedPtr<FJsonValue>>* Choices;
@@ -383,13 +441,14 @@ void FOliveOpenRouterProvider::ParseStreamChunk(const TSharedPtr<FJsonObject>& C
 		}
 	}
 
-	// Check for tool calls
+	// Check for tool calls (supported in llama3.1+, mistral, etc.)
+	// Models that don't support tools simply won't include tool_calls — graceful degradation
 	if (Delta->HasField(TEXT("tool_calls")))
 	{
 		ParseToolCallDelta(Delta);
 	}
 
-	// Check for usage in chunk (some providers send this)
+	// Check for usage in chunk
 	const TSharedPtr<FJsonObject>* UsagePtr;
 	if (ChunkJson->TryGetObjectField(TEXT("usage"), UsagePtr))
 	{
@@ -403,7 +462,7 @@ void FOliveOpenRouterProvider::ParseStreamChunk(const TSharedPtr<FJsonObject>& C
 // Tool Call Parsing
 // ==========================================
 
-void FOliveOpenRouterProvider::ParseToolCallDelta(const TSharedPtr<FJsonObject>& Delta)
+void FOliveOllamaProvider::ParseToolCallDelta(const TSharedPtr<FJsonObject>& Delta)
 {
 	const TArray<TSharedPtr<FJsonValue>>* ToolCallsArray;
 	if (!Delta->TryGetArrayField(TEXT("tool_calls"), ToolCallsArray))
@@ -465,7 +524,7 @@ void FOliveOpenRouterProvider::ParseToolCallDelta(const TSharedPtr<FJsonObject>&
 	}
 }
 
-void FOliveOpenRouterProvider::FinalizePendingToolCalls()
+void FOliveOllamaProvider::FinalizePendingToolCalls()
 {
 	for (auto& Pair : PendingToolCalls)
 	{
@@ -484,7 +543,7 @@ void FOliveOpenRouterProvider::FinalizePendingToolCalls()
 			{
 				// Create empty args if parsing failed
 				Call.ToolArguments = MakeShared<FJsonObject>();
-				UE_LOG(LogOliveAI, Warning, TEXT("Failed to parse tool arguments: %s"), *Call.Text);
+				UE_LOG(LogOliveAI, Warning, TEXT("Ollama: Failed to parse tool arguments: %s"), *Call.Text);
 			}
 		}
 		else
@@ -495,7 +554,7 @@ void FOliveOpenRouterProvider::FinalizePendingToolCalls()
 		// Clear text (was used for argument accumulation)
 		Call.Text.Empty();
 
-		UE_LOG(LogOliveAI, Log, TEXT("Tool call: %s (id: %s)"), *Call.ToolName, *Call.ToolCallId);
+		UE_LOG(LogOliveAI, Log, TEXT("Ollama tool call: %s (id: %s)"), *Call.ToolName, *Call.ToolCallId);
 		OnToolCallCallback.ExecuteIfBound(Call);
 	}
 
@@ -506,32 +565,29 @@ void FOliveOpenRouterProvider::FinalizePendingToolCalls()
 // Completion
 // ==========================================
 
-void FOliveOpenRouterProvider::CompleteStreaming()
+void FOliveOllamaProvider::CompleteStreaming()
 {
 	CurrentUsage.Model = Config.ModelId;
 
-	// Estimate cost (rough approximation)
-	// Claude Sonnet: ~$3/1M input, ~$15/1M output
-	double InputCost = CurrentUsage.PromptTokens * 0.000003;
-	double OutputCost = CurrentUsage.CompletionTokens * 0.000015;
-	CurrentUsage.EstimatedCostUSD = InputCost + OutputCost;
+	// Ollama is local — no cost
+	CurrentUsage.EstimatedCostUSD = 0.0;
 
 	bIsBusy = false;
 	CurrentRequest.Reset();
 
-	UE_LOG(LogOliveAI, Log, TEXT("OpenRouter request complete. Tokens: %d prompt, %d completion"),
-		CurrentUsage.PromptTokens, CurrentUsage.CompletionTokens);
+	UE_LOG(LogOliveAI, Log, TEXT("Ollama request complete. Model: %s, Tokens: %d prompt, %d completion"),
+		*Config.ModelId, CurrentUsage.PromptTokens, CurrentUsage.CompletionTokens);
 
 	OnCompleteCallback.ExecuteIfBound(AccumulatedResponse, CurrentUsage);
 }
 
-void FOliveOpenRouterProvider::HandleError(const FString& ErrorMessage)
+void FOliveOllamaProvider::HandleError(const FString& ErrorMessage)
 {
 	LastError = ErrorMessage;
 	bIsBusy = false;
 	CurrentRequest.Reset();
 
-	UE_LOG(LogOliveAI, Error, TEXT("OpenRouter error: %s"), *ErrorMessage);
+	UE_LOG(LogOliveAI, Error, TEXT("Ollama error: %s"), *ErrorMessage);
 	OnErrorCallback.ExecuteIfBound(ErrorMessage);
 }
 
@@ -539,7 +595,7 @@ void FOliveOpenRouterProvider::HandleError(const FString& ErrorMessage)
 // Connection Validation
 // ==========================================
 
-void FOliveOpenRouterProvider::ValidateConnection(TFunction<void(bool bSuccess, const FString& Message)> Callback) const
+void FOliveOllamaProvider::ValidateConnection(TFunction<void(bool bSuccess, const FString& Message)> Callback) const
 {
 	FString Error;
 	if (!ValidateConfig(Error))
@@ -548,48 +604,79 @@ void FOliveOpenRouterProvider::ValidateConnection(TFunction<void(bool bSuccess, 
 		return;
 	}
 
+	// Build tags URL from base URL
+	FString BaseUrl = Config.BaseUrl;
+	while (BaseUrl.EndsWith(TEXT("/")))
+	{
+		BaseUrl.LeftChopInline(1);
+	}
+	FString TagsUrl = BaseUrl + TEXT("/api/tags");
+
+	FString ModelToCheck = Config.ModelId;
+
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
-	Request->SetURL(TEXT("https://openrouter.ai/api/v1/auth/key"));
+	Request->SetURL(TagsUrl);
 	Request->SetVerb(TEXT("GET"));
-	Request->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *Config.ApiKey));
 
 	Request->OnProcessRequestComplete().BindLambda(
-		[Callback](FHttpRequestPtr /*Req*/, FHttpResponsePtr Response, bool bConnected)
+		[Callback, ModelToCheck](FHttpRequestPtr /*Req*/, FHttpResponsePtr Response, bool bConnected)
 		{
 			if (!bConnected || !Response.IsValid())
 			{
-				Callback(false, TEXT("Cannot connect to OpenRouter. Check your internet connection."));
+				Callback(false, TEXT("Ollama is not running. Start it with `ollama serve`."));
 				return;
 			}
 
 			int32 Code = Response->GetResponseCode();
-			if (Code == 200)
+			if (Code != 200)
 			{
-				// Try to parse credits info
-				TSharedPtr<FJsonObject> Json;
-				TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Response->GetContentAsString());
-				if (FJsonSerializer::Deserialize(Reader, Json) && Json.IsValid())
+				Callback(false, FString::Printf(TEXT("Ollama returned HTTP %d. Is Ollama running correctly?"), Code));
+				return;
+			}
+
+			// Parse the response to check if the configured model is available
+			TSharedPtr<FJsonObject> Json;
+			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Response->GetContentAsString());
+			if (!FJsonSerializer::Deserialize(Reader, Json) || !Json.IsValid())
+			{
+				Callback(true, TEXT("Connected to Ollama."));
+				return;
+			}
+
+			const TArray<TSharedPtr<FJsonValue>>* ModelsArray;
+			if (!Json->TryGetArrayField(TEXT("models"), ModelsArray))
+			{
+				Callback(true, TEXT("Connected to Ollama."));
+				return;
+			}
+
+			// Check if the configured model is in the list
+			bool bModelFound = false;
+			for (const TSharedPtr<FJsonValue>& ModelValue : *ModelsArray)
+			{
+				const TSharedPtr<FJsonObject>* ModelObj;
+				if (ModelValue->TryGetObject(ModelObj))
 				{
-					const TSharedPtr<FJsonObject>* DataObj;
-					if (Json->TryGetObjectField(TEXT("data"), DataObj))
+					FString ModelName;
+					if ((*ModelObj)->TryGetStringField(TEXT("name"), ModelName))
 					{
-						double Credits = 0.0;
-						if ((*DataObj)->TryGetNumberField(TEXT("limit_remaining"), Credits))
+						// Ollama returns names like "llama3.1:latest" — check prefix match
+						if (ModelName.StartsWith(ModelToCheck) || ModelToCheck.StartsWith(ModelName.Left(ModelName.Find(TEXT(":")))))
 						{
-							Callback(true, FString::Printf(TEXT("Connected to OpenRouter. Remaining credits: $%.2f"), Credits));
-							return;
+							bModelFound = true;
+							break;
 						}
 					}
 				}
-				Callback(true, TEXT("Connected to OpenRouter. API key valid."));
 			}
-			else if (Code == 401)
+
+			if (bModelFound)
 			{
-				Callback(false, TEXT("Invalid OpenRouter API key. Get one at https://openrouter.ai/keys"));
+				Callback(true, FString::Printf(TEXT("Connected. Model '%s' available."), *ModelToCheck));
 			}
 			else
 			{
-				Callback(false, FString::Printf(TEXT("OpenRouter returned HTTP %d: %s"), Code, *Response->GetContentAsString()));
+				Callback(false, FString::Printf(TEXT("Connected but model '%s' not found. Run `ollama pull %s`."), *ModelToCheck, *ModelToCheck));
 			}
 		});
 

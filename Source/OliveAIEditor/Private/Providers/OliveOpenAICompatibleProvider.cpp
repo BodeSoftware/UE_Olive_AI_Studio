@@ -1,23 +1,18 @@
 // Copyright Bode Software. All Rights Reserved.
 
-#include "Providers/OliveOpenRouterProvider.h"
+#include "Providers/OliveOpenAICompatibleProvider.h"
 #include "OliveAIEditorModule.h"
 #include "HttpModule.h"
 #include "Interfaces/IHttpResponse.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 
-const FString FOliveOpenRouterProvider::OpenRouterApiUrl = TEXT("https://openrouter.ai/api/v1/chat/completions");
-const FString FOliveOpenRouterProvider::DefaultModel = TEXT("anthropic/claude-sonnet-4");
-
-FOliveOpenRouterProvider::FOliveOpenRouterProvider()
+FOliveOpenAICompatibleProvider::FOliveOpenAICompatibleProvider()
 {
-	Config.ProviderName = TEXT("openrouter");
-	Config.BaseUrl = OpenRouterApiUrl;
-	Config.ModelId = DefaultModel;
+	Config.ProviderName = TEXT("openai_compatible");
 }
 
-FOliveOpenRouterProvider::~FOliveOpenRouterProvider()
+FOliveOpenAICompatibleProvider::~FOliveOpenAICompatibleProvider()
 {
 	CancelRequest();
 }
@@ -26,62 +21,65 @@ FOliveOpenRouterProvider::~FOliveOpenRouterProvider()
 // Configuration
 // ==========================================
 
-TArray<FString> FOliveOpenRouterProvider::GetAvailableModels() const
+TArray<FString> FOliveOpenAICompatibleProvider::GetAvailableModels() const
 {
-	// Popular models on OpenRouter
-	return {
-		TEXT("anthropic/claude-sonnet-4"),
-		TEXT("anthropic/claude-opus-4"),
-		TEXT("anthropic/claude-3.5-sonnet"),
-		TEXT("anthropic/claude-3-opus"),
-		TEXT("openai/gpt-4-turbo"),
-		TEXT("openai/gpt-4o"),
-		TEXT("openai/gpt-4o-mini"),
-		TEXT("google/gemini-pro-1.5"),
-		TEXT("meta-llama/llama-3.1-70b-instruct"),
-		TEXT("meta-llama/llama-3.1-405b-instruct")
-	};
+	// No hardcoded models — user types the model name for their endpoint
+	return {};
 }
 
-void FOliveOpenRouterProvider::Configure(const FOliveProviderConfig& InConfig)
+void FOliveOpenAICompatibleProvider::Configure(const FOliveProviderConfig& InConfig)
 {
 	Config = InConfig;
-
-	// Use default URL if not specified
-	if (Config.BaseUrl.IsEmpty())
-	{
-		Config.BaseUrl = OpenRouterApiUrl;
-	}
-
-	// Use default model if not specified
-	if (Config.ModelId.IsEmpty())
-	{
-		Config.ModelId = DefaultModel;
-	}
 }
 
-bool FOliveOpenRouterProvider::ValidateConfig(FString& OutError) const
+bool FOliveOpenAICompatibleProvider::ValidateConfig(FString& OutError) const
 {
-	if (Config.ApiKey.IsEmpty())
+	if (Config.BaseUrl.IsEmpty())
 	{
-		OutError = TEXT("API key is required. Get one at https://openrouter.ai/keys");
+		OutError = TEXT("Base URL is required. Enter the URL of your OpenAI-compatible endpoint (e.g., http://localhost:1234/v1).");
 		return false;
 	}
 
 	if (Config.ModelId.IsEmpty())
 	{
-		OutError = TEXT("Model ID is required");
+		OutError = TEXT("Model name is required. Enter the model name your endpoint serves.");
 		return false;
 	}
 
+	// API key is optional — many local endpoints don't require one
+
 	return true;
+}
+
+// ==========================================
+// URL Helpers
+// ==========================================
+
+FString FOliveOpenAICompatibleProvider::GetCompletionsUrl() const
+{
+	FString Url = Config.BaseUrl;
+
+	// Remove trailing slash for consistent handling
+	while (Url.EndsWith(TEXT("/")))
+	{
+		Url.LeftChopInline(1);
+	}
+
+	// Append /chat/completions if the URL doesn't already end with it
+	if (!Url.EndsWith(TEXT("/chat/completions")))
+	{
+		// Check if URL ends with /v1 or similar path — just append /chat/completions
+		Url += TEXT("/chat/completions");
+	}
+
+	return Url;
 }
 
 // ==========================================
 // Request
 // ==========================================
 
-void FOliveOpenRouterProvider::SendMessage(
+void FOliveOpenAICompatibleProvider::SendMessage(
 	const TArray<FOliveChatMessage>& Messages,
 	const TArray<FOliveToolDefinition>& Tools,
 	FOnOliveStreamChunk OnChunk,
@@ -124,14 +122,21 @@ void FOliveOpenRouterProvider::SendMessage(
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&RequestBodyString);
 	FJsonSerializer::Serialize(RequestBody.ToSharedRef(), Writer);
 
+	// Resolve the endpoint URL
+	FString CompletionsUrl = GetCompletionsUrl();
+
 	// Create HTTP request
 	CurrentRequest = FHttpModule::Get().CreateRequest();
-	CurrentRequest->SetURL(Config.BaseUrl);
+	CurrentRequest->SetURL(CompletionsUrl);
 	CurrentRequest->SetVerb(TEXT("POST"));
 	CurrentRequest->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
-	CurrentRequest->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *Config.ApiKey));
-	CurrentRequest->SetHeader(TEXT("HTTP-Referer"), TEXT("https://olivestudio.ai"));
-	CurrentRequest->SetHeader(TEXT("X-Title"), TEXT("Olive AI Studio"));
+
+	// Only set Authorization header if API key is provided
+	if (!Config.ApiKey.IsEmpty())
+	{
+		CurrentRequest->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *Config.ApiKey));
+	}
+
 	CurrentRequest->SetContentAsString(RequestBodyString);
 	CurrentRequest->SetTimeout(Config.TimeoutSeconds);
 
@@ -152,21 +157,21 @@ void FOliveOpenRouterProvider::SendMessage(
 		}
 	);
 
-	CurrentRequest->OnProcessRequestComplete().BindRaw(this, &FOliveOpenRouterProvider::OnResponseReceived);
+	CurrentRequest->OnProcessRequestComplete().BindRaw(this, &FOliveOpenAICompatibleProvider::OnResponseReceived);
 
 	// Send request
-	UE_LOG(LogOliveAI, Log, TEXT("Sending request to OpenRouter: %s"), *Config.ModelId);
+	UE_LOG(LogOliveAI, Log, TEXT("Sending request to OpenAI-compatible endpoint: %s (model: %s)"), *CompletionsUrl, *Config.ModelId);
 	CurrentRequest->ProcessRequest();
 }
 
-void FOliveOpenRouterProvider::CancelRequest()
+void FOliveOpenAICompatibleProvider::CancelRequest()
 {
 	if (CurrentRequest.IsValid() && bIsBusy)
 	{
 		CurrentRequest->CancelRequest();
 		CurrentRequest.Reset();
 		bIsBusy = false;
-		UE_LOG(LogOliveAI, Log, TEXT("OpenRouter request cancelled"));
+		UE_LOG(LogOliveAI, Log, TEXT("OpenAI-compatible request cancelled"));
 	}
 }
 
@@ -174,7 +179,7 @@ void FOliveOpenRouterProvider::CancelRequest()
 // Request Building
 // ==========================================
 
-TSharedPtr<FJsonObject> FOliveOpenRouterProvider::BuildRequestBody(
+TSharedPtr<FJsonObject> FOliveOpenAICompatibleProvider::BuildRequestBody(
 	const TArray<FOliveChatMessage>& Messages,
 	const TArray<FOliveToolDefinition>& Tools)
 {
@@ -197,7 +202,7 @@ TSharedPtr<FJsonObject> FOliveOpenRouterProvider::BuildRequestBody(
 	return Body;
 }
 
-TArray<TSharedPtr<FJsonValue>> FOliveOpenRouterProvider::ConvertMessagesToJson(const TArray<FOliveChatMessage>& Messages)
+TArray<TSharedPtr<FJsonValue>> FOliveOpenAICompatibleProvider::ConvertMessagesToJson(const TArray<FOliveChatMessage>& Messages)
 {
 	TArray<TSharedPtr<FJsonValue>> JsonMessages;
 
@@ -213,7 +218,7 @@ TArray<TSharedPtr<FJsonValue>> FOliveOpenRouterProvider::ConvertMessagesToJson(c
 	return JsonMessages;
 }
 
-TArray<TSharedPtr<FJsonValue>> FOliveOpenRouterProvider::ConvertToolsToJson(const TArray<FOliveToolDefinition>& Tools)
+TArray<TSharedPtr<FJsonValue>> FOliveOpenAICompatibleProvider::ConvertToolsToJson(const TArray<FOliveToolDefinition>& Tools)
 {
 	TArray<TSharedPtr<FJsonValue>> JsonTools;
 
@@ -233,7 +238,7 @@ TArray<TSharedPtr<FJsonValue>> FOliveOpenRouterProvider::ConvertToolsToJson(cons
 // Response Handling
 // ==========================================
 
-void FOliveOpenRouterProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bSuccess)
+void FOliveOpenAICompatibleProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bSuccess)
 {
 	if (!bIsBusy)
 	{
@@ -242,7 +247,8 @@ void FOliveOpenRouterProvider::OnResponseReceived(FHttpRequestPtr Request, FHttp
 
 	if (!bSuccess || !Response.IsValid())
 	{
-		HandleError(TEXT("Network error: Failed to connect to OpenRouter"));
+		FString Url = GetCompletionsUrl();
+		HandleError(FString::Printf(TEXT("Cannot connect to %s. Verify the server is running and the URL is correct."), *Url));
 		return;
 	}
 
@@ -250,7 +256,13 @@ void FOliveOpenRouterProvider::OnResponseReceived(FHttpRequestPtr Request, FHttp
 
 	if (StatusCode == 401)
 	{
-		HandleError(TEXT("Invalid API key. Please check your OpenRouter API key in settings."));
+		HandleError(TEXT("Authentication failed (HTTP 401). Check your API key for this endpoint."));
+		return;
+	}
+
+	if (StatusCode == 403)
+	{
+		HandleError(TEXT("Access denied (HTTP 403). Verify your API key and permissions for this endpoint."));
 		return;
 	}
 
@@ -259,11 +271,11 @@ void FOliveOpenRouterProvider::OnResponseReceived(FHttpRequestPtr Request, FHttp
 		FString RetryAfter = Response->GetHeader(TEXT("Retry-After"));
 		if (!RetryAfter.IsEmpty())
 		{
-			HandleError(FString::Printf(TEXT("Rate limited. Try again in %s seconds."), *RetryAfter));
+			HandleError(FString::Printf(TEXT("Rate limited by the server. Try again in %s seconds."), *RetryAfter));
 		}
 		else
 		{
-			HandleError(TEXT("Rate limited. Please wait before trying again."));
+			HandleError(TEXT("Rate limited by the server. Please wait before trying again."));
 		}
 		return;
 	}
@@ -272,7 +284,7 @@ void FOliveOpenRouterProvider::OnResponseReceived(FHttpRequestPtr Request, FHttp
 	{
 		FString ErrorBody = Response->GetContentAsString();
 
-		// Try to parse error message
+		// Try to parse error message from OpenAI-compatible error format
 		TSharedPtr<FJsonObject> ErrorJson;
 		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ErrorBody);
 		if (FJsonSerializer::Deserialize(Reader, ErrorJson) && ErrorJson.IsValid())
@@ -281,12 +293,20 @@ void FOliveOpenRouterProvider::OnResponseReceived(FHttpRequestPtr Request, FHttp
 			if (ErrorJson->TryGetObjectField(TEXT("error"), ErrorObj))
 			{
 				FString ErrorMessage = (*ErrorObj)->GetStringField(TEXT("message"));
-				HandleError(FString::Printf(TEXT("API Error: %s"), *ErrorMessage));
+				FString ErrorCode = (*ErrorObj)->GetStringField(TEXT("code"));
+
+				if (ErrorCode == TEXT("model_not_found"))
+				{
+					HandleError(FString::Printf(TEXT("Model '%s' not found on this endpoint. Check the model name."), *Config.ModelId));
+					return;
+				}
+
+				HandleError(FString::Printf(TEXT("Server error: %s"), *ErrorMessage));
 				return;
 			}
 		}
 
-		HandleError(FString::Printf(TEXT("HTTP Error %d"), StatusCode));
+		HandleError(FString::Printf(TEXT("Server returned HTTP %d"), StatusCode));
 		return;
 	}
 
@@ -297,7 +317,7 @@ void FOliveOpenRouterProvider::OnResponseReceived(FHttpRequestPtr Request, FHttp
 	CompleteStreaming();
 }
 
-void FOliveOpenRouterProvider::ProcessSSEData(const FString& Data)
+void FOliveOpenAICompatibleProvider::ProcessSSEData(const FString& Data)
 {
 	// Split by newlines and process each line
 	TArray<FString> Lines;
@@ -309,7 +329,7 @@ void FOliveOpenRouterProvider::ProcessSSEData(const FString& Data)
 	}
 }
 
-void FOliveOpenRouterProvider::ProcessSSELine(const FString& Line)
+void FOliveOpenAICompatibleProvider::ProcessSSELine(const FString& Line)
 {
 	// SSE format: "data: {...json...}"
 	if (!Line.StartsWith(TEXT("data: ")))
@@ -336,7 +356,7 @@ void FOliveOpenRouterProvider::ProcessSSELine(const FString& Line)
 	ParseStreamChunk(ChunkJson);
 }
 
-void FOliveOpenRouterProvider::ParseStreamChunk(const TSharedPtr<FJsonObject>& ChunkJson)
+void FOliveOpenAICompatibleProvider::ParseStreamChunk(const TSharedPtr<FJsonObject>& ChunkJson)
 {
 	// Get choices array
 	const TArray<TSharedPtr<FJsonValue>>* Choices;
@@ -389,7 +409,7 @@ void FOliveOpenRouterProvider::ParseStreamChunk(const TSharedPtr<FJsonObject>& C
 		ParseToolCallDelta(Delta);
 	}
 
-	// Check for usage in chunk (some providers send this)
+	// Check for usage in chunk (some endpoints send this with stream_options)
 	const TSharedPtr<FJsonObject>* UsagePtr;
 	if (ChunkJson->TryGetObjectField(TEXT("usage"), UsagePtr))
 	{
@@ -403,7 +423,7 @@ void FOliveOpenRouterProvider::ParseStreamChunk(const TSharedPtr<FJsonObject>& C
 // Tool Call Parsing
 // ==========================================
 
-void FOliveOpenRouterProvider::ParseToolCallDelta(const TSharedPtr<FJsonObject>& Delta)
+void FOliveOpenAICompatibleProvider::ParseToolCallDelta(const TSharedPtr<FJsonObject>& Delta)
 {
 	const TArray<TSharedPtr<FJsonValue>>* ToolCallsArray;
 	if (!Delta->TryGetArrayField(TEXT("tool_calls"), ToolCallsArray))
@@ -465,7 +485,7 @@ void FOliveOpenRouterProvider::ParseToolCallDelta(const TSharedPtr<FJsonObject>&
 	}
 }
 
-void FOliveOpenRouterProvider::FinalizePendingToolCalls()
+void FOliveOpenAICompatibleProvider::FinalizePendingToolCalls()
 {
 	for (auto& Pair : PendingToolCalls)
 	{
@@ -495,7 +515,7 @@ void FOliveOpenRouterProvider::FinalizePendingToolCalls()
 		// Clear text (was used for argument accumulation)
 		Call.Text.Empty();
 
-		UE_LOG(LogOliveAI, Log, TEXT("Tool call: %s (id: %s)"), *Call.ToolName, *Call.ToolCallId);
+		UE_LOG(LogOliveAI, Log, TEXT("OpenAI-compatible tool call: %s (id: %s)"), *Call.ToolName, *Call.ToolCallId);
 		OnToolCallCallback.ExecuteIfBound(Call);
 	}
 
@@ -506,32 +526,29 @@ void FOliveOpenRouterProvider::FinalizePendingToolCalls()
 // Completion
 // ==========================================
 
-void FOliveOpenRouterProvider::CompleteStreaming()
+void FOliveOpenAICompatibleProvider::CompleteStreaming()
 {
 	CurrentUsage.Model = Config.ModelId;
 
-	// Estimate cost (rough approximation)
-	// Claude Sonnet: ~$3/1M input, ~$15/1M output
-	double InputCost = CurrentUsage.PromptTokens * 0.000003;
-	double OutputCost = CurrentUsage.CompletionTokens * 0.000015;
-	CurrentUsage.EstimatedCostUSD = InputCost + OutputCost;
+	// No cost estimation for generic endpoints — pricing is unknown
+	CurrentUsage.EstimatedCostUSD = 0.0;
 
 	bIsBusy = false;
 	CurrentRequest.Reset();
 
-	UE_LOG(LogOliveAI, Log, TEXT("OpenRouter request complete. Tokens: %d prompt, %d completion"),
+	UE_LOG(LogOliveAI, Log, TEXT("OpenAI-compatible request complete. Tokens: %d prompt, %d completion"),
 		CurrentUsage.PromptTokens, CurrentUsage.CompletionTokens);
 
 	OnCompleteCallback.ExecuteIfBound(AccumulatedResponse, CurrentUsage);
 }
 
-void FOliveOpenRouterProvider::HandleError(const FString& ErrorMessage)
+void FOliveOpenAICompatibleProvider::HandleError(const FString& ErrorMessage)
 {
 	LastError = ErrorMessage;
 	bIsBusy = false;
 	CurrentRequest.Reset();
 
-	UE_LOG(LogOliveAI, Error, TEXT("OpenRouter error: %s"), *ErrorMessage);
+	UE_LOG(LogOliveAI, Error, TEXT("OpenAI-compatible endpoint error: %s"), *ErrorMessage);
 	OnErrorCallback.ExecuteIfBound(ErrorMessage);
 }
 
@@ -539,7 +556,7 @@ void FOliveOpenRouterProvider::HandleError(const FString& ErrorMessage)
 // Connection Validation
 // ==========================================
 
-void FOliveOpenRouterProvider::ValidateConnection(TFunction<void(bool bSuccess, const FString& Message)> Callback) const
+void FOliveOpenAICompatibleProvider::ValidateConnection(TFunction<void(bool bSuccess, const FString& Message)> Callback) const
 {
 	FString Error;
 	if (!ValidateConfig(Error))
@@ -548,48 +565,58 @@ void FOliveOpenRouterProvider::ValidateConnection(TFunction<void(bool bSuccess, 
 		return;
 	}
 
+	// Build models URL from base URL
+	FString BaseUrl = Config.BaseUrl;
+	while (BaseUrl.EndsWith(TEXT("/")))
+	{
+		BaseUrl.LeftChopInline(1);
+	}
+
+	// Try /v1/models if base URL doesn't already include /v1
+	FString ModelsUrl;
+	if (BaseUrl.Contains(TEXT("/v1")))
+	{
+		// Strip to the /v1 part and add /models
+		int32 V1Idx = BaseUrl.Find(TEXT("/v1"));
+		ModelsUrl = BaseUrl.Left(V1Idx) + TEXT("/v1/models");
+	}
+	else
+	{
+		ModelsUrl = BaseUrl + TEXT("/v1/models");
+	}
+
+	FString EndpointUrl = Config.BaseUrl;
+
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
-	Request->SetURL(TEXT("https://openrouter.ai/api/v1/auth/key"));
+	Request->SetURL(ModelsUrl);
 	Request->SetVerb(TEXT("GET"));
-	Request->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *Config.ApiKey));
+	if (!Config.ApiKey.IsEmpty())
+	{
+		Request->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *Config.ApiKey));
+	}
 
 	Request->OnProcessRequestComplete().BindLambda(
-		[Callback](FHttpRequestPtr /*Req*/, FHttpResponsePtr Response, bool bConnected)
+		[Callback, EndpointUrl](FHttpRequestPtr /*Req*/, FHttpResponsePtr Response, bool bConnected)
 		{
 			if (!bConnected || !Response.IsValid())
 			{
-				Callback(false, TEXT("Cannot connect to OpenRouter. Check your internet connection."));
+				Callback(false, FString::Printf(TEXT("Cannot connect to %s. Check the endpoint URL."), *EndpointUrl));
 				return;
 			}
 
 			int32 Code = Response->GetResponseCode();
-			if (Code == 200)
+			if (Code >= 200 && Code < 300)
 			{
-				// Try to parse credits info
-				TSharedPtr<FJsonObject> Json;
-				TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Response->GetContentAsString());
-				if (FJsonSerializer::Deserialize(Reader, Json) && Json.IsValid())
-				{
-					const TSharedPtr<FJsonObject>* DataObj;
-					if (Json->TryGetObjectField(TEXT("data"), DataObj))
-					{
-						double Credits = 0.0;
-						if ((*DataObj)->TryGetNumberField(TEXT("limit_remaining"), Credits))
-						{
-							Callback(true, FString::Printf(TEXT("Connected to OpenRouter. Remaining credits: $%.2f"), Credits));
-							return;
-						}
-					}
-				}
-				Callback(true, TEXT("Connected to OpenRouter. API key valid."));
+				Callback(true, TEXT("Endpoint reachable. Connection valid."));
 			}
 			else if (Code == 401)
 			{
-				Callback(false, TEXT("Invalid OpenRouter API key. Get one at https://openrouter.ai/keys"));
+				Callback(false, TEXT("Authentication failed. Check your API key."));
 			}
 			else
 			{
-				Callback(false, FString::Printf(TEXT("OpenRouter returned HTTP %d: %s"), Code, *Response->GetContentAsString()));
+				// Even a non-200 response means the endpoint is reachable
+				Callback(true, FString::Printf(TEXT("Endpoint reachable (HTTP %d). Models endpoint may not be supported."), Code));
 			}
 		});
 

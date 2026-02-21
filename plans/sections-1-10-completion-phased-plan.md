@@ -88,6 +88,8 @@ The order is optimized to reduce rework:
 - Implement provider clients and factory wiring for:
   - OpenAI Direct
   - Google Direct
+  - OpenAI Compatible
+  - Z.AI
   - Ollama
 - Add provider-specific model lists and request/response adapters.
 - Add connection validation UX per provider.

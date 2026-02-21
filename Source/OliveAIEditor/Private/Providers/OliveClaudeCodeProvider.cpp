@@ -680,3 +680,20 @@ void FOliveClaudeCodeProvider::ReadProcessOutput()
 {
 	// Handled in reader thread
 }
+
+// ==========================================
+// Connection Validation
+// ==========================================
+
+void FOliveClaudeCodeProvider::ValidateConnection(TFunction<void(bool bSuccess, const FString& Message)> Callback) const
+{
+	if (IsClaudeCodeInstalled())
+	{
+		FString Version = GetClaudeCodeVersion();
+		Callback(true, FString::Printf(TEXT("Claude Code CLI detected. Version: %s"), *Version));
+	}
+	else
+	{
+		Callback(false, TEXT("Claude Code CLI not found. Install it from https://docs.anthropic.com/claude-code"));
+	}
+}
