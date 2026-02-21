@@ -57,6 +57,12 @@ struct OLIVEAIEDITOR_API FOliveAssetInfo
 	bool bIsPCG = false;
 
 	UPROPERTY()
+	bool bIsCppClass = false;
+
+	UPROPERTY()
+	FString SourceHeaderPath;
+
+	UPROPERTY()
 	bool bIsMaterial = false;
 
 	UPROPERTY()
@@ -196,6 +202,22 @@ public:
 	 * Check if one class inherits from another
 	 */
 	bool IsChildOf(FName ChildClass, FName ParentClass) const;
+
+	// ==========================================
+	// C++ Class Queries
+	// ==========================================
+
+	/**
+	 * Get all native C++ classes known to the project
+	 */
+	TArray<FOliveAssetInfo> GetAllCppClasses() const;
+
+	/**
+	 * Find the source header file path for a UClass
+	 * @param ClassName Class name (e.g., "AMyCharacter")
+	 * @return Header file path or empty string
+	 */
+	FString FindHeaderForClass(const FString& ClassName) const;
 
 	// ==========================================
 	// Dependency Queries

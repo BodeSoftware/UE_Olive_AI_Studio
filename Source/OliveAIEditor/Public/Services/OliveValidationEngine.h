@@ -128,6 +128,16 @@ public:
 	void RegisterPCGRules();
 
 	/**
+	 * Register built-in C++ rules
+	 */
+	void RegisterCppRules();
+
+	/**
+	 * Register Cross-System validation rules
+	 */
+	void RegisterCrossSystemRules();
+
+	/**
 	 * Register core rules (PIE protection, schema validation, etc.)
 	 */
 	void RegisterCoreRules();
@@ -250,6 +260,149 @@ public:
 			TEXT("blackboard.remove_key"),
 			TEXT("blackboard.modify_key"),
 			TEXT("blackboard.set_parent")
+		};
+	}
+	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+};
+
+// ============================================================================
+// C++ Validation Rules
+// ============================================================================
+
+/**
+ * Rule that validates file paths for C++ source operations are safe (no traversal, within project)
+ */
+class OLIVEAIEDITOR_API FOliveCppPathSafetyRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("CppPathSafety")); }
+	virtual FString GetDescription() const override { return TEXT("Validates file paths for C++ source operations are safe"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return {
+			TEXT("cpp.read_header"), TEXT("cpp.read_source"),
+			TEXT("cpp.add_property"), TEXT("cpp.add_function"),
+			TEXT("cpp.modify_source")
+		};
+	}
+	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+};
+
+/**
+ * Rule that validates referenced C++ classes exist in reflection
+ */
+class OLIVEAIEDITOR_API FOliveCppClassExistsRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("CppClassExists")); }
+	virtual FString GetDescription() const override { return TEXT("Validates that referenced C++ classes exist in reflection"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return {
+			TEXT("cpp.read_class"), TEXT("cpp.list_blueprint_callable"),
+			TEXT("cpp.list_overridable")
+		};
+	}
+	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+};
+
+/**
+ * Rule that validates referenced C++ enums exist
+ */
+class OLIVEAIEDITOR_API FOliveCppEnumExistsRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("CppEnumExists")); }
+	virtual FString GetDescription() const override { return TEXT("Validates that referenced C++ enums exist"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return { TEXT("cpp.read_enum") };
+	}
+	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+};
+
+/**
+ * Rule that validates referenced C++ structs exist
+ */
+class OLIVEAIEDITOR_API FOliveCppStructExistsRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("CppStructExists")); }
+	virtual FString GetDescription() const override { return TEXT("Validates that referenced C++ structs exist"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return { TEXT("cpp.read_struct") };
+	}
+	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+};
+
+/**
+ * Rule that blocks C++ write operations during active compilation
+ */
+class OLIVEAIEDITOR_API FOliveCppCompileGuardRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("CppCompileGuard")); }
+	virtual FString GetDescription() const override { return TEXT("Blocks C++ write operations during active compilation"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return {
+			TEXT("cpp.create_class"), TEXT("cpp.add_property"),
+			TEXT("cpp.add_function"), TEXT("cpp.modify_source"),
+			TEXT("cpp.compile")
+		};
+	}
+	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+};
+
+// ============================================================================
+// Cross-System Validation Rules
+// ============================================================================
+
+/**
+ * Rule that limits bulk read operations to 20 assets maximum
+ */
+class OLIVEAIEDITOR_API FOliveBulkReadLimitRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("BulkReadLimit")); }
+	virtual FString GetDescription() const override { return TEXT("Limits bulk read to 20 assets maximum"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return { TEXT("project.bulk_read") };
+	}
+	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+};
+
+/**
+ * Rule that validates referenced snapshot IDs exist
+ */
+class OLIVEAIEDITOR_API FOliveSnapshotExistsRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("SnapshotExists")); }
+	virtual FString GetDescription() const override { return TEXT("Validates referenced snapshot IDs exist"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return { TEXT("project.rollback"), TEXT("project.diff") };
+	}
+	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+};
+
+/**
+ * Rule that performs safety checks for refactoring operations
+ */
+class OLIVEAIEDITOR_API FOliveRefactorSafetyRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("RefactorSafety")); }
+	virtual FString GetDescription() const override { return TEXT("Safety checks for refactoring operations"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return {
+			TEXT("project.refactor_rename"),
+			TEXT("project.implement_interface"),
+			TEXT("project.move_to_cpp")
 		};
 	}
 	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;

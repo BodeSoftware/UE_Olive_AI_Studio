@@ -165,6 +165,7 @@ Done when: common PCG graphs can be assembled/configured + executed with meaning
 Deliverables:
 - Reflection readers (UClass/enum/struct, blueprint-callable lists, overridables)
 - Source readers (headers/cpp) and optional writers (create class/add UPROPERTY/UFUNCTION)
+- Bounded source patch writer (`cpp.modify_source`)
 - Bridge context: C++ reflection enriches Blueprint edits
 - “C++ & Blueprint” profile
 
@@ -175,6 +176,7 @@ Done when: the agent can accurately describe C++ surfaces relevant to BPs, and o
 ## Phase 5 — Cross-system intelligence
 Deliverables:
 - Multi-asset operations (implement interface across project, rename/refactor with dependency awareness)
+- Blueprint-to-C++ migration bootstrap (`project.move_to_cpp`, plan + scaffold)
 - Snapshot/diff/rollback across multiple assets
 - Engine/plugin awareness (filter tools, warn on missing deps, deprecations)
 - Prompt templates exposed via MCP (review/debug/migrate/etc.)

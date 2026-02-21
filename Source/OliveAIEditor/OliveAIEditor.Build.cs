@@ -11,7 +11,7 @@ public class OliveAIEditor : ModuleRules
 
 		// Add recursive include paths for sub-module directories (Blueprint, BehaviorTree, etc.)
 		// so short includes (e.g. "OliveBlueprintTypes.h", "OliveBlackboardReader.h") resolve.
-		string[] SubModules = { "Blueprint", "BehaviorTree" };
+		string[] SubModules = { "Blueprint", "BehaviorTree", "PCG", "Cpp", "CrossSystem" };
 		foreach (string SubModule in SubModules)
 		{
 			string SubRoot = Path.Combine(ModuleDirectory, SubModule);
@@ -97,11 +97,19 @@ public class OliveAIEditor : ModuleRules
 			"AIModule",
 			"GameplayTasks",
 
+			// PCG
+			"PCG",
+
 			// Configuration
 			"Projects",
 			"DeveloperSettings",
 			"Settings",
-			"SettingsEditor"
+			"SettingsEditor",
+
+			// C++ Integration
+			"GameProjectGeneration",
+			"LiveCoding",
+			"SourceCodeAccess"
 		});
 	}
 }

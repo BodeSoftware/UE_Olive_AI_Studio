@@ -262,10 +262,24 @@ void FOliveFocusProfileManager::RegisterDefaultProfiles()
 		Profile.Name = TEXT("C++ & Blueprint");
 		Profile.DisplayName = LOCTEXT("ProfileCppBP", "C++ & Blueprint");
 		Profile.Description = LOCTEXT("ProfileCppBPDesc", "Mixed C++ and Blueprint workflows. For developers working with both.");
-		Profile.ToolCategories = { TEXT("blueprint"), TEXT("cpp"), TEXT("project") };
+		Profile.ToolCategories = { TEXT("blueprint"), TEXT("cpp"), TEXT("project"), TEXT("crosssystem") };
 		Profile.SystemPromptAddition = TEXT("You are working with both C++ and Blueprints. Consider exposing C++ functionality to Blueprint where appropriate. Use UPROPERTY, UFUNCTION with appropriate specifiers. Prefer native C++ for performance-critical code and Blueprint for rapid iteration.");
 		Profile.SortOrder = 4;
 		Profile.IconName = TEXT("Icons.CPlusPlus");
+		Profile.bIsBuiltIn = true;
+		Profiles.Add(Profile.Name, Profile);
+	}
+
+	// Full Stack
+	{
+		FOliveFocusProfile Profile;
+		Profile.Name = TEXT("Full Stack");
+		Profile.DisplayName = LOCTEXT("ProfileFullStack", "Full Stack");
+		Profile.Description = LOCTEXT("ProfileFullStackDesc", "All tools including C++, Blueprint, AI, PCG, and cross-system operations.");
+		Profile.ToolCategories = { TEXT("blueprint"), TEXT("cpp"), TEXT("behaviortree"), TEXT("blackboard"), TEXT("pcg"), TEXT("crosssystem"), TEXT("project") };
+		Profile.SystemPromptAddition = TEXT("You have access to all tools across all domains: C++, Blueprint, Behavior Trees, PCG, and cross-system operations. Consider the best tool or combination of tools for each task. Use C++ for performance-critical code, Blueprints for rapid iteration, and cross-system tools for multi-asset operations.");
+		Profile.SortOrder = 5;
+		Profile.IconName = TEXT("Icons.Settings");
 		Profile.bIsBuiltIn = true;
 		Profiles.Add(Profile.Name, Profile);
 	}

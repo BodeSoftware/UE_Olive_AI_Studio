@@ -23,6 +23,12 @@ TSharedPtr<FJsonObject> FOliveIRPCGPin::ToJson() const
 		case EOliveIRPCGDataType::Attribute: TypeStr = TEXT("attribute"); break;
 		case EOliveIRPCGDataType::Param: TypeStr = TEXT("param"); break;
 		case EOliveIRPCGDataType::Spatial: TypeStr = TEXT("spatial"); break;
+		case EOliveIRPCGDataType::LandscapeSpline: TypeStr = TEXT("landscape_spline"); break;
+		case EOliveIRPCGDataType::PolyLine: TypeStr = TEXT("polyline"); break;
+		case EOliveIRPCGDataType::Texture: TypeStr = TEXT("texture"); break;
+		case EOliveIRPCGDataType::RenderTarget: TypeStr = TEXT("render_target"); break;
+		case EOliveIRPCGDataType::DynamicMesh: TypeStr = TEXT("dynamic_mesh"); break;
+		case EOliveIRPCGDataType::Composite: TypeStr = TEXT("composite"); break;
 		case EOliveIRPCGDataType::Any: TypeStr = TEXT("any"); break;
 		default: TypeStr = TEXT("unknown"); break;
 	}
@@ -67,6 +73,12 @@ FOliveIRPCGPin FOliveIRPCGPin::FromJson(const TSharedPtr<FJsonObject>& JsonObjec
 	else if (TypeStr == TEXT("attribute")) Pin.DataType = EOliveIRPCGDataType::Attribute;
 	else if (TypeStr == TEXT("param")) Pin.DataType = EOliveIRPCGDataType::Param;
 	else if (TypeStr == TEXT("spatial")) Pin.DataType = EOliveIRPCGDataType::Spatial;
+	else if (TypeStr == TEXT("landscape_spline")) Pin.DataType = EOliveIRPCGDataType::LandscapeSpline;
+	else if (TypeStr == TEXT("polyline")) Pin.DataType = EOliveIRPCGDataType::PolyLine;
+	else if (TypeStr == TEXT("texture")) Pin.DataType = EOliveIRPCGDataType::Texture;
+	else if (TypeStr == TEXT("render_target")) Pin.DataType = EOliveIRPCGDataType::RenderTarget;
+	else if (TypeStr == TEXT("dynamic_mesh")) Pin.DataType = EOliveIRPCGDataType::DynamicMesh;
+	else if (TypeStr == TEXT("composite")) Pin.DataType = EOliveIRPCGDataType::Composite;
 	else if (TypeStr == TEXT("any")) Pin.DataType = EOliveIRPCGDataType::Any;
 	else Pin.DataType = EOliveIRPCGDataType::Unknown;
 
@@ -92,6 +104,17 @@ TSharedPtr<FJsonObject> FOliveIRPCGNode::ToJson() const
 	Json->SetStringField(TEXT("id"), Id);
 	Json->SetStringField(TEXT("type"), NodeType);
 	Json->SetStringField(TEXT("title"), Title);
+
+	if (PositionX != 0 || PositionY != 0)
+	{
+		Json->SetNumberField(TEXT("pos_x"), PositionX);
+		Json->SetNumberField(TEXT("pos_y"), PositionY);
+	}
+
+	if (!Comment.IsEmpty())
+	{
+		Json->SetStringField(TEXT("comment"), Comment);
+	}
 
 	if (InputPins.Num() > 0)
 	{
@@ -146,6 +169,17 @@ FOliveIRPCGNode FOliveIRPCGNode::FromJson(const TSharedPtr<FJsonObject>& JsonObj
 	Node.Id = JsonObject->GetStringField(TEXT("id"));
 	Node.NodeType = JsonObject->GetStringField(TEXT("type"));
 	Node.Title = JsonObject->GetStringField(TEXT("title"));
+
+	if (JsonObject->HasField(TEXT("pos_x")))
+	{
+		Node.PositionX = (int32)JsonObject->GetNumberField(TEXT("pos_x"));
+	}
+	if (JsonObject->HasField(TEXT("pos_y")))
+	{
+		Node.PositionY = (int32)JsonObject->GetNumberField(TEXT("pos_y"));
+	}
+	JsonObject->TryGetStringField(TEXT("comment"), Node.Comment);
+
 	Node.bEnabled = JsonObject->GetBoolField(TEXT("enabled"));
 	Node.bDebug = JsonObject->GetBoolField(TEXT("debug"));
 
@@ -185,6 +219,33 @@ FOliveIRPCGNode FOliveIRPCGNode::FromJson(const TSharedPtr<FJsonObject>& JsonObj
 	}
 
 	return Node;
+}
+
+// FOliveIRPCGEdge
+
+TSharedPtr<FJsonObject> FOliveIRPCGEdge::ToJson() const
+{
+	TSharedPtr<FJsonObject> Json = MakeShared<FJsonObject>();
+	Json->SetStringField(TEXT("source_node"), SourceNodeId);
+	Json->SetStringField(TEXT("source_pin"), SourcePinName);
+	Json->SetStringField(TEXT("target_node"), TargetNodeId);
+	Json->SetStringField(TEXT("target_pin"), TargetPinName);
+	return Json;
+}
+
+FOliveIRPCGEdge FOliveIRPCGEdge::FromJson(const TSharedPtr<FJsonObject>& JsonObject)
+{
+	FOliveIRPCGEdge Edge;
+	if (!JsonObject.IsValid())
+	{
+		return Edge;
+	}
+
+	Edge.SourceNodeId = JsonObject->GetStringField(TEXT("source_node"));
+	Edge.SourcePinName = JsonObject->GetStringField(TEXT("source_pin"));
+	Edge.TargetNodeId = JsonObject->GetStringField(TEXT("target_node"));
+	Edge.TargetPinName = JsonObject->GetStringField(TEXT("target_pin"));
+	return Edge;
 }
 
 // FOliveIRPCGGraphInterface
@@ -281,6 +342,16 @@ TSharedPtr<FJsonObject> FOliveIRPCGGraph::ToJson() const
 		Json->SetStringField(TEXT("output_node"), OutputNodeId);
 	}
 
+	if (Edges.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> EdgesArray;
+		for (const FOliveIRPCGEdge& Edge : Edges)
+		{
+			EdgesArray.Add(MakeShared<FJsonValueObject>(Edge.ToJson()));
+		}
+		Json->SetArrayField(TEXT("edges"), EdgesArray);
+	}
+
 	if (SubgraphPaths.Num() > 0)
 	{
 		TArray<TSharedPtr<FJsonValue>> SubgraphsArray;
@@ -320,6 +391,15 @@ FOliveIRPCGGraph FOliveIRPCGGraph::FromJson(const TSharedPtr<FJsonObject>& JsonO
 		for (const auto& NodeValue : *NodesArray)
 		{
 			Graph.Nodes.Add(FOliveIRPCGNode::FromJson(NodeValue->AsObject()));
+		}
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* EdgesArray;
+	if (JsonObject->TryGetArrayField(TEXT("edges"), EdgesArray))
+	{
+		for (const auto& EdgeValue : *EdgesArray)
+		{
+			Graph.Edges.Add(FOliveIRPCGEdge::FromJson(EdgeValue->AsObject()));
 		}
 	}
 

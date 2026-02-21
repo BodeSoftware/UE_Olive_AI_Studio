@@ -1387,6 +1387,9 @@ Uses UE runtime reflection — works for engine, plugin, and project classes.
 
 `cpp.create_class`, `cpp.add_property`, `cpp.add_function`, `cpp.modify_source`, `cpp.compile`
 
+Implementation note (2026-02-20):
+- `cpp.modify_source` added with bounded anchor-based operations (`replace`, `insert_before`, `insert_after`) and range guards.
+
 ### Bridge Context
 
 C++ reflection data automatically enriches Blueprint operations: parent class API, available overrides, enum values, delegate signatures.
@@ -1422,6 +1425,11 @@ C++ reflection data automatically enriches Blueprint operations: parent class AP
 ### Snapshot & Rollback
 
 `project.snapshot`, `project.list_snapshots`, `project.rollback`, `project.diff`
+
+Implementation note (2026-02-20):
+- `project.move_to_cpp` added with non-destructive "plan + scaffold" behavior.
+- `project.rollback` now supports preview + confirmation token before execution.
+- Snapshot flow stores package backups for write-back restore attempts.
 
 ### Dependency-Aware Operations
 

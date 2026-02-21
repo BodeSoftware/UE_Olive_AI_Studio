@@ -22,6 +22,12 @@ enum class EOliveIRPCGDataType : uint8
 	Attribute,
 	Param,
 	Spatial,
+	LandscapeSpline,
+	PolyLine,
+	Texture,
+	RenderTarget,
+	DynamicMesh,
+	Composite,
 	Any,
 	Unknown
 };
@@ -72,6 +78,17 @@ struct OLIVEAIRUNTIME_API FOliveIRPCGNode
 	UPROPERTY()
 	FString Title;
 
+	/** Editor node position */
+	UPROPERTY()
+	int32 PositionX = 0;
+
+	UPROPERTY()
+	int32 PositionY = 0;
+
+	/** Optional node comment */
+	UPROPERTY()
+	FString Comment;
+
 	UPROPERTY()
 	TArray<FOliveIRPCGPin> InputPins;
 
@@ -92,6 +109,30 @@ struct OLIVEAIRUNTIME_API FOliveIRPCGNode
 
 	TSharedPtr<FJsonObject> ToJson() const;
 	static FOliveIRPCGNode FromJson(const TSharedPtr<FJsonObject>& JsonObject);
+};
+
+/**
+ * PCG edge connecting two pins
+ */
+USTRUCT(BlueprintType)
+struct OLIVEAIRUNTIME_API FOliveIRPCGEdge
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FString SourceNodeId;
+
+	UPROPERTY()
+	FString SourcePinName;
+
+	UPROPERTY()
+	FString TargetNodeId;
+
+	UPROPERTY()
+	FString TargetPinName;
+
+	TSharedPtr<FJsonObject> ToJson() const;
+	static FOliveIRPCGEdge FromJson(const TSharedPtr<FJsonObject>& JsonObject);
 };
 
 /**
@@ -145,6 +186,10 @@ struct OLIVEAIRUNTIME_API FOliveIRPCGGraph
 	/** Output node ID */
 	UPROPERTY()
 	FString OutputNodeId;
+
+	/** Explicit edge list */
+	UPROPERTY()
+	TArray<FOliveIRPCGEdge> Edges;
 
 	/** Subgraphs referenced by this graph */
 	UPROPERTY()

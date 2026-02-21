@@ -231,6 +231,12 @@ private:
 	/** Handle resources/read request */
 	TSharedPtr<FJsonObject> HandleResourcesRead(const TSharedPtr<FJsonObject>& Params);
 
+	/** Handle prompts/list request */
+	TSharedPtr<FJsonObject> HandlePromptsList(const TSharedPtr<FJsonObject>& Params);
+
+	/** Handle prompts/get request */
+	TSharedPtr<FJsonObject> HandlePromptsGet(const TSharedPtr<FJsonObject>& Params);
+
 	/** Handle ping request */
 	TSharedPtr<FJsonObject> HandlePing();
 

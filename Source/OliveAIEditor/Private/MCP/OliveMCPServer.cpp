@@ -3,6 +3,7 @@
 #include "MCP/OliveMCPServer.h"
 #include "MCP/OliveJsonRpc.h"
 #include "MCP/OliveToolRegistry.h"
+#include "OliveMCPPromptTemplates.h"
 #include "Index/OliveProjectIndex.h"
 #include "Catalog/OliveNodeCatalog.h"
 #include "Catalog/OliveBTNodeCatalog.h"
@@ -296,6 +297,14 @@ TSharedPtr<FJsonObject> FOliveMCPServer::ProcessJsonRpcRequest(
 	{
 		return OliveJsonRpc::CreateResponse(RequestId, HandleResourcesRead(Params));
 	}
+	else if (Method == TEXT("prompts/list"))
+	{
+		return OliveJsonRpc::CreateResponse(RequestId, HandlePromptsList(Params));
+	}
+	else if (Method == TEXT("prompts/get"))
+	{
+		return OliveJsonRpc::CreateResponse(RequestId, HandlePromptsGet(Params));
+	}
 	else if (Method == TEXT("ping"))
 	{
 		return OliveJsonRpc::CreateResponse(RequestId, HandlePing());
@@ -395,6 +404,10 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleInitialize(
 	TSharedPtr<FJsonObject> ResourcesCapability = MakeShared<FJsonObject>();
 	ResourcesCapability->SetBoolField(TEXT("listChanged"), true);
 	ServerCapabilities->SetObjectField(TEXT("resources"), ResourcesCapability);
+
+	// Prompts capability
+	TSharedPtr<FJsonObject> PromptsCapability = MakeShared<FJsonObject>();
+	ServerCapabilities->SetObjectField(TEXT("prompts"), PromptsCapability);
 
 	Result->SetObjectField(TEXT("capabilities"), ServerCapabilities);
 
@@ -686,6 +699,43 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleResourcesRead(const TSharedPtr<FJ
 	Result->SetArrayField(TEXT("contents"), Contents);
 
 	return Result;
+}
+
+TSharedPtr<FJsonObject> FOliveMCPServer::HandlePromptsList(const TSharedPtr<FJsonObject>& Params)
+{
+	return FOliveMCPPromptTemplates::Get().GetPromptsList();
+}
+
+TSharedPtr<FJsonObject> FOliveMCPServer::HandlePromptsGet(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return OliveJsonRpc::CreateErrorResponse(
+			nullptr,
+			OliveJsonRpc::INVALID_PARAMS,
+			TEXT("Missing parameters")
+		)->GetObjectField(TEXT("error"));
+	}
+
+	FString Name = Params->GetStringField(TEXT("name"));
+
+	if (!FOliveMCPPromptTemplates::Get().HasTemplate(Name))
+	{
+		return OliveJsonRpc::CreateErrorResponse(
+			nullptr,
+			OliveJsonRpc::INVALID_PARAMS,
+			FString::Printf(TEXT("Unknown prompt: %s"), *Name)
+		)->GetObjectField(TEXT("error"));
+	}
+
+	TSharedPtr<FJsonObject> Arguments = nullptr;
+	const TSharedPtr<FJsonObject>* ArgsPtr;
+	if (Params->TryGetObjectField(TEXT("arguments"), ArgsPtr))
+	{
+		Arguments = *ArgsPtr;
+	}
+
+	return FOliveMCPPromptTemplates::Get().GetPrompt(Name, Arguments);
 }
 
 TSharedPtr<FJsonObject> FOliveMCPServer::HandlePing()

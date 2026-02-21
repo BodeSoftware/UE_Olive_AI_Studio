@@ -376,6 +376,33 @@ TArray<FOliveAssetInfo> FOliveProjectIndex::GetAllBehaviorTrees() const
 	return Results;
 }
 
+TArray<FOliveAssetInfo> FOliveProjectIndex::GetAllCppClasses() const
+{
+	FScopeLock Lock(&IndexLock);
+	TArray<FOliveAssetInfo> Result;
+	for (const auto& Pair : AssetIndex)
+	{
+		if (Pair.Value.bIsCppClass)
+		{
+			Result.Add(Pair.Value);
+		}
+	}
+	return Result;
+}
+
+FString FOliveProjectIndex::FindHeaderForClass(const FString& ClassName) const
+{
+	FScopeLock Lock(&IndexLock);
+	for (const auto& Pair : AssetIndex)
+	{
+		if (Pair.Value.bIsCppClass && Pair.Value.Name == ClassName)
+		{
+			return Pair.Value.SourceHeaderPath;
+		}
+	}
+	return FString();
+}
+
 TArray<FName> FOliveProjectIndex::GetChildClasses(FName ParentClass) const
 {
 	FScopeLock Lock(&IndexLock);
@@ -566,6 +593,14 @@ TSharedPtr<FJsonObject> FOliveAssetInfo::ToJson() const
 	if (!AssociatedBlackboardPath.IsEmpty())
 	{
 		Json->SetStringField(TEXT("associated_blackboard"), AssociatedBlackboardPath);
+	}
+	if (bIsCppClass)
+	{
+		Json->SetBoolField(TEXT("is_cpp_class"), true);
+	}
+	if (!SourceHeaderPath.IsEmpty())
+	{
+		Json->SetStringField(TEXT("source_header"), SourceHeaderPath);
 	}
 
 	return Json;

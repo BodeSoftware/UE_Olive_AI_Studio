@@ -440,6 +440,40 @@ Use the `architect` subagent to:
 
 ---
 
+## UE Compatibility Guardrails (Critical)
+
+Unreal's startup popup ("rebuild from source") is generic. Treat it as a symptom, not a diagnosis.
+
+### Required Workflow for Any Compile/Load Failure
+
+1. Read the real errors first from:
+- Project log: `..\..\Saved\Logs\UE_Olive_AI_Toolkit.log`
+- UBT log: `C:\Users\<User>\AppData\Local\UnrealBuildTool\Log.txt`
+2. Fix the first real compiler error(s), not downstream ones.
+3. Rebuild the editor target and confirm success before concluding the issue is resolved.
+
+### Header/API Safety Rules (All Systems: Blueprint, PCG, BT, etc.)
+
+- Never guess Unreal header names or member fields.
+- Verify symbols in installed engine source under `Engine/Plugins/.../Source/.../Public` (or `Engine/Source/.../Public`) before coding.
+- If a type is forward-declared in one header but members are accessed, include the concrete defining header in the `.cpp`.
+- Prefer version-accurate APIs over legacy fields when UE changes class layouts.
+- Keep fixes surgical; avoid broad refactors during compile-break triage.
+
+### Known Pattern: UE 5.5 API Drift
+
+- PCG subgraph settings are declared in `PCGSubgraph.h` (not `PCGSubgraphSettings.h`).
+- `UPCGEdge::OtherPin` is obsolete; use `GetOtherPin(...)` with `PCGEdge.h` included.
+- Similar drift can happen in Blueprint/editor APIs; always confirm current symbols in UE 5.5 source.
+
+### Definition of Done for Build Fixes
+
+- `Build.bat <Project>Editor Win64 Development -Project="<...>.uproject"` succeeds.
+- No new compile errors in plugin modules introduced by the fix.
+- The `.uproject` opens without the rebuild loop.
+
+---
+
 ## Quick Reference
 
 ### Essential UE Headers

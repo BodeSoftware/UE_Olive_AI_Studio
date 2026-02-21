@@ -14,6 +14,12 @@
 #include "MCP/OliveBlueprintToolHandlers.h"
 #include "MCP/OliveBTToolHandlers.h"
 #include "Catalog/OliveBTNodeCatalog.h"
+#include "MCP/OlivePCGToolHandlers.h"
+#include "Catalog/OlivePCGNodeCatalog.h"
+#include "Utility/OlivePCGAvailability.h"
+#include "MCP/OliveCppToolHandlers.h"
+#include "MCP/OliveCrossSystemToolHandlers.h"
+#include "OliveMCPPromptTemplates.h"
 #include "UI/SOliveAIChatPanel.h"
 
 #include "Framework/Docking/TabManager.h"
@@ -54,6 +60,19 @@ void FOliveAIEditorModule::ShutdownModule()
 
 	// Unregister UI
 	UnregisterUI();
+
+	// Unregister Cross-System tools
+	FOliveCrossSystemToolHandlers::Get().UnregisterAllTools();
+
+	// Unregister C++ tools
+	FOliveCppToolHandlers::Get().UnregisterAllTools();
+
+	// Unregister PCG tools
+	if (FOlivePCGAvailability::IsPCGAvailable())
+	{
+		FOlivePCGToolHandlers::Get().UnregisterAllTools();
+		FOlivePCGNodeCatalog::Get().Shutdown();
+	}
 
 	// Unregister BT/BB tools
 	FOliveBTToolHandlers::Get().UnregisterAllTools();
@@ -188,6 +207,35 @@ void FOliveAIEditorModule::OnPostEngineInit()
 
 	// Register BT validation rules
 	FOliveValidationEngine::Get().RegisterBehaviorTreeRules();
+
+	// Register C++ validation rules
+	FOliveValidationEngine::Get().RegisterCppRules();
+
+	// Initialize PCG tools (guarded by plugin availability)
+	if (FOlivePCGAvailability::IsPCGAvailable())
+	{
+		FOlivePCGNodeCatalog::Get().Initialize();
+		FOlivePCGToolHandlers::Get().RegisterAllTools();
+		UE_LOG(LogOliveAI, Log, TEXT("PCG tools registered"));
+	}
+	else
+	{
+		UE_LOG(LogOliveAI, Log, TEXT("PCG plugin not available, skipping PCG tools"));
+	}
+
+	// Register C++ tools
+	FOliveCppToolHandlers::Get().RegisterAllTools();
+	UE_LOG(LogOliveAI, Log, TEXT("C++ tools registered"));
+
+	// Register Cross-System tools
+	FOliveCrossSystemToolHandlers::Get().RegisterAllTools();
+	UE_LOG(LogOliveAI, Log, TEXT("Cross-System tools registered"));
+
+	// Register Cross-System validation rules
+	FOliveValidationEngine::Get().RegisterCrossSystemRules();
+
+	// Initialize prompt templates
+	FOliveMCPPromptTemplates::Get().Initialize();
 
 	// Start MCP server if configured
 	const UOliveAISettings* Settings = UOliveAISettings::Get();
