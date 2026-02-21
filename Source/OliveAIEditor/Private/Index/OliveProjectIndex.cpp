@@ -233,6 +233,22 @@ TArray<FOliveAssetInfo> FOliveProjectIndex::SearchAssets(const FString& Query, i
 
 	FScopeLock Lock(&IndexLock);
 
+	// For @mention UX we want a sensible default list even when the query is empty.
+	// Return a small sample (unordered) rather than nothing.
+	if (Query.IsEmpty())
+	{
+		TArray<FOliveAssetInfo> Results;
+		for (const auto& Pair : AssetIndex)
+		{
+			Results.Add(Pair.Value);
+			if (Results.Num() >= MaxResults)
+			{
+				break;
+			}
+		}
+		return Results;
+	}
+
 	for (const auto& Pair : AssetIndex)
 	{
 		int32 Score = CalculateFuzzyScore(Query, Pair.Value.Name);

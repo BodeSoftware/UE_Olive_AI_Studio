@@ -8,6 +8,7 @@
 #include "Providers/IOliveAIProvider.h"
 #include "Settings/OliveAISettings.h"
 #include "OliveAIEditorModule.h"
+#include "Profiles/OliveFocusProfileManager.h"
 
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SBorder.h"
@@ -22,6 +23,13 @@
 #include "Framework/Docking/TabManager.h"
 #include "Styling/AppStyle.h"
 #include "ISettingsModule.h"
+#include "UI/OliveResultCards.h"
+#include "OliveBlueprintNavigator.h"
+#include "OliveSnapshotManager.h"
+#include "Subsystems/AssetEditorSubsystem.h"
+#include "EdGraph/EdGraphNode.h"
+#include "Editor.h"
+#include "Selection.h"
 
 #define LOCTEXT_NAMESPACE "OliveAIChatPanel"
 
@@ -39,13 +47,31 @@ TSharedRef<SDockTab> SOliveAIChatPanel::SpawnTab(const FSpawnTabArgs& Args)
 
 void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 {
-	// Initialize focus profiles
-	FocusProfiles.Add(MakeShared<FString>(TEXT("Auto")));
-	FocusProfiles.Add(MakeShared<FString>(TEXT("Blueprint")));
-	FocusProfiles.Add(MakeShared<FString>(TEXT("AI & Behavior")));
-	FocusProfiles.Add(MakeShared<FString>(TEXT("Level & PCG")));
-	FocusProfiles.Add(MakeShared<FString>(TEXT("C++ & Blueprint")));
-	CurrentFocusProfile = FocusProfiles[0];
+	// Initialize focus profiles from the source-of-truth manager (built-ins + future custom profiles).
+	{
+		const TArray<FString> ProfileNames = FOliveFocusProfileManager::Get().GetProfileNames();
+		for (const FString& Name : ProfileNames)
+		{
+			FocusProfiles.Add(MakeShared<FString>(Name));
+		}
+
+		// Fallback if something went wrong during initialization.
+		if (FocusProfiles.Num() == 0)
+		{
+			FocusProfiles.Add(MakeShared<FString>(TEXT("Auto")));
+		}
+
+		// Default to Auto if present, otherwise first item.
+		CurrentFocusProfile = FocusProfiles[0];
+		for (const TSharedPtr<FString>& ProfileOption : FocusProfiles)
+		{
+			if (ProfileOption.IsValid() && ProfileOption->Equals(TEXT("Auto"), ESearchCase::IgnoreCase))
+			{
+				CurrentFocusProfile = ProfileOption;
+				break;
+			}
+		}
+	}
 
 	// Create conversation manager
 	ConversationManager = MakeShared<FOliveConversationManager>();
@@ -63,6 +89,12 @@ void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 			}
 		}
 	}
+
+	// Initialize safety preset options
+	SafetyPresetOptions.Add(MakeShared<FString>(TEXT("Careful")));
+	SafetyPresetOptions.Add(MakeShared<FString>(TEXT("Fast")));
+	SafetyPresetOptions.Add(MakeShared<FString>(TEXT("YOLO")));
+	CurrentSafetyPreset = SafetyPresetOptions[static_cast<int32>(UOliveAISettings::Get()->SafetyPreset)];
 
 	FString ProviderError;
 	if (!ConfigureProviderFromSettings(ProviderError))
@@ -84,6 +116,13 @@ void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 	ConversationManager->OnProcessingComplete.AddSP(this, &SOliveAIChatPanel::HandleProcessingComplete);
 	ConversationManager->OnError.AddSP(this, &SOliveAIChatPanel::HandleError);
 	ConversationManager->OnConfirmationRequired.AddSP(this, &SOliveAIChatPanel::HandleConfirmationRequired);
+
+	// Subscribe to editor events for auto-context
+	SubscribeToEditorEvents();
+
+	// Subscribe to run manager events
+	FOliveRunManager::Get().OnRunStatusChanged.AddSP(this, &SOliveAIChatPanel::HandleRunStatusChanged);
+	FOliveRunManager::Get().OnRunStepChanged.AddSP(this, &SOliveAIChatPanel::HandleRunStepChanged);
 
 	// Build UI
 	ChildSlot
@@ -145,6 +184,10 @@ void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 
 SOliveAIChatPanel::~SOliveAIChatPanel()
 {
+	UnsubscribeFromEditorEvents();
+	FOliveRunManager::Get().OnRunStatusChanged.RemoveAll(this);
+	FOliveRunManager::Get().OnRunStepChanged.RemoveAll(this);
+
 	if (ConversationManager.IsValid())
 	{
 		ConversationManager->OnMessageAdded.RemoveAll(this);
@@ -184,6 +227,14 @@ TSharedRef<SWidget> SOliveAIChatPanel::BuildHeader()
 			BuildFocusDropdown()
 		]
 
+		// Safety Preset
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.Padding(4, 0)
+		[
+			BuildSafetyPresetToggle()
+		]
+
 		// New Chat Button
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
@@ -217,13 +268,30 @@ TSharedRef<SWidget> SOliveAIChatPanel::BuildFocusDropdown()
 		.OnSelectionChanged(this, &SOliveAIChatPanel::OnFocusProfileChanged)
 		.OnGenerateWidget_Lambda([](TSharedPtr<FString> Item)
 		{
-			return SNew(STextBlock).Text(FText::FromString(*Item));
+			if (!Item.IsValid())
+			{
+				return SNew(STextBlock).Text(FText::GetEmpty());
+			}
+
+			const TOptional<FOliveFocusProfile> Profile = FOliveFocusProfileManager::Get().GetProfile(*Item);
+			const FText Display = Profile.IsSet() ? Profile->DisplayName : FText::FromString(*Item);
+			const FText Tooltip = Profile.IsSet() ? Profile->Description : FText::GetEmpty();
+
+			return SNew(STextBlock)
+				.Text(Display)
+				.ToolTipText(Tooltip);
 		})
 		[
 			SNew(STextBlock)
 			.Text_Lambda([this]()
 			{
-				return CurrentFocusProfile.IsValid() ? FText::FromString(*CurrentFocusProfile) : FText::GetEmpty();
+				if (!CurrentFocusProfile.IsValid())
+				{
+					return FText::GetEmpty();
+				}
+
+				const TOptional<FOliveFocusProfile> Profile = FOliveFocusProfileManager::Get().GetProfile(*CurrentFocusProfile);
+				return Profile.IsSet() ? Profile->DisplayName : FText::FromString(*CurrentFocusProfile);
 			})
 		];
 }
@@ -236,7 +304,14 @@ TSharedRef<SWidget> SOliveAIChatPanel::BuildContextBar()
 
 TSharedRef<SWidget> SOliveAIChatPanel::BuildMessageArea()
 {
-	return SAssignNew(MessageList, SOliveAIMessageList);
+	return SAssignNew(MessageList, SOliveAIMessageList)
+		.OnNavigationAction(this, &SOliveAIChatPanel::HandleNavigationAction)
+		.OnRunPause_Lambda([](){ FOliveRunManager::Get().PauseRun(); })
+		.OnRunResume_Lambda([](){ FOliveRunManager::Get().ResumeRun(); })
+		.OnRunCancel_Lambda([](){ FOliveRunManager::Get().CancelRun(); })
+		.OnRunRetryStep_Lambda([](int32 Idx){ FOliveRunManager::Get().RetryStep(Idx); })
+		.OnRunSkipStep_Lambda([](int32 Idx){ FOliveRunManager::Get().SkipStep(Idx); })
+		.OnRunRollback_Lambda([](const FString& Id){ FOliveRunManager::Get().RollbackToCheckpoint(Id); });
 }
 
 TSharedRef<SWidget> SOliveAIChatPanel::BuildInputArea()
@@ -479,8 +554,9 @@ void SOliveAIChatPanel::HandleToolCallCompleted(const FString& ToolName, const F
 {
 	if (MessageList.IsValid())
 	{
-		FString Summary = Result.bSuccess ? TEXT("Success") : TEXT("Failed");
+		FString Summary = Result.bSuccess ? TEXT("Done") : TEXT("Failed");
 		MessageList->UpdateToolCallStatus(ToolCallId, Result.bSuccess, Summary);
+		MessageList->AddResultCard(ToolCallId, ToolName, Result);
 	}
 }
 
@@ -585,7 +661,74 @@ void SOliveAIChatPanel::OnAssetOpened(UObject* Asset)
 
 void SOliveAIChatPanel::UpdateContextFromSelection()
 {
-	// TODO: Get currently selected asset in content browser or open editor
+	if (!GEditor || !ContextBar.IsValid()) return;
+
+	UAssetEditorSubsystem* Subsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
+	if (!Subsystem) return;
+
+	UObject* ActiveAsset = LastActiveAsset.Get();
+	if (!ActiveAsset)
+	{
+		TArray<UObject*> EditedAssets = Subsystem->GetAllEditedAssets();
+		for (UObject* Asset : EditedAssets)
+		{
+			IAssetEditorInstance* Editor = Subsystem->FindEditorForAsset(Asset, false);
+			if (Editor)
+			{
+				ActiveAsset = Asset;
+				break;
+			}
+		}
+	}
+
+	if (ActiveAsset)
+	{
+		ContextBar->SetAutoContext(ActiveAsset->GetPathName(), ActiveAsset->GetName());
+		LastActiveAsset = ActiveAsset;
+	}
+
+	// Selected nodes: use the editor's global selection set (safe) instead of casting editor instances.
+	UBlueprint* BP = Cast<UBlueprint>(ActiveAsset);
+	if (BP)
+	{
+		TArray<FString> NodeNames;
+		if (USelection* Selection = GEditor->GetSelectedObjects())
+		{
+			for (FSelectionIterator It(*Selection); It; ++It)
+			{
+				UEdGraphNode* Node = Cast<UEdGraphNode>(*It);
+				if (!Node)
+				{
+					continue;
+				}
+
+				if (Node->GetTypedOuter<UBlueprint>() != BP)
+				{
+					continue;
+				}
+
+				NodeNames.Add(Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
+			}
+		}
+
+		if (NodeNames.Num() > 0)
+		{
+			ContextBar->SetSelectedNodes(NodeNames);
+		}
+		else
+		{
+			ContextBar->ClearSelectedNodes();
+		}
+	}
+	else
+	{
+		ContextBar->ClearSelectedNodes();
+	}
+
+	if (ConversationManager.IsValid())
+	{
+		ConversationManager->SetActiveContext(ContextBar->GetContextAssetPaths());
+	}
 }
 
 // ==========================================
@@ -636,6 +779,182 @@ FSlateColor SOliveAIChatPanel::GetStatusColor() const
 bool SOliveAIChatPanel::IsSendEnabled() const
 {
 	return !bIsProcessing && ConversationManager.IsValid() && ConversationManager->GetProvider().IsValid();
+}
+
+// ==========================================
+// Safety Preset Toggle
+// ==========================================
+
+TSharedRef<SWidget> SOliveAIChatPanel::BuildSafetyPresetToggle()
+{
+	return SNew(SComboBox<TSharedPtr<FString>>)
+		.OptionsSource(&SafetyPresetOptions)
+		.InitiallySelectedItem(CurrentSafetyPreset)
+		.OnSelectionChanged(this, &SOliveAIChatPanel::OnSafetyPresetChanged)
+		.OnGenerateWidget_Lambda([](TSharedPtr<FString> Item)
+		{
+			return SNew(STextBlock).Text(FText::FromString(*Item));
+		})
+		.ToolTipText(LOCTEXT("SafetyTooltip", "Safety Preset: Controls confirmation requirements for write operations"))
+		[
+			SNew(STextBlock)
+			.Text_Lambda([this]()
+			{
+				return CurrentSafetyPreset.IsValid() ? FText::FromString(*CurrentSafetyPreset) : FText::GetEmpty();
+			})
+			.ColorAndOpacity(this, &SOliveAIChatPanel::GetSafetyPresetColor)
+		];
+}
+
+void SOliveAIChatPanel::OnSafetyPresetChanged(TSharedPtr<FString> NewPreset, ESelectInfo::Type SelectInfo)
+{
+	CurrentSafetyPreset = NewPreset;
+	if (NewPreset.IsValid())
+	{
+		EOliveSafetyPreset Preset = EOliveSafetyPreset::Careful;
+		if (*NewPreset == TEXT("Fast"))
+		{
+			Preset = EOliveSafetyPreset::Fast;
+		}
+		else if (*NewPreset == TEXT("YOLO"))
+		{
+			Preset = EOliveSafetyPreset::YOLO;
+		}
+		UOliveAISettings::Get()->SetSafetyPreset(Preset);
+	}
+}
+
+FSlateColor SOliveAIChatPanel::GetSafetyPresetColor() const
+{
+	if (!CurrentSafetyPreset.IsValid())
+	{
+		return FLinearColor::White;
+	}
+
+	if (*CurrentSafetyPreset == TEXT("Careful"))
+	{
+		return FLinearColor(0.2f, 0.8f, 0.2f);
+	}
+	else if (*CurrentSafetyPreset == TEXT("Fast"))
+	{
+		return FLinearColor(0.9f, 0.8f, 0.1f);
+	}
+	else if (*CurrentSafetyPreset == TEXT("YOLO"))
+	{
+		return FLinearColor(0.9f, 0.2f, 0.2f);
+	}
+
+	return FLinearColor::White;
+}
+
+// ==========================================
+// Editor Event Subscriptions
+// ==========================================
+
+void SOliveAIChatPanel::SubscribeToEditorEvents()
+{
+	if (GEditor)
+	{
+		UAssetEditorSubsystem* Subsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
+		if (Subsystem)
+		{
+			OnAssetEditorOpenedHandle = Subsystem->OnAssetOpenedInEditor().AddLambda(
+				[this](UObject* Asset, IAssetEditorInstance* /*EditorInstance*/)
+				{
+					OnAssetOpened(Asset);
+				});
+		}
+
+		if (!OnEditorSelectionChangedHandle.IsValid())
+		{
+			OnEditorSelectionChangedHandle = USelection::SelectionChangedEvent.AddLambda([this](UObject* /*NewSelection*/)
+			{
+				UpdateContextFromSelectionDebounced();
+			});
+		}
+	}
+}
+
+void SOliveAIChatPanel::UnsubscribeFromEditorEvents()
+{
+	if (GEditor)
+	{
+		UAssetEditorSubsystem* Subsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
+		if (Subsystem)
+		{
+			Subsystem->OnAssetOpenedInEditor().Remove(OnAssetEditorOpenedHandle);
+		}
+
+		if (OnEditorSelectionChangedHandle.IsValid())
+		{
+			USelection::SelectionChangedEvent.Remove(OnEditorSelectionChangedHandle);
+			OnEditorSelectionChangedHandle.Reset();
+		}
+	}
+}
+
+void SOliveAIChatPanel::UpdateContextFromSelectionDebounced()
+{
+	if (GEditor)
+	{
+		GEditor->GetTimerManager()->SetTimer(
+			SelectionDebounceTimer,
+			FTimerDelegate::CreateSP(this, &SOliveAIChatPanel::UpdateContextFromSelection),
+			0.3f, false);
+	}
+}
+
+// ==========================================
+// Run Mode Handlers
+// ==========================================
+
+void SOliveAIChatPanel::HandleRunStatusChanged(const FOliveRun& Run)
+{
+	if (MessageList.IsValid())
+	{
+		if (Run.Steps.Num() == 0)
+		{
+			// New run started
+			MessageList->AddRunHeader(Run);
+		}
+		MessageList->UpdateRunStatus(Run);
+	}
+}
+
+void SOliveAIChatPanel::HandleRunStepChanged(const FOliveRun& Run, int32 StepIndex)
+{
+	if (MessageList.IsValid())
+	{
+		MessageList->UpdateRunStep(Run, StepIndex);
+	}
+}
+
+// ==========================================
+// Navigation Dispatch
+// ==========================================
+
+void SOliveAIChatPanel::HandleNavigationAction(const FOliveNavigationAction& Action)
+{
+	if (Action.bIsCompileError)
+	{
+		FOliveBlueprintNavigator::NavigateToCompileError(Action.AssetPath, Action.CompileError);
+	}
+	else if (Action.NodeIds.Num() > 0)
+	{
+		FOliveBlueprintNavigator::SelectAndZoomToNodes(Action.AssetPath, Action.NodeIds);
+	}
+	else if (!Action.GraphName.IsEmpty())
+	{
+		FOliveBlueprintNavigator::OpenGraph(Action.AssetPath, Action.GraphName);
+	}
+	else if (!Action.AssetPath.IsEmpty())
+	{
+		FOliveBlueprintNavigator::OpenAsset(Action.AssetPath);
+	}
+	else if (!Action.SnapshotId.IsEmpty())
+	{
+		FOliveSnapshotManager::Get().RollbackSnapshot(Action.SnapshotId, {}, true, TEXT(""));
+	}
 }
 
 #undef LOCTEXT_NAMESPACE

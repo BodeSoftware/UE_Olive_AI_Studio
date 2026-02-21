@@ -6,12 +6,14 @@
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Chat/OliveConversationManager.h"
+#include "Chat/OliveRunManager.h"
 
 class SOliveAIMessageList;
 class SOliveAIContextBar;
 class SOliveAIInputField;
 class SMultiLineEditableTextBox;
 template<typename> class SComboBox;
+struct FOliveNavigationAction;
 
 /**
  * Olive AI Chat Panel
@@ -60,6 +62,9 @@ private:
 	/** Build the focus profile dropdown */
 	TSharedRef<SWidget> BuildFocusDropdown();
 
+	/** Build the safety preset toggle */
+	TSharedRef<SWidget> BuildSafetyPresetToggle();
+
 	// ==========================================
 	// Event Handlers
 	// ==========================================
@@ -78,6 +83,12 @@ private:
 
 	/** Handle new chat button clicked */
 	FReply OnNewChatClicked();
+
+	/** Handle safety preset selection changed */
+	void OnSafetyPresetChanged(TSharedPtr<FString> NewPreset, ESelectInfo::Type SelectInfo);
+
+	/** Get color for current safety preset */
+	FSlateColor GetSafetyPresetColor() const;
 
 	// ==========================================
 	// Conversation Manager Callbacks
@@ -104,6 +115,24 @@ private:
 
 	/** Update context bar with current selection */
 	void UpdateContextFromSelection();
+
+	/** Subscribe to editor events for auto-context */
+	void SubscribeToEditorEvents();
+
+	/** Unsubscribe from editor events */
+	void UnsubscribeFromEditorEvents();
+
+	/** Debounced version of UpdateContextFromSelection */
+	void UpdateContextFromSelectionDebounced();
+
+	/** Handle run status changes */
+	void HandleRunStatusChanged(const FOliveRun& Run);
+
+	/** Handle run step changes */
+	void HandleRunStepChanged(const FOliveRun& Run, int32 StepIndex);
+
+	/** Handle navigation actions from result cards */
+	void HandleNavigationAction(const FOliveNavigationAction& Action);
 
 	// ==========================================
 	// Status
@@ -134,6 +163,10 @@ private:
 	/** Currently selected profile */
 	TSharedPtr<FString> CurrentFocusProfile;
 
+	/** Safety preset options */
+	TArray<TSharedPtr<FString>> SafetyPresetOptions;
+	TSharedPtr<FString> CurrentSafetyPreset;
+
 	// ==========================================
 	// Child Widgets
 	// ==========================================
@@ -142,6 +175,12 @@ private:
 	TSharedPtr<SOliveAIContextBar> ContextBar;
 	TSharedPtr<SOliveAIInputField> InputField;
 	TSharedPtr<SComboBox<TSharedPtr<FString>>> FocusDropdown;
+
+	/** Editor event handles */
+	FDelegateHandle OnAssetEditorOpenedHandle;
+	FDelegateHandle OnEditorSelectionChangedHandle;
+	FTimerHandle SelectionDebounceTimer;
+	TWeakObjectPtr<UObject> LastActiveAsset;
 
 	// ==========================================
 	// State Flags

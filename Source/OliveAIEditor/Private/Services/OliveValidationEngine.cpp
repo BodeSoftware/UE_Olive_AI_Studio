@@ -15,8 +15,12 @@
 #include "Reader/OliveCppSourceReader.h"
 #include "Reader/OliveCppReflectionReader.h"
 #include "UObject/UObjectIterator.h"
+#include "UObject/UObjectHash.h"
 #include "OliveSnapshotManager.h"
 #include "Internationalization/Regex.h"
+#include "Settings/OliveAISettings.h"
+#include "Engine/Blueprint.h"
+#include "PCGGraph.h"
 
 #if WITH_LIVE_CODING
 #include "ILiveCodingModule.h"
@@ -194,11 +198,16 @@ void FOliveValidationEngine::RegisterCoreRules()
 	RegisterRule(MakeShared<FOlivePIEProtectionRule>());
 	RegisterRule(MakeShared<FOliveSchemaValidationRule>());
 	RegisterRule(MakeShared<FOliveAssetExistsRule>());
+	RegisterRule(MakeShared<FOliveWriteRateLimitRule>());
 }
 
 void FOliveValidationEngine::RegisterBlueprintRules()
 {
-	// Blueprint-specific rules will be added in Phase 1
+	RegisterRule(MakeShared<FOliveBPAssetTypeRule>());
+	RegisterRule(MakeShared<FOliveBPNodeIdFormatRule>());
+	RegisterRule(MakeShared<FOliveBPNamingRule>());
+
+	UE_LOG(LogOliveAI, Log, TEXT("Registered Blueprint validation rules"));
 }
 
 void FOliveValidationEngine::RegisterBehaviorTreeRules()
@@ -210,7 +219,10 @@ void FOliveValidationEngine::RegisterBehaviorTreeRules()
 
 void FOliveValidationEngine::RegisterPCGRules()
 {
-	// PCG-specific rules will be added in Phase 3
+	RegisterRule(MakeShared<FOlivePCGAssetTypeRule>());
+	RegisterRule(MakeShared<FOlivePCGNodeClassRule>());
+
+	UE_LOG(LogOliveAI, Log, TEXT("Registered PCG validation rules"));
 }
 
 TArray<FName> FOliveValidationEngine::GetRegisteredRules() const
@@ -289,12 +301,10 @@ FOliveValidationResult FOliveSchemaValidationRule::Validate(
 		return Result;
 	}
 
-	// TODO: Implement full JSON Schema validation
-	// For now, just check required fields
-
 	const TSharedPtr<FJsonObject>& Schema = *SchemaPtr;
-	const TArray<TSharedPtr<FJsonValue>>* RequiredFields;
 
+	// Check required fields
+	const TArray<TSharedPtr<FJsonValue>>* RequiredFields;
 	if (Schema->TryGetArrayField(TEXT("required"), RequiredFields))
 	{
 		for (const TSharedPtr<FJsonValue>& RequiredField : *RequiredFields)
@@ -311,8 +321,240 @@ FOliveValidationResult FOliveSchemaValidationRule::Validate(
 		}
 	}
 
+	// If params are null, no further validation possible
+	if (!Params.IsValid())
+	{
+		return Result;
+	}
+
+	// Get properties sub-schema
+	const TSharedPtr<FJsonObject>* PropertiesPtr;
+	if (!Schema->TryGetObjectField(TEXT("properties"), PropertiesPtr))
+	{
+		return Result;
+	}
+
+	const TSharedPtr<FJsonObject>& Properties = *PropertiesPtr;
+
+	// Type-check each present parameter against schema
+	TArray<FString> ParamKeys;
+	Params->Values.GetKeys(ParamKeys);
+
+	for (const FString& Key : ParamKeys)
+	{
+		const TSharedPtr<FJsonObject>* PropertySchema;
+		if (!Properties->TryGetObjectField(Key, PropertySchema))
+		{
+			// Check additionalProperties
+			bool bAdditionalProperties = true;
+			Schema->TryGetBoolField(TEXT("additionalProperties"), bAdditionalProperties);
+
+			if (!bAdditionalProperties)
+			{
+				TArray<FString> AllowedFields;
+				Properties->Values.GetKeys(AllowedFields);
+
+				Result.AddError(
+					TEXT("UNEXPECTED_FIELD"),
+					FString::Printf(TEXT("Unexpected field: '%s'"), *Key),
+					FString::Printf(TEXT("Remove the '%s' field. Allowed fields: %s"),
+						*Key, *FString::Join(AllowedFields, TEXT(", ")))
+				);
+			}
+			continue;
+		}
+
+		const TSharedPtr<FJsonValue>& Value = Params->Values[Key];
+
+		// Type validation
+		ValidateType(Key, Value, *PropertySchema, Result);
+
+		// Enum validation
+		const TArray<TSharedPtr<FJsonValue>>* EnumValues;
+		if ((*PropertySchema)->TryGetArrayField(TEXT("enum"), EnumValues))
+		{
+			ValidateEnum(Key, Value, *EnumValues, Result);
+		}
+
+		// Nested object validation (one level)
+		FString TypeStr;
+		if ((*PropertySchema)->TryGetStringField(TEXT("type"), TypeStr) && TypeStr == TEXT("object"))
+		{
+			const TSharedPtr<FJsonObject>* NestedProperties;
+			if ((*PropertySchema)->TryGetObjectField(TEXT("properties"), NestedProperties) && Value->Type == EJson::Object)
+			{
+				const TSharedPtr<FJsonObject>& NestedObj = Value->AsObject();
+				ValidateObject(Key, NestedObj, *PropertySchema, Result);
+			}
+		}
+	}
+
 	return Result;
 }
+
+void FOliveSchemaValidationRule::ValidateType(
+	const FString& FieldName,
+	const TSharedPtr<FJsonValue>& Value,
+	const TSharedPtr<FJsonObject>& PropertySchema,
+	FOliveValidationResult& Result) const
+{
+	FString ExpectedType;
+	if (!PropertySchema->TryGetStringField(TEXT("type"), ExpectedType))
+	{
+		return; // No type constraint
+	}
+
+	if (!IsTypeMatch(Value, ExpectedType))
+	{
+		FString ActualType;
+		switch (Value->Type)
+		{
+		case EJson::String: ActualType = TEXT("string"); break;
+		case EJson::Number: ActualType = TEXT("number"); break;
+		case EJson::Boolean: ActualType = TEXT("boolean"); break;
+		case EJson::Object: ActualType = TEXT("object"); break;
+		case EJson::Array: ActualType = TEXT("array"); break;
+		case EJson::Null: ActualType = TEXT("null"); break;
+		default: ActualType = TEXT("unknown"); break;
+		}
+
+		Result.AddError(
+			TEXT("INVALID_TYPE"),
+			FString::Printf(TEXT("Field '%s': expected type '%s' but got '%s'"), *FieldName, *ExpectedType, *ActualType),
+			FString::Printf(TEXT("Provide a %s value for '%s'"), *ExpectedType, *FieldName)
+		);
+	}
+}
+
+void FOliveSchemaValidationRule::ValidateEnum(
+	const FString& FieldName,
+	const TSharedPtr<FJsonValue>& Value,
+	const TArray<TSharedPtr<FJsonValue>>& EnumValues,
+	FOliveValidationResult& Result) const
+{
+	FString ValueStr;
+	if (!Value->TryGetString(ValueStr))
+	{
+		return; // Enum validation only applies to string values
+	}
+
+	bool bFound = false;
+	TArray<FString> AllowedValues;
+	for (const TSharedPtr<FJsonValue>& EnumVal : EnumValues)
+	{
+		FString EnumStr;
+		if (EnumVal->TryGetString(EnumStr))
+		{
+			AllowedValues.Add(EnumStr);
+			if (EnumStr == ValueStr)
+			{
+				bFound = true;
+			}
+		}
+	}
+
+	if (!bFound)
+	{
+		Result.AddError(
+			TEXT("INVALID_ENUM_VALUE"),
+			FString::Printf(TEXT("Field '%s': value '%s' is not in allowed values"), *FieldName, *ValueStr),
+			FString::Printf(TEXT("Allowed values for '%s': %s"), *FieldName, *FString::Join(AllowedValues, TEXT(", ")))
+		);
+	}
+}
+
+void FOliveSchemaValidationRule::ValidateObject(
+	const FString& Prefix,
+	const TSharedPtr<FJsonObject>& Value,
+	const TSharedPtr<FJsonObject>& Schema,
+	FOliveValidationResult& Result) const
+{
+	if (!Value.IsValid() || !Schema.IsValid())
+	{
+		return;
+	}
+
+	const TSharedPtr<FJsonObject>* NestedProperties;
+	if (!Schema->TryGetObjectField(TEXT("properties"), NestedProperties))
+	{
+		return;
+	}
+
+	// Check required fields in nested object
+	const TArray<TSharedPtr<FJsonValue>>* RequiredFields;
+	if (Schema->TryGetArrayField(TEXT("required"), RequiredFields))
+	{
+		for (const TSharedPtr<FJsonValue>& RequiredField : *RequiredFields)
+		{
+			FString FieldName = RequiredField->AsString();
+			if (!Value->HasField(FieldName))
+			{
+				Result.AddError(
+					TEXT("MISSING_REQUIRED_FIELD"),
+					FString::Printf(TEXT("Missing required field: %s.%s"), *Prefix, *FieldName),
+					FString::Printf(TEXT("Add the '%s' field inside '%s'"), *FieldName, *Prefix)
+				);
+			}
+		}
+	}
+
+	// Type-check nested fields
+	TArray<FString> NestedKeys;
+	Value->Values.GetKeys(NestedKeys);
+
+	for (const FString& Key : NestedKeys)
+	{
+		const TSharedPtr<FJsonObject>* PropSchema;
+		if (!(*NestedProperties)->TryGetObjectField(Key, PropSchema))
+		{
+			bool bAdditionalProperties = true;
+			Schema->TryGetBoolField(TEXT("additionalProperties"), bAdditionalProperties);
+			if (!bAdditionalProperties)
+			{
+				Result.AddError(
+					TEXT("UNEXPECTED_FIELD"),
+					FString::Printf(TEXT("Unexpected field: '%s.%s'"), *Prefix, *Key),
+					FString::Printf(TEXT("Remove '%s' from '%s'"), *Key, *Prefix)
+				);
+			}
+			continue;
+		}
+
+		ValidateType(FString::Printf(TEXT("%s.%s"), *Prefix, *Key), Value->Values[Key], *PropSchema, Result);
+	}
+}
+
+bool FOliveSchemaValidationRule::IsTypeMatch(const TSharedPtr<FJsonValue>& Value, const FString& ExpectedType)
+{
+	if (!Value.IsValid())
+	{
+		return false;
+	}
+
+	if (ExpectedType == TEXT("string"))
+	{
+		return Value->Type == EJson::String;
+	}
+	else if (ExpectedType == TEXT("number") || ExpectedType == TEXT("integer"))
+	{
+		return Value->Type == EJson::Number;
+	}
+	else if (ExpectedType == TEXT("boolean"))
+	{
+		return Value->Type == EJson::Boolean;
+	}
+	else if (ExpectedType == TEXT("object"))
+	{
+		return Value->Type == EJson::Object;
+	}
+	else if (ExpectedType == TEXT("array"))
+	{
+		return Value->Type == EJson::Array;
+	}
+
+	return true; // Unknown type - don't reject
+}
+
 
 // FOliveAssetExistsRule implementation
 
@@ -1051,6 +1293,8 @@ void FOliveValidationEngine::RegisterCrossSystemRules()
 	RegisterRule(MakeShared<FOliveBulkReadLimitRule>());
 	RegisterRule(MakeShared<FOliveSnapshotExistsRule>());
 	RegisterRule(MakeShared<FOliveRefactorSafetyRule>());
+	RegisterRule(MakeShared<FOliveCppOnlyModeRule>());
+	RegisterRule(MakeShared<FOliveDuplicateLayerRule>());
 
 	UE_LOG(LogOliveAI, Log, TEXT("Registered Cross-System validation rules"));
 }
@@ -1125,6 +1369,53 @@ FOliveValidationResult FOliveSnapshotExistsRule::Validate(
 			}
 		}
 	}
+
+	return Result;
+}
+
+// FOliveWriteRateLimitRule - rate limits write operations
+
+FOliveValidationResult FOliveWriteRateLimitRule::Validate(
+	const FString& ToolName,
+	const TSharedPtr<FJsonObject>& Params,
+	UObject* TargetAsset)
+{
+	FOliveValidationResult Result;
+
+	const UOliveAISettings* Settings = UOliveAISettings::Get();
+	if (!Settings || Settings->MaxWriteOpsPerMinute <= 0)
+	{
+		return Result; // Unlimited
+	}
+
+	const double Now = FPlatformTime::Seconds();
+	const double WindowSeconds = 60.0;
+
+	FScopeLock Lock(&TimestampLock);
+
+	// Prune timestamps older than 60 seconds
+	WriteTimestamps.RemoveAll([Now, WindowSeconds](double Timestamp)
+	{
+		return (Now - Timestamp) > WindowSeconds;
+	});
+
+	if (WriteTimestamps.Num() >= Settings->MaxWriteOpsPerMinute)
+	{
+		// Calculate when the oldest timestamp will expire
+		const double OldestInWindow = WriteTimestamps[0];
+		const double RetryAfter = WindowSeconds - (Now - OldestInWindow);
+
+		Result.AddError(
+			TEXT("RATE_LIMITED"),
+			FString::Printf(TEXT("Write rate limit exceeded: %d operations in the last 60 seconds (max: %d)"),
+				WriteTimestamps.Num(), Settings->MaxWriteOpsPerMinute),
+			FString::Printf(TEXT("Retry after %.0f seconds, or increase 'Max Write Ops Per Minute' in Project Settings > Plugins > Olive AI Studio"), FMath::CeilToDouble(RetryAfter))
+		);
+		return Result;
+	}
+
+	// Record this write timestamp
+	WriteTimestamps.Add(Now);
 
 	return Result;
 }
@@ -1218,6 +1509,512 @@ FOliveValidationResult FOliveRefactorSafetyRule::Validate(
 					TEXT("Use only letters, numbers, and underscores"));
 			}
 		}
+	}
+
+	return Result;
+}
+
+// FOliveCppOnlyModeRule - blocks BP creation when preferred_layer=cpp
+
+FOliveValidationResult FOliveCppOnlyModeRule::Validate(
+	const FString& ToolName,
+	const TSharedPtr<FJsonObject>& Params,
+	UObject* TargetAsset)
+{
+	FOliveValidationResult Result;
+
+	if (!Params.IsValid())
+	{
+		return Result;
+	}
+
+	FString PreferredLayer;
+	if (!Params->TryGetStringField(TEXT("preferred_layer"), PreferredLayer))
+	{
+		return Result; // No preference set, allow everything
+	}
+
+	if (PreferredLayer != TEXT("cpp"))
+	{
+		return Result; // Not in C++-only mode
+	}
+
+	// In C++-only mode, block Blueprint/BT/PCG asset creation tools
+	FString Suggestion;
+	if (ToolName.StartsWith(TEXT("blueprint.")))
+	{
+		Suggestion = TEXT("Use cpp.create_class, cpp.add_property, or cpp.add_function instead");
+	}
+	else if (ToolName.StartsWith(TEXT("behaviortree.")))
+	{
+		Suggestion = TEXT("Behavior Trees are Blueprint-based assets. In C++-only mode, implement AI logic in C++ using UBTTask_BlueprintBase subclasses");
+	}
+	else if (ToolName.StartsWith(TEXT("pcg.")))
+	{
+		Suggestion = TEXT("PCG graphs are Blueprint-based assets. In C++-only mode, implement PCG logic in C++ using UPCGSettings subclasses");
+	}
+	else
+	{
+		Suggestion = TEXT("Use the equivalent C++ tool instead");
+	}
+
+	Result.AddError(
+		TEXT("CPP_ONLY_MODE"),
+		FString::Printf(TEXT("Tool '%s' is blocked because preferred_layer=cpp is set"), *ToolName),
+		Suggestion
+	);
+
+	return Result;
+}
+
+// ============================================================================
+// FOliveDuplicateLayerRule - warns about cross-layer duplication
+// ============================================================================
+
+FOliveValidationResult FOliveDuplicateLayerRule::Validate(
+	const FString& ToolName,
+	const TSharedPtr<FJsonObject>& Params,
+	UObject* TargetAsset)
+{
+	FOliveValidationResult Result;
+
+	if (!Params.IsValid())
+	{
+		return Result;
+	}
+
+	bool bAllowDuplicate = false;
+	Params->TryGetBoolField(TEXT("allow_duplicate"), bAllowDuplicate);
+
+	// Blueprint tools: check if C++ parent already has this
+	if (ToolName.StartsWith(TEXT("blueprint.")))
+	{
+		if (!TargetAsset)
+		{
+			return Result;
+		}
+
+		FString Name;
+		if (!Params->TryGetStringField(TEXT("name"), Name) || Name.IsEmpty())
+		{
+			return Result;
+		}
+
+		UBlueprint* Blueprint = Cast<UBlueprint>(TargetAsset);
+		if (!Blueprint || !Blueprint->ParentClass)
+		{
+			return Result;
+		}
+
+		UClass* ParentClass = Blueprint->ParentClass;
+
+		const bool bIsAddFunction = (ToolName == TEXT("blueprint.add_function"));
+		const bool bIsAddVariable = (ToolName == TEXT("blueprint.add_variable"));
+		const bool bIsAddDispatcher = (ToolName == TEXT("blueprint.add_event_dispatcher"));
+		const bool bIsOverrideFunction = (ToolName == TEXT("blueprint.override_function"));
+
+		if (bIsAddFunction && !bIsOverrideFunction)
+		{
+			// Check if parent C++ class has a UFUNCTION with this name
+			UFunction* ExistingFunc = ParentClass->FindFunctionByName(FName(*Name));
+			if (ExistingFunc && ExistingFunc->HasAnyFunctionFlags(FUNC_Native))
+			{
+				if (!bAllowDuplicate)
+				{
+					Result.AddError(
+						TEXT("DUPLICATE_LAYER_BLOCKED"),
+						FString::Printf(TEXT("C++ parent class '%s' already has a native function '%s'. Creating a Blueprint function with the same name is blocked to prevent shadowing."),
+							*ParentClass->GetName(), *Name),
+						FString::Printf(TEXT("Use blueprint.override_function for '%s' if you intend to override it, or choose a different function name. You can bypass by setting allow_duplicate=true."), *Name)
+					);
+				}
+				else
+				{
+					Result.AddWarning(
+						TEXT("DUPLICATE_LAYER"),
+						FString::Printf(TEXT("C++ parent class '%s' already has a native function '%s'. Creating a Blueprint version may cause confusion or shadowing."),
+							*ParentClass->GetName(), *Name),
+						FString::Printf(TEXT("Prefer blueprint.override_function for '%s' if overriding is intended."), *Name)
+					);
+				}
+			}
+		}
+		else if (bIsAddVariable || bIsAddDispatcher)
+		{
+			// Check if parent C++ class has a UPROPERTY with this name
+			FProperty* ExistingProp = ParentClass->FindPropertyByName(FName(*Name));
+			if (ExistingProp)
+			{
+				if (!bAllowDuplicate)
+				{
+					Result.AddError(
+						TEXT("DUPLICATE_LAYER_BLOCKED"),
+						FString::Printf(TEXT("C++ parent class '%s' already has a property '%s'. Creating a Blueprint member with the same name is blocked to prevent shadowing."),
+							*ParentClass->GetName(), *Name),
+						TEXT("Use the existing C++ property directly, or choose a different name. You can bypass by setting allow_duplicate=true.")
+					);
+				}
+				else
+				{
+					Result.AddWarning(
+						TEXT("DUPLICATE_LAYER"),
+						FString::Printf(TEXT("C++ parent class '%s' already has a property '%s'. Creating a Blueprint member with the same name may shadow it."),
+							*ParentClass->GetName(), *Name),
+						TEXT("Choose a different name to avoid shadowing, or use the existing C++ property.")
+					);
+				}
+			}
+		}
+	}
+	// C++ tools: check if any Blueprint extends this class and already has matching functionality
+	else if (ToolName.StartsWith(TEXT("cpp.")))
+	{
+		const bool bIsAddFunction = (ToolName == TEXT("cpp.add_function"));
+		const bool bIsAddProperty = (ToolName == TEXT("cpp.add_property"));
+		if (!bIsAddFunction && !bIsAddProperty)
+		{
+			return Result;
+		}
+
+		FString MemberName;
+		if (bIsAddFunction)
+		{
+			Params->TryGetStringField(TEXT("function_name"), MemberName);
+		}
+		else
+		{
+			Params->TryGetStringField(TEXT("property_name"), MemberName);
+		}
+		if (MemberName.IsEmpty())
+		{
+			return Result;
+		}
+
+		// Resolve class from file_path by basename (best-effort) or from class_name if present.
+		FString ClassName;
+		Params->TryGetStringField(TEXT("class_name"), ClassName);
+		if (ClassName.IsEmpty())
+		{
+			FString FilePath;
+			if (Params->TryGetStringField(TEXT("file_path"), FilePath) && !FilePath.IsEmpty())
+			{
+				ClassName = FPaths::GetBaseFilename(FilePath);
+			}
+		}
+		if (ClassName.IsEmpty())
+		{
+			return Result;
+		}
+
+		UClass* TargetClass = FindObject<UClass>(ANY_PACKAGE, *ClassName);
+		if (!TargetClass)
+		{
+			return Result; // Class may not be loaded; leave to other rules/tools.
+		}
+
+		TArray<UClass*> DerivedClasses;
+		GetDerivedClasses(TargetClass, DerivedClasses, true);
+
+		for (UClass* Derived : DerivedClasses)
+		{
+			if (!Derived || !Derived->HasAnyClassFlags(CLASS_CompiledFromBlueprint))
+			{
+				continue;
+			}
+
+			if (bIsAddFunction)
+			{
+				UFunction* BPFunc = Derived->FindFunctionByName(FName(*MemberName), EIncludeSuperFlag::ExcludeSuper);
+				if (BPFunc && !BPFunc->HasAnyFunctionFlags(FUNC_Native))
+				{
+					if (!bAllowDuplicate)
+					{
+						Result.AddError(
+							TEXT("DUPLICATE_LAYER_BLOCKED"),
+							FString::Printf(TEXT("Blueprint '%s' (derived from '%s') already defines function '%s'. Adding a C++ function with the same name is blocked to prevent conflicts."),
+								*Derived->GetName(), *ClassName, *MemberName),
+							TEXT("Rename the new C++ function, or remove/convert the Blueprint function first. You can bypass by setting allow_duplicate=true.")
+						);
+					}
+					else
+					{
+						Result.AddWarning(
+							TEXT("DUPLICATE_LAYER"),
+							FString::Printf(TEXT("Blueprint '%s' (derived from '%s') already defines function '%s'. Adding it to C++ may create a conflict."),
+								*Derived->GetName(), *ClassName, *MemberName),
+							TEXT("Prefer renaming or migrating the Blueprint implementation to an override.")
+						);
+					}
+					break;
+				}
+			}
+			else
+			{
+				FProperty* BPProp = Derived->FindPropertyByName(FName(*MemberName));
+				if (BPProp)
+				{
+					if (!bAllowDuplicate)
+					{
+						Result.AddError(
+							TEXT("DUPLICATE_LAYER_BLOCKED"),
+							FString::Printf(TEXT("Blueprint '%s' (derived from '%s') already defines property '%s'. Adding a C++ property with the same name is blocked to prevent shadowing."),
+								*Derived->GetName(), *ClassName, *MemberName),
+							TEXT("Rename the new C++ property, or remove/migrate the Blueprint variable first. You can bypass by setting allow_duplicate=true.")
+						);
+					}
+					else
+					{
+						Result.AddWarning(
+							TEXT("DUPLICATE_LAYER"),
+							FString::Printf(TEXT("Blueprint '%s' (derived from '%s') already defines property '%s'. Adding it to C++ may create shadowing/confusion."),
+								*Derived->GetName(), *ClassName, *MemberName),
+							TEXT("Prefer renaming or migrating the Blueprint variable.")
+						);
+					}
+					break;
+				}
+			}
+		}
+	}
+
+	return Result;
+}
+
+// ============================================================================
+// Blueprint Validation Rules
+// ============================================================================
+
+// FOliveBPAssetTypeRule - validates target is a Blueprint
+
+FOliveValidationResult FOliveBPAssetTypeRule::Validate(
+	const FString& ToolName,
+	const TSharedPtr<FJsonObject>& Params,
+	UObject* TargetAsset)
+{
+	FOliveValidationResult Result;
+
+	if (!TargetAsset)
+	{
+		// Asset resolution happens elsewhere; skip if not resolved yet
+		return Result;
+	}
+
+	UBlueprint* Blueprint = Cast<UBlueprint>(TargetAsset);
+	if (!Blueprint)
+	{
+		Result.AddError(
+			TEXT("WRONG_ASSET_TYPE"),
+			FString::Printf(TEXT("Tool '%s' requires a Blueprint asset, but got '%s'"),
+				*ToolName, *TargetAsset->GetClass()->GetName()),
+			TEXT("Check the asset path points to a Blueprint (.uasset created from a Blueprint class)")
+		);
+	}
+
+	return Result;
+}
+
+// FOliveBPNodeIdFormatRule - validates node_id format
+
+FOliveValidationResult FOliveBPNodeIdFormatRule::Validate(
+	const FString& ToolName,
+	const TSharedPtr<FJsonObject>& Params,
+	UObject* TargetAsset)
+{
+	FOliveValidationResult Result;
+
+	if (!Params.IsValid())
+	{
+		return Result;
+	}
+
+	// Check node_id format for tools that need it
+	if (ToolName == TEXT("blueprint.remove_node") || ToolName == TEXT("blueprint.set_node_property"))
+	{
+		FString NodeId;
+		if (!Params->TryGetStringField(TEXT("node_id"), NodeId) || NodeId.IsEmpty())
+		{
+			Result.AddError(TEXT("MISSING_NODE_ID"),
+				TEXT("node_id parameter is required"),
+				TEXT("Use blueprint.read_function or blueprint.read_event_graph to discover node IDs"));
+		}
+	}
+
+	// Check source/target node IDs for pin operations
+	if (ToolName == TEXT("blueprint.connect_pins") || ToolName == TEXT("blueprint.disconnect_pins"))
+	{
+		FString SourceNode, TargetNode;
+		if (!Params->TryGetStringField(TEXT("source_node"), SourceNode) || SourceNode.IsEmpty())
+		{
+			Result.AddError(TEXT("MISSING_SOURCE_NODE"),
+				TEXT("source_node parameter is required for pin operations"),
+				TEXT("Use blueprint.read_function to discover node IDs"));
+		}
+		if (!Params->TryGetStringField(TEXT("target_node"), TargetNode) || TargetNode.IsEmpty())
+		{
+			Result.AddError(TEXT("MISSING_TARGET_NODE"),
+				TEXT("target_node parameter is required for pin operations"),
+				TEXT("Use blueprint.read_function to discover node IDs"));
+		}
+
+		FString SourcePin, TargetPin;
+		if (!Params->TryGetStringField(TEXT("source_pin"), SourcePin) || SourcePin.IsEmpty())
+		{
+			Result.AddError(TEXT("MISSING_SOURCE_PIN"),
+				TEXT("source_pin parameter is required for pin operations"));
+		}
+		if (!Params->TryGetStringField(TEXT("target_pin"), TargetPin) || TargetPin.IsEmpty())
+		{
+			Result.AddError(TEXT("MISSING_TARGET_PIN"),
+				TEXT("target_pin parameter is required for pin operations"));
+		}
+	}
+
+	// Check node_id and pin_name for set_pin_default
+	if (ToolName == TEXT("blueprint.set_pin_default"))
+	{
+		FString NodeId;
+		if (!Params->TryGetStringField(TEXT("node_id"), NodeId) || NodeId.IsEmpty())
+		{
+			Result.AddError(TEXT("MISSING_NODE_ID"),
+				TEXT("node_id parameter is required for set_pin_default"));
+		}
+		FString PinName;
+		if (!Params->TryGetStringField(TEXT("pin_name"), PinName) || PinName.IsEmpty())
+		{
+			Result.AddError(TEXT("MISSING_PIN_NAME"),
+				TEXT("pin_name parameter is required for set_pin_default"));
+		}
+	}
+
+	return Result;
+}
+
+// FOliveBPNamingRule - validates naming conventions
+
+FOliveValidationResult FOliveBPNamingRule::Validate(
+	const FString& ToolName,
+	const TSharedPtr<FJsonObject>& Params,
+	UObject* TargetAsset)
+{
+	FOliveValidationResult Result;
+
+	if (!Params.IsValid())
+	{
+		return Result;
+	}
+
+	FString Name;
+	if (!Params->TryGetStringField(TEXT("name"), Name) || Name.IsEmpty())
+	{
+		Result.AddError(TEXT("MISSING_NAME"),
+			FString::Printf(TEXT("name parameter is required for %s"), *ToolName));
+		return Result;
+	}
+
+	// Check for invalid characters (allow letters, numbers, underscores)
+	FRegexPattern InvalidChars(TEXT("[^a-zA-Z0-9_]"));
+	FRegexMatcher Matcher(InvalidChars, Name);
+	if (Matcher.FindNext())
+	{
+		Result.AddError(TEXT("INVALID_NAME"),
+			FString::Printf(TEXT("Name '%s' contains invalid characters"), *Name),
+			TEXT("Use only letters, numbers, and underscores"));
+		return Result;
+	}
+
+	// Check name doesn't start with a number
+	if (Name.Len() > 0 && FChar::IsDigit(Name[0]))
+	{
+		Result.AddError(TEXT("INVALID_NAME"),
+			FString::Printf(TEXT("Name '%s' cannot start with a digit"), *Name),
+			TEXT("Start names with a letter or underscore"));
+	}
+
+	// Warn if name is very short
+	if (Name.Len() < 2)
+	{
+		Result.AddWarning(TEXT("SHORT_NAME"),
+			FString::Printf(TEXT("Name '%s' is very short"), *Name),
+			TEXT("Consider using a more descriptive name"));
+	}
+
+	return Result;
+}
+
+// ============================================================================
+// PCG Validation Rules
+// ============================================================================
+
+// FOlivePCGAssetTypeRule - validates target is a PCG graph
+
+FOliveValidationResult FOlivePCGAssetTypeRule::Validate(
+	const FString& ToolName,
+	const TSharedPtr<FJsonObject>& Params,
+	UObject* TargetAsset)
+{
+	FOliveValidationResult Result;
+
+	if (!TargetAsset)
+	{
+		return Result;
+	}
+
+	if (!TargetAsset->IsA<UPCGGraphInterface>())
+	{
+		Result.AddError(
+			TEXT("WRONG_ASSET_TYPE"),
+			FString::Printf(TEXT("Tool '%s' requires a PCG graph asset, but got '%s'"),
+				*ToolName, *TargetAsset->GetClass()->GetName()),
+			TEXT("Check the asset path points to a PCG graph")
+		);
+	}
+
+	return Result;
+}
+
+// FOlivePCGNodeClassRule - validates PCG settings class
+
+FOliveValidationResult FOlivePCGNodeClassRule::Validate(
+	const FString& ToolName,
+	const TSharedPtr<FJsonObject>& Params,
+	UObject* TargetAsset)
+{
+	FOliveValidationResult Result;
+
+	if (!Params.IsValid())
+	{
+		return Result;
+	}
+
+	FString SettingsClass;
+	if (!Params->TryGetStringField(TEXT("settings_class"), SettingsClass) || SettingsClass.IsEmpty())
+	{
+		Result.AddError(TEXT("MISSING_SETTINGS_CLASS"),
+			TEXT("settings_class parameter is required for pcg.add_node"),
+			TEXT("Specify the PCG settings class name (e.g., 'SurfaceSampler', 'StaticMeshSpawner', 'PointFilter')"));
+		return Result;
+	}
+
+	// Try to find the class - check common naming patterns
+	FString FullClassName = FString::Printf(TEXT("PCGSettings_%s"), *SettingsClass);
+	UClass* FoundClass = FindObject<UClass>(ANY_PACKAGE, *FullClassName);
+	if (!FoundClass)
+	{
+		// Try with UPCGSettings prefix
+		FullClassName = FString::Printf(TEXT("UPCGSettings_%s"), *SettingsClass);
+		FoundClass = FindObject<UClass>(ANY_PACKAGE, *FullClassName);
+	}
+	if (!FoundClass)
+	{
+		// Try the exact name provided
+		FoundClass = FindObject<UClass>(ANY_PACKAGE, *SettingsClass);
+	}
+
+	if (!FoundClass)
+	{
+		Result.AddWarning(TEXT("UNKNOWN_SETTINGS_CLASS"),
+			FString::Printf(TEXT("PCG settings class '%s' was not found. It may not be loaded or uses a different name."), *SettingsClass),
+			TEXT("Common PCG settings: SurfaceSampler, StaticMeshSpawner, PointFilter, PointDensityFilter, AttributeNoise, Difference, Intersection, Union"));
 	}
 
 	return Result;

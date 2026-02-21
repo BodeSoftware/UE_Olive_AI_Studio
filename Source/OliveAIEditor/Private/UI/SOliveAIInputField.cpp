@@ -2,6 +2,7 @@
 
 #include "UI/SOliveAIInputField.h"
 #include "Index/OliveProjectIndex.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Input/SMultiLineEditableTextBox.h"
@@ -24,25 +25,36 @@ void SOliveAIInputField::Construct(const FArguments& InArgs)
 
 		// Main input area
 		+ SVerticalBox::Slot()
-		.FillHeight(1.0f)
+		.AutoHeight()
 		[
 			SNew(SBorder)
 			.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
 			.Padding(4.0f)
 			[
-				SAssignNew(MentionAnchor, SMenuAnchor)
-				.Placement(MenuPlacement_AboveAnchor)
-				.OnGetMenuContent(this, &SOliveAIInputField::CreateMentionPopup)
-				[
-					SAssignNew(TextBox, SMultiLineEditableTextBox)
-					.HintText(LOCTEXT("Placeholder", "Type a message... (use @ to mention assets)"))
-					.OnTextChanged(this, &SOliveAIInputField::OnTextChanged)
-					.OnTextCommitted(this, &SOliveAIInputField::OnTextCommitted)
-					.OnKeyDownHandler(this, &SOliveAIInputField::OnInputKeyDown)
-					.AutoWrapText(true)
-					.AllowMultiLine(true)
-					.ModiferKeyForNewLine(EModifierKey::Shift)
-				]
+				SAssignNew(TextBox, SMultiLineEditableTextBox)
+				.HintText(LOCTEXT("Placeholder", "Type a message... (use @ to mention assets)"))
+				.OnTextChanged(this, &SOliveAIInputField::OnTextChanged)
+				.OnTextCommitted(this, &SOliveAIInputField::OnTextCommitted)
+				.OnKeyDownHandler(this, &SOliveAIInputField::OnInputKeyDown)
+				.AutoWrapText(true)
+				.AllowMultiLine(true)
+				.ModiferKeyForNewLine(EModifierKey::Shift)
+			]
+		]
+
+		// Inline mention results to avoid popup focus/window edge cases.
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0.0f, 2.0f, 0.0f, 0.0f)
+		[
+			SNew(SBorder)
+			.BorderImage(FAppStyle::GetBrush("Menu.Background"))
+			.Visibility_Lambda([this]()
+			{
+				return bMentionPopupVisible ? EVisibility::Visible : EVisibility::Collapsed;
+			})
+			[
+				CreateMentionPopup()
 			]
 		]
 	];
@@ -220,12 +232,6 @@ void SOliveAIInputField::CheckForMentionTrigger(const FString& Text, int32 Curso
 	// Get search query (text after @)
 	FString Query = Text.RightChop(AtPosition + 1);
 
-	if (Query.Len() < 1)
-	{
-		HideMentionPopup();
-		return;
-	}
-
 	MentionStartPosition = AtPosition;
 	ShowMentionPopup(Query);
 }
@@ -234,6 +240,36 @@ void SOliveAIInputField::ShowMentionPopup(const FString& SearchQuery)
 {
 	// Search for assets
 	TArray<FOliveAssetInfo> Results = FOliveProjectIndex::Get().SearchAssets(SearchQuery, 10);
+
+	// Fallback: if the index is still warming up (or empty), query AssetRegistry directly
+	// so @mention remains usable.
+	if (Results.Num() == 0)
+	{
+		IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
+		TArray<FAssetData> AssetDataResults;
+		AssetRegistry.GetAssetsByPath(FName(TEXT("/Game")), AssetDataResults, true);
+
+		const FString LowerQuery = SearchQuery.ToLower();
+		for (const FAssetData& AssetData : AssetDataResults)
+		{
+			const FString Name = AssetData.AssetName.ToString();
+			if (!LowerQuery.IsEmpty() && !Name.ToLower().Contains(LowerQuery))
+			{
+				continue;
+			}
+
+			FOliveAssetInfo Info;
+			Info.Name = Name;
+			Info.Path = AssetData.GetObjectPathString();
+			Info.AssetClass = AssetData.AssetClassPath.GetAssetName();
+			Results.Add(Info);
+
+			if (Results.Num() >= 10)
+			{
+				break;
+			}
+		}
+	}
 
 	MentionResults.Empty();
 	for (const FOliveAssetInfo& Info : Results)
@@ -256,7 +292,8 @@ void SOliveAIInputField::ShowMentionPopup(const FString& SearchQuery)
 
 		if (MentionAnchor.IsValid())
 		{
-			MentionAnchor->SetIsOpen(true);
+			// Keep keyboard focus in text box for uninterrupted typing.
+			FSlateApplication::Get().SetKeyboardFocus(TextBox, EFocusCause::SetDirectly);
 		}
 	}
 	else
@@ -272,7 +309,7 @@ void SOliveAIInputField::HideMentionPopup()
 
 	if (MentionAnchor.IsValid())
 	{
-		MentionAnchor->SetIsOpen(false);
+		// Inline list: no anchor open/close needed.
 	}
 }
 

@@ -6,6 +6,7 @@
 #include "Index/OliveProjectIndex.h"
 #include "Settings/OliveAISettings.h"
 #include "OliveAIEditorModule.h"
+#include "Chat/OliveRunManager.h"
 #include "Misc/Guid.h"
 
 FOliveConversationManager::FOliveConversationManager()
@@ -74,6 +75,12 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 	// Reset tool iteration counter and compile retry counter
 	CurrentToolIteration = 0;
 	CompileRetryCount = 0;
+
+	// Start a run if run mode is active
+	if (bRunModeActive && !FOliveRunManager::Get().HasActiveRun())
+	{
+		FOliveRunManager::Get().StartRun(TEXT("AI Operation"));
+	}
 
 	// Send to provider
 	SendToProvider();
@@ -277,6 +284,12 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 	}
 	else
 	{
+		// Complete run if active
+		if (bRunModeActive && FOliveRunManager::Get().HasActiveRun())
+		{
+			FOliveRunManager::Get().CompleteRun();
+			bRunModeActive = false;
+		}
 		// No tool calls, we're done
 		bIsProcessing = false;
 		OnProcessingComplete.Broadcast();
@@ -308,6 +321,22 @@ void FOliveConversationManager::ProcessPendingToolCalls()
 		HandleError(FString::Printf(TEXT("Maximum tool iterations (%d) reached. Stopping to prevent infinite loop."),
 			MaxToolIterations));
 		return;
+	}
+
+	// Run mode: check pause, begin step, auto-checkpoint
+	if (bRunModeActive && FOliveRunManager::Get().HasActiveRun())
+	{
+		const FOliveRun* Run = FOliveRunManager::Get().GetActiveRun();
+		if (Run && Run->Status == EOliveRunStatus::Paused)
+		{
+			return; // Don't process while paused
+		}
+		FOliveRunManager::Get().BeginStep(
+			FString::Printf(TEXT("Tool iteration %d"), CurrentToolIteration));
+		if (FOliveRunManager::Get().ShouldCheckpoint() && ActiveContextPaths.Num() > 0)
+		{
+			FOliveRunManager::Get().CreateCheckpoint(ActiveContextPaths);
+		}
 	}
 
 	// Clear previous results
@@ -347,6 +376,14 @@ void FOliveConversationManager::HandleToolResult(
 	const FOliveToolResult& Result)
 {
 	OnToolCallCompleted.Broadcast(ToolName, ToolCallId, Result);
+
+	// Record tool call in run manager
+	if (bRunModeActive && FOliveRunManager::Get().HasActiveRun())
+	{
+		FOliveRunManager::Get().RecordToolCall(ToolName, ToolCallId, Result.bSuccess,
+			Result.bSuccess ? TEXT("Success") : TEXT("Failed"),
+			0.0, Result.Data);
+	}
 
 	// Check if this result requires user confirmation
 	if (Result.bSuccess && Result.Data.IsValid() && Result.Data->HasField(TEXT("requires_confirmation")))
@@ -530,8 +567,34 @@ void FOliveConversationManager::ContinueAfterToolResults()
 	PendingToolCalls.Empty();
 	PendingToolResults.Empty();
 
+	// Complete current run step
+	if (bRunModeActive && FOliveRunManager::Get().HasActiveRun())
+	{
+		FOliveRunManager::Get().CompleteStep(true);
+	}
+
 	// Send back to provider for next response
 	SendToProvider();
+}
+
+// ==========================================
+// Run Mode
+// ==========================================
+
+void FOliveConversationManager::EnableRunMode(const FString& RunName)
+{
+	bRunModeActive = true;
+	UE_LOG(LogOliveAI, Log, TEXT("Run mode enabled: %s"), *RunName);
+}
+
+void FOliveConversationManager::DisableRunMode()
+{
+	bRunModeActive = false;
+	if (FOliveRunManager::Get().HasActiveRun())
+	{
+		FOliveRunManager::Get().CancelRun();
+	}
+	UE_LOG(LogOliveAI, Log, TEXT("Run mode disabled"));
 }
 
 // ==========================================

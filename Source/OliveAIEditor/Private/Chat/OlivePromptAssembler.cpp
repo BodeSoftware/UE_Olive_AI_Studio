@@ -75,6 +75,17 @@ FString FOlivePromptAssembler::AssembleSystemPromptInternal(
 		FullPrompt += PolicyContext;
 	}
 
+	// Add layer decision policy for profiles that include both C++ and BP
+	if (FocusProfileName == TEXT("Auto") || FocusProfileName == TEXT("C++ & Blueprint"))
+	{
+		const FString LayerPolicy = GetLayerDecisionPolicy();
+		if (!LayerPolicy.IsEmpty())
+		{
+			FullPrompt += TEXT("\n\n");
+			FullPrompt += LayerPolicy;
+		}
+	}
+
 	// Calculate remaining tokens for asset context
 	const int32 UsedTokens = EstimateTokenCount(FullPrompt);
 	const int32 RemainingTokens = MaxTokens - UsedTokens - 100; // Reserve 100 tokens for safety
@@ -213,6 +224,32 @@ FString FOlivePromptAssembler::GetActiveContext(const TArray<FString>& AssetPath
 	}
 
 	return Context;
+}
+
+FString FOlivePromptAssembler::GetLayerDecisionPolicy() const
+{
+	return TEXT(R"(## Implementation Layer Decision Policy
+
+When both C++ and Blueprint can satisfy a request, follow this decision process:
+
+1. **Check what already exists first.**
+   - Use `cpp.read_class` to check if a C++ class already provides the functionality.
+   - Use `blueprint.read` to check if a Blueprint already implements the behavior.
+   - If it exists in one layer, extend it there. Do not duplicate across layers.
+
+2. **Default layer preferences:**
+   - **Blueprint** for: gameplay logic, prototyping, designer-tweakable behavior, event responses, UI logic, AI behavior trees.
+   - **C++** for: performance-critical systems, base classes, engine-level functionality, reusable framework code, math-heavy operations.
+
+3. **Respect explicit `preferred_layer` parameter:**
+   - If `preferred_layer` is `"cpp"`, implement in C++ only. Do not create Blueprint assets.
+   - If `preferred_layer` is `"blueprint"`, implement in Blueprint only. Do not create C++ files.
+   - If `preferred_layer` is `"auto"` or not specified, use the default preferences above.
+
+4. **Never create duplicates.** If functionality exists in C++, do not recreate it in Blueprint, and vice versa.
+
+5. **Report your decision.** When choosing a layer, briefly explain why in your response (e.g., "Implementing in Blueprint because this is gameplay logic that designers may want to tweak").
+)");
 }
 
 // ==========================================

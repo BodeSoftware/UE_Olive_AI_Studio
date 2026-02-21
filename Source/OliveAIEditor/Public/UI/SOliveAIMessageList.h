@@ -6,6 +6,8 @@
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Providers/IOliveAIProvider.h"
+#include "UI/OliveResultCards.h"
+#include "Chat/OliveRunManager.h"
 
 class SScrollBox;
 class SVerticalBox;
@@ -28,6 +30,17 @@ struct FOliveToolCallWidgetState
 	TSharedPtr<STextBlock> SummaryText;
 	EOliveToolCallStatus Status = EOliveToolCallStatus::Running;
 };
+
+/** Delegate for navigation actions from result cards */
+DECLARE_DELEGATE_OneParam(FOnOliveNavigationAction, const FOliveNavigationAction&);
+
+/** Run mode control delegates */
+DECLARE_DELEGATE(FOnRunPause);
+DECLARE_DELEGATE(FOnRunResume);
+DECLARE_DELEGATE(FOnRunCancel);
+DECLARE_DELEGATE_OneParam(FOnRunRetryStep, int32);
+DECLARE_DELEGATE_OneParam(FOnRunSkipStep, int32);
+DECLARE_DELEGATE_OneParam(FOnRunRollback, const FString&);
 
 /**
  * UI Message Data
@@ -68,6 +81,13 @@ class OLIVEAIEDITOR_API SOliveAIMessageList : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SOliveAIMessageList) {}
+		SLATE_EVENT(FOnOliveNavigationAction, OnNavigationAction)
+		SLATE_EVENT(FOnRunPause, OnRunPause)
+		SLATE_EVENT(FOnRunResume, OnRunResume)
+		SLATE_EVENT(FOnRunCancel, OnRunCancel)
+		SLATE_EVENT(FOnRunRetryStep, OnRunRetryStep)
+		SLATE_EVENT(FOnRunSkipStep, OnRunSkipStep)
+		SLATE_EVENT(FOnRunRollback, OnRunRollback)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
@@ -111,6 +131,26 @@ public:
 	void UpdateToolCallStatus(const FString& ToolCallId, bool bSuccess, const FString& ResultSummary);
 
 	// ==========================================
+	// Result Cards
+	// ==========================================
+
+	/** Add a typed result card for a tool result */
+	void AddResultCard(const FString& ToolCallId, const FString& ToolName, const FOliveToolResult& Result);
+
+	// ==========================================
+	// Run Mode Display
+	// ==========================================
+
+	/** Add a run header when a new run starts */
+	void AddRunHeader(const FOliveRun& Run);
+
+	/** Update a run step display */
+	void UpdateRunStep(const FOliveRun& Run, int32 StepIndex);
+
+	/** Update overall run status display */
+	void UpdateRunStatus(const FOliveRun& Run);
+
+	// ==========================================
 	// Confirmation Display
 	// ==========================================
 
@@ -150,6 +190,27 @@ private:
 	void RefreshDisplay();
 
 	// ==========================================
+	// Result Card Builders
+	// ==========================================
+
+	TSharedRef<SWidget> BuildResultCardWidget(const FOliveResultCardData& CardData);
+	TSharedRef<SWidget> BuildBlueprintReadCard(const FOliveResultCardData& CardData);
+	TSharedRef<SWidget> BuildBlueprintWriteCard(const FOliveResultCardData& CardData);
+	TSharedRef<SWidget> BuildCompileErrorsCard(const FOliveResultCardData& CardData);
+	TSharedRef<SWidget> BuildSnapshotCard(const FOliveResultCardData& CardData);
+	TSharedRef<SWidget> BuildRawJsonCard(const FOliveResultCardData& CardData);
+	TSharedRef<SWidget> BuildNavigationActions(const TArray<FOliveNavigationAction>& Actions);
+	TSharedRef<SWidget> BuildRawJsonExpander(const TSharedPtr<FJsonObject>& JsonData);
+
+	// ==========================================
+	// Run Mode Builders
+	// ==========================================
+
+	TSharedRef<SWidget> BuildRunHeaderWidget(const FOliveRun& Run);
+	TSharedRef<SWidget> BuildRunStepWidget(const FOliveRunStep& Step, int32 StepIndex);
+	TSharedRef<SWidget> BuildRunControlsWidget(const FOliveRun& Run);
+
+	// ==========================================
 	// State
 	// ==========================================
 
@@ -159,6 +220,22 @@ private:
 
 	/** Map of tool call ID to widget state for status updates */
 	TMap<FString, FOliveToolCallWidgetState> ToolCallWidgetStates;
+
+	/** Navigation action delegate */
+	FOnOliveNavigationAction OnNavigationAction;
+
+	/** Run mode delegates */
+	FOnRunPause OnRunPause;
+	FOnRunResume OnRunResume;
+	FOnRunCancel OnRunCancel;
+	FOnRunRetryStep OnRunRetryStep;
+	FOnRunSkipStep OnRunSkipStep;
+	FOnRunRollback OnRunRollback;
+
+	/** Run mode UI containers */
+	TSharedPtr<SVerticalBox> RunStepsContainer;
+	TSharedPtr<SWidget> RunControlsWidget;
+	TMap<int32, TSharedPtr<SWidget>> RunStepWidgets;
 
 	/** Currently streaming message widget */
 	TWeakPtr<SWidget> StreamingMessageWidget;

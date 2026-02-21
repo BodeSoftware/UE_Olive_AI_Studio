@@ -276,6 +276,48 @@ void SOliveAIContextBar::RefreshDisplay()
 				ManualTag
 			];
 	}
+
+	// Show selected nodes sub-pill
+	if (SelectedNodeNames.Num() > 0)
+	{
+		FString NodeText;
+		if (SelectedNodeNames.Num() <= 3)
+		{
+			NodeText = FString::Join(SelectedNodeNames, TEXT(", "));
+		}
+		else
+		{
+			NodeText = FString::Printf(TEXT("%d nodes selected"), SelectedNodeNames.Num());
+		}
+
+		TagContainer->AddSlot()
+			.Padding(2)
+			[
+				SNew(SBorder)
+				.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
+				.BorderBackgroundColor(FLinearColor(0.3f, 0.3f, 0.3f, 0.2f))
+				.Padding(FMargin(4, 2))
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(NodeText))
+					.TextStyle(FAppStyle::Get(), "SmallText")
+					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+					.Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
+				]
+			];
+	}
+}
+
+void SOliveAIContextBar::SetSelectedNodes(const TArray<FString>& NodeNames)
+{
+	SelectedNodeNames = NodeNames;
+	RefreshDisplay();
+}
+
+void SOliveAIContextBar::ClearSelectedNodes()
+{
+	SelectedNodeNames.Empty();
+	RefreshDisplay();
 }
 
 #undef LOCTEXT_NAMESPACE

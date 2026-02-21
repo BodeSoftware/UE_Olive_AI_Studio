@@ -70,6 +70,15 @@ public:
 	void ClearAllContext();
 
 	/**
+	 * Set the selected node names for display
+	 * @param NodeNames Names of currently selected nodes
+	 */
+	void SetSelectedNodes(const TArray<FString>& NodeNames);
+
+	/** Clear selected node display */
+	void ClearSelectedNodes();
+
+	/**
 	 * Get all context asset paths
 	 */
 	TArray<FString> GetContextAssetPaths() const;
@@ -113,4 +122,7 @@ private:
 
 	/** Delegate for when an asset is removed */
 	FOnOliveContextAssetRemoved OnAssetRemoved;
+
+	/** Currently selected node names for sub-context display */
+	TArray<FString> SelectedNodeNames;
 };

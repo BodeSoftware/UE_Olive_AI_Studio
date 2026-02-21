@@ -797,6 +797,13 @@ FOliveToolResult FOliveCppSourceWriter::ModifySource(
 		return FOliveToolResult::Error(TEXT("EMPTY_ANCHOR"), TEXT("anchor_text cannot be empty"));
 	}
 
+	if (AnchorText.Len() < 10)
+	{
+		return FOliveToolResult::Error(TEXT("ANCHOR_TOO_SHORT"),
+			FString::Printf(TEXT("anchor_text is only %d characters long — minimum is 10 for reliable matching"), AnchorText.Len()),
+			TEXT("Provide a longer, more unique anchor_text to avoid false matches"));
+	}
+
 	if (Operation != TEXT("replace") && Operation != TEXT("insert_before") && Operation != TEXT("insert_after"))
 	{
 		return FOliveToolResult::Error(TEXT("INVALID_OPERATION"),

@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Providers/IOliveAIProvider.h"
 #include "MCP/OliveToolRegistry.h"
+#include "Chat/OliveRunManager.h"
 
 /**
  * Conversation Events
@@ -157,6 +158,19 @@ public:
 	bool IsWaitingForConfirmation() const { return bWaitingForConfirmation; }
 
 	// ==========================================
+	// Run Mode
+	// ==========================================
+
+	/** Enable run mode for multi-step operations */
+	void EnableRunMode(const FString& RunName);
+
+	/** Disable run mode */
+	void DisableRunMode();
+
+	/** Check if run mode is active */
+	bool IsRunModeActive() const { return bRunModeActive; }
+
+	// ==========================================
 	// Configuration
 	// ==========================================
 
@@ -235,6 +249,9 @@ private:
 
 	/** Is processing a request */
 	bool bIsProcessing = false;
+
+	/** Whether run mode is active */
+	bool bRunModeActive = false;
 
 	// ==========================================
 	// Streaming State

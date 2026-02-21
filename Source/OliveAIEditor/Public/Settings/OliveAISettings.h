@@ -32,6 +32,18 @@ enum class EOliveConfirmationTier : uint8
 };
 
 /**
+ * Safety preset that adjusts confirmation tiers globally.
+ * Careful: All tiers as configured. Fast: Tier3 downgraded to Tier2. YOLO: Everything auto-executes.
+ */
+UENUM(BlueprintType)
+enum class EOliveSafetyPreset : uint8
+{
+	Careful UMETA(DisplayName = "Careful"),
+	Fast    UMETA(DisplayName = "Fast"),
+	YOLO    UMETA(DisplayName = "YOLO")
+};
+
+/**
  * Olive AI Studio Settings
  *
  * Configuration settings for the AI-powered development assistant.
@@ -196,6 +208,20 @@ public:
 		meta=(DisplayName="Delete Operations"))
 	EOliveConfirmationTier DeleteOperationsTier = EOliveConfirmationTier::Tier3_Preview;
 
+	/** Safety preset: adjusts all confirmation tiers globally */
+	UPROPERTY(Config, EditAnywhere, Category="Confirmation",
+		meta=(DisplayName="Safety Preset"))
+	EOliveSafetyPreset SafetyPreset = EOliveSafetyPreset::Careful;
+
+	/** Get effective tier after applying safety preset adjustment */
+	EOliveConfirmationTier GetEffectiveTier(const FString& OperationCategory) const;
+
+	/** Set preset and broadcast change */
+	void SetSafetyPreset(EOliveSafetyPreset NewPreset);
+
+	DECLARE_MULTICAST_DELEGATE_OneParam(FOnSafetyPresetChanged, EOliveSafetyPreset);
+	static FOnSafetyPresetChanged OnSafetyPresetChanged;
+
 	// ==========================================
 	// Policy Settings
 	// ==========================================
@@ -219,6 +245,16 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category="Policy",
 		meta=(DisplayName="Auto-Compile After Write"))
 	bool bAutoCompileAfterWrite = true;
+
+	/** Maximum write operations allowed per minute (0 = unlimited). Rate-limits AI tool calls to prevent runaway loops. */
+	UPROPERTY(Config, EditAnywhere, Category="Policy",
+		meta=(DisplayName="Max Write Ops Per Minute", ClampMin=0, ClampMax=120))
+	int32 MaxWriteOpsPerMinute = 30;
+
+	/** Steps between automatic checkpoints in Run Mode (0 = manual only) */
+	UPROPERTY(Config, EditAnywhere, Category="Policy",
+		meta=(DisplayName="Checkpoint Interval (Steps)", ClampMin=0, ClampMax=50))
+	int32 CheckpointIntervalSteps = 5;
 
 	// ==========================================
 	// Utility Functions

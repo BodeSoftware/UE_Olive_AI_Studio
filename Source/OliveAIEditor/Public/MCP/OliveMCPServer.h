@@ -49,6 +49,41 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FOnMCPClientDisconnected, const FString& /* 
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnMCPToolCalled, const FString& /* ToolName */, const FString& /* ClientId */);
 
 /**
+ * MCP Notification Event for poll-based delivery
+ */
+struct FMCPNotificationEvent
+{
+	/** Auto-incrementing event ID */
+	int64 EventId = 0;
+
+	/** Notification method (e.g. "tools/progress") */
+	FString Method;
+
+	/** Notification parameters */
+	TSharedPtr<FJsonObject> Params;
+
+	/** Target client ID (empty = broadcast) */
+	FString TargetClientId;
+
+	/** When this event was created */
+	FDateTime Timestamp;
+
+	/** Convert to JSON */
+	TSharedPtr<FJsonObject> ToJson() const
+	{
+		TSharedPtr<FJsonObject> Json = MakeShared<FJsonObject>();
+		Json->SetNumberField(TEXT("id"), static_cast<double>(EventId));
+		Json->SetStringField(TEXT("method"), Method);
+		if (Params.IsValid())
+		{
+			Json->SetObjectField(TEXT("params"), Params);
+		}
+		Json->SetStringField(TEXT("timestamp"), Timestamp.ToIso8601());
+		return Json;
+	}
+};
+
+/**
  * MCP Client State
  *
  * Tracks per-client protocol state.
@@ -272,6 +307,9 @@ private:
 	/** Route handle for cleanup */
 	FHttpRouteHandle RouteHandle;
 
+	/** Route handle for events endpoint */
+	FHttpRouteHandle EventRouteHandle;
+
 	/** Connected clients */
 	TMap<FString, FMCPClientState> ClientStates;
 
@@ -286,4 +324,29 @@ private:
 
 	/** Maximum concurrent clients */
 	static constexpr int32 MaxClients = 10;
+
+	// ==========================================
+	// Event Buffer
+	// ==========================================
+
+	/** Buffer of notification events for polling */
+	TArray<FMCPNotificationEvent> EventBuffer;
+
+	/** Lock for event buffer access */
+	mutable FCriticalSection EventLock;
+
+	/** Next event ID to assign */
+	int64 NextEventId = 1;
+
+	/** Maximum events to keep in buffer */
+	static constexpr int32 MaxEventBufferSize = 500;
+
+	/** How long to keep events (seconds) */
+	static constexpr double EventRetentionSeconds = 300.0;
+
+	/** Handle GET /mcp/events poll request */
+	bool HandleEventsPoll(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete);
+
+	/** Prune old events from buffer */
+	void PruneEventBuffer();
 };

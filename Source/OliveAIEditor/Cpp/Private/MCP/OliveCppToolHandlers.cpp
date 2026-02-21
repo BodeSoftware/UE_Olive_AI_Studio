@@ -514,6 +514,28 @@ FOliveToolResult FOliveCppToolHandlers::HandleModifySource(const TSharedPtr<FJso
 	bool bRequireUniqueMatch = true;
 	Params->TryGetBoolField(TEXT("require_unique_match"), bRequireUniqueMatch);
 
+	bool bAllowLargeEdit = false;
+	Params->TryGetBoolField(TEXT("allow_large_edit"), bAllowLargeEdit);
+
+	// Check replacement size if not explicitly allowed
+	if (!bAllowLargeEdit && !ReplacementText.IsEmpty())
+	{
+		int32 LineCount = 1;
+		for (const TCHAR& Ch : ReplacementText)
+		{
+			if (Ch == TEXT('\n'))
+			{
+				LineCount++;
+			}
+		}
+		if (LineCount > 200)
+		{
+			return FOliveToolResult::Error(TEXT("EDIT_TOO_LARGE"),
+				FString::Printf(TEXT("Replacement text is %d lines — maximum is 200 without allow_large_edit=true"), LineCount),
+				TEXT("Break the edit into smaller chunks, or pass allow_large_edit=true if intentional"));
+		}
+	}
+
 	return FOliveCppSourceWriter::ModifySource(
 		FilePath,
 		AnchorText,

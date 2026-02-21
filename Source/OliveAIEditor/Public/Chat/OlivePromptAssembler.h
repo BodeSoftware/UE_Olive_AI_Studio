@@ -70,6 +70,9 @@ public:
 	/** Get active asset context as string */
 	FString GetActiveContext(const TArray<FString>& AssetPaths, int32 MaxTokens) const;
 
+	/** Get the layer decision policy text for C++/BP hybrid profiles */
+	FString GetLayerDecisionPolicy() const;
+
 	// ==========================================
 	// Token Estimation
 	// ==========================================

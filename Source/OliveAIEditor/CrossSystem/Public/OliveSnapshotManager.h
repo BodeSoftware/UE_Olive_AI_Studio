@@ -67,6 +67,9 @@ public:
 	// Delete a snapshot
 	bool DeleteSnapshot(const FString& SnapshotId);
 
+	// Snapshot C++ source files (from backup paths) into a snapshot directory
+	bool SnapshotCppFiles(const FString& SnapshotId, const TArray<FString>& SourceFilePaths);
+
 	// Get snapshot info by ID
 	TOptional<FOliveSnapshotInfo> GetSnapshotInfo(const FString& SnapshotId) const;
 

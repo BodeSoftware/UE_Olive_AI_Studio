@@ -1144,3 +1144,51 @@ TOptional<FOliveSnapshotInfo> FOliveSnapshotManager::GetSnapshotInfo(const FStri
 
 	return TOptional<FOliveSnapshotInfo>();
 }
+
+// ============================================================================
+// C++ File Snapshot Support
+// ============================================================================
+
+bool FOliveSnapshotManager::SnapshotCppFiles(const FString& SnapshotId, const TArray<FString>& SourceFilePaths)
+{
+	FScopeLock Lock(&SnapshotLock);
+
+	if (SnapshotId.IsEmpty() || SourceFilePaths.Num() == 0)
+	{
+		return false;
+	}
+
+	const FString CppBackupDir = GetSnapshotDir() / SnapshotId / TEXT("cpp_files");
+	IFileManager& FileManager = IFileManager::Get();
+
+	bool bAllCopied = true;
+	for (const FString& FilePath : SourceFilePaths)
+	{
+		if (!FileManager.FileExists(*FilePath))
+		{
+			UE_LOG(LogOliveSnapshot, Warning, TEXT("SnapshotCppFiles: Source file not found: %s"), *FilePath);
+			continue;
+		}
+
+		// Create a sanitized relative path for the backup
+		FString RelativePath = FilePath;
+		FString ProjectDir = FPaths::ProjectDir();
+		FPaths::MakePathRelativeTo(RelativePath, *ProjectDir);
+		RelativePath.ReplaceInline(TEXT("/"), TEXT("_"));
+		RelativePath.ReplaceInline(TEXT("\\"), TEXT("_"));
+
+		const FString DestPath = CppBackupDir / RelativePath;
+
+		if (!FileManager.Copy(*DestPath, *FilePath, true))
+		{
+			UE_LOG(LogOliveSnapshot, Error, TEXT("SnapshotCppFiles: Failed to copy %s to %s"), *FilePath, *DestPath);
+			bAllCopied = false;
+		}
+		else
+		{
+			UE_LOG(LogOliveSnapshot, Verbose, TEXT("SnapshotCppFiles: Backed up %s"), *FilePath);
+		}
+	}
+
+	return bAllCopied;
+}

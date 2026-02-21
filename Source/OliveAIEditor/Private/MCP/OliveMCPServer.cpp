@@ -80,6 +80,13 @@ bool FOliveMCPServer::Start(int32 Port)
 			if (RouteHandle.IsValid())
 			{
 				ActualPort = PortToTry;
+
+				// Bind events polling route
+				EventRouteHandle = HttpRouter->BindRoute(
+					FHttpPath(TEXT("/mcp/events")),
+					EHttpServerRequestVerbs::VERB_GET,
+					FHttpRequestHandler::CreateRaw(this, &FOliveMCPServer::HandleEventsPoll)
+				);
 				bSuccess = true;
 
 				// Start the listener
@@ -134,6 +141,10 @@ void FOliveMCPServer::Stop()
 	if (HttpRouter.IsValid() && RouteHandle.IsValid())
 	{
 		HttpRouter->UnbindRoute(RouteHandle);
+		if (EventRouteHandle.IsValid())
+		{
+			HttpRouter->UnbindRoute(EventRouteHandle);
+		}
 	}
 
 	// Clear client states
@@ -142,8 +153,16 @@ void FOliveMCPServer::Stop()
 		ClientStates.Empty();
 	}
 
+
+	// Clear event buffer
+	{
+		FScopeLock Lock(&EventLock);
+		EventBuffer.Empty();
+		NextEventId = 1;
+	}
 	HttpRouter.Reset();
 	RouteHandle = FHttpRouteHandle();
+	EventRouteHandle = FHttpRouteHandle();
 	ActualPort = 0;
 
 	State = EOliveMCPServerState::Stopped;
@@ -488,6 +507,14 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsCall(
 	// Fire event
 	OnToolCalled.Broadcast(ToolName, ClientId);
 
+	// Emit progress notification
+	{
+		TSharedPtr<FJsonObject> ProgressParams = MakeShared<FJsonObject>();
+		ProgressParams->SetStringField(TEXT("tool"), ToolName);
+		ProgressParams->SetStringField(TEXT("status"), TEXT("started"));
+		SendNotification(TEXT("tools/progress"), ProgressParams, ClientId);
+	}
+
 	// Execute tool
 	FOliveToolResult ToolResult = FOliveToolRegistry::Get().ExecuteTool(ToolName, Arguments);
 
@@ -507,6 +534,14 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsCall(
 		Result->SetBoolField(TEXT("isError"), true);
 	}
 
+
+	// Emit completion notification
+	{
+		TSharedPtr<FJsonObject> CompleteParams = MakeShared<FJsonObject>();
+		CompleteParams->SetStringField(TEXT("tool"), ToolName);
+		CompleteParams->SetStringField(TEXT("status"), ToolResult.bSuccess ? TEXT("completed") : TEXT("failed"));
+		SendNotification(TEXT("tools/progress"), CompleteParams, ClientId);
+	}
 	return Result;
 }
 
@@ -819,10 +854,112 @@ void FOliveMCPServer::SendNotification(
 	const TSharedPtr<FJsonObject>& Params,
 	const FString& ClientId)
 {
-	// Note: HTTP doesn't support server push
-	// For Phase 0, notifications are logged but not sent
-	// Future: Implement WebSocket or SSE for server-initiated messages
+	FScopeLock Lock(&EventLock);
 
-	UE_LOG(LogOliveAI, Verbose, TEXT("MCP Notification: %s (would send to %s)"),
-		*Method, ClientId.IsEmpty() ? TEXT("all") : *ClientId);
+	FMCPNotificationEvent Event;
+	Event.EventId = NextEventId++;
+	Event.Method = Method;
+	Event.Params = Params;
+	Event.TargetClientId = ClientId;
+	Event.Timestamp = FDateTime::UtcNow();
+
+	EventBuffer.Add(Event);
+
+	// Prune old events if buffer is too large
+	if (EventBuffer.Num() > MaxEventBufferSize)
+	{
+		PruneEventBuffer();
+	}
+
+	UE_LOG(LogOliveAI, Verbose, TEXT("MCP Notification buffered: %s (event %lld, target: %s)"),
+		*Method, Event.EventId, ClientId.IsEmpty() ? TEXT("broadcast") : *ClientId);
+}
+
+// ==========================================
+// Event Polling
+// ==========================================
+
+bool FOliveMCPServer::HandleEventsPoll(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete)
+{
+	// Parse query parameters from URL
+	// Expected: /mcp/events?cursor=N&client_id=X
+	int64 Cursor = 0;
+	FString ClientId;
+
+	// Extract query params from the request path
+	for (const auto& Pair : Request.QueryParams)
+	{
+		if (Pair.Key == TEXT("cursor"))
+		{
+			Cursor = FCString::Atoi64(*Pair.Value);
+		}
+		else if (Pair.Key == TEXT("client_id"))
+		{
+			ClientId = Pair.Value;
+		}
+	}
+
+	// Collect matching events
+	TArray<TSharedPtr<FJsonValue>> EventsArray;
+	int64 MaxEventId = Cursor;
+
+	{
+		FScopeLock Lock(&EventLock);
+
+		for (const FMCPNotificationEvent& Event : EventBuffer)
+		{
+			if (Event.EventId <= Cursor)
+			{
+				continue;
+			}
+
+			// Filter by client: include broadcast events and events targeted at this client
+			if (!Event.TargetClientId.IsEmpty() && !ClientId.IsEmpty() && Event.TargetClientId != ClientId)
+			{
+				continue;
+			}
+
+			EventsArray.Add(MakeShared<FJsonValueObject>(Event.ToJson()));
+
+			if (Event.EventId > MaxEventId)
+			{
+				MaxEventId = Event.EventId;
+			}
+		}
+	}
+
+	// Build response
+	TSharedPtr<FJsonObject> Response = MakeShared<FJsonObject>();
+	Response->SetArrayField(TEXT("events"), EventsArray);
+	Response->SetNumberField(TEXT("next_cursor"), static_cast<double>(MaxEventId));
+	Response->SetNumberField(TEXT("event_count"), EventsArray.Num());
+
+	FString ResponseBody;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResponseBody);
+	FJsonSerializer::Serialize(Response.ToSharedRef(), Writer);
+
+	TUniquePtr<FHttpServerResponse> HttpResponse = FHttpServerResponse::Create(
+		ResponseBody,
+		TEXT("application/json")
+	);
+
+	OnComplete(MoveTemp(HttpResponse));
+	return true;
+}
+
+void FOliveMCPServer::PruneEventBuffer()
+{
+	// Called with EventLock already held
+	const FDateTime CutoffTime = FDateTime::UtcNow() - FTimespan::FromSeconds(EventRetentionSeconds);
+
+	EventBuffer.RemoveAll([&CutoffTime](const FMCPNotificationEvent& Event)
+	{
+		return Event.Timestamp < CutoffTime;
+	});
+
+	// If still too large, remove oldest events
+	while (EventBuffer.Num() > MaxEventBufferSize)
+	{
+		EventBuffer.RemoveAt(0);
+	}
 }

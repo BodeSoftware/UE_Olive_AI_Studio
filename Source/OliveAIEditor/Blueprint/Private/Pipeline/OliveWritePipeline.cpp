@@ -6,7 +6,9 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Misc/Guid.h"
 #include "HAL/PlatformTime.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "JsonObjectConverter.h"
+#include "Compile/OliveCompileManager.h"
 
 DEFINE_LOG_CATEGORY(LogOliveWritePipeline);
 
@@ -232,16 +234,68 @@ FOliveWriteResult FOliveWritePipeline::ExecuteConfirmed(
 
 FOliveWriteResult FOliveWritePipeline::GeneratePreview(const FOliveWriteRequest& Request)
 {
-	// TODO: Implement preview generation for Tier 3 operations
-	// This requires dry-run execution or simulation
-	UE_LOG(LogOliveWritePipeline, Warning, TEXT("Preview generation not yet implemented for tool '%s'"), *Request.ToolName);
+	UE_LOG(LogOliveWritePipeline, Log, TEXT("Generating Tier 3 preview for tool '%s'"), *Request.ToolName);
 
+	// Stage 1: Validate first (same as normal pipeline)
+	FOliveWriteResult ValidateResult = StageValidate(Request);
+	if (!ValidateResult.bSuccess)
+	{
+		return ValidateResult;
+	}
+
+	// Build preview components
+	TSharedPtr<FJsonObject> PreviewPayload = BuildPreviewPayload(Request);
+	TSharedPtr<FJsonObject> ImpactAnalysis = BuildImpactAnalysis(Request);
+	TArray<TSharedPtr<FJsonValue>> StructuredChanges = BuildStructuredChanges(Request);
+
+	// Generate confirmation token
+	FString ConfirmationToken = GenerateConfirmationToken();
+
+	// Store pending confirmation
+	{
+		FScopeLock Lock(&ConfirmationLock);
+		PendingConfirmations.Add(ConfirmationToken, Request);
+	}
+
+	// Build result
 	FOliveWriteResult PreviewResult;
-	PreviewResult.bSuccess = true;
+	PreviewResult.bSuccess = false; // Not executed yet
 	PreviewResult.CompletedStage = EOliveWriteStage::Confirm;
-	PreviewResult.PreviewData = MakeShareable(new FJsonObject());
-	PreviewResult.PreviewData->SetStringField(TEXT("status"), TEXT("preview_not_implemented"));
-	PreviewResult.PreviewData->SetStringField(TEXT("message"), TEXT("Preview generation will be implemented in a future update"));
+	PreviewResult.ConfirmationRequired = EOliveConfirmationRequirement::PreviewOnly;
+
+	TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
+	ResultData->SetBoolField(TEXT("requires_confirmation"), true);
+	ResultData->SetStringField(TEXT("requirement"), TEXT("preview_only"));
+	ResultData->SetStringField(TEXT("confirmation_token"), ConfirmationToken);
+
+	// Plan: human-readable summary
+	FString PlanDescription = GeneratePlanDescription(Request);
+	ResultData->SetStringField(TEXT("plan"), PlanDescription);
+	PreviewResult.PlanDescription = PlanDescription;
+
+	// Preview: structured preview data
+	if (PreviewPayload.IsValid())
+	{
+		ResultData->SetObjectField(TEXT("preview"), PreviewPayload);
+	}
+
+	// Impact: dependency/referencer analysis
+	if (ImpactAnalysis.IsValid())
+	{
+		ResultData->SetObjectField(TEXT("impact"), ImpactAnalysis);
+	}
+
+	// Changes: structured change descriptors
+	if (StructuredChanges.Num() > 0)
+	{
+		ResultData->SetArrayField(TEXT("changes"), StructuredChanges);
+	}
+
+	PreviewResult.ResultData = ResultData;
+	PreviewResult.PreviewData = ResultData;
+
+	UE_LOG(LogOliveWritePipeline, Log, TEXT("Preview generated for tool '%s' with token '%s'"),
+		*Request.ToolName, *ConfirmationToken);
 
 	return PreviewResult;
 }
@@ -288,20 +342,32 @@ TOptional<FOliveWriteResult> FOliveWritePipeline::StageConfirm(const FOliveWrite
 		return TOptional<FOliveWriteResult>(); // Continue to next stage
 	}
 
-	// Tier 2/3 require confirmation
-	FString PlanDescription = GeneratePlanDescription(Request);
-	FString ConfirmationToken = GenerateConfirmationToken();
-
-	// Store pending confirmation
+	// Tier 2: Plan + Confirm
+	if (Requirement == EOliveConfirmationRequirement::PlanConfirm)
 	{
-		FScopeLock Lock(&ConfirmationLock);
-		PendingConfirmations.Add(ConfirmationToken, Request);
+		FString PlanDescription = GeneratePlanDescription(Request);
+		FString ConfirmationToken = GenerateConfirmationToken();
+
+		// Store pending confirmation
+		{
+			FScopeLock Lock(&ConfirmationLock);
+			PendingConfirmations.Add(ConfirmationToken, Request);
+		}
+
+		FOliveWriteResult ConfirmResult = FOliveWriteResult::ConfirmationNeeded(Requirement, PlanDescription);
+		ConfirmResult.ResultData->SetStringField(TEXT("confirmation_token"), ConfirmationToken);
+
+		return ConfirmResult;
 	}
 
-	FOliveWriteResult ConfirmResult = FOliveWriteResult::ConfirmationNeeded(Requirement, PlanDescription);
-	ConfirmResult.ResultData->SetStringField(TEXT("confirmation_token"), ConfirmationToken);
+	// Tier 3: Full preview
+	if (Requirement == EOliveConfirmationRequirement::PreviewOnly)
+	{
+		FOliveWriteResult PreviewResult = GeneratePreview(Request);
+		return PreviewResult;
+	}
 
-	return ConfirmResult;
+	return TOptional<FOliveWriteResult>(); // Should not reach here
 }
 
 TUniquePtr<FOliveTransactionManager::FScopedOliveTransaction> FOliveWritePipeline::StageTransact(
@@ -425,6 +491,19 @@ FOliveWriteResult FOliveWritePipeline::StageReport(
 		FinalResult.ResultData->SetArrayField(TEXT("messages"), MessageArray);
 	}
 
+	// Add navigation hints for UI result cards
+	if (FinalResult.ResultData.IsValid())
+	{
+		if (!Request.AssetPath.IsEmpty())
+		{
+			FinalResult.ResultData->SetStringField(TEXT("asset_path"), Request.AssetPath);
+		}
+		if (Request.Params.IsValid() && Request.Params->HasField(TEXT("graph_name")))
+		{
+			FinalResult.ResultData->SetStringField(TEXT("graph_name"), Request.Params->GetStringField(TEXT("graph_name")));
+		}
+	}
+
 	return FinalResult;
 }
 
@@ -434,40 +513,13 @@ FOliveWriteResult FOliveWritePipeline::StageReport(
 
 EOliveConfirmationTier FOliveWritePipeline::GetOperationTier(const FString& OperationCategory) const
 {
-	UOliveAISettings* Settings = UOliveAISettings::Get();
+	const UOliveAISettings* Settings = UOliveAISettings::Get();
 	if (!Settings)
 	{
 		UE_LOG(LogOliveWritePipeline, Warning, TEXT("Settings not available, using default Tier 2"));
-		return EOliveConfirmationTier::Tier2_PlanConfirm; // Safe default
+		return EOliveConfirmationTier::Tier2_PlanConfirm;
 	}
-
-	if (OperationCategory == TEXT("variable"))
-	{
-		return Settings->VariableOperationsTier;
-	}
-	else if (OperationCategory == TEXT("component"))
-	{
-		return Settings->ComponentOperationsTier;
-	}
-	else if (OperationCategory == TEXT("function_creation"))
-	{
-		return Settings->FunctionCreationTier;
-	}
-	else if (OperationCategory == TEXT("graph_editing"))
-	{
-		return Settings->GraphEditingTier;
-	}
-	else if (OperationCategory == TEXT("refactoring"))
-	{
-		return Settings->RefactoringTier;
-	}
-	else if (OperationCategory == TEXT("delete"))
-	{
-		return Settings->DeleteOperationsTier;
-	}
-
-	UE_LOG(LogOliveWritePipeline, Verbose, TEXT("Unknown operation category '%s', using default Tier 2"), *OperationCategory);
-	return EOliveConfirmationTier::Tier2_PlanConfirm;
+	return Settings->GetEffectiveTier(OperationCategory);
 }
 
 EOliveConfirmationRequirement FOliveWritePipeline::TierToRequirement(EOliveConfirmationTier Tier) const
@@ -558,43 +610,244 @@ FOliveIRCompileResult FOliveWritePipeline::CompileAndGatherErrors(UBlueprint* Bl
 		return FOliveIRCompileResult::Failure(TEXT("Null Blueprint"), TEXT(""));
 	}
 
-	const double StartTime = FPlatformTime::Seconds();
+	// Delegate to the CompileManager which provides full structured error extraction
+	// including node-level errors, graph names, pattern matching, and suggestions
+	return FOliveCompileManager::Get().Compile(Blueprint);
+}
 
-	// Mark Blueprint as modified to ensure compilation happens
-	FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+// ============================================================================
+// Preview Generation Helpers
+// ============================================================================
 
-	// Compile the Blueprint
-	FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::None);
+TSharedPtr<FJsonObject> FOliveWritePipeline::BuildPreviewPayload(const FOliveWriteRequest& Request) const
+{
+	TSharedPtr<FJsonObject> Preview = MakeShareable(new FJsonObject());
 
-	const double CompileTime = (FPlatformTime::Seconds() - StartTime) * 1000.0;
+	Preview->SetStringField(TEXT("tool"), Request.ToolName);
+	Preview->SetStringField(TEXT("operation"), Request.OperationDescription.ToString());
 
-	// Gather compilation results
-	FOliveIRCompileResult Result;
-	Result.CompileTimeMs = CompileTime;
-
-	// Check compile status
-	if (Blueprint->Status == BS_UpToDate || Blueprint->Status == BS_UpToDateWithWarnings)
+	if (!Request.AssetPath.IsEmpty())
 	{
-		Result.bSuccess = true;
-		UE_LOG(LogOliveWritePipeline, Verbose, TEXT("Blueprint compiled successfully in %.2fms"), CompileTime);
+		Preview->SetStringField(TEXT("target_asset"), Request.AssetPath);
+
+		// For Blueprint targets, add graph info
+		if (UBlueprint* Blueprint = Cast<UBlueprint>(Request.TargetAsset))
+		{
+			Preview->SetStringField(TEXT("asset_type"), TEXT("Blueprint"));
+			Preview->SetStringField(TEXT("blueprint_type"),
+				Blueprint->BlueprintType == BPTYPE_Normal ? TEXT("Normal") :
+				Blueprint->BlueprintType == BPTYPE_FunctionLibrary ? TEXT("FunctionLibrary") :
+				Blueprint->BlueprintType == BPTYPE_Interface ? TEXT("Interface") :
+				Blueprint->BlueprintType == BPTYPE_MacroLibrary ? TEXT("MacroLibrary") : TEXT("Other"));
+
+			if (Blueprint->ParentClass)
+			{
+				Preview->SetStringField(TEXT("parent_class"), Blueprint->ParentClass->GetName());
+			}
+
+			// List graphs
+			TArray<TSharedPtr<FJsonValue>> GraphArray;
+			for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+			{
+				if (Graph)
+				{
+					TSharedPtr<FJsonObject> GraphObj = MakeShareable(new FJsonObject());
+					GraphObj->SetStringField(TEXT("name"), Graph->GetName());
+					GraphObj->SetNumberField(TEXT("node_count"), Graph->Nodes.Num());
+					GraphArray.Add(MakeShareable(new FJsonValueObject(GraphObj)));
+				}
+			}
+			if (GraphArray.Num() > 0)
+			{
+				Preview->SetArrayField(TEXT("existing_graphs"), GraphArray);
+			}
+
+			// Count existing variables
+			Preview->SetNumberField(TEXT("existing_variable_count"), Blueprint->NewVariables.Num());
+		}
+	}
+
+	// Add key parameters summary
+	if (Request.Params.IsValid())
+	{
+		TSharedPtr<FJsonObject> ParamSummary = MakeShareable(new FJsonObject());
+		TArray<FString> Keys;
+		Request.Params->Values.GetKeys(Keys);
+
+		for (const FString& Key : Keys)
+		{
+			// Include string and boolean params in summary, skip large objects
+			const TSharedPtr<FJsonValue>& Value = Request.Params->Values[Key];
+			if (Value->Type == EJson::String || Value->Type == EJson::Boolean || Value->Type == EJson::Number)
+			{
+				ParamSummary->SetField(Key, Value);
+			}
+		}
+		Preview->SetObjectField(TEXT("parameters"), ParamSummary);
+	}
+
+	return Preview;
+}
+
+TSharedPtr<FJsonObject> FOliveWritePipeline::BuildImpactAnalysis(const FOliveWriteRequest& Request) const
+{
+	TSharedPtr<FJsonObject> Impact = MakeShareable(new FJsonObject());
+
+	if (Request.AssetPath.IsEmpty())
+	{
+		Impact->SetNumberField(TEXT("affected_count"), 0);
+		return Impact;
+	}
+
+	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
+
+	// Get dependencies
+	TArray<FAssetIdentifier> Dependencies;
+	AssetRegistry.GetDependencies(FAssetIdentifier(FName(*Request.AssetPath)), Dependencies);
+
+	TArray<TSharedPtr<FJsonValue>> DepsArray;
+	for (const FAssetIdentifier& Dep : Dependencies)
+	{
+		DepsArray.Add(MakeShareable(new FJsonValueString(Dep.PackageName.ToString())));
+	}
+	Impact->SetArrayField(TEXT("dependencies"), DepsArray);
+
+	// Get referencers
+	TArray<FAssetIdentifier> Referencers;
+	AssetRegistry.GetReferencers(FAssetIdentifier(FName(*Request.AssetPath)), Referencers);
+
+	TArray<TSharedPtr<FJsonValue>> RefsArray;
+	for (const FAssetIdentifier& Ref : Referencers)
+	{
+		RefsArray.Add(MakeShareable(new FJsonValueString(Ref.PackageName.ToString())));
+	}
+	Impact->SetArrayField(TEXT("referencers"), RefsArray);
+
+	Impact->SetNumberField(TEXT("dependency_count"), DepsArray.Num());
+	Impact->SetNumberField(TEXT("referencer_count"), RefsArray.Num());
+	Impact->SetNumberField(TEXT("affected_count"), DepsArray.Num() + RefsArray.Num());
+
+	return Impact;
+}
+
+TArray<TSharedPtr<FJsonValue>> FOliveWritePipeline::BuildStructuredChanges(const FOliveWriteRequest& Request) const
+{
+	TArray<TSharedPtr<FJsonValue>> Changes;
+
+	if (!Request.Params.IsValid())
+	{
+		return Changes;
+	}
+
+	// Parse changes based on tool name category
+	const FString& ToolName = Request.ToolName;
+
+	if (ToolName.Contains(TEXT("add_variable")))
+	{
+		TSharedPtr<FJsonObject> Change = MakeShareable(new FJsonObject());
+		Change->SetStringField(TEXT("type"), TEXT("add_variable"));
+		Change->SetStringField(TEXT("name"), Request.Params->GetStringField(TEXT("name")));
+		FString VarType;
+		Request.Params->TryGetStringField(TEXT("type"), VarType);
+		Change->SetStringField(TEXT("variable_type"), VarType);
+		Changes.Add(MakeShareable(new FJsonValueObject(Change)));
+	}
+	else if (ToolName.Contains(TEXT("add_component")))
+	{
+		TSharedPtr<FJsonObject> Change = MakeShareable(new FJsonObject());
+		Change->SetStringField(TEXT("type"), TEXT("add_component"));
+		Change->SetStringField(TEXT("component_class"), Request.Params->GetStringField(TEXT("component_class")));
+		FString Name;
+		Request.Params->TryGetStringField(TEXT("name"), Name);
+		Change->SetStringField(TEXT("name"), Name);
+		Changes.Add(MakeShareable(new FJsonValueObject(Change)));
+	}
+	else if (ToolName.Contains(TEXT("add_function")) || ToolName.Contains(TEXT("create_function")))
+	{
+		TSharedPtr<FJsonObject> Change = MakeShareable(new FJsonObject());
+		Change->SetStringField(TEXT("type"), TEXT("add_function"));
+		Change->SetStringField(TEXT("name"), Request.Params->GetStringField(TEXT("name")));
+		Changes.Add(MakeShareable(new FJsonValueObject(Change)));
+	}
+	else if (ToolName.Contains(TEXT("add_node")) || ToolName.Contains(TEXT("create_node")))
+	{
+		TSharedPtr<FJsonObject> Change = MakeShareable(new FJsonObject());
+		Change->SetStringField(TEXT("type"), TEXT("add_node"));
+		FString NodeClass;
+		Request.Params->TryGetStringField(TEXT("node_class"), NodeClass);
+		Change->SetStringField(TEXT("node_class"), NodeClass);
+		FString Graph;
+		Request.Params->TryGetStringField(TEXT("graph"), Graph);
+		Change->SetStringField(TEXT("graph"), Graph);
+		Changes.Add(MakeShareable(new FJsonValueObject(Change)));
+	}
+	else if (ToolName.Contains(TEXT("remove_")))
+	{
+		TSharedPtr<FJsonObject> Change = MakeShareable(new FJsonObject());
+		Change->SetStringField(TEXT("type"), TEXT("remove"));
+		FString TargetName;
+		Request.Params->TryGetStringField(TEXT("name"), TargetName);
+		if (TargetName.IsEmpty())
+		{
+			Request.Params->TryGetStringField(TEXT("node_id"), TargetName);
+		}
+		Change->SetStringField(TEXT("target"), TargetName);
+		Changes.Add(MakeShareable(new FJsonValueObject(Change)));
+	}
+	else if (ToolName.Contains(TEXT("set_parent")) || ToolName.Contains(TEXT("reparent")))
+	{
+		TSharedPtr<FJsonObject> Change = MakeShareable(new FJsonObject());
+		Change->SetStringField(TEXT("type"), TEXT("reparent"));
+		FString NewParent;
+		Request.Params->TryGetStringField(TEXT("new_parent"), NewParent);
+		if (NewParent.IsEmpty())
+		{
+			Request.Params->TryGetStringField(TEXT("parent_class"), NewParent);
+		}
+		Change->SetStringField(TEXT("new_parent"), NewParent);
+		Changes.Add(MakeShareable(new FJsonValueObject(Change)));
+	}
+	else if (ToolName.Contains(TEXT("connect_")) || ToolName.Contains(TEXT("wire")))
+	{
+		TSharedPtr<FJsonObject> Change = MakeShareable(new FJsonObject());
+		Change->SetStringField(TEXT("type"), TEXT("connect_pins"));
+		FString SourceNode, SourcePin, TargetNode, TargetPin;
+		Request.Params->TryGetStringField(TEXT("source_node"), SourceNode);
+		Request.Params->TryGetStringField(TEXT("source_pin"), SourcePin);
+		Request.Params->TryGetStringField(TEXT("target_node"), TargetNode);
+		Request.Params->TryGetStringField(TEXT("target_pin"), TargetPin);
+		Change->SetStringField(TEXT("source"), SourceNode + TEXT(":") + SourcePin);
+		Change->SetStringField(TEXT("target"), TargetNode + TEXT(":") + TargetPin);
+		Changes.Add(MakeShareable(new FJsonValueObject(Change)));
+	}
+	else if (ToolName.Contains(TEXT("modify_")) || ToolName.Contains(TEXT("set_")))
+	{
+		TSharedPtr<FJsonObject> Change = MakeShareable(new FJsonObject());
+		Change->SetStringField(TEXT("type"), TEXT("modify"));
+		Change->SetStringField(TEXT("tool"), ToolName);
+		// Include all string params as context
+		TArray<FString> Keys;
+		Request.Params->Values.GetKeys(Keys);
+		for (const FString& Key : Keys)
+		{
+			FString Val;
+			if (Request.Params->TryGetStringField(Key, Val) && Key != TEXT("path") && Key != TEXT("blueprint") && Key != TEXT("asset"))
+			{
+				Change->SetStringField(Key, Val);
+			}
+		}
+		Changes.Add(MakeShareable(new FJsonValueObject(Change)));
 	}
 	else
 	{
-		Result.bSuccess = false;
-		UE_LOG(LogOliveWritePipeline, Warning, TEXT("Blueprint compilation failed"));
-
-		// Add generic error if status indicates failure
-		FOliveIRCompileError GenericError;
-		GenericError.Message = TEXT("Blueprint compilation failed");
-		GenericError.Severity = EOliveIRCompileErrorSeverity::Error;
-		GenericError.Suggestion = TEXT("Check the Blueprint for errors in the graph");
-		Result.Errors.Add(GenericError);
+		// Generic change descriptor
+		TSharedPtr<FJsonObject> Change = MakeShareable(new FJsonObject());
+		Change->SetStringField(TEXT("type"), TEXT("operation"));
+		Change->SetStringField(TEXT("tool"), ToolName);
+		Changes.Add(MakeShareable(new FJsonValueObject(Change)));
 	}
 
-	// TODO: Extract specific errors from Blueprint's error log
-	// This requires parsing Blueprint->CompileLog or similar
-
-	return Result;
+	return Changes;
 }
 
 // ============================================================================

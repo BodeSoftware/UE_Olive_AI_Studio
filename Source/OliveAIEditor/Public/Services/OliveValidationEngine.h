@@ -184,6 +184,21 @@ public:
 
 private:
 	TMap<FString, TSharedPtr<FJsonObject>> ToolSchemas;
+
+	/** Validate a single field's type against schema */
+	void ValidateType(const FString& FieldName, const TSharedPtr<FJsonValue>& Value,
+		const TSharedPtr<FJsonObject>& PropertySchema, FOliveValidationResult& Result) const;
+
+	/** Validate a value is in an enum array */
+	void ValidateEnum(const FString& FieldName, const TSharedPtr<FJsonValue>& Value,
+		const TArray<TSharedPtr<FJsonValue>>& EnumValues, FOliveValidationResult& Result) const;
+
+	/** Validate a nested object against a sub-schema (one level deep) */
+	void ValidateObject(const FString& Prefix, const TSharedPtr<FJsonObject>& Value,
+		const TSharedPtr<FJsonObject>& Schema, FOliveValidationResult& Result) const;
+
+	/** Check if a JSON value matches the expected type string */
+	static bool IsTypeMatch(const TSharedPtr<FJsonValue>& Value, const FString& ExpectedType);
 };
 
 /**
@@ -261,6 +276,113 @@ public:
 			TEXT("blackboard.modify_key"),
 			TEXT("blackboard.set_parent")
 		};
+	}
+	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+};
+
+// ============================================================================
+// Blueprint Validation Rules
+// ============================================================================
+
+/**
+ * Rule that validates Blueprint asset type for BP write tools
+ */
+class OLIVEAIEDITOR_API FOliveBPAssetTypeRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("BPAssetType")); }
+	virtual FString GetDescription() const override { return TEXT("Validates target is a Blueprint for BP write tools"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return {
+			TEXT("blueprint.add_variable"), TEXT("blueprint.remove_variable"), TEXT("blueprint.modify_variable"),
+			TEXT("blueprint.add_component"), TEXT("blueprint.remove_component"), TEXT("blueprint.modify_component"),
+			TEXT("blueprint.reparent_component"),
+			TEXT("blueprint.add_function"), TEXT("blueprint.remove_function"), TEXT("blueprint.modify_function_signature"),
+			TEXT("blueprint.add_event_dispatcher"), TEXT("blueprint.override_function"), TEXT("blueprint.add_custom_event"),
+			TEXT("blueprint.add_node"), TEXT("blueprint.remove_node"),
+			TEXT("blueprint.connect_pins"), TEXT("blueprint.disconnect_pins"),
+			TEXT("blueprint.set_pin_default"), TEXT("blueprint.set_node_property"),
+			TEXT("blueprint.set_parent_class"), TEXT("blueprint.add_interface"), TEXT("blueprint.remove_interface"),
+			TEXT("blueprint.compile"), TEXT("blueprint.delete")
+		};
+	}
+	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+};
+
+/**
+ * Rule that validates node_id format for Blueprint graph operations
+ */
+class OLIVEAIEDITOR_API FOliveBPNodeIdFormatRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("BPNodeIdFormat")); }
+	virtual FString GetDescription() const override { return TEXT("Validates node_id parameters for Blueprint graph operations"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return {
+			TEXT("blueprint.remove_node"),
+			TEXT("blueprint.connect_pins"), TEXT("blueprint.disconnect_pins"),
+			TEXT("blueprint.set_pin_default"), TEXT("blueprint.set_node_property")
+		};
+	}
+	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+};
+
+/**
+ * Rule that validates variable/function name format for Blueprint operations
+ */
+class OLIVEAIEDITOR_API FOliveBPNamingRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("BPNaming")); }
+	virtual FString GetDescription() const override { return TEXT("Validates naming conventions for Blueprint members"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return {
+			TEXT("blueprint.add_variable"), TEXT("blueprint.modify_variable"),
+			TEXT("blueprint.add_function"), TEXT("blueprint.modify_function_signature"),
+			TEXT("blueprint.add_event_dispatcher"), TEXT("blueprint.add_custom_event")
+		};
+	}
+	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+};
+
+// ============================================================================
+// PCG Validation Rules
+// ============================================================================
+
+/**
+ * Rule that validates PCG asset type for PCG write tools
+ */
+class OLIVEAIEDITOR_API FOlivePCGAssetTypeRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("PCGAssetType")); }
+	virtual FString GetDescription() const override { return TEXT("Validates target is a PCG graph for PCG write tools"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return {
+			TEXT("pcg.add_node"), TEXT("pcg.remove_node"),
+			TEXT("pcg.connect"), TEXT("pcg.disconnect"),
+			TEXT("pcg.set_settings"), TEXT("pcg.add_subgraph"),
+			TEXT("pcg.execute")
+		};
+	}
+	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+};
+
+/**
+ * Rule that validates PCG node settings class exists
+ */
+class OLIVEAIEDITOR_API FOlivePCGNodeClassRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("PCGNodeClass")); }
+	virtual FString GetDescription() const override { return TEXT("Validates PCG settings class names are valid"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return { TEXT("pcg.add_node") };
 	}
 	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
 };
@@ -403,6 +525,85 @@ public:
 			TEXT("project.refactor_rename"),
 			TEXT("project.implement_interface"),
 			TEXT("project.move_to_cpp")
+		};
+	}
+	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+};
+
+/**
+ * Rule that rate-limits write operations to prevent runaway AI loops.
+ * Uses a sliding window of timestamps to enforce MaxWriteOpsPerMinute from settings.
+ * Thread-safe via FCriticalSection.
+ */
+class OLIVEAIEDITOR_API FOliveWriteRateLimitRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("WriteRateLimit")); }
+	virtual FString GetDescription() const override { return TEXT("Rate-limits write operations per minute"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return {
+			TEXT("blueprint.add_variable"), TEXT("blueprint.add_component"), TEXT("blueprint.add_function"),
+			TEXT("blueprint.add_node"), TEXT("blueprint.remove_variable"), TEXT("blueprint.remove_component"),
+			TEXT("blueprint.remove_function"), TEXT("blueprint.remove_node"),
+			TEXT("blueprint.create"), TEXT("blueprint.set_parent_class"),
+			TEXT("blueprint.modify_variable"), TEXT("blueprint.modify_function"),
+			TEXT("blueprint.connect_pins"), TEXT("blueprint.disconnect_pins"),
+			TEXT("blueprint.set_defaults"), TEXT("blueprint.move_node"),
+			TEXT("behaviortree.create"), TEXT("behaviortree.add_node"), TEXT("behaviortree.remove_node"),
+			TEXT("behaviortree.modify_node"), TEXT("behaviortree.set_decorator"),
+			TEXT("pcg.create"), TEXT("pcg.add_node"), TEXT("pcg.remove_node"),
+			TEXT("pcg.modify_node"), TEXT("pcg.connect_pins"),
+			TEXT("cpp.create_class"), TEXT("cpp.add_property"), TEXT("cpp.add_function"),
+			TEXT("cpp.modify_source"), TEXT("cpp.compile"),
+			TEXT("project.refactor_rename"), TEXT("project.implement_interface"),
+			TEXT("project.move_to_cpp"), TEXT("project.rollback")
+		};
+	}
+	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+
+private:
+	TArray<double> WriteTimestamps;
+	mutable FCriticalSection TimestampLock;
+};
+
+/**
+ * Rule that blocks Blueprint-asset-creation tools when preferred_layer=cpp is set.
+ * Enforces C++-only mode by redirecting to C++ tool alternatives.
+ */
+class OLIVEAIEDITOR_API FOliveCppOnlyModeRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("CppOnlyMode")); }
+	virtual FString GetDescription() const override { return TEXT("Blocks BP creation tools when preferred_layer=cpp"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return {
+			TEXT("blueprint.create"),
+			TEXT("blueprint.add_variable"), TEXT("blueprint.add_component"),
+			TEXT("blueprint.add_function"), TEXT("blueprint.add_node"),
+			TEXT("behaviortree.create"), TEXT("behaviortree.add_node"),
+			TEXT("pcg.create"), TEXT("pcg.add_node")
+		};
+	}
+	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+};
+
+/**
+ * Rule that warns when creating functionality that already exists in another layer (C++ vs Blueprint).
+ * Prevents duplicate implementations across layers in hybrid projects.
+ */
+class OLIVEAIEDITOR_API FOliveDuplicateLayerRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("DuplicateLayer")); }
+	virtual FString GetDescription() const override { return TEXT("Warns when duplicating functionality across C++ and Blueprint layers"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return {
+			TEXT("blueprint.add_function"), TEXT("blueprint.add_custom_event"),
+			TEXT("blueprint.override_function"), TEXT("blueprint.add_variable"),
+			TEXT("cpp.add_function"), TEXT("cpp.add_property")
 		};
 	}
 	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;

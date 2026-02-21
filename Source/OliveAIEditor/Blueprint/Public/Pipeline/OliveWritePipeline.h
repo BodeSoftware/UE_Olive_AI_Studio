@@ -323,6 +323,31 @@ private:
 	FOliveIRCompileResult CompileAndGatherErrors(UBlueprint* Blueprint) const;
 
 	// ============================================================================
+	// Preview Generation Helpers
+	// ============================================================================
+
+	/**
+	 * Build a preview payload describing what the operation would change
+	 * @param Request The write request
+	 * @return JSON object with plan description and change summary
+	 */
+	TSharedPtr<FJsonObject> BuildPreviewPayload(const FOliveWriteRequest& Request) const;
+
+	/**
+	 * Build impact analysis using AssetRegistry dependencies/referencers
+	 * @param Request The write request
+	 * @return JSON object with dependencies, referencers, affected_count
+	 */
+	TSharedPtr<FJsonObject> BuildImpactAnalysis(const FOliveWriteRequest& Request) const;
+
+	/**
+	 * Build structured change descriptors from tool params
+	 * @param Request The write request
+	 * @return JSON array of change descriptor objects
+	 */
+	TArray<TSharedPtr<FJsonValue>> BuildStructuredChanges(const FOliveWriteRequest& Request) const;
+
+	// ============================================================================
 	// State
 	// ============================================================================
 
