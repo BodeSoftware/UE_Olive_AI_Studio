@@ -169,6 +169,28 @@ struct OLIVEAIEDITOR_API FOliveChatMessage
 	TSharedPtr<FJsonObject> ToJson() const;
 };
 
+/**
+ * Per-request options that override provider config defaults.
+ * Zero/negative sentinel values mean "use config default".
+ */
+struct OLIVEAIEDITOR_API FOliveRequestOptions
+{
+	/** Max tokens to generate. 0 = use config default. */
+	int32 MaxTokens = 0;
+
+	/** Sampling temperature. Negative = use config default. */
+	float Temperature = -1.0f;
+
+	/** Request timeout in seconds. 0 = use config default. */
+	int32 TimeoutSeconds = 0;
+
+	/** Whether these are default (all sentinels) */
+	bool IsDefault() const
+	{
+		return MaxTokens <= 0 && Temperature < 0.0f && TimeoutSeconds <= 0;
+	}
+};
+
 // ==========================================
 // Delegates
 // ==========================================
@@ -241,7 +263,8 @@ public:
 		FOnOliveStreamChunk OnChunk,
 		FOnOliveToolCall OnToolCall,
 		FOnOliveComplete OnComplete,
-		FOnOliveError OnError
+		FOnOliveError OnError,
+		const FOliveRequestOptions& Options = FOliveRequestOptions()
 	) = 0;
 
 	/**

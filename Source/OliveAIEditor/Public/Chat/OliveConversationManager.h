@@ -6,6 +6,12 @@
 #include "Providers/IOliveAIProvider.h"
 #include "MCP/OliveToolRegistry.h"
 #include "Chat/OliveRunManager.h"
+#include "Brain/OliveBrainLayer.h"
+#include "Brain/OliveOperationHistory.h"
+#include "Brain/OlivePromptDistiller.h"
+#include "Brain/OliveRetryPolicy.h"
+#include "Brain/OliveSelfCorrectionPolicy.h"
+#include "Brain/OliveToolPackManager.h"
 
 /**
  * Conversation Events
@@ -253,6 +259,9 @@ private:
 	/** Whether run mode is active */
 	bool bRunModeActive = false;
 
+	/** Brain Layer — owns state machine, loop detection, operation history */
+	TSharedPtr<FOliveBrainLayer> Brain;
+
 	// ==========================================
 	// Streaming State
 	// ==========================================
@@ -291,15 +300,34 @@ private:
 	/** Pending confirmation tool arguments */
 	TSharedPtr<FJsonObject> PendingConfirmationArguments;
 
+	/** Pending confirmation token issued by write pipeline */
+	FString PendingConfirmationToken;
+
+	/** Turn-level intent flags for tool-pack policy */
+	bool bTurnHasExplicitWriteIntent = false;
+	bool bTurnHasDangerIntent = false;
+
+	/** Stop the current tool loop after results are added to history */
+	bool bStopAfterToolResults = false;
+
 	// ==========================================
-	// Compile Self-Correction
+	// Brain Layer Components
 	// ==========================================
 
-	/** Number of compile retries in current agentic loop */
-	int32 CompileRetryCount = 0;
+	/** Operation history for this session */
+	FOliveOperationHistoryStore HistoryStore;
 
-	/** Maximum compile retries before giving up */
-	static constexpr int32 MaxCompileRetries = 3;
+	/** Prompt distiller for token efficiency */
+	FOlivePromptDistiller PromptDistiller;
+
+	/** Loop detector for current run */
+	FOliveLoopDetector LoopDetector;
+
+	/** Self-correction policy */
+	FOliveSelfCorrectionPolicy SelfCorrectionPolicy;
+
+	/** Retry policy configuration */
+	FOliveRetryPolicy RetryPolicy;
 
 	// ==========================================
 	// Token Management

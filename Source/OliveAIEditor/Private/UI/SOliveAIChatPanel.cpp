@@ -49,30 +49,14 @@ TSharedRef<SDockTab> SOliveAIChatPanel::SpawnTab(const FSpawnTabArgs& Args)
 
 void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 {
-	// Initialize focus profiles from the source-of-truth manager (built-ins + future custom profiles).
+	// Phase E: Fixed 3-option focus profile list
 	{
-		const TArray<FString> ProfileNames = FOliveFocusProfileManager::Get().GetProfileNames();
-		for (const FString& Name : ProfileNames)
-		{
-			FocusProfiles.Add(MakeShared<FString>(Name));
-		}
+		FocusProfiles.Add(MakeShared<FString>(TEXT("Auto")));
+		FocusProfiles.Add(MakeShared<FString>(TEXT("Blueprint")));
+		FocusProfiles.Add(MakeShared<FString>(TEXT("C++")));
 
-		// Fallback if something went wrong during initialization.
-		if (FocusProfiles.Num() == 0)
-		{
-			FocusProfiles.Add(MakeShared<FString>(TEXT("Auto")));
-		}
-
-		// Default to Auto if present, otherwise first item.
+		// Default to Auto
 		CurrentFocusProfile = FocusProfiles[0];
-		for (const TSharedPtr<FString>& ProfileOption : FocusProfiles)
-		{
-			if (ProfileOption.IsValid() && ProfileOption->Equals(TEXT("Auto"), ESearchCase::IgnoreCase))
-			{
-				CurrentFocusProfile = ProfileOption;
-				break;
-			}
-		}
 	}
 
 	// Create conversation manager

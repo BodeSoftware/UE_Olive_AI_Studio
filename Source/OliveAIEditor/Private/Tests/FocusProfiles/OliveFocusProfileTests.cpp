@@ -156,7 +156,7 @@ bool FOliveFocusProfileCorruptPayloadTest::RunTest(const FString& Parameters)
 	Settings->SaveConfig();
 	Manager.Initialize();
 	TestFalse(TEXT("Corrupt payload should not create unexpected profile"), Manager.HasProfile(TEXT("BrokenProfile")));
-	TestTrue(TEXT("Built-in profile should still exist after corrupt payload"), Manager.HasProfile(TEXT("Everything")));
+	TestTrue(TEXT("Built-in profile should still exist after corrupt payload"), Manager.HasProfile(TEXT("Auto")));
 
 	Settings->CustomFocusProfilesJson = TEXT("{\"version\":999,\"profiles\":[{\"name\":\"FutureProfile\",\"display_name\":\"Future\",\"description\":\"\",\"tool_categories\":[],\"excluded_tools\":[],\"system_prompt_addition\":\"\",\"icon_name\":\"\",\"sort_order\":100}]}");
 	Settings->CustomFocusProfilesSchemaVersion = 999;
@@ -181,10 +181,10 @@ bool FOliveFocusProfileNamingAndPromptTest::RunTest(const FString& Parameters)
 	FOliveFocusProfileManager& Manager = FOliveFocusProfileManager::Get();
 	Manager.Initialize();
 
-	TestEqual(TEXT("Legacy name should normalize to canonical"), Manager.NormalizeProfileName(TEXT("Full Stack")), FString(TEXT("Everything")));
+	TestEqual(TEXT("Legacy name should normalize to canonical"), Manager.NormalizeProfileName(TEXT("Full Stack")), FString(TEXT("Auto")));
 
 	const TArray<FOliveToolDefinition> LegacyTools = FOliveToolRegistry::Get().GetToolsForProfile(TEXT("Full Stack"));
-	const TArray<FOliveToolDefinition> CanonicalTools = FOliveToolRegistry::Get().GetToolsForProfile(TEXT("Everything"));
+	const TArray<FOliveToolDefinition> CanonicalTools = FOliveToolRegistry::Get().GetToolsForProfile(TEXT("Auto"));
 	TestEqual(TEXT("Legacy and canonical profiles should expose identical tool count"), LegacyTools.Num(), CanonicalTools.Num());
 
 	FOlivePromptAssembler& Assembler = FOlivePromptAssembler::Get();

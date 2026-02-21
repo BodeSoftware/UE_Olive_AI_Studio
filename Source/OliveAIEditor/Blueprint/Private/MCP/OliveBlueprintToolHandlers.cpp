@@ -10,6 +10,7 @@
 #include "OliveWidgetWriter.h"
 #include "OliveCompileManager.h"
 #include "OliveWritePipeline.h"
+#include "Brain/OliveToolExecutionContext.h"
 #include "OliveBlueprintTypes.h"
 #include "IR/BlueprintIR.h"
 #include "IR/CommonIR.h"
@@ -19,6 +20,28 @@
 #include "Serialization/JsonSerializer.h"
 
 DEFINE_LOG_CATEGORY(LogOliveBPTools);
+
+namespace
+{
+FOliveWriteResult ExecuteWithOptionalConfirmation(
+	FOliveWritePipeline& Pipeline,
+	const FOliveWriteRequest& Request,
+	FOliveWriteExecutor Executor)
+{
+	FString ConfirmationToken;
+	if (Request.Params.IsValid())
+	{
+		Request.Params->TryGetStringField(TEXT("confirmation_token"), ConfirmationToken);
+	}
+
+	if (!ConfirmationToken.IsEmpty())
+	{
+		return Pipeline.ExecuteConfirmed(Request, ConfirmationToken, Executor);
+	}
+
+	return Pipeline.Execute(Request, Executor);
+}
+} // namespace
 
 // ============================================================================
 // Singleton Access
@@ -997,7 +1020,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 		FString::Printf(TEXT("Create Blueprint '%s'"), *AssetPath)
 	);
 	Request.OperationCategory = TEXT("create");
-	Request.bFromMCP = true; // MCP calls skip confirmation
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP(); // MCP calls skip confirmation
 	Request.bAutoCompile = false; // No need to compile new empty Blueprint
 	Request.bSkipVerification = false;
 
@@ -1032,7 +1055,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -1092,7 +1115,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintSetParentClass(cons
 		FString::Printf(TEXT("Change parent class of '%s' to '%s'"), *AssetPath, *NewParent)
 	);
 	Request.OperationCategory = TEXT("refactoring"); // Tier 3 - destructive
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = true; // Need to compile after reparenting
 	Request.bSkipVerification = false;
 
@@ -1134,7 +1157,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintSetParentClass(cons
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -1194,7 +1217,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddInterface(const 
 		FString::Printf(TEXT("Add interface '%s' to '%s'"), *InterfacePath, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("interface"); // Tier 2
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = true;
 	Request.bSkipVerification = false;
 
@@ -1225,7 +1248,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddInterface(const 
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -1285,7 +1308,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveInterface(con
 		FString::Printf(TEXT("Remove interface '%s' from '%s'"), *InterfacePath, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("interface"); // Tier 2
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = true;
 	Request.bSkipVerification = false;
 
@@ -1316,7 +1339,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveInterface(con
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -1410,7 +1433,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintDelete(const TShare
 		FString::Printf(TEXT("Delete Blueprint '%s'"), *AssetPath)
 	);
 	Request.OperationCategory = TEXT("delete"); // Tier 3 - destructive
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false; // No compilation needed for delete
 	Request.bSkipVerification = true; // No verification possible after delete
 
@@ -1440,7 +1463,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintDelete(const TShare
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -1526,7 +1549,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 		FString::Printf(TEXT("Add variable '%s' to '%s'"), *Variable.Name, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("variable"); // Tier 1
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false; // No need to compile for variable addition
 	Request.bSkipVerification = false;
 
@@ -1560,7 +1583,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -1620,7 +1643,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveVariable(cons
 		FString::Printf(TEXT("Remove variable '%s' from '%s'"), *VariableName, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("variable"); // Tier 2 for removal
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -1651,7 +1674,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveVariable(cons
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -1785,7 +1808,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintModifyVariable(cons
 		FString::Printf(TEXT("Modify variable '%s' in '%s'"), *VariableName, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("variable"); // Tier 1
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -1817,7 +1840,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintModifyVariable(cons
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -1888,7 +1911,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddComponent(const 
 		FString::Printf(TEXT("Add component '%s' to '%s'"), *ComponentClass, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("component"); // Tier 1
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -1926,7 +1949,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddComponent(const 
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -1986,7 +2009,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveComponent(con
 		FString::Printf(TEXT("Remove component '%s' from '%s'"), *ComponentName, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("component"); // Tier 2 for removal
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -2017,7 +2040,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveComponent(con
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -2132,7 +2155,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintModifyComponent(con
 		FString::Printf(TEXT("Modify component '%s' in '%s'"), *ComponentName, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("component"); // Tier 1 for property modification
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -2175,7 +2198,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintModifyComponent(con
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -2249,7 +2272,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReparentComponent(c
 			*AssetPath)
 	);
 	Request.OperationCategory = TEXT("component"); // Tier 2 for reparenting
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -2281,7 +2304,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReparentComponent(c
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -2358,7 +2381,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddFunction(const T
 		FString::Printf(TEXT("Add function '%s' to '%s'"), *Signature.Name, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("function_creation"); // Tier 2
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -2389,7 +2412,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddFunction(const T
 	});
 
 	// Execute through pipeline
-	FOliveWriteResult Result = FOliveWritePipeline::Get().Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -2449,7 +2472,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveFunction(cons
 		FString::Printf(TEXT("Remove function '%s' from '%s'"), *FunctionName, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("function_creation"); // Tier 2
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -2480,7 +2503,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveFunction(cons
 	});
 
 	// Execute through pipeline
-	FOliveWriteResult Result = FOliveWritePipeline::Get().Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -2551,7 +2574,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintModifyFunctionSigna
 		FString::Printf(TEXT("Modify function signature for '%s' in '%s'"), *FunctionName, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("function_creation"); // Tier 2
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -2591,7 +2614,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintModifyFunctionSigna
 	});
 
 	// Execute through pipeline
-	FOliveWriteResult Result = FOliveWritePipeline::Get().Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -2677,7 +2700,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddEventDispatcher(
 		FString::Printf(TEXT("Add event dispatcher '%s' to '%s'"), *DispatcherName, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("variable"); // Tier 1 - dispatchers are like variables
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -2708,7 +2731,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddEventDispatcher(
 	});
 
 	// Execute through pipeline
-	FOliveWriteResult Result = FOliveWritePipeline::Get().Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -2768,7 +2791,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintOverrideFunction(co
 		FString::Printf(TEXT("Override function '%s' in '%s'"), *FunctionName, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("function_creation"); // Tier 2
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -2799,7 +2822,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintOverrideFunction(co
 	});
 
 	// Execute through pipeline
-	FOliveWriteResult Result = FOliveWritePipeline::Get().Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -2885,7 +2908,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddCustomEvent(cons
 		FString::Printf(TEXT("Add custom event '%s' to '%s'"), *EventName, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("variable"); // Tier 1 - custom events are low risk
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -2916,7 +2939,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddCustomEvent(cons
 	});
 
 	// Execute through pipeline
-	FOliveWriteResult Result = FOliveWritePipeline::Get().Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -3000,7 +3023,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddNode(const TShar
 		FString::Printf(TEXT("Add node '%s' to graph '%s' in '%s'"), *NodeType, *GraphName, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("graph_editing"); // Tier 2 - graph editing requires planning
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -3034,7 +3057,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddNode(const TShar
 	});
 
 	// Execute through pipeline
-	FOliveWriteResult Result = FOliveWritePipeline::Get().Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -3093,7 +3116,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveNode(const TS
 		FString::Printf(TEXT("Remove node '%s' from graph '%s' in '%s'"), *NodeId, *GraphName, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("graph_editing"); // Tier 2
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -3125,7 +3148,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveNode(const TS
 	});
 
 	// Execute through pipeline
-	FOliveWriteResult Result = FOliveWritePipeline::Get().Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -3194,7 +3217,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintConnectPins(const T
 		FString::Printf(TEXT("Connect pins '%s' -> '%s' in graph '%s' of '%s'"), *SourcePin, *TargetPin, *GraphName, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("graph_editing"); // Tier 2
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -3227,7 +3250,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintConnectPins(const T
 	});
 
 	// Execute through pipeline
-	FOliveWriteResult Result = FOliveWritePipeline::Get().Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -3296,7 +3319,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintDisconnectPins(cons
 		FString::Printf(TEXT("Disconnect pins '%s' -> '%s' in graph '%s' of '%s'"), *SourcePin, *TargetPin, *GraphName, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("graph_editing"); // Tier 2
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -3329,7 +3352,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintDisconnectPins(cons
 	});
 
 	// Execute through pipeline
-	FOliveWriteResult Result = FOliveWritePipeline::Get().Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -3398,7 +3421,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintSetPinDefault(const
 		FString::Printf(TEXT("Set default value of pin '%s' to '%s' in graph '%s' of '%s'"), *Pin, *Value, *GraphName, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("graph_editing"); // Tier 2
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -3431,7 +3454,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintSetPinDefault(const
 	});
 
 	// Execute through pipeline
-	FOliveWriteResult Result = FOliveWritePipeline::Get().Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -3510,7 +3533,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintSetNodeProperty(con
 		FString::Printf(TEXT("Set property '%s' of node '%s' to '%s' in graph '%s' of '%s'"), *PropertyName, *NodeId, *PropertyValue, *GraphName, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("graph_editing"); // Tier 2
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -3544,7 +3567,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintSetNodeProperty(con
 	});
 
 	// Execute through pipeline
-	FOliveWriteResult Result = FOliveWritePipeline::Get().Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -3608,7 +3631,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAnimBPAddStateMachine(const 
 		FString::Printf(TEXT("Add state machine '%s' to '%s'"), *StateMachineName, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("state_machine"); // Tier 2
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -3652,7 +3675,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAnimBPAddStateMachine(const 
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -3727,7 +3750,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAnimBPAddState(const TShared
 		FString::Printf(TEXT("Add state '%s' to state machine '%s' in '%s'"), *StateName, *StateMachineName, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("state"); // Tier 2
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -3776,7 +3799,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAnimBPAddState(const TShared
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -3858,7 +3881,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAnimBPAddTransition(const TS
 		FString::Printf(TEXT("Add transition from '%s' to '%s' in state machine '%s' of '%s'"), *FromState, *ToState, *StateMachineName, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("transition"); // Tier 2
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -3905,7 +3928,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAnimBPAddTransition(const TS
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -3998,7 +4021,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAnimBPSetTransitionRule(cons
 		FString::Printf(TEXT("Set transition rule from '%s' to '%s' in state machine '%s' of '%s'"), *FromState, *ToState, *StateMachineName, *AssetPath)
 	);
 	Request.OperationCategory = TEXT("transition"); // Tier 2
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 	Request.bSkipVerification = false;
 
@@ -4045,7 +4068,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAnimBPSetTransitionRule(cons
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -4108,7 +4131,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleWidgetAddWidget(const TShare
 		FText::FromString(WidgetName.IsEmpty() ? TEXT("(auto)") : WidgetName),
 		FText::FromString(WidgetClass));
 	Request.OperationCategory = TEXT("widget");
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false; // Widget Blueprints don't need compilation for widget tree changes
 
 	// Define executor
@@ -4144,7 +4167,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleWidgetAddWidget(const TShare
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -4192,7 +4215,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleWidgetRemoveWidget(const TSh
 		NSLOCTEXT("OliveAI", "RemoveWidgetDesc", "Remove Widget '{0}'"),
 		FText::FromString(WidgetName));
 	Request.OperationCategory = TEXT("widget");
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 
 	// Define executor
@@ -4222,7 +4245,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleWidgetRemoveWidget(const TSh
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -4293,7 +4316,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleWidgetSetProperty(const TSha
 		FText::FromString(WidgetName),
 		FText::FromString(PropertyName));
 	Request.OperationCategory = TEXT("widget");
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 
 	// Define executor
@@ -4327,7 +4350,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleWidgetSetProperty(const TSha
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -4399,7 +4422,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleWidgetBindProperty(const TSh
 		FText::FromString(PropertyName),
 		FText::FromString(FunctionName));
 	Request.OperationCategory = TEXT("widget");
-	Request.bFromMCP = true;
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = false;
 
 	// Define executor
@@ -4444,7 +4467,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleWidgetBindProperty(const TSh
 
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = Pipeline.Execute(Request, Executor);
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -4771,3 +4794,4 @@ FOliveIRVariable FOliveBlueprintToolHandlers::ParseVariableFromParams(const TSha
 
 	return Variable;
 }
+

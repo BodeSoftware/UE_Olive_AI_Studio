@@ -232,7 +232,8 @@ void FOliveClaudeCodeProvider::SendMessage(
 	FOnOliveStreamChunk OnChunk,
 	FOnOliveToolCall OnToolCall,
 	FOnOliveComplete OnComplete,
-	FOnOliveError OnError
+	FOnOliveError OnError,
+	const FOliveRequestOptions& Options
 )
 {
 	if (bIsBusy)

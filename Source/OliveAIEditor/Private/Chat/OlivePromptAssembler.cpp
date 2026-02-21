@@ -86,6 +86,14 @@ FString FOlivePromptAssembler::AssembleSystemPromptInternal(
 		}
 	}
 
+	// Add capability knowledge packs (modular, profile-scoped).
+	const FString CapabilityKnowledge = GetCapabilityKnowledge(FocusProfileName);
+	if (!CapabilityKnowledge.IsEmpty())
+	{
+		FullPrompt += TEXT("\n\n## Capability Knowledge\n");
+		FullPrompt += CapabilityKnowledge;
+	}
+
 	// Calculate remaining tokens for asset context
 	const int32 UsedTokens = EstimateTokenCount(FullPrompt);
 	const int32 RemainingTokens = MaxTokens - UsedTokens - 100; // Reserve 100 tokens for safety
@@ -214,8 +222,10 @@ FString FOlivePromptAssembler::GetActiveContext(const TArray<FString>& AssetPath
 		int32 LineTokens = EstimateTokenCount(AssetLine);
 		if (CurrentTokens + LineTokens > MaxTokens)
 		{
-			Context += FString::Printf(TEXT("(+%d more assets not shown due to context limit)\n"),
-				AssetPaths.Num() - AssetPaths.IndexOfByKey(Path));
+			int32 SkippedCount = AssetPaths.Num() - AssetPaths.IndexOfByKey(Path);
+			int32 RemainingTokens = MaxTokens - CurrentTokens;
+			UE_LOG(LogOliveAI, Warning, TEXT("Context truncation: skipped %d assets due to token budget (%d tokens remaining)"), SkippedCount, RemainingTokens);
+			Context += FString::Printf(TEXT("(+%d more assets not shown due to context limit)\n"), SkippedCount);
 			break;
 		}
 
@@ -252,6 +262,38 @@ When both C++ and Blueprint can satisfy a request, follow this decision process:
 )");
 }
 
+FString FOlivePromptAssembler::GetCapabilityKnowledge(const FString& ProfileName) const
+{
+	FString NormalizedProfile = FOliveFocusProfileManager::Get().NormalizeProfileName(ProfileName);
+	const TArray<FString>* PackIds = ProfileCapabilityPackIds.Find(NormalizedProfile);
+	if (!PackIds)
+	{
+		PackIds = ProfileCapabilityPackIds.Find(TEXT("Auto"));
+	}
+	if (!PackIds)
+	{
+		return TEXT("");
+	}
+
+	FString Combined;
+	for (const FString& PackId : *PackIds)
+	{
+		const FString* PackText = CapabilityKnowledgePacks.Find(PackId);
+		if (!PackText || PackText->IsEmpty())
+		{
+			continue;
+		}
+
+		if (!Combined.IsEmpty())
+		{
+			Combined += TEXT("\n\n");
+		}
+		Combined += *PackText;
+	}
+
+	return Combined;
+}
+
 // ==========================================
 // Token Estimation
 // ==========================================
@@ -284,6 +326,8 @@ void FOlivePromptAssembler::ReloadTemplates()
 void FOlivePromptAssembler::LoadPromptTemplates()
 {
 	ProfilePrompts.Empty();
+	CapabilityKnowledgePacks.Empty();
+	ProfileCapabilityPackIds.Empty();
 
 	// Set default base prompt (can be overridden from file)
 	BasePromptTemplate = TEXT(R"(You are Olive AI, an expert AI assistant for Unreal Engine development integrated directly into the editor.
@@ -330,6 +374,43 @@ Project Name: {PROJECT_NAME}
 		}
 	}
 
+	// Capability knowledge packs are modular text files under Content/SystemPrompts/Knowledge.
+	{
+		IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+		const FString KnowledgeDir = FPaths::Combine(PluginDir, TEXT("Content/SystemPrompts/Knowledge"));
+
+		if (PlatformFile.DirectoryExists(*KnowledgeDir))
+		{
+			PlatformFile.IterateDirectory(*KnowledgeDir, [this](const TCHAR* FilenameOrDirectory, bool bIsDirectory)
+			{
+				if (bIsDirectory)
+				{
+					return true;
+				}
+
+				FString FilePath(FilenameOrDirectory);
+				if (!FilePath.EndsWith(TEXT(".txt")))
+				{
+					return true;
+				}
+
+				const FString PackId = FPaths::GetBaseFilename(FilePath).ToLower();
+				FString PackText;
+				if (FFileHelper::LoadFileToString(PackText, *FilePath) && !PackText.IsEmpty())
+				{
+					CapabilityKnowledgePacks.Add(PackId, PackText);
+					UE_LOG(LogOliveAI, Log, TEXT("Loaded capability knowledge pack: %s"), *PackId);
+				}
+				return true;
+			});
+		}
+	}
+
+	// Profile -> capability pack mapping. Add packs here without changing assembly flow.
+	ProfileCapabilityPackIds.Add(TEXT("Auto"), { TEXT("blueprint_authoring") });
+	ProfileCapabilityPackIds.Add(TEXT("Blueprint"), { TEXT("blueprint_authoring") });
+	ProfileCapabilityPackIds.Add(TEXT("C++"), {});
+
 	// Optional profile-specific prompts sourced from the profile manager.
 	const TArray<FOliveFocusProfile> Profiles = FOliveFocusProfileManager::Get().GetAllProfiles();
 	for (const FOliveFocusProfile& Profile : Profiles)
@@ -352,6 +433,116 @@ Project Name: {PROJECT_NAME}
 			UE_LOG(LogOliveAI, Verbose, TEXT("Loaded profile prompt: %s"), *Profile.Name);
 		}
 	}
+
+	// Load base rules for workers
+	{
+		const FString BaseRulesPath = FPaths::Combine(PluginDir, TEXT("Content/SystemPrompts/Base.txt"));
+		if (FPaths::FileExists(BaseRulesPath))
+		{
+			FFileHelper::LoadFileToString(BaseRulesText, *BaseRulesPath);
+			UE_LOG(LogOliveAI, Log, TEXT("Loaded base rules from Base.txt"));
+		}
+	}
+
+	// Load worker domain templates
+	{
+		const TArray<TPair<FString, FString>> DomainFiles = {
+			{TEXT("blueprint"), TEXT("Worker_Blueprint.txt")},
+			{TEXT("behaviortree"), TEXT("Worker_BehaviorTree.txt")},
+			{TEXT("pcg"), TEXT("Worker_PCG.txt")},
+			{TEXT("cpp"), TEXT("Worker_Cpp.txt")},
+			{TEXT("integration"), TEXT("Worker_Integration.txt")}
+		};
+
+		for (const auto& Pair : DomainFiles)
+		{
+			const FString FilePath = FPaths::Combine(PluginDir, TEXT("Content/SystemPrompts"), Pair.Value);
+			if (FPaths::FileExists(FilePath))
+			{
+				FString Content;
+				if (FFileHelper::LoadFileToString(Content, *FilePath))
+				{
+					WorkerTemplates.Add(Pair.Key, Content);
+					UE_LOG(LogOliveAI, Log, TEXT("Loaded worker template: %s"), *Pair.Key);
+				}
+			}
+		}
+	}
+}
+
+FString FOlivePromptAssembler::AssembleWorkerPrompt(
+	const FString& WorkerDomain,
+	const FString& TaskDescription,
+	const FString& PreviousStepContext,
+	const FString& ProjectRules)
+{
+	// Find domain template
+	const FString* Template = WorkerTemplates.Find(WorkerDomain.ToLower());
+	FString Result;
+
+	if (Template && !Template->IsEmpty())
+	{
+		Result = *Template;
+	}
+	else
+	{
+		// Fallback: generic worker prompt
+		Result = FString::Printf(
+			TEXT("You are a %s specialist for Unreal Engine 5.5.\n\n"
+				 "## Your Task\n{TASK_DESCRIPTION}\n\n"
+				 "## Context From Previous Steps\n{PREVIOUS_STEP_CONTEXT}\n\n"
+				 "## Project Rules\n{PROJECT_RULES}\n\n"
+				 "{BASE_RULES}"),
+			*WorkerDomain);
+
+		UE_LOG(LogOliveAI, Warning, TEXT("PromptAssembler: No template for domain '%s', using fallback"), *WorkerDomain);
+	}
+
+	// Substitute variables
+	Result = Result.Replace(TEXT("{TASK_DESCRIPTION}"),
+		TaskDescription.IsEmpty() ? TEXT("(no task specified)") : *TaskDescription);
+
+	Result = Result.Replace(TEXT("{PREVIOUS_STEP_CONTEXT}"),
+		PreviousStepContext.IsEmpty() ? TEXT("(first step — no previous context)") : *PreviousStepContext);
+
+	Result = Result.Replace(TEXT("{PROJECT_RULES}"),
+		ProjectRules.IsEmpty() ? TEXT("(no project-specific rules)") : *ProjectRules);
+
+	Result = Result.Replace(TEXT("{BASE_RULES}"),
+		BaseRulesText.IsEmpty() ? TEXT("") : *BaseRulesText);
+
+	// Also substitute engine/project variables
+	Result = SubstituteVariables(Result);
+
+	return Result;
+}
+
+FString FOlivePromptAssembler::GetProjectRules() const
+{
+	const UOliveAISettings* Settings = UOliveAISettings::Get();
+	if (!Settings)
+	{
+		return TEXT("");
+	}
+
+	FString Rules;
+
+	if (Settings->bEnforceNamingConventions)
+	{
+		Rules += TEXT("- Enforce UE naming conventions: BP_ prefix for Blueprints, BT_ for Behavior Trees\n");
+	}
+
+	if (Settings->MaxVariablesPerBlueprint > 0)
+	{
+		Rules += FString::Printf(TEXT("- Maximum %d variables per Blueprint\n"), Settings->MaxVariablesPerBlueprint);
+	}
+
+	if (Settings->MaxNodesPerFunction > 0)
+	{
+		Rules += FString::Printf(TEXT("- Maximum %d nodes per function graph\n"), Settings->MaxNodesPerFunction);
+	}
+
+	return Rules;
 }
 
 FString FOlivePromptAssembler::SubstituteVariables(const FString& Template) const

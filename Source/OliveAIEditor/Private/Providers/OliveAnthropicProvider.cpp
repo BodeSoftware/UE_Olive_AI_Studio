@@ -19,6 +19,7 @@ FOliveAnthropicProvider::FOliveAnthropicProvider()
 
 FOliveAnthropicProvider::~FOliveAnthropicProvider()
 {
+	*AliveFlag = false;
 	CancelRequest();
 }
 
@@ -72,7 +73,8 @@ void FOliveAnthropicProvider::SendMessage(
 	FOnOliveStreamChunk OnChunk,
 	FOnOliveToolCall OnToolCall,
 	FOnOliveComplete OnComplete,
-	FOnOliveError OnError)
+	FOnOliveError OnError,
+	const FOliveRequestOptions& Options)
 {
 	FString ValidationError;
 	if (!ValidateConfig(ValidationError))
@@ -105,10 +107,13 @@ void FOliveAnthropicProvider::SendMessage(
 	bIsBusy = true;
 
 	// Build request body
-	TSharedPtr<FJsonObject> RequestBody = BuildRequestBody(Messages, Tools);
+	TSharedPtr<FJsonObject> RequestBody = BuildRequestBody(Messages, Tools, Options);
 	FString BodyString;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&BodyString);
 	FJsonSerializer::Serialize(RequestBody.ToSharedRef(), Writer);
+
+	// Resolve effective timeout
+	const int32 EffectiveTimeout = Options.TimeoutSeconds > 0 ? Options.TimeoutSeconds : Config.TimeoutSeconds;
 
 	// Create HTTP request
 	CurrentRequest = FHttpModule::Get().CreateRequest();
@@ -118,26 +123,39 @@ void FOliveAnthropicProvider::SendMessage(
 	CurrentRequest->SetHeader(TEXT("x-api-key"), Config.ApiKey);
 	CurrentRequest->SetHeader(TEXT("anthropic-version"), TEXT("2023-06-01"));
 	CurrentRequest->SetContentAsString(BodyString);
-	CurrentRequest->SetTimeout(Config.TimeoutSeconds);
+	CurrentRequest->SetTimeout(EffectiveTimeout);
+
+	// Capture weak alive flag for safe async callbacks
+	TWeakPtr<bool> WeakAlive = AliveFlag;
+	auto* Self = this;
 
 	// Set up streaming response handling via OnRequestProgress64
 	CurrentRequest->OnRequestProgress64().BindLambda(
-		[this](FHttpRequestPtr Request, uint64 BytesSent, uint64 BytesReceived)
+		[WeakAlive, Self](FHttpRequestPtr Request, uint64 BytesSent, uint64 BytesReceived)
 		{
+			if (!WeakAlive.IsValid()) return;
 			if (Request.IsValid() && Request->GetResponse().IsValid())
 			{
 				FString Content = Request->GetResponse()->GetContentAsString();
-				if (Content.Len() > SSEBuffer.Len())
+				if (Content.Len() > Self->SSEBuffer.Len())
 				{
-					FString NewData = Content.RightChop(SSEBuffer.Len());
-					SSEBuffer = Content;
-					ProcessSSEData(NewData);
+					FString NewData = Content.RightChop(Self->SSEBuffer.Len());
+					Self->SSEBuffer = Content;
+					Self->ProcessSSEData(NewData);
 				}
 			}
 		}
 	);
 
-	CurrentRequest->OnProcessRequestComplete().BindRaw(this, &FOliveAnthropicProvider::OnResponseReceived);
+	CurrentRequest->OnProcessRequestComplete().BindLambda(
+		[WeakAlive, Self](FHttpRequestPtr Req, FHttpResponsePtr Resp, bool bConnectedSuccessfully)
+		{
+			if (WeakAlive.IsValid())
+			{
+				Self->OnResponseReceived(Req, Resp, bConnectedSuccessfully);
+			}
+		}
+	);
 
 	UE_LOG(LogOliveAI, Log, TEXT("Sending streaming request to Anthropic: %s"), *Config.ModelId);
 	CurrentRequest->ProcessRequest();
@@ -160,12 +178,17 @@ void FOliveAnthropicProvider::CancelRequest()
 
 TSharedPtr<FJsonObject> FOliveAnthropicProvider::BuildRequestBody(
 	const TArray<FOliveChatMessage>& Messages,
-	const TArray<FOliveToolDefinition>& Tools) const
+	const TArray<FOliveToolDefinition>& Tools,
+	const FOliveRequestOptions& Options) const
 {
+	// Resolve effective values from per-request options or config defaults
+	const int32 EffectiveMaxTokens = Options.MaxTokens > 0 ? Options.MaxTokens : Config.MaxTokens;
+	const float EffectiveTemperature = Options.Temperature >= 0.0f ? Options.Temperature : Config.Temperature;
+
 	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
 	Body->SetStringField(TEXT("model"), NormalizeModelName(Config.ModelId));
-	Body->SetNumberField(TEXT("max_tokens"), Config.MaxTokens);
-	Body->SetNumberField(TEXT("temperature"), Config.Temperature);
+	Body->SetNumberField(TEXT("max_tokens"), EffectiveMaxTokens);
+	Body->SetNumberField(TEXT("temperature"), EffectiveTemperature);
 	Body->SetBoolField(TEXT("stream"), true);
 
 	// Anthropic uses a top-level "system" field, not a system message in the array
@@ -361,6 +384,7 @@ void FOliveAnthropicProvider::ProcessSSELine(const FString& Line)
 		}
 
 		ParseStreamEvent(CurrentEventType, JsonObj);
+		CurrentEventType.Empty();
 		return;
 	}
 
@@ -576,6 +600,12 @@ void FOliveAnthropicProvider::FinalizePendingToolCalls()
 			Call.ToolArguments = MakeShared<FJsonObject>();
 		}
 
+		if (Call.ToolName.IsEmpty())
+		{
+			UE_LOG(LogOliveAI, Warning, TEXT("[Anthropic] Skipping tool call with empty name (id: %s)"), *Call.ToolCallId);
+			continue;
+		}
+
 		UE_LOG(LogOliveAI, Log, TEXT("Anthropic: Finalizing tool call: %s (id: %s)"), *Call.ToolName, *Call.ToolCallId);
 		OnToolCallCallback.ExecuteIfBound(Call);
 	}
@@ -630,11 +660,10 @@ void FOliveAnthropicProvider::ValidateConnection(TFunction<void(bool bSuccess, c
 		return;
 	}
 
-	// Key format sanity check
+	// Key format sanity check — warn but proceed (key format may change)
 	if (!Config.ApiKey.StartsWith(TEXT("sk-ant-")))
 	{
-		Callback(false, TEXT("API key does not start with 'sk-ant-'. Check your Anthropic API key at https://console.anthropic.com/"));
-		return;
+		UE_LOG(LogOliveAI, Warning, TEXT("[Anthropic] API key does not start with 'sk-ant-' prefix. Key format may have changed."));
 	}
 
 	// Send a minimal request to verify the key works.

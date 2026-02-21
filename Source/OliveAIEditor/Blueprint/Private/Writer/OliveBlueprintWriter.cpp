@@ -24,6 +24,8 @@
 #include "UObject/UObjectGlobals.h"
 #include "Editor.h"
 #include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 
 DEFINE_LOG_CATEGORY(LogOliveBPWriter);
 
@@ -532,30 +534,57 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::AddVariable(
 			FString::Printf(TEXT("Variable '%s' already exists in Blueprint '%s'"), *Variable.Name, *AssetPath));
 	}
 
+	// Run deterministic correction rules before type conversion.
+	FOliveIRVariable CorrectedVariable = Variable;
+	FOliveVariableCorrectionDecision Correction = ApplyVariableCorrectionRules(CorrectedVariable);
+	if (Correction.Action == EOliveVariableCorrectionAction::RouteToDispatcher)
+	{
+		FOliveBlueprintWriteResult DispatcherResult = AddEventDispatcher(AssetPath, CorrectedVariable.Name);
+		if (DispatcherResult.bSuccess && !Correction.Message.IsEmpty())
+		{
+			DispatcherResult.AddWarning(FString::Printf(TEXT("[%s] %s"), *Correction.RuleId, *Correction.Message));
+		}
+		return DispatcherResult;
+	}
+	if (Correction.Action == EOliveVariableCorrectionAction::Reject)
+	{
+		const FString Reason = !Correction.Message.IsEmpty()
+			? Correction.Message
+			: TEXT("Variable request rejected by correction policy.");
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("[%s] %s"), *Correction.RuleId, *Reason),
+			AssetPath);
+	}
+
 	// Convert IR type to UE pin type
-	FEdGraphPinType PinType = ConvertIRType(Variable.Type);
+	FEdGraphPinType PinType = ConvertIRType(CorrectedVariable.Type);
+	FString TypeError;
+	if (!ValidateVariableTypeForCreation(CorrectedVariable, PinType, TypeError))
+	{
+		return FOliveBlueprintWriteResult::Error(TypeError);
+	}
 
 	// Use transaction for undo support
 	OLIVE_SCOPED_TRANSACTION(FText::Format(
 		NSLOCTEXT("OliveBPWriter", "AddVariable", "Add Variable '{0}' to '{1}'"),
-		FText::FromString(Variable.Name),
+		FText::FromString(CorrectedVariable.Name),
 		FText::FromString(Blueprint->GetName())));
 
 	Blueprint->Modify();
 
 	// Create the variable description
 	FBPVariableDescription NewVar;
-	NewVar.VarName = FName(*Variable.Name);
+	NewVar.VarName = FName(*CorrectedVariable.Name);
 	NewVar.VarType = PinType;
 	NewVar.VarGuid = FGuid::NewGuid();
-	NewVar.FriendlyName = Variable.Name;
-	NewVar.Category = FText::FromString(Variable.Category);
-	NewVar.DefaultValue = Variable.DefaultValue;
+	NewVar.FriendlyName = CorrectedVariable.Name;
+	NewVar.Category = FText::FromString(CorrectedVariable.Category);
+	NewVar.DefaultValue = CorrectedVariable.DefaultValue;
 
 	// Set property flags
 	EPropertyFlags Flags = CPF_Edit | CPF_BlueprintVisible;
 
-	if (Variable.bBlueprintReadWrite)
+	if (CorrectedVariable.bBlueprintReadWrite)
 	{
 		// Default is read/write, nothing extra needed
 	}
@@ -564,17 +593,17 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::AddVariable(
 		Flags |= CPF_BlueprintReadOnly;
 	}
 
-	if (Variable.bExposeOnSpawn)
+	if (CorrectedVariable.bExposeOnSpawn)
 	{
 		Flags |= CPF_ExposeOnSpawn;
 	}
 
-	if (Variable.bReplicated)
+	if (CorrectedVariable.bReplicated)
 	{
 		Flags |= CPF_Net;
 	}
 
-	if (Variable.bSaveGame)
+	if (CorrectedVariable.bSaveGame)
 	{
 		Flags |= CPF_SaveGame;
 	}
@@ -582,9 +611,9 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::AddVariable(
 	NewVar.PropertyFlags = Flags;
 
 	// Set metadata
-	if (!Variable.Description.IsEmpty())
+	if (!CorrectedVariable.Description.IsEmpty())
 	{
-		NewVar.SetMetaData(FBlueprintMetadata::MD_Tooltip, Variable.Description);
+		NewVar.SetMetaData(FBlueprintMetadata::MD_Tooltip, CorrectedVariable.Description);
 	}
 
 	// Add to Blueprint
@@ -593,11 +622,16 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::AddVariable(
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 
 	UE_LOG(LogOliveBPWriter, Log, TEXT("Added variable '%s' (Type: %s) to '%s'"),
-		*Variable.Name,
-		*Variable.Type.GetDisplayName(),
+		*CorrectedVariable.Name,
+		*CorrectedVariable.Type.GetDisplayName(),
 		*AssetPath);
 
-	return FOliveBlueprintWriteResult::Success(AssetPath, Variable.Name);
+	FOliveBlueprintWriteResult FinalResult = FOliveBlueprintWriteResult::Success(AssetPath, CorrectedVariable.Name);
+	if (!Correction.Message.IsEmpty() && !Correction.RuleId.IsEmpty())
+	{
+		FinalResult.AddWarning(FString::Printf(TEXT("[%s] %s"), *Correction.RuleId, *Correction.Message));
+	}
+	return FinalResult;
 }
 
 FOliveBlueprintWriteResult FOliveBlueprintWriter::RemoveVariable(
@@ -1371,6 +1405,127 @@ FOliveValidationResult FOliveBlueprintWriter::ValidateOperation(
 	return FOliveValidationEngine::Get().ValidateOperation(Operation, Params, const_cast<UBlueprint*>(Blueprint));
 }
 
+bool FOliveBlueprintWriter::ParseNestedIRType(const FString& JsonString, FOliveIRType& OutType) const
+{
+	OutType = FOliveIRType();
+	if (JsonString.IsEmpty())
+	{
+		return false;
+	}
+
+	TSharedPtr<FJsonObject> TypeJson;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
+	if (FJsonSerializer::Deserialize(Reader, TypeJson) && TypeJson.IsValid())
+	{
+		OutType = FOliveIRType::FromJson(TypeJson);
+		return OutType.Category != EOliveIRTypeCategory::Unknown;
+	}
+
+	const FString Lower = JsonString.ToLower().TrimStartAndEnd();
+	if (Lower == TEXT("bool")) OutType.Category = EOliveIRTypeCategory::Bool;
+	else if (Lower == TEXT("byte")) OutType.Category = EOliveIRTypeCategory::Byte;
+	else if (Lower == TEXT("int")) OutType.Category = EOliveIRTypeCategory::Int;
+	else if (Lower == TEXT("int64")) OutType.Category = EOliveIRTypeCategory::Int64;
+	else if (Lower == TEXT("float")) OutType.Category = EOliveIRTypeCategory::Float;
+	else if (Lower == TEXT("double")) OutType.Category = EOliveIRTypeCategory::Double;
+	else if (Lower == TEXT("string")) OutType.Category = EOliveIRTypeCategory::String;
+	else if (Lower == TEXT("name")) OutType.Category = EOliveIRTypeCategory::Name;
+	else if (Lower == TEXT("text")) OutType.Category = EOliveIRTypeCategory::Text;
+	else if (Lower == TEXT("vector")) OutType.Category = EOliveIRTypeCategory::Vector;
+	else if (Lower == TEXT("vector2d")) OutType.Category = EOliveIRTypeCategory::Vector2D;
+	else if (Lower == TEXT("rotator")) OutType.Category = EOliveIRTypeCategory::Rotator;
+	else if (Lower == TEXT("transform")) OutType.Category = EOliveIRTypeCategory::Transform;
+	else if (Lower == TEXT("color")) OutType.Category = EOliveIRTypeCategory::Color;
+	else if (Lower == TEXT("linear_color") || Lower == TEXT("linearcolor")) OutType.Category = EOliveIRTypeCategory::LinearColor;
+	else return false;
+
+	return true;
+}
+
+bool FOliveBlueprintWriter::ValidateVariableTypeForCreation(
+	const FOliveIRVariable& Variable,
+	const FEdGraphPinType& PinType,
+	FString& OutError) const
+{
+	OutError.Reset();
+
+	if (PinType.PinCategory == UEdGraphSchema_K2::PC_Wildcard
+		|| PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+	{
+		OutError = FString::Printf(
+			TEXT("Unsupported or unresolved variable type '%s' for variable '%s'"),
+			*Variable.Type.GetDisplayName(),
+			*Variable.Name);
+		return false;
+	}
+
+	const bool bNeedsSubType =
+		Variable.Type.Category == EOliveIRTypeCategory::Object
+		|| Variable.Type.Category == EOliveIRTypeCategory::Class
+		|| Variable.Type.Category == EOliveIRTypeCategory::Interface
+		|| Variable.Type.Category == EOliveIRTypeCategory::Struct
+		|| Variable.Type.Category == EOliveIRTypeCategory::Enum;
+
+	if (bNeedsSubType && PinType.PinSubCategoryObject == nullptr)
+	{
+		OutError = FString::Printf(
+			TEXT("Type resolution failed for variable '%s' (%s). Provide a valid class/struct/enum name."),
+			*Variable.Name,
+			*Variable.Type.GetDisplayName());
+		return false;
+	}
+
+	if (PinType.ContainerType == EPinContainerType::Map
+		&& PinType.PinValueType.TerminalCategory == NAME_None)
+	{
+		OutError = FString::Printf(
+			TEXT("Map value type resolution failed for variable '%s'."),
+			*Variable.Name);
+		return false;
+	}
+
+	return true;
+}
+
+FOliveBlueprintWriter::FOliveVariableCorrectionDecision FOliveBlueprintWriter::ApplyVariableCorrectionRules(
+	FOliveIRVariable& Variable) const
+{
+	// Rule: multicast delegate member variables must be created as dispatchers.
+	if (Variable.Type.Category == EOliveIRTypeCategory::MulticastDelegate)
+	{
+		FOliveVariableCorrectionDecision Decision;
+		Decision.Action = EOliveVariableCorrectionAction::RouteToDispatcher;
+		Decision.RuleId = TEXT("RULE_DISPATCHER_ROUTE");
+		Decision.Message = TEXT("Multicast delegate variable routed to event dispatcher creation to guarantee signature integrity.");
+		return Decision;
+	}
+
+	// Rule: single-cast delegate variables are not supported by current writer path.
+	if (Variable.Type.Category == EOliveIRTypeCategory::Delegate)
+	{
+		FOliveVariableCorrectionDecision Decision;
+		Decision.Action = EOliveVariableCorrectionAction::RouteToDispatcher;
+		Decision.RuleId = TEXT("RULE_DELEGATE_COERCE_TO_DISPATCHER");
+		Decision.Message = TEXT("Single-cast delegate request coerced to multicast event dispatcher for Blueprint safety.");
+		return Decision;
+	}
+
+	// Rule: unknown/wildcard/exec variable types are coerced to string.
+	if (Variable.Type.Category == EOliveIRTypeCategory::Unknown
+		|| Variable.Type.Category == EOliveIRTypeCategory::Wildcard
+		|| Variable.Type.Category == EOliveIRTypeCategory::Exec)
+	{
+		Variable.Type.Category = EOliveIRTypeCategory::String;
+		FOliveVariableCorrectionDecision Decision;
+		Decision.Action = EOliveVariableCorrectionAction::Continue;
+		Decision.RuleId = TEXT("RULE_COERCE_TO_STRING");
+		Decision.Message = TEXT("Unsupported variable type coerced to string.");
+		return Decision;
+	}
+
+	return FOliveVariableCorrectionDecision();
+}
+
 FEdGraphPinType FOliveBlueprintWriter::ConvertIRType(const FOliveIRType& IRType)
 {
 	FEdGraphPinType PinType;
@@ -1459,6 +1614,21 @@ FEdGraphPinType FOliveBlueprintWriter::ConvertIRType(const FOliveIRType& IRType)
 			}
 		}
 		break;
+	case EOliveIRTypeCategory::Interface:
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Interface;
+		if (!IRType.ClassName.IsEmpty())
+		{
+			UClass* Class = FindObject<UClass>(nullptr, *IRType.ClassName);
+			if (!Class)
+			{
+				Class = FindFirstObject<UClass>( *IRType.ClassName);
+			}
+			if (Class)
+			{
+				PinType.PinSubCategoryObject = Class;
+			}
+		}
+		break;
 	case EOliveIRTypeCategory::Struct:
 		PinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
 		if (!IRType.StructName.IsEmpty())
@@ -1496,11 +1666,58 @@ FEdGraphPinType FOliveBlueprintWriter::ConvertIRType(const FOliveIRType& IRType)
 		PinType.PinCategory = UEdGraphSchema_K2::PC_MCDelegate;
 		break;
 	case EOliveIRTypeCategory::Array:
-		// For arrays, we need to set up the container type
-		// Start with a simple implementation - convert the element type
-		PinType.PinCategory = UEdGraphSchema_K2::PC_Object;
+	{
+		FOliveIRType ElementType;
+		if (!ParseNestedIRType(IRType.ElementTypeJson, ElementType))
+		{
+			ElementType.Category = EOliveIRTypeCategory::String;
+		}
+		FEdGraphPinType ElementPinType = ConvertIRType(ElementType);
+		PinType = ElementPinType;
 		PinType.ContainerType = EPinContainerType::Array;
+		PinType.PinValueType.TerminalCategory = NAME_None;
+		PinType.PinValueType.TerminalSubCategory = NAME_None;
+		PinType.PinValueType.TerminalSubCategoryObject = nullptr;
 		break;
+	}
+	case EOliveIRTypeCategory::Set:
+	{
+		FOliveIRType ElementType;
+		if (!ParseNestedIRType(IRType.ElementTypeJson, ElementType))
+		{
+			ElementType.Category = EOliveIRTypeCategory::String;
+		}
+		FEdGraphPinType ElementPinType = ConvertIRType(ElementType);
+		PinType = ElementPinType;
+		PinType.ContainerType = EPinContainerType::Set;
+		PinType.PinValueType.TerminalCategory = NAME_None;
+		PinType.PinValueType.TerminalSubCategory = NAME_None;
+		PinType.PinValueType.TerminalSubCategoryObject = nullptr;
+		break;
+	}
+	case EOliveIRTypeCategory::Map:
+	{
+		FOliveIRType KeyType;
+		FOliveIRType ValueType;
+		if (!ParseNestedIRType(IRType.KeyTypeJson, KeyType))
+		{
+			KeyType.Category = EOliveIRTypeCategory::String;
+		}
+		if (!ParseNestedIRType(IRType.ValueTypeJson, ValueType))
+		{
+			ValueType.Category = EOliveIRTypeCategory::String;
+		}
+
+		FEdGraphPinType KeyPinType = ConvertIRType(KeyType);
+		FEdGraphPinType ValuePinType = ConvertIRType(ValueType);
+
+		PinType = KeyPinType;
+		PinType.ContainerType = EPinContainerType::Map;
+		PinType.PinValueType.TerminalCategory = ValuePinType.PinCategory;
+		PinType.PinValueType.TerminalSubCategory = ValuePinType.PinSubCategory;
+		PinType.PinValueType.TerminalSubCategoryObject = ValuePinType.PinSubCategoryObject;
+		break;
+	}
 	case EOliveIRTypeCategory::Exec:
 		PinType.PinCategory = UEdGraphSchema_K2::PC_Exec;
 		break;

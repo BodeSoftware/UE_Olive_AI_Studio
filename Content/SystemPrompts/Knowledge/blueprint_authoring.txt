@@ -1,0 +1,29 @@
+Use these Blueprint creation/editing reliability rules:
+
+1. Read before write:
+- Use blueprint.read (or specific read tools) before creating or modifying variables, functions, graphs, dispatchers, and nodes.
+- Confirm the target Blueprint type and parent class first.
+
+2. Variable typing:
+- Use concrete UE types that resolve cleanly.
+- For object/class/interface/struct/enum variables, ensure the referenced type exists before creating.
+- For containers (array/set/map), ensure nested element/key/value types are explicit and valid.
+- Never use wildcard/exec as variable types.
+
+3. Delegates and dispatchers:
+- For multicast events, use blueprint.add_event_dispatcher (do not model dispatchers as raw variables).
+- Avoid creating single-cast delegate member variables unless explicit tool support exists.
+
+4. Graph edits:
+- Prefer surgical edits (add/connect/remove specific nodes) over rebuilding full graphs.
+- After structural edits, run compile and inspect warnings/errors.
+- If compile warnings mention missing signatures, invalid pin types, or unresolved classes, fix type/modeling first before further edits.
+
+5. Error recovery order:
+- First retry by re-reading current asset state.
+- Then adjust only the failing operation.
+- If the same signature repeats, stop and propose a safer alternative plan to the user.
+
+6. Naming and safety:
+- Follow project naming conventions and existing patterns in the target asset.
+- Avoid destructive changes unless explicitly requested.

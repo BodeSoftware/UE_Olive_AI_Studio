@@ -19,6 +19,7 @@ FOliveOpenAIProvider::FOliveOpenAIProvider()
 
 FOliveOpenAIProvider::~FOliveOpenAIProvider()
 {
+	*AliveFlag = false;
 	CancelRequest();
 }
 
@@ -87,7 +88,8 @@ void FOliveOpenAIProvider::SendMessage(
 	FOnOliveStreamChunk OnChunk,
 	FOnOliveToolCall OnToolCall,
 	FOnOliveComplete OnComplete,
-	FOnOliveError OnError)
+	FOnOliveError OnError,
+	const FOliveRequestOptions& Options)
 {
 	// Validate config
 	FString ValidationError;
@@ -114,15 +116,19 @@ void FOliveOpenAIProvider::SendMessage(
 	SSEBuffer.Empty();
 	AccumulatedResponse.Empty();
 	PendingToolCalls.Empty();
+	PendingToolArgsBuffer.Empty();
 	CurrentUsage = FOliveProviderUsage();
 	LastError.Empty();
 	bIsBusy = true;
 
 	// Build request body
-	TSharedPtr<FJsonObject> RequestBody = BuildRequestBody(Messages, Tools);
+	TSharedPtr<FJsonObject> RequestBody = BuildRequestBody(Messages, Tools, Options);
 	FString RequestBodyString;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&RequestBodyString);
 	FJsonSerializer::Serialize(RequestBody.ToSharedRef(), Writer);
+
+	// Resolve effective timeout
+	const int32 EffectiveTimeout = Options.TimeoutSeconds > 0 ? Options.TimeoutSeconds : Config.TimeoutSeconds;
 
 	// Create HTTP request
 	CurrentRequest = FHttpModule::Get().CreateRequest();
@@ -131,26 +137,39 @@ void FOliveOpenAIProvider::SendMessage(
 	CurrentRequest->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
 	CurrentRequest->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *Config.ApiKey));
 	CurrentRequest->SetContentAsString(RequestBodyString);
-	CurrentRequest->SetTimeout(Config.TimeoutSeconds);
+	CurrentRequest->SetTimeout(EffectiveTimeout);
+
+	// Capture weak alive flag for safe async callbacks
+	TWeakPtr<bool> WeakAlive = AliveFlag;
+	auto* Self = this;
 
 	// Set up streaming response handling using OnRequestProgress64
 	CurrentRequest->OnRequestProgress64().BindLambda(
-		[this](FHttpRequestPtr Request, uint64 BytesSent, uint64 BytesReceived)
+		[WeakAlive, Self](FHttpRequestPtr Request, uint64 BytesSent, uint64 BytesReceived)
 		{
+			if (!WeakAlive.IsValid()) return;
 			if (Request.IsValid() && Request->GetResponse().IsValid())
 			{
 				FString Content = Request->GetResponse()->GetContentAsString();
-				if (Content.Len() > SSEBuffer.Len())
+				if (Content.Len() > Self->SSEBuffer.Len())
 				{
-					FString NewData = Content.RightChop(SSEBuffer.Len());
-					SSEBuffer = Content;
-					ProcessSSEData(NewData);
+					FString NewData = Content.RightChop(Self->SSEBuffer.Len());
+					Self->SSEBuffer = Content;
+					Self->ProcessSSEData(NewData);
 				}
 			}
 		}
 	);
 
-	CurrentRequest->OnProcessRequestComplete().BindRaw(this, &FOliveOpenAIProvider::OnResponseReceived);
+	CurrentRequest->OnProcessRequestComplete().BindLambda(
+		[WeakAlive, Self](FHttpRequestPtr Req, FHttpResponsePtr Resp, bool bConnectedSuccessfully)
+		{
+			if (WeakAlive.IsValid())
+			{
+				Self->OnResponseReceived(Req, Resp, bConnectedSuccessfully);
+			}
+		}
+	);
 
 	// Send request
 	UE_LOG(LogOliveAI, Log, TEXT("Sending request to OpenAI: %s"), *Config.ModelId);
@@ -174,8 +193,13 @@ void FOliveOpenAIProvider::CancelRequest()
 
 TSharedPtr<FJsonObject> FOliveOpenAIProvider::BuildRequestBody(
 	const TArray<FOliveChatMessage>& Messages,
-	const TArray<FOliveToolDefinition>& Tools)
+	const TArray<FOliveToolDefinition>& Tools,
+	const FOliveRequestOptions& Options)
 {
+	// Resolve effective values from per-request options or config defaults
+	const int32 EffectiveMaxTokens = Options.MaxTokens > 0 ? Options.MaxTokens : Config.MaxTokens;
+	const float EffectiveTemperature = Options.Temperature >= 0.0f ? Options.Temperature : Config.Temperature;
+
 	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
 
 	Body->SetStringField(TEXT("model"), Config.ModelId);
@@ -189,8 +213,8 @@ TSharedPtr<FJsonObject> FOliveOpenAIProvider::BuildRequestBody(
 	}
 
 	Body->SetBoolField(TEXT("stream"), true);
-	Body->SetNumberField(TEXT("temperature"), Config.Temperature);
-	Body->SetNumberField(TEXT("max_tokens"), Config.MaxTokens);
+	Body->SetNumberField(TEXT("temperature"), EffectiveTemperature);
+	Body->SetNumberField(TEXT("max_tokens"), EffectiveMaxTokens);
 
 	return Body;
 }
@@ -343,6 +367,7 @@ void FOliveOpenAIProvider::ProcessSSELine(const FString& Line)
 	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonData);
 	if (!FJsonSerializer::Deserialize(Reader, ChunkJson) || !ChunkJson.IsValid())
 	{
+		UE_LOG(LogOliveAI, Warning, TEXT("[OpenAI] Failed to parse SSE chunk: %s"), *JsonData);
 		return;
 	}
 
@@ -464,15 +489,8 @@ void FOliveOpenAIProvider::ParseToolCallDelta(const TSharedPtr<FJsonObject>& Del
 			{
 				FString ArgsChunk = (*FunctionPtr)->GetStringField(TEXT("arguments"));
 
-				// Accumulate arguments (they come in chunks)
-				if (!PendingCall->Text.IsEmpty())
-				{
-					PendingCall->Text += ArgsChunk;
-				}
-				else
-				{
-					PendingCall->Text = ArgsChunk;
-				}
+				// Accumulate arguments in dedicated buffer (not PendingCall->Text)
+				PendingToolArgsBuffer.FindOrAdd(Index) += ArgsChunk;
 			}
 		}
 	}
@@ -484,11 +502,12 @@ void FOliveOpenAIProvider::FinalizePendingToolCalls()
 	{
 		FOliveStreamChunk& Call = Pair.Value;
 
-		// Parse accumulated arguments JSON
-		if (!Call.Text.IsEmpty())
+		// Parse accumulated arguments JSON from dedicated buffer
+		FString* ArgsBuffer = PendingToolArgsBuffer.Find(Pair.Key);
+		if (ArgsBuffer && !ArgsBuffer->IsEmpty())
 		{
 			TSharedPtr<FJsonObject> ArgsJson;
-			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Call.Text);
+			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(*ArgsBuffer);
 			if (FJsonSerializer::Deserialize(Reader, ArgsJson))
 			{
 				Call.ToolArguments = ArgsJson;
@@ -497,7 +516,7 @@ void FOliveOpenAIProvider::FinalizePendingToolCalls()
 			{
 				// Create empty args if parsing failed
 				Call.ToolArguments = MakeShared<FJsonObject>();
-				UE_LOG(LogOliveAI, Warning, TEXT("Failed to parse tool arguments: %s"), *Call.Text);
+				UE_LOG(LogOliveAI, Warning, TEXT("Failed to parse tool arguments: %s"), **ArgsBuffer);
 			}
 		}
 		else
@@ -505,14 +524,12 @@ void FOliveOpenAIProvider::FinalizePendingToolCalls()
 			Call.ToolArguments = MakeShared<FJsonObject>();
 		}
 
-		// Clear text (was used for argument accumulation)
-		Call.Text.Empty();
-
 		UE_LOG(LogOliveAI, Log, TEXT("OpenAI tool call: %s (id: %s)"), *Call.ToolName, *Call.ToolCallId);
 		OnToolCallCallback.ExecuteIfBound(Call);
 	}
 
 	PendingToolCalls.Empty();
+	PendingToolArgsBuffer.Empty();
 }
 
 // ==========================================

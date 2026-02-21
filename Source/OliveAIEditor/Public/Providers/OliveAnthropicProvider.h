@@ -40,7 +40,8 @@ public:
 		FOnOliveStreamChunk OnChunk,
 		FOnOliveToolCall OnToolCall,
 		FOnOliveComplete OnComplete,
-		FOnOliveError OnError
+		FOnOliveError OnError,
+		const FOliveRequestOptions& Options = FOliveRequestOptions()
 	) override;
 
 	virtual void CancelRequest() override;
@@ -56,7 +57,8 @@ private:
 	/** Build the request body JSON (Anthropic Messages API format) */
 	TSharedPtr<FJsonObject> BuildRequestBody(
 		const TArray<FOliveChatMessage>& Messages,
-		const TArray<FOliveToolDefinition>& Tools) const;
+		const TArray<FOliveToolDefinition>& Tools,
+		const FOliveRequestOptions& Options) const;
 
 	/** Normalize model name (strip "anthropic/" prefix if present) */
 	FString NormalizeModelName(const FString& InModel) const;
@@ -101,6 +103,9 @@ private:
 
 	/** Last error message */
 	FString LastError;
+
+	/** Weak flag to detect if this provider has been destroyed during async operations */
+	TSharedPtr<bool> AliveFlag = MakeShared<bool>(true);
 
 	// ==========================================
 	// Streaming State

@@ -100,6 +100,12 @@ public:
 	/** Get default profile */
 	const FOliveFocusProfile& GetDefaultProfile() const;
 
+	/** Get allowed worker domains for a profile (for Brain Layer) */
+	TArray<FString> GetAllowedWorkerDomains(const FString& ProfileName) const;
+
+	/** Migrate a legacy Phase D profile name to Phase E canonical name */
+	static FString MigrateToPhaseEProfile(const FString& LegacyName);
+
 	// ==========================================
 	// Tool Filtering
 	// ==========================================

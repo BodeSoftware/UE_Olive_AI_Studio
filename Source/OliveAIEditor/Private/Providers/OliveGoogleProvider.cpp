@@ -19,6 +19,7 @@ FOliveGoogleProvider::FOliveGoogleProvider()
 
 FOliveGoogleProvider::~FOliveGoogleProvider()
 {
+	*AliveFlag = false;
 	CancelRequest();
 }
 
@@ -109,7 +110,8 @@ void FOliveGoogleProvider::SendMessage(
 	FOnOliveStreamChunk OnChunk,
 	FOnOliveToolCall OnToolCall,
 	FOnOliveComplete OnComplete,
-	FOnOliveError OnError)
+	FOnOliveError OnError,
+	const FOliveRequestOptions& Options)
 {
 	// Validate config
 	FString ValidationError;
@@ -141,10 +143,13 @@ void FOliveGoogleProvider::SendMessage(
 	bIsBusy = true;
 
 	// Build request body
-	TSharedPtr<FJsonObject> RequestBody = BuildRequestBody(Messages, Tools);
+	TSharedPtr<FJsonObject> RequestBody = BuildRequestBody(Messages, Tools, Options);
 	FString RequestBodyString;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&RequestBodyString);
 	FJsonSerializer::Serialize(RequestBody.ToSharedRef(), Writer);
+
+	// Resolve effective timeout
+	const int32 EffectiveTimeout = Options.TimeoutSeconds > 0 ? Options.TimeoutSeconds : Config.TimeoutSeconds;
 
 	// Build URL with API key and model
 	FString RequestUrl = BuildRequestUrl();
@@ -156,26 +161,39 @@ void FOliveGoogleProvider::SendMessage(
 	CurrentRequest->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
 	// Note: Google uses API key in URL, not in Authorization header
 	CurrentRequest->SetContentAsString(RequestBodyString);
-	CurrentRequest->SetTimeout(Config.TimeoutSeconds);
+	CurrentRequest->SetTimeout(EffectiveTimeout);
+
+	// Capture weak alive flag for safe async callbacks
+	TWeakPtr<bool> WeakAlive = AliveFlag;
+	auto* Self = this;
 
 	// Set up streaming response handling using OnRequestProgress64
 	CurrentRequest->OnRequestProgress64().BindLambda(
-		[this](FHttpRequestPtr Request, uint64 BytesSent, uint64 BytesReceived)
+		[WeakAlive, Self](FHttpRequestPtr Request, uint64 BytesSent, uint64 BytesReceived)
 		{
+			if (!WeakAlive.IsValid()) return;
 			if (Request.IsValid() && Request->GetResponse().IsValid())
 			{
 				FString Content = Request->GetResponse()->GetContentAsString();
-				if (Content.Len() > SSEBuffer.Len())
+				if (Content.Len() > Self->SSEBuffer.Len())
 				{
-					FString NewData = Content.RightChop(SSEBuffer.Len());
-					SSEBuffer = Content;
-					ProcessSSEData(NewData);
+					FString NewData = Content.RightChop(Self->SSEBuffer.Len());
+					Self->SSEBuffer = Content;
+					Self->ProcessSSEData(NewData);
 				}
 			}
 		}
 	);
 
-	CurrentRequest->OnProcessRequestComplete().BindRaw(this, &FOliveGoogleProvider::OnResponseReceived);
+	CurrentRequest->OnProcessRequestComplete().BindLambda(
+		[WeakAlive, Self](FHttpRequestPtr Req, FHttpResponsePtr Resp, bool bConnectedSuccessfully)
+		{
+			if (WeakAlive.IsValid())
+			{
+				Self->OnResponseReceived(Req, Resp, bConnectedSuccessfully);
+			}
+		}
+	);
 
 	// Send request
 	UE_LOG(LogOliveAI, Log, TEXT("Sending request to Google Gemini: %s"), *Config.ModelId);
@@ -199,8 +217,13 @@ void FOliveGoogleProvider::CancelRequest()
 
 TSharedPtr<FJsonObject> FOliveGoogleProvider::BuildRequestBody(
 	const TArray<FOliveChatMessage>& Messages,
-	const TArray<FOliveToolDefinition>& Tools)
+	const TArray<FOliveToolDefinition>& Tools,
+	const FOliveRequestOptions& Options)
 {
+	// Resolve effective values from per-request options or config defaults
+	const int32 EffectiveMaxTokens = Options.MaxTokens > 0 ? Options.MaxTokens : Config.MaxTokens;
+	const float EffectiveTemperature = Options.Temperature >= 0.0f ? Options.Temperature : Config.Temperature;
+
 	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
 
 	// Convert messages to Google contents format, extracting system instruction
@@ -238,8 +261,8 @@ TSharedPtr<FJsonObject> FOliveGoogleProvider::BuildRequestBody(
 
 	// Generation config
 	TSharedPtr<FJsonObject> GenerationConfig = MakeShared<FJsonObject>();
-	GenerationConfig->SetNumberField(TEXT("temperature"), Config.Temperature);
-	GenerationConfig->SetNumberField(TEXT("maxOutputTokens"), Config.MaxTokens);
+	GenerationConfig->SetNumberField(TEXT("temperature"), EffectiveTemperature);
+	GenerationConfig->SetNumberField(TEXT("maxOutputTokens"), EffectiveMaxTokens);
 	Body->SetObjectField(TEXT("generationConfig"), GenerationConfig);
 
 	return Body;
@@ -623,9 +646,9 @@ void FOliveGoogleProvider::ParseStreamChunk(const TSharedPtr<FJsonObject>& Chunk
 					}
 
 					// Google doesn't provide tool call IDs, generate one
-					FString ToolCallId = FString::Printf(TEXT("google_call_%s_%d"),
+					FString ToolCallId = FString::Printf(TEXT("google_call_%s_%s"),
 						*FuncName,
-						FMath::Rand());
+						*FGuid::NewGuid().ToString(EGuidFormats::Short));
 
 					FOliveStreamChunk ToolChunk;
 					ToolChunk.bIsToolCall = true;

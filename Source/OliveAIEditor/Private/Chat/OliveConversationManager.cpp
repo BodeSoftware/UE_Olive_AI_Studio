@@ -7,11 +7,86 @@
 #include "Settings/OliveAISettings.h"
 #include "Profiles/OliveFocusProfileManager.h"
 #include "OliveAIEditorModule.h"
+#include "Brain/OliveToolExecutionContext.h"
 #include "Chat/OliveRunManager.h"
 #include "Misc/Guid.h"
 
+namespace
+{
+bool MessageContainsAnyKeyword(const FString& Message, const TArray<FString>& Keywords)
+{
+	FString Normalized = Message.ToLower();
+	Normalized.ReplaceInline(TEXT("."), TEXT(" "));
+	Normalized.ReplaceInline(TEXT(","), TEXT(" "));
+	Normalized.ReplaceInline(TEXT(":"), TEXT(" "));
+	Normalized.ReplaceInline(TEXT(";"), TEXT(" "));
+	Normalized.ReplaceInline(TEXT("!"), TEXT(" "));
+	Normalized.ReplaceInline(TEXT("?"), TEXT(" "));
+	Normalized = FString::Printf(TEXT(" %s "), *Normalized);
+	for (const FString& Keyword : Keywords)
+	{
+		const FString BoundedKeyword = FString::Printf(TEXT(" %s "), *Keyword);
+		if (Normalized.Contains(BoundedKeyword))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+bool DetectWriteIntent(const FString& UserMessage)
+{
+	static const TArray<FString> WriteKeywords = {
+		TEXT("add"),
+		TEXT("create"),
+		TEXT("edit"),
+		TEXT("modify"),
+		TEXT("update"),
+		TEXT("change"),
+		TEXT("rename"),
+		TEXT("connect"),
+		TEXT("wire"),
+		TEXT("set"),
+		TEXT("remove"),
+		TEXT("delete"),
+		TEXT("refactor")
+	};
+	return MessageContainsAnyKeyword(UserMessage, WriteKeywords);
+}
+
+bool DetectDangerIntent(const FString& UserMessage)
+{
+	static const TArray<FString> DangerKeywords = {
+		TEXT("delete"),
+		TEXT("remove"),
+		TEXT("destroy"),
+		TEXT("reparent"),
+		TEXT("replace"),
+		TEXT("bulk"),
+		TEXT("refactor")
+	};
+	return MessageContainsAnyKeyword(UserMessage, DangerKeywords);
+}
+
+FOliveRequestOptions BuildRequestOptions()
+{
+	FOliveRequestOptions Options;
+	const UOliveAISettings* Settings = UOliveAISettings::Get();
+	if (!Settings)
+	{
+		return Options;
+	}
+
+	Options.MaxTokens = FMath::Clamp(Settings->MaxTokens, 256, 8192);
+	Options.TimeoutSeconds = FMath::Clamp(Settings->RequestTimeoutSeconds, 30, 300);
+	Options.Temperature = FMath::Clamp(Settings->Temperature, 0.0f, 2.0f);
+	return Options;
+}
+} // namespace
+
 FOliveConversationManager::FOliveConversationManager()
 {
+	Brain = MakeShared<FOliveBrainLayer>();
 	StartNewSession();
 }
 
@@ -41,6 +116,10 @@ void FOliveConversationManager::ClearHistory()
 	PendingToolCalls.Empty();
 	PendingToolResults.Empty();
 	CurrentStreamingContent.Empty();
+	bTurnHasExplicitWriteIntent = false;
+	bTurnHasDangerIntent = false;
+	bStopAfterToolResults = false;
+	PendingConfirmationToken.Empty();
 }
 
 // ==========================================
@@ -73,9 +152,19 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 	UserMessage.Timestamp = FDateTime::UtcNow();
 	AddMessage(UserMessage);
 
-	// Reset tool iteration counter and compile retry counter
+	// Reset tool iteration counter and Brain components
 	CurrentToolIteration = 0;
-	CompileRetryCount = 0;
+	LoopDetector.Reset();
+	SelfCorrectionPolicy.Reset();
+	bTurnHasExplicitWriteIntent = DetectWriteIntent(Message);
+	bTurnHasDangerIntent = DetectDangerIntent(Message);
+	bStopAfterToolResults = false;
+
+	// Begin a Brain run
+	if (Brain.IsValid())
+	{
+		Brain->BeginRun();
+	}
 
 	// Start a run if run mode is active
 	if (bRunModeActive && !FOliveRunManager::Get().HasActiveRun())
@@ -94,6 +183,13 @@ void FOliveConversationManager::CancelCurrentRequest()
 		Provider->CancelRequest();
 	}
 
+	// Brain: cancel
+	if (Brain.IsValid())
+	{
+		Brain->RequestCancel();
+		Brain->ResetToIdle();
+	}
+
 	bIsProcessing = false;
 	bWaitingForConfirmation = false;
 	PendingToolCalls.Empty();
@@ -103,6 +199,10 @@ void FOliveConversationManager::CancelCurrentRequest()
 	PendingConfirmationToolCallId.Empty();
 	PendingConfirmationToolName.Empty();
 	PendingConfirmationArguments.Reset();
+	PendingConfirmationToken.Empty();
+	bTurnHasExplicitWriteIntent = false;
+	bTurnHasDangerIntent = false;
+	bStopAfterToolResults = false;
 }
 
 // ==========================================
@@ -202,8 +302,38 @@ void FOliveConversationManager::SendToProvider()
 	MessagesToSend.Add(BuildSystemMessage());
 	MessagesToSend.Append(MessageHistory);
 
-	// Get available tools
-	TArray<FOliveToolDefinition> Tools = GetAvailableTools();
+	// Distill conversation history to save tokens
+	FOliveDistillationConfig DistillConfig;
+	PromptDistiller.Distill(MessagesToSend, DistillConfig);
+
+	// Get available tools via Tool Pack Manager (if initialized) for reduced schema cost
+	TArray<FOliveToolDefinition> Tools;
+	if (FOliveToolPackManager::Get().IsInitialized())
+	{
+		TArray<EOliveToolPack> Packs;
+		Packs.Add(EOliveToolPack::ReadPack);
+
+		const bool bInToolLoop = CurrentToolIteration > 0;
+		if (bInToolLoop || bTurnHasExplicitWriteIntent)
+		{
+			Packs.Add(EOliveToolPack::WritePackBasic);
+			if (bInToolLoop)
+			{
+				Packs.Add(EOliveToolPack::WritePackGraph);
+			}
+		}
+
+		if (bTurnHasDangerIntent)
+		{
+			Packs.Add(EOliveToolPack::DangerPack);
+		}
+
+		Tools = FOliveToolPackManager::Get().GetCombinedPackTools(Packs, ActiveFocusProfile);
+	}
+	else
+	{
+		Tools = GetAvailableTools();
+	}
 
 	// Create callbacks (capture shared this)
 	TWeakPtr<FOliveConversationManager> WeakSelf = AsShared();
@@ -244,7 +374,8 @@ void FOliveConversationManager::SendToProvider()
 		}
 	});
 
-	Provider->SendMessage(MessagesToSend, Tools, OnChunk, OnToolCall, OnComplete, OnErr);
+	const FOliveRequestOptions RequestOptions = BuildRequestOptions();
+	Provider->SendMessage(MessagesToSend, Tools, OnChunk, OnToolCall, OnComplete, OnErr, RequestOptions);
 }
 
 // ==========================================
@@ -270,6 +401,14 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 	// Update token usage
 	TotalTokensUsed += Usage.TotalTokens;
 
+	// Update Brain worker phase
+	if (Brain.IsValid() && Brain->GetState() == EOliveBrainState::WorkerActive)
+	{
+		Brain->SetWorkerPhase(PendingToolCalls.Num() > 0
+			? EOliveWorkerPhase::ExecutingTools
+			: EOliveWorkerPhase::Complete);
+	}
+
 	// Add assistant message to history
 	FOliveChatMessage AssistantMessage;
 	AssistantMessage.Role = EOliveChatRole::Assistant;
@@ -291,6 +430,12 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 			FOliveRunManager::Get().CompleteRun();
 			bRunModeActive = false;
 		}
+		// Brain: transition to Completed → Idle
+		if (Brain.IsValid() && Brain->GetState() != EOliveBrainState::Idle)
+		{
+			Brain->CompleteRun(EOliveRunOutcome::Completed);
+			Brain->ResetToIdle();
+		}
 		// No tool calls, we're done
 		bIsProcessing = false;
 		OnProcessingComplete.Broadcast();
@@ -302,8 +447,18 @@ void FOliveConversationManager::HandleError(const FString& ErrorMessage)
 	UE_LOG(LogOliveAI, Error, TEXT("Conversation error: %s"), *ErrorMessage);
 
 	bIsProcessing = false;
+
+	// Brain: error state
+	if (Brain.IsValid() && Brain->IsActive())
+	{
+		Brain->CompleteRun(EOliveRunOutcome::Failed);
+		Brain->ResetToIdle();
+	}
+
 	PendingToolCalls.Empty();
 	PendingToolResults.Empty();
+	PendingConfirmationToken.Empty();
+	bStopAfterToolResults = false;
 
 	OnError.Broadcast(ErrorMessage);
 	OnProcessingComplete.Broadcast();
@@ -364,8 +519,34 @@ void FOliveConversationManager::ExecuteToolCall(const FOliveStreamChunk& ToolCal
 	UE_LOG(LogOliveAI, Log, TEXT("Executing tool: %s (id: %s)"),
 		*ToolCall.ToolName, *ToolCall.ToolCallId);
 
-	// Execute tool through registry
+	// Execute tool with Editor Chat origin context
+	FOliveToolCallContext ToolContext;
+	ToolContext.Origin = EOliveToolCallOrigin::EditorChat;
+	ToolContext.SessionId = SessionId.ToString();
+	ToolContext.ActiveFocusProfile = FName(*ActiveFocusProfile);
+	ToolContext.bRunModeActive = bRunModeActive;
+	FOliveToolExecutionContextScope ContextScope(ToolContext);
+
 	FOliveToolResult Result = FOliveToolRegistry::Get().ExecuteTool(ToolCall.ToolName, ToolCall.ToolArguments);
+
+	// Record in operation history
+	{
+		FOliveOperationRecord Record;
+		Record.RunId = Brain.IsValid() ? Brain->GetCurrentRunId() : TEXT("");
+		Record.ToolName = ToolCall.ToolName;
+		Record.Params = ToolCall.ToolArguments;
+		Record.Result = Result.Data;
+		Record.Status = Result.bSuccess ? EOliveOperationStatus::Success : EOliveOperationStatus::Failed;
+		if (!Result.bSuccess && Result.Data.IsValid())
+		{
+			const TSharedPtr<FJsonObject>* ErrorObj;
+			if (Result.Data->TryGetObjectField(TEXT("error"), ErrorObj))
+			{
+				Record.ErrorMessage = (*ErrorObj)->GetStringField(TEXT("message"));
+			}
+		}
+		HistoryStore.RecordOperation(Record);
+	}
 
 	// Handle result
 	HandleToolResult(ToolCall.ToolCallId, ToolCall.ToolName, Result);
@@ -400,6 +581,7 @@ void FOliveConversationManager::HandleToolResult(
 			bWaitingForConfirmation = true;
 			PendingConfirmationToolCallId = ToolCallId;
 			PendingConfirmationToolName = ToolName;
+			Result.Data->TryGetStringField(TEXT("confirmation_token"), PendingConfirmationToken);
 
 			// Find the matching tool call arguments for re-execution
 			for (const FOliveStreamChunk& TC : PendingToolCalls)
@@ -419,43 +601,37 @@ void FOliveConversationManager::HandleToolResult(
 		}
 	}
 
-	// Check for compile failure and enrich with retry hint
+	// Use SelfCorrectionPolicy to evaluate the result
 	FString ResultContent = Result.ToJsonString();
-	if (Result.bSuccess && Result.Data.IsValid())
 	{
-		const TSharedPtr<FJsonObject>* CompileResult;
-		if (Result.Data->TryGetObjectField(TEXT("compile_result"), CompileResult))
+		FOliveCorrectionDecision Decision = SelfCorrectionPolicy.Evaluate(
+			ToolName, ResultContent, LoopDetector, RetryPolicy);
+
+		switch (Decision.Action)
 		{
-			bool bCompileSuccess = (*CompileResult)->GetBoolField(TEXT("success"));
-			if (!bCompileSuccess && CompileRetryCount < MaxCompileRetries)
+		case EOliveCorrectionAction::FeedBackErrors:
+			// Enrich the result content with retry instructions
+			ResultContent = ResultContent + TEXT("\n\n") + Decision.EnrichedMessage;
+			if (Brain.IsValid())
 			{
-				CompileRetryCount++;
-
-				// Enrich the tool result with retry hint
-				FString CompileErrors;
-				const TArray<TSharedPtr<FJsonValue>>* ErrorsArray;
-				if ((*CompileResult)->TryGetArrayField(TEXT("errors"), ErrorsArray))
-				{
-					for (const auto& ErrVal : *ErrorsArray)
-					{
-						if (ErrVal->Type == EJson::String)
-						{
-							CompileErrors += ErrVal->AsString() + TEXT("\n");
-						}
-						else if (ErrVal->AsObject().IsValid())
-						{
-							CompileErrors += ErrVal->AsObject()->GetStringField(TEXT("message")) + TEXT("\n");
-						}
-					}
-				}
-
-				ResultContent = FString::Printf(
-					TEXT("%s\n\n[COMPILE FAILED - Attempt %d/%d] The Blueprint failed to compile. Errors:\n%s\nPlease analyze the errors and fix the issue. You may re-call the write tool with corrections."),
-					*ResultContent, CompileRetryCount, MaxCompileRetries, *CompileErrors);
-
-				UE_LOG(LogOliveAI, Log, TEXT("Compile failed, retry %d/%d for tool '%s'"),
-					CompileRetryCount, MaxCompileRetries, *ToolName);
+				Brain->SetWorkerPhase(EOliveWorkerPhase::SelfCorrecting);
 			}
+			break;
+
+		case EOliveCorrectionAction::StopWorker:
+			// Loop detected — stop and report
+			ResultContent = ResultContent + TEXT("\n\n") + Decision.LoopReport;
+			UE_LOG(LogOliveAI, Warning, TEXT("Self-correction loop detected for tool '%s'. Stopping."), *ToolName);
+			if (Brain.IsValid())
+			{
+				Brain->CompleteRun(EOliveRunOutcome::Failed);
+			}
+			bStopAfterToolResults = true;
+			break;
+
+		case EOliveCorrectionAction::Continue:
+		default:
+			break;
 		}
 	}
 
@@ -489,11 +665,45 @@ void FOliveConversationManager::ConfirmPendingOperation()
 
 	bWaitingForConfirmation = false;
 
-	// Re-execute the tool with confirmed flag
+	// Re-execute the tool with confirmation token from write pipeline
 	TSharedPtr<FJsonObject> ConfirmedArgs = PendingConfirmationArguments.IsValid()
 		? MakeShared<FJsonObject>(*PendingConfirmationArguments)
 		: MakeShared<FJsonObject>();
-	ConfirmedArgs->SetBoolField(TEXT("confirmed"), true);
+	if (PendingConfirmationToken.IsEmpty())
+	{
+		FOliveToolResult MissingTokenResult = FOliveToolResult::Error(
+			TEXT("PIPELINE_MISSING_TOKEN"),
+			TEXT("Missing confirmation token for pending operation"),
+			TEXT("Retry the operation so a fresh confirmation token can be generated"));
+
+		FOliveChatMessage ToolResultMessage;
+		ToolResultMessage.Role = EOliveChatRole::Tool;
+		ToolResultMessage.ToolCallId = PendingConfirmationToolCallId;
+		ToolResultMessage.ToolName = PendingConfirmationToolName;
+		ToolResultMessage.Content = MissingTokenResult.ToJsonString();
+		ToolResultMessage.Timestamp = FDateTime::UtcNow();
+
+		PendingConfirmationToolCallId.Empty();
+		PendingConfirmationToolName.Empty();
+		PendingConfirmationArguments.Reset();
+		PendingConfirmationToken.Empty();
+
+		PendingToolResults.Add(ToolResultMessage);
+		OnToolCallCompleted.Broadcast(ToolResultMessage.ToolName, ToolResultMessage.ToolCallId, MissingTokenResult);
+		PendingToolExecutions--;
+		if (PendingToolExecutions <= 0)
+		{
+			ContinueAfterToolResults();
+		}
+		return;
+	}
+	ConfirmedArgs->SetStringField(TEXT("confirmation_token"), PendingConfirmationToken);
+
+	FOliveToolCallContext ToolContext;
+	ToolContext.Origin = EOliveToolCallOrigin::EditorChat;
+	ToolContext.SessionId = SessionId.ToString();
+	ToolContext.ActiveFocusProfile = FName(*ActiveFocusProfile);
+	FOliveToolExecutionContextScope ContextScope(ToolContext);
 
 	FOliveToolResult Result = FOliveToolRegistry::Get().ExecuteTool(PendingConfirmationToolName, ConfirmedArgs);
 
@@ -509,6 +719,7 @@ void FOliveConversationManager::ConfirmPendingOperation()
 	PendingConfirmationToolCallId.Empty();
 	PendingConfirmationToolName.Empty();
 	PendingConfirmationArguments.Reset();
+	PendingConfirmationToken.Empty();
 
 	// Add result and continue
 	PendingToolResults.Add(ToolResultMessage);
@@ -545,6 +756,7 @@ void FOliveConversationManager::DenyPendingOperation()
 	PendingConfirmationToolCallId.Empty();
 	PendingConfirmationToolName.Empty();
 	PendingConfirmationArguments.Reset();
+	PendingConfirmationToken.Empty();
 
 	// Add result and continue
 	PendingToolResults.Add(ToolResultMessage);
@@ -572,6 +784,19 @@ void FOliveConversationManager::ContinueAfterToolResults()
 	if (bRunModeActive && FOliveRunManager::Get().HasActiveRun())
 	{
 		FOliveRunManager::Get().CompleteStep(true);
+	}
+
+	if (bStopAfterToolResults)
+	{
+		bStopAfterToolResults = false;
+		bIsProcessing = false;
+		if (Brain.IsValid() && Brain->GetState() != EOliveBrainState::Idle)
+		{
+			Brain->CompleteRun(EOliveRunOutcome::Failed);
+			Brain->ResetToIdle();
+		}
+		OnProcessingComplete.Broadcast();
+		return;
 	}
 
 	// Send back to provider for next response
@@ -607,3 +832,4 @@ int32 FOliveConversationManager::EstimateTokens(const FString& Text) const
 	// Rough estimation: ~4 characters per token for English
 	return Text.Len() / 4;
 }
+

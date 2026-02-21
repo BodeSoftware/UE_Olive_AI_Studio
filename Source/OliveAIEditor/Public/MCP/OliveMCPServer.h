@@ -275,6 +275,14 @@ private:
 	/** Handle ping request */
 	TSharedPtr<FJsonObject> HandlePing();
 
+	/** Handle tools/call asynchronously (dispatches to game thread) */
+	void HandleToolsCallAsync(
+		const TSharedPtr<FJsonObject>& Params,
+		const FString& ClientId,
+		const TSharedPtr<FJsonValue>& RequestId,
+		const FHttpResultCallback& OnComplete
+	);
+
 	// ==========================================
 	// Client Management Internals
 	// ==========================================

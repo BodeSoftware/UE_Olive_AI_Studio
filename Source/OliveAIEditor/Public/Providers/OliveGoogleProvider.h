@@ -44,7 +44,8 @@ public:
 		FOnOliveStreamChunk OnChunk,
 		FOnOliveToolCall OnToolCall,
 		FOnOliveComplete OnComplete,
-		FOnOliveError OnError
+		FOnOliveError OnError,
+		const FOliveRequestOptions& Options = FOliveRequestOptions()
 	) override;
 
 	virtual void CancelRequest() override;
@@ -60,7 +61,8 @@ private:
 	/** Build the full request body JSON in Google Gemini format */
 	TSharedPtr<FJsonObject> BuildRequestBody(
 		const TArray<FOliveChatMessage>& Messages,
-		const TArray<FOliveToolDefinition>& Tools
+		const TArray<FOliveToolDefinition>& Tools,
+		const FOliveRequestOptions& Options
 	);
 
 	/**
@@ -115,6 +117,9 @@ private:
 
 	/** Last error message */
 	FString LastError;
+
+	/** Weak flag to detect if this provider has been destroyed during async operations */
+	TSharedPtr<bool> AliveFlag = MakeShared<bool>(true);
 
 	// ==========================================
 	// Streaming State

@@ -47,7 +47,8 @@ public:
 		FOnOliveStreamChunk OnChunk,
 		FOnOliveToolCall OnToolCall,
 		FOnOliveComplete OnComplete,
-		FOnOliveError OnError
+		FOnOliveError OnError,
+		const FOliveRequestOptions& Options = FOliveRequestOptions()
 	) override;
 
 	virtual void CancelRequest() override;

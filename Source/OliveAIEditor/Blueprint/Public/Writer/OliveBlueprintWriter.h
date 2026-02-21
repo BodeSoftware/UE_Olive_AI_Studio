@@ -337,6 +337,20 @@ public:
 	FOliveBlueprintWriteResult Save(const FString& AssetPath);
 
 private:
+	enum class EOliveVariableCorrectionAction : uint8
+	{
+		Continue,
+		RouteToDispatcher,
+		Reject
+	};
+
+	struct FOliveVariableCorrectionDecision
+	{
+		EOliveVariableCorrectionAction Action = EOliveVariableCorrectionAction::Continue;
+		FString RuleId;
+		FString Message;
+	};
+
 	FOliveBlueprintWriter() = default;
 	~FOliveBlueprintWriter() = default;
 
@@ -380,6 +394,33 @@ private:
 	 * @return Equivalent UE pin type
 	 */
 	FEdGraphPinType ConvertIRType(const FOliveIRType& IRType);
+
+	/**
+	 * Parse a nested IR type from a JSON string payload.
+	 * Supports full JSON object payloads and simple category literals.
+	 * @param JsonString Serialized nested type payload
+	 * @param OutType Parsed IR type
+	 * @return True if parse produced a known type
+	 */
+	bool ParseNestedIRType(const FString& JsonString, FOliveIRType& OutType) const;
+
+	/**
+	 * Validate whether a variable type is safe/resolved for creation.
+	 * @param Variable The variable being added
+	 * @param PinType Resolved pin type
+	 * @param OutError Validation error if invalid
+	 * @return True if variable creation should proceed
+	 */
+	bool ValidateVariableTypeForCreation(
+		const FOliveIRVariable& Variable,
+		const FEdGraphPinType& PinType,
+		FString& OutError) const;
+
+	/**
+	 * Apply registered variable correction rules before creation.
+	 * This is the single extension point for known bad variable patterns.
+	 */
+	FOliveVariableCorrectionDecision ApplyVariableCorrectionRules(FOliveIRVariable& Variable) const;
 
 	/**
 	 * Find a parent class by name or path

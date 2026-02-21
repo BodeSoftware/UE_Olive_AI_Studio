@@ -43,7 +43,8 @@ public:
 		FOnOliveStreamChunk OnChunk,
 		FOnOliveToolCall OnToolCall,
 		FOnOliveComplete OnComplete,
-		FOnOliveError OnError
+		FOnOliveError OnError,
+		const FOliveRequestOptions& Options = FOliveRequestOptions()
 	) override;
 
 	virtual void CancelRequest() override;
@@ -59,7 +60,8 @@ private:
 	/** Build the request body JSON */
 	TSharedPtr<FJsonObject> BuildRequestBody(
 		const TArray<FOliveChatMessage>& Messages,
-		const TArray<FOliveToolDefinition>& Tools
+		const TArray<FOliveToolDefinition>& Tools,
+		const FOliveRequestOptions& Options
 	);
 
 	/** Convert messages to JSON format */
@@ -123,6 +125,9 @@ private:
 	/** Last error message */
 	FString LastError;
 
+	/** Weak flag to detect if this provider has been destroyed during async operations */
+	TSharedPtr<bool> AliveFlag = MakeShared<bool>(true);
+
 	// ==========================================
 	// Streaming State
 	// ==========================================
@@ -135,6 +140,9 @@ private:
 
 	/** Pending tool calls being built */
 	TMap<int32, FOliveStreamChunk> PendingToolCalls;
+
+	/** Buffer for accumulating tool call argument chunks (keyed by tool call index) */
+	TMap<int32, FString> PendingToolArgsBuffer;
 
 	/** Usage statistics */
 	FOliveProviderUsage CurrentUsage;

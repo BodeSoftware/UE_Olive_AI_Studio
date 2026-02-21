@@ -8,6 +8,7 @@
 #include "Catalog/OliveNodeCatalog.h"
 #include "Catalog/OliveBTNodeCatalog.h"
 #include "OliveAIEditorModule.h"
+#include "Brain/OliveToolExecutionContext.h"
 #include "HttpPath.h"
 #include "HttpServerModule.h"
 #include "IHttpRouter.h"
@@ -17,6 +18,7 @@
 #include "Engine/World.h"
 #include "Editor.h"
 #include "Misc/Guid.h"
+#include "Async/Async.h"
 
 // ==========================================
 // Singleton
@@ -257,6 +259,17 @@ bool FOliveMCPServer::HandleRequest(const FHttpServerRequest& Request, const FHt
 			ValidationError
 		);
 		SendJsonResponse(ErrorResponse, OnComplete, 400);
+		return true;
+	}
+
+	// Route tools/call to async handler (needs game thread for UE API calls)
+	FString Method = OliveJsonRpc::GetMethod(JsonRequest);
+	if (Method == TEXT("tools/call") && !OliveJsonRpc::IsNotification(JsonRequest))
+	{
+		TSharedPtr<FJsonObject> Params = OliveJsonRpc::GetParams(JsonRequest);
+		TSharedPtr<FJsonValue> RequestId = OliveJsonRpc::GetRequestId(JsonRequest);
+		UpdateClientActivity(ClientId);
+		HandleToolsCallAsync(Params, ClientId, RequestId, OnComplete);
 		return true;
 	}
 
@@ -515,7 +528,12 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsCall(
 		SendNotification(TEXT("tools/progress"), ProgressParams, ClientId);
 	}
 
-	// Execute tool
+	// Execute tool with MCP origin context
+	FOliveToolCallContext ToolContext;
+	ToolContext.Origin = EOliveToolCallOrigin::MCP;
+	ToolContext.SessionId = ClientId;
+	FOliveToolExecutionContextScope ContextScope(ToolContext);
+
 	FOliveToolResult ToolResult = FOliveToolRegistry::Get().ExecuteTool(ToolName, Arguments);
 
 	// Build MCP response
@@ -543,6 +561,105 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsCall(
 		SendNotification(TEXT("tools/progress"), CompleteParams, ClientId);
 	}
 	return Result;
+}
+
+void FOliveMCPServer::HandleToolsCallAsync(
+	const TSharedPtr<FJsonObject>& Params,
+	const FString& ClientId,
+	const TSharedPtr<FJsonValue>& RequestId,
+	const FHttpResultCallback& OnComplete)
+{
+	// Validate params
+	if (!Params.IsValid())
+	{
+		TSharedPtr<FJsonObject> ErrorResult = MakeShared<FJsonObject>();
+		ErrorResult->SetBoolField(TEXT("isError"), true);
+
+		TArray<TSharedPtr<FJsonValue>> Content;
+		TSharedPtr<FJsonObject> TextContent = MakeShared<FJsonObject>();
+		TextContent->SetStringField(TEXT("type"), TEXT("text"));
+		TextContent->SetStringField(TEXT("text"), TEXT("Missing parameters"));
+		Content.Add(MakeShared<FJsonValueObject>(TextContent));
+
+		ErrorResult->SetArrayField(TEXT("content"), Content);
+		SendJsonResponse(OliveJsonRpc::CreateResponse(RequestId, ErrorResult), OnComplete);
+		return;
+	}
+
+	// Extract tool name
+	FString ToolName = Params->GetStringField(TEXT("name"));
+	TSharedPtr<FJsonObject> Arguments = nullptr;
+
+	const TSharedPtr<FJsonObject>* ArgsPtr;
+	if (Params->TryGetObjectField(TEXT("arguments"), ArgsPtr))
+	{
+		Arguments = *ArgsPtr;
+	}
+
+	if (ToolName.IsEmpty())
+	{
+		TSharedPtr<FJsonObject> ErrorResult = MakeShared<FJsonObject>();
+		ErrorResult->SetBoolField(TEXT("isError"), true);
+
+		TArray<TSharedPtr<FJsonValue>> Content;
+		TSharedPtr<FJsonObject> TextContent = MakeShared<FJsonObject>();
+		TextContent->SetStringField(TEXT("type"), TEXT("text"));
+		TextContent->SetStringField(TEXT("text"), TEXT("Tool name is required"));
+		Content.Add(MakeShared<FJsonValueObject>(TextContent));
+
+		ErrorResult->SetArrayField(TEXT("content"), Content);
+		SendJsonResponse(OliveJsonRpc::CreateResponse(RequestId, ErrorResult), OnComplete);
+		return;
+	}
+
+	// Fire event
+	OnToolCalled.Broadcast(ToolName, ClientId);
+
+	// Emit progress notification
+	{
+		TSharedPtr<FJsonObject> ProgressParams = MakeShared<FJsonObject>();
+		ProgressParams->SetStringField(TEXT("tool"), ToolName);
+		ProgressParams->SetStringField(TEXT("status"), TEXT("started"));
+		SendNotification(TEXT("tools/progress"), ProgressParams, ClientId);
+	}
+
+	// Dispatch tool execution to the game thread
+	AsyncTask(ENamedThreads::GameThread, [this, ToolName, Arguments, ClientId, RequestId, OnComplete]()
+	{
+		// Set up execution context on the game thread
+		FOliveToolCallContext ToolContext;
+		ToolContext.Origin = EOliveToolCallOrigin::MCP;
+		ToolContext.SessionId = ClientId;
+		FOliveToolExecutionContextScope ContextScope(ToolContext);
+
+		FOliveToolResult ToolResult = FOliveToolRegistry::Get().ExecuteTool(ToolName, Arguments);
+
+		// Build MCP response
+		TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+
+		TArray<TSharedPtr<FJsonValue>> Content;
+		TSharedPtr<FJsonObject> TextContent = MakeShared<FJsonObject>();
+		TextContent->SetStringField(TEXT("type"), TEXT("text"));
+		TextContent->SetStringField(TEXT("text"), ToolResult.ToJsonString());
+		Content.Add(MakeShared<FJsonValueObject>(TextContent));
+
+		Result->SetArrayField(TEXT("content"), Content);
+
+		if (!ToolResult.bSuccess)
+		{
+			Result->SetBoolField(TEXT("isError"), true);
+		}
+
+		// Emit completion notification
+		{
+			TSharedPtr<FJsonObject> CompleteParams = MakeShared<FJsonObject>();
+			CompleteParams->SetStringField(TEXT("tool"), ToolName);
+			CompleteParams->SetStringField(TEXT("status"), ToolResult.bSuccess ? TEXT("completed") : TEXT("failed"));
+			SendNotification(TEXT("tools/progress"), CompleteParams, ClientId);
+		}
+
+		SendJsonResponse(OliveJsonRpc::CreateResponse(RequestId, Result), OnComplete);
+	});
 }
 
 TSharedPtr<FJsonObject> FOliveMCPServer::HandleResourcesList(const TSharedPtr<FJsonObject>& Params)
@@ -913,8 +1030,12 @@ bool FOliveMCPServer::HandleEventsPoll(const FHttpServerRequest& Request, const 
 				continue;
 			}
 
-			// Filter by client: include broadcast events and events targeted at this client
-			if (!Event.TargetClientId.IsEmpty() && !ClientId.IsEmpty() && Event.TargetClientId != ClientId)
+			// Skip events targeted at a different client
+			// Broadcast events (empty TargetClientId) are always included
+			// Targeted events are only included if the client ID matches
+			bool bIsBroadcast = Event.TargetClientId.IsEmpty();
+			bool bIsTargeted = !Event.TargetClientId.IsEmpty() && Event.TargetClientId == ClientId;
+			if (!bIsBroadcast && !bIsTargeted)
 			{
 				continue;
 			}

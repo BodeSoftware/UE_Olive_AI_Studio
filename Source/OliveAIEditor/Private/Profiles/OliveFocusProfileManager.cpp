@@ -12,8 +12,6 @@
 namespace OliveFocusProfileConstants
 {
 	static const FString AutoProfileName = TEXT("Auto");
-	static const FString EverythingProfileName = TEXT("Everything");
-	static const FString LegacyFullStackProfileName = TEXT("Full Stack");
 }
 
 FOliveFocusProfileManager& FOliveFocusProfileManager::Get()
@@ -98,17 +96,15 @@ FString FOliveFocusProfileManager::NormalizeProfileName(const FString& InName) c
 		return Trimmed;
 	}
 
-	if (Trimmed.Equals(OliveFocusProfileConstants::LegacyFullStackProfileName, ESearchCase::IgnoreCase))
-	{
-		return OliveFocusProfileConstants::EverythingProfileName;
-	}
-
-	return Trimmed;
+	// Phase E migration: map all legacy profiles to the 3 canonical names
+	return MigrateToPhaseEProfile(Trimmed);
 }
 
 bool FOliveFocusProfileManager::IsLegacyProfileName(const FString& InName) const
 {
-	return InName.TrimStartAndEnd().Equals(OliveFocusProfileConstants::LegacyFullStackProfileName, ESearchCase::IgnoreCase);
+	const FString Trimmed = InName.TrimStartAndEnd();
+	const FString Migrated = MigrateToPhaseEProfile(Trimmed);
+	return !Migrated.Equals(Trimmed, ESearchCase::IgnoreCase);
 }
 
 const FOliveFocusProfile& FOliveFocusProfileManager::GetDefaultProfile() const
@@ -276,7 +272,7 @@ bool FOliveFocusProfileManager::ValidateProfile(const FOliveFocusProfile& Profil
 
 	if (IsLegacyProfileName(Profile.Name))
 	{
-		OutErrors.Add(TEXT("Profile name 'Full Stack' is reserved as a legacy alias. Use 'Everything'."));
+		OutErrors.Add(FString::Printf(TEXT("Profile name '%s' is a legacy alias. It maps to '%s'."), *Profile.Name, *MigrateToPhaseEProfile(Profile.Name)));
 	}
 
 	TSet<FString> KnownCategories;
@@ -488,7 +484,7 @@ int32 FOliveFocusProfileManager::GetCustomProfileSchemaVersion() const
 
 void FOliveFocusProfileManager::RegisterDefaultProfiles()
 {
-	// Auto (default)
+	// Auto (default) - all tools
 	{
 		FOliveFocusProfile Profile;
 		Profile.Name = TEXT("Auto");
@@ -501,14 +497,14 @@ void FOliveFocusProfileManager::RegisterDefaultProfiles()
 		Profiles.Add(Profile.Name, Profile);
 	}
 
-	// Blueprint
+	// Blueprint - editor work (BP + BT + BB + PCG + project + crosssystem)
 	{
 		FOliveFocusProfile Profile;
 		Profile.Name = TEXT("Blueprint");
 		Profile.DisplayName = LOCTEXT("ProfileBlueprint", "Blueprint");
-		Profile.Description = LOCTEXT("ProfileBlueprintDesc", "Focus on Blueprint development. Includes project and Blueprint tools.");
-		Profile.ToolCategories = { TEXT("blueprint"), TEXT("project") };
-		Profile.SystemPromptAddition = TEXT("You are focused on Blueprint development. Prioritize Blueprint-based solutions over C++ when possible. Consider component composition and event-driven design.");
+		Profile.Description = LOCTEXT("ProfileBlueprintDesc", "Editor workflow: Blueprints, Behavior Trees, Blackboards, PCG, and project tools. No C++.");
+		Profile.ToolCategories = { TEXT("blueprint"), TEXT("behaviortree"), TEXT("blackboard"), TEXT("pcg"), TEXT("project"), TEXT("crosssystem") };
+		Profile.SystemPromptAddition = TEXT("You are focused on editor-based development. Use Blueprint, Behavior Tree, PCG, and project tools. Do not suggest or use C++ tools.");
 		Profile.SortOrder = 1;
 		Profile.IconName = TEXT("Icons.Blueprint");
 		Profile.PromptTemplateFile = TEXT("ProfileBlueprint.txt");
@@ -516,78 +512,76 @@ void FOliveFocusProfileManager::RegisterDefaultProfiles()
 		Profiles.Add(Profile.Name, Profile);
 	}
 
-	// AI & Behavior
+	// C++ - cpp tools only
 	{
 		FOliveFocusProfile Profile;
-		Profile.Name = TEXT("AI & Behavior");
-		Profile.DisplayName = LOCTEXT("ProfileAIBehavior", "AI & Behavior");
-		Profile.Description = LOCTEXT("ProfileAIBehaviorDesc", "Focus on AI systems: Behavior Trees, Blackboards, and AI-related Blueprints.");
-		Profile.ToolCategories = { TEXT("blueprint"), TEXT("behaviortree"), TEXT("blackboard"), TEXT("project") };
-		Profile.SystemPromptAddition = TEXT("You are focused on AI system development. Consider Behavior Trees for decision-making, Blackboards for state management, and EQS for environmental queries. Prefer data-driven AI designs.");
-		Profile.SortOrder = 2;
-		Profile.IconName = TEXT("Icons.AI");
-		Profile.PromptTemplateFile = TEXT("ProfileAIBehavior.txt");
-		Profile.bIsBuiltIn = true;
-		Profiles.Add(Profile.Name, Profile);
-	}
-
-	// Level & PCG
-	{
-		FOliveFocusProfile Profile;
-		Profile.Name = TEXT("Level & PCG");
-		Profile.DisplayName = LOCTEXT("ProfileLevelPCG", "Level & PCG");
-		Profile.Description = LOCTEXT("ProfileLevelPCGDesc", "Focus on level design and procedural content generation.");
-		Profile.ToolCategories = { TEXT("blueprint"), TEXT("pcg"), TEXT("project") };
-		Profile.SystemPromptAddition = TEXT("You are focused on level design and procedural content generation. Consider PCG graphs for procedural placement, Blueprints for gameplay elements, and data-driven level construction.");
-		Profile.SortOrder = 3;
-		Profile.IconName = TEXT("Icons.Level");
-		Profile.PromptTemplateFile = TEXT("ProfileLevelPCG.txt");
-		Profile.bIsBuiltIn = true;
-		Profiles.Add(Profile.Name, Profile);
-	}
-
-	// C++ Only
-	{
-		FOliveFocusProfile Profile;
-		Profile.Name = TEXT("C++ Only");
-		Profile.DisplayName = LOCTEXT("ProfileCppOnly", "C++ Only");
-		Profile.Description = LOCTEXT("ProfileCppOnlyDesc", "Only C++ tools are available. Blueprint/PCG/AI tools are disabled.");
+		Profile.Name = TEXT("C++");
+		Profile.DisplayName = LOCTEXT("ProfileCpp", "C++");
+		Profile.Description = LOCTEXT("ProfileCppDesc", "C++ tools only. No Blueprint, PCG, or AI tools.");
 		Profile.ToolCategories = { TEXT("cpp") };
-		Profile.SystemPromptAddition = TEXT("You are in C++ Only mode. Do not propose or use Blueprint/PCG/Behavior Tree tools. Implement solutions in native C++ only, using Unreal coding conventions.");
-		Profile.SortOrder = 4;
+		Profile.SystemPromptAddition = TEXT("You are in C++ mode. Implement solutions in native C++ only. Do not use Blueprint, Behavior Tree, or PCG tools.");
+		Profile.SortOrder = 2;
 		Profile.IconName = TEXT("Icons.CPlusPlus");
 		Profile.bIsBuiltIn = true;
 		Profiles.Add(Profile.Name, Profile);
 	}
+}
 
-	// C++ & Blueprint
+FString FOliveFocusProfileManager::MigrateToPhaseEProfile(const FString& LegacyName)
+{
+	const FString Trimmed = LegacyName.TrimStartAndEnd();
+
+	// Already canonical
+	if (Trimmed.Equals(TEXT("Auto"), ESearchCase::IgnoreCase) ||
+		Trimmed.Equals(TEXT("Blueprint"), ESearchCase::IgnoreCase) ||
+		Trimmed.Equals(TEXT("C++"), ESearchCase::IgnoreCase))
 	{
-		FOliveFocusProfile Profile;
-		Profile.Name = TEXT("C++ & Blueprint");
-		Profile.DisplayName = LOCTEXT("ProfileCppBP", "C++ & Blueprint");
-		Profile.Description = LOCTEXT("ProfileCppBPDesc", "Mixed C++ and Blueprint workflows. For developers working with both.");
-		Profile.ToolCategories = { TEXT("blueprint"), TEXT("cpp"), TEXT("project"), TEXT("crosssystem") };
-		Profile.SystemPromptAddition = TEXT("You are working with both C++ and Blueprints. Consider exposing C++ functionality to Blueprint where appropriate. Use UPROPERTY, UFUNCTION with appropriate specifiers. Prefer native C++ for performance-critical code and Blueprint for rapid iteration.");
-		Profile.SortOrder = 5;
-		Profile.IconName = TEXT("Icons.CPlusPlus");
-		Profile.PromptTemplateFile = TEXT("ProfileCppBlueprint.txt");
-		Profile.bIsBuiltIn = true;
-		Profiles.Add(Profile.Name, Profile);
+		// Return properly-cased canonical name
+		if (Trimmed.Equals(TEXT("Auto"), ESearchCase::IgnoreCase)) return TEXT("Auto");
+		if (Trimmed.Equals(TEXT("Blueprint"), ESearchCase::IgnoreCase)) return TEXT("Blueprint");
+		return TEXT("C++");
 	}
 
-	// Everything
+	// Legacy profiles that map to Blueprint
+	if (Trimmed.Equals(TEXT("AI & Behavior"), ESearchCase::IgnoreCase) ||
+		Trimmed.Equals(TEXT("Level & PCG"), ESearchCase::IgnoreCase))
 	{
-		FOliveFocusProfile Profile;
-		Profile.Name = OliveFocusProfileConstants::EverythingProfileName;
-		Profile.DisplayName = LOCTEXT("ProfileEverything", "Everything");
-		Profile.Description = LOCTEXT("ProfileEverythingDesc", "All tools including C++, Blueprint, AI, PCG, and cross-system operations.");
-		Profile.ToolCategories = { TEXT("blueprint"), TEXT("cpp"), TEXT("behaviortree"), TEXT("blackboard"), TEXT("pcg"), TEXT("crosssystem"), TEXT("project") };
-		Profile.SystemPromptAddition = TEXT("You have access to all tools across all domains: C++, Blueprint, Behavior Trees, PCG, and cross-system operations. Consider the best tool or combination of tools for each task. Use C++ for performance-critical code, Blueprints for rapid iteration, and cross-system tools for multi-asset operations.");
-		Profile.SortOrder = 6;
-		Profile.IconName = TEXT("Icons.Settings");
-		Profile.bIsBuiltIn = true;
-		Profiles.Add(Profile.Name, Profile);
+		return TEXT("Blueprint");
 	}
+
+	// Legacy profiles that map to C++
+	if (Trimmed.Equals(TEXT("C++ Only"), ESearchCase::IgnoreCase))
+	{
+		return TEXT("C++");
+	}
+
+	// Legacy profiles that map to Auto
+	if (Trimmed.Equals(TEXT("C++ & Blueprint"), ESearchCase::IgnoreCase) ||
+		Trimmed.Equals(TEXT("Everything"), ESearchCase::IgnoreCase) ||
+		Trimmed.Equals(TEXT("Full Stack"), ESearchCase::IgnoreCase))
+	{
+		return TEXT("Auto");
+	}
+
+	// Preserve unknown/custom names so custom profiles can be created and persisted.
+	return Trimmed;
+}
+
+TArray<FString> FOliveFocusProfileManager::GetAllowedWorkerDomains(const FString& ProfileName) const
+{
+	const FString Normalized = NormalizeProfileName(ProfileName);
+
+	if (Normalized == TEXT("Blueprint"))
+	{
+		return { TEXT("blueprint"), TEXT("behaviortree"), TEXT("blackboard"), TEXT("pcg"), TEXT("project"), TEXT("crosssystem") };
+	}
+	else if (Normalized == TEXT("C++"))
+	{
+		return { TEXT("cpp") };
+	}
+
+	// Auto - all domains
+	return { TEXT("blueprint"), TEXT("behaviortree"), TEXT("blackboard"), TEXT("pcg"), TEXT("cpp"), TEXT("project"), TEXT("crosssystem") };
 }
 
 #undef LOCTEXT_NAMESPACE

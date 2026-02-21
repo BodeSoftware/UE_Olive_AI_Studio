@@ -73,6 +73,29 @@ public:
 	/** Get the layer decision policy text for C++/BP hybrid profiles */
 	FString GetLayerDecisionPolicy() const;
 
+	/** Get capability knowledge packs for the active profile */
+	FString GetCapabilityKnowledge(const FString& ProfileName) const;
+
+	/**
+	 * Assemble a worker-specific prompt for the Brain Layer.
+	 * Loads domain template, substitutes variables, appends base rules.
+	 *
+	 * @param WorkerDomain Domain name (e.g., "blueprint", "behaviortree")
+	 * @param TaskDescription What the worker should accomplish
+	 * @param PreviousStepContext Summary from previous worker steps (empty if first step)
+	 * @param ProjectRules User-configured project rules (empty if none)
+	 * @return Assembled worker prompt
+	 */
+	FString AssembleWorkerPrompt(
+		const FString& WorkerDomain,
+		const FString& TaskDescription,
+		const FString& PreviousStepContext,
+		const FString& ProjectRules
+	);
+
+	/** Get project rules from settings */
+	FString GetProjectRules() const;
+
 	// ==========================================
 	// Token Estimation
 	// ==========================================
@@ -118,4 +141,21 @@ private:
 
 	/** Rough estimate: characters per token */
 	static constexpr float CharsPerToken = 4.0f;
+
+	/** Token budget constants */
+	static constexpr int32 WorkerSystemPromptBudget = 1500;
+	static constexpr int32 WorkerContextBudget = 1000;
+	static constexpr int32 ResponseBudget = 4096;
+
+	/** Worker domain -> template file mapping */
+	TMap<FString, FString> WorkerTemplates;
+
+	/** Base rules text (loaded from Base.txt) */
+	FString BaseRulesText;
+
+	/** Capability knowledge pack id -> text */
+	TMap<FString, FString> CapabilityKnowledgePacks;
+
+	/** Focus profile -> capability pack ids */
+	TMap<FString, TArray<FString>> ProfileCapabilityPackIds;
 };

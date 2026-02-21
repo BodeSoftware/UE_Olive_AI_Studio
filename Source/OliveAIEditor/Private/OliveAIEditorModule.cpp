@@ -9,6 +9,7 @@
 #include "Chat/OliveConversationManager.h"
 #include "Chat/OlivePromptAssembler.h"
 #include "Profiles/OliveFocusProfileManager.h"
+#include "Brain/OliveToolPackManager.h"
 #include "Services/OliveValidationEngine.h"
 #include "Catalog/OliveNodeCatalog.h"
 #include "MCP/OliveBlueprintToolHandlers.h"
@@ -230,6 +231,9 @@ void FOliveAIEditorModule::OnPostEngineInit()
 
 	// Initialize focus profiles after tool registration so validation has complete category/tool coverage.
 	FOliveFocusProfileManager::Get().Initialize();
+
+	// Initialize tool packs after all tool handlers are registered.
+	FOliveToolPackManager::Get().Initialize();
 
 	// Initialize prompt assembler after focus profile registration.
 	FOlivePromptAssembler::Get().Initialize();
