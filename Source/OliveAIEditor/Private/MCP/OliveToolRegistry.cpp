@@ -88,14 +88,14 @@ TSharedPtr<FJsonObject> FOliveToolResult::ToJson() const
 	TSharedPtr<FJsonObject> Response = MakeShared<FJsonObject>();
 	Response->SetBoolField(TEXT("success"), bSuccess);
 
-	if (bSuccess)
+	// Always include structured data when provided, even for failures.
+	// Many tools (e.g. batch operations) return rich failure reports in Data.
+	if (Data.IsValid())
 	{
-		if (Data.IsValid())
-		{
-			Response->SetObjectField(TEXT("data"), Data);
-		}
+		Response->SetObjectField(TEXT("data"), Data);
 	}
-	else
+
+	if (!bSuccess)
 	{
 		// Include error information
 		if (Messages.Num() > 0)

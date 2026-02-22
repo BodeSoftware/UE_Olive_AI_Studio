@@ -49,7 +49,12 @@ bool DetectWriteIntent(const FString& UserMessage)
 		TEXT("set"),
 		TEXT("remove"),
 		TEXT("delete"),
-		TEXT("refactor")
+		TEXT("refactor"),
+		TEXT("make"),
+		TEXT("build"),
+		TEXT("implement"),
+		TEXT("spawn"),
+		TEXT("fire")
 	};
 	return MessageContainsAnyKeyword(UserMessage, WriteKeywords);
 }
@@ -88,6 +93,30 @@ FOliveConversationManager::FOliveConversationManager()
 {
 	Brain = MakeShared<FOliveBrainLayer>();
 	StartNewSession();
+
+	// Wire retry policy from settings
+	if (const UOliveAISettings* Settings = UOliveAISettings::Get())
+	{
+		RetryPolicy.MaxCorrectionCyclesPerWorker = Settings->MaxCorrectionCyclesPerRun;
+	}
+}
+
+namespace OliveConversationManagerInternal
+{
+/** Build distilled operation history context for injection into the system prompt */
+FString BuildOperationHistoryContext(const FOliveOperationHistoryStore& HistoryStore)
+{
+	if (HistoryStore.GetTotalRecordCount() == 0)
+	{
+		return TEXT("");
+	}
+
+	const UOliveAISettings* Settings = UOliveAISettings::Get();
+	const int32 RawResults = Settings ? Settings->PromptDistillationRawResults : 2;
+	const int32 TokenBudget = 2000;
+
+	return HistoryStore.BuildModelContext(TokenBudget, RawResults);
+}
 }
 
 FOliveConversationManager::~FOliveConversationManager()
@@ -275,6 +304,13 @@ FOliveChatMessage FOliveConversationManager::BuildSystemMessage()
 			MaxPromptTokens);
 	}
 
+	// Add distilled operation history
+	FString HistoryContext = OliveConversationManagerInternal::BuildOperationHistoryContext(HistoryStore);
+	if (!HistoryContext.IsEmpty())
+	{
+		SystemMessage.Content += TEXT("\n\n## Recent Operations\n") + HistoryContext;
+	}
+
 	return SystemMessage;
 }
 
@@ -304,6 +340,10 @@ void FOliveConversationManager::SendToProvider()
 
 	// Distill conversation history to save tokens
 	FOliveDistillationConfig DistillConfig;
+	if (const UOliveAISettings* Settings = UOliveAISettings::Get())
+	{
+		DistillConfig.RecentPairsToKeep = Settings->PromptDistillationRawResults;
+	}
 	PromptDistiller.Distill(MessagesToSend, DistillConfig);
 
 	// Get available tools via Tool Pack Manager (if initialized) for reduced schema cost
@@ -313,14 +353,10 @@ void FOliveConversationManager::SendToProvider()
 		TArray<EOliveToolPack> Packs;
 		Packs.Add(EOliveToolPack::ReadPack);
 
-		const bool bInToolLoop = CurrentToolIteration > 0;
-		if (bInToolLoop || bTurnHasExplicitWriteIntent)
+		if (CurrentToolIteration > 0 || bTurnHasExplicitWriteIntent)
 		{
 			Packs.Add(EOliveToolPack::WritePackBasic);
-			if (bInToolLoop)
-			{
-				Packs.Add(EOliveToolPack::WritePackGraph);
-			}
+			Packs.Add(EOliveToolPack::WritePackGraph);
 		}
 
 		if (bTurnHasDangerIntent)

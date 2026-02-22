@@ -28,7 +28,7 @@ public:
 
 	virtual FString GetProviderName() const override { return TEXT("Anthropic"); }
 	virtual TArray<FString> GetAvailableModels() const override;
-	virtual FString GetRecommendedModel() const override { return TEXT("claude-sonnet-4-5"); }
+	virtual FString GetRecommendedModel() const override { return DefaultModel; }
 
 	virtual void Configure(const FOliveProviderConfig& InConfig) override;
 	virtual bool ValidateConfig(FString& OutError) const override;

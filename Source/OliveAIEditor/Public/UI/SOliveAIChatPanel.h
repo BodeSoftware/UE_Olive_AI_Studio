@@ -12,8 +12,11 @@ class SOliveAIMessageList;
 class SOliveAIContextBar;
 class SOliveAIInputField;
 class SMultiLineEditableTextBox;
+class SEditableTextBox;
+class SComboButton;
 template<typename> class SComboBox;
 struct FOliveNavigationAction;
+enum class EOliveAIProvider : uint8;
 
 /**
  * Olive AI Chat Panel
@@ -65,6 +68,12 @@ private:
 	/** Build the safety preset toggle */
 	TSharedRef<SWidget> BuildSafetyPresetToggle();
 
+	/** Build provider selector */
+	TSharedRef<SWidget> BuildProviderSelector();
+
+	/** Build model selector */
+	TSharedRef<SWidget> BuildModelSelector();
+
 	// ==========================================
 	// Event Handlers
 	// ==========================================
@@ -75,8 +84,11 @@ private:
 	/** Handle message submitted from input field */
 	void OnMessageSubmitted(const FString& Message);
 
-	/** Handle focus profile changed */
-	void OnFocusProfileChanged(TSharedPtr<FString> NewProfile, ESelectInfo::Type SelectInfo);
+	/** Handle focus profile changed (from menu selection) */
+	void OnFocusProfileSelected(const FString& ProfileName);
+
+	/** Build the focus profile menu content (primary + advanced sections) */
+	TSharedRef<SWidget> BuildFocusProfileMenuContent();
 
 	/** Handle settings button clicked */
 	FReply OnSettingsClicked();
@@ -87,8 +99,26 @@ private:
 	/** Handle safety preset selection changed */
 	void OnSafetyPresetChanged(TSharedPtr<FString> NewPreset, ESelectInfo::Type SelectInfo);
 
+	/** Handle provider selection changed */
+	void OnProviderChanged(TSharedPtr<FString> NewProvider, ESelectInfo::Type SelectInfo);
+
+	/** Handle model suggestion selection */
+	void OnModelSuggestionSelected(TSharedPtr<FString> NewModel, ESelectInfo::Type SelectInfo);
+
+	/** Handle model text committed */
+	void OnModelCommitted(const FText& NewText, ETextCommit::Type CommitType);
+
 	/** Get color for current safety preset */
 	FSlateColor GetSafetyPresetColor() const;
+
+	/** Refresh available provider list */
+	void RefreshProviderOptions();
+
+	/** Refresh model suggestions for provider */
+	void RefreshModelOptionsForProvider(EOliveAIProvider ProviderType);
+
+	/** Apply provider/model selection and reconfigure */
+	void ApplyProviderAndModelSelection(EOliveAIProvider ProviderType, const FString& ModelId, bool bSaveConfig);
 
 	// ==========================================
 	// Conversation Manager Callbacks
@@ -167,6 +197,14 @@ private:
 	TArray<TSharedPtr<FString>> SafetyPresetOptions;
 	TSharedPtr<FString> CurrentSafetyPreset;
 
+	/** Provider options */
+	TArray<TSharedPtr<FString>> ProviderOptions;
+	TSharedPtr<FString> CurrentProviderOption;
+
+	/** Model options */
+	TArray<TSharedPtr<FString>> ModelOptions;
+	TSharedPtr<FString> CurrentModelOption;
+
 	// ==========================================
 	// Child Widgets
 	// ==========================================
@@ -174,7 +212,10 @@ private:
 	TSharedPtr<SOliveAIMessageList> MessageList;
 	TSharedPtr<SOliveAIContextBar> ContextBar;
 	TSharedPtr<SOliveAIInputField> InputField;
-	TSharedPtr<SComboBox<TSharedPtr<FString>>> FocusDropdown;
+	TSharedPtr<SComboButton> FocusDropdown;
+	TSharedPtr<SComboBox<TSharedPtr<FString>>> ProviderComboBox;
+	TSharedPtr<SComboBox<TSharedPtr<FString>>> ModelComboBox;
+	TSharedPtr<SEditableTextBox> ModelTextBox;
 
 	/** Editor event handles */
 	FDelegateHandle OnAssetEditorOpenedHandle;

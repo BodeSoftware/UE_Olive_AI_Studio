@@ -100,6 +100,19 @@ public:
 	 */
 	FString BuildRunReport(const FString& RunId) const;
 
+	/**
+	 * Build a distilled context string for model consumption with 3-tier detail.
+	 *
+	 * Tier 1: Previous completed runs -> compressed one-liners
+	 * Tier 2: Current run, older ops -> one-line summaries
+	 * Tier 3: Current run, last N (RawResultCount) -> full detail
+	 *
+	 * @param TokenBudget Maximum estimated tokens for the output (~4 chars per token)
+	 * @param RawResultCount Number of most recent operations to include at full detail
+	 * @return Distilled context string, empty if no operations recorded
+	 */
+	FString BuildModelContext(int32 TokenBudget, int32 RawResultCount = 2) const;
+
 	// ==========================================
 	// Queries
 	// ==========================================

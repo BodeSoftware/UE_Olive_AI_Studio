@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "ScopedTransaction.h"
+#include "Services/OliveBatchExecutionScope.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogOliveTransaction, Log, All);
 
@@ -82,5 +83,11 @@ private:
 };
 
 // Convenience macro for creating scoped transactions
+// When batch execution is active, inner transactions are skipped so the outer
+// batch transaction can roll back everything atomically on failure.
 #define OLIVE_SCOPED_TRANSACTION(Description) \
-	FOliveTransactionManager::FScopedOliveTransaction OliveTransaction(Description)
+	TUniquePtr<FOliveTransactionManager::FScopedOliveTransaction> OliveTransaction; \
+	if (!FOliveBatchExecutionScope::IsActive()) \
+	{ \
+		OliveTransaction = MakeUnique<FOliveTransactionManager::FScopedOliveTransaction>(Description); \
+	}

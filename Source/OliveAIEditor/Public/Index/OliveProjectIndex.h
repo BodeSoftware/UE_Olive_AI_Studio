@@ -257,6 +257,19 @@ public:
 	FString GetProjectConfigJson() const;
 
 	// ==========================================
+	// Project Map Export
+	// ==========================================
+
+	/** Export the full project map (assets, class hierarchy, config) to a JSON file */
+	bool ExportProjectMap(const FString& FilePath) const;
+
+	/** Get the default export path: {ProjectSaved}/OliveAI/ProjectMap.json */
+	static FString GetDefaultProjectMapPath();
+
+	/** Returns true if the index has changed since the last ExportProjectMap call */
+	bool IsProjectMapStale() const;
+
+	// ==========================================
 	// FTickableEditorObject
 	// ==========================================
 
@@ -289,6 +302,7 @@ private:
 	// State
 	bool bIsReady = false;
 	bool bIsBuilding = false;
+	mutable bool bDirty = true;
 
 	// Delegate handles
 	FDelegateHandle AssetAddedHandle;

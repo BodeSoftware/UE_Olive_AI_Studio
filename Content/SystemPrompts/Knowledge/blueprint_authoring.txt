@@ -27,3 +27,15 @@ Use these Blueprint creation/editing reliability rules:
 6. Naming and safety:
 - Follow project naming conventions and existing patterns in the target asset.
 - Avoid destructive changes unless explicitly requested.
+
+7. Batch-first graph editing:
+- For graph work involving 3+ operations, use project.batch_write
+- Structure with op IDs so connect_pins can reference add_node results via ${opId.node_id}
+- Set auto_compile=true
+- Read back the graph summary after batch to confirm wiring
+- Never claim nodes exist unless batch result or read-back confirms it
+
+8. No fake success:
+- If batch_write returns an error, report what failed truthfully
+- Do not summarize partial failures as successes
+- If you cannot verify, say so explicitly

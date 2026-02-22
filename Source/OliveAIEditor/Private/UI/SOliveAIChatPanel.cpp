@@ -18,6 +18,9 @@
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboBox.h"
+#include "Widgets/Input/SComboButton.h"
+#include "Widgets/Input/SEditableTextBox.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Images/SThrobber.h"
@@ -34,6 +37,93 @@
 #include "Selection.h"
 
 #define LOCTEXT_NAMESPACE "OliveAIChatPanel"
+
+namespace
+{
+FString ProviderDisplayName(EOliveAIProvider ProviderType)
+{
+	switch (ProviderType)
+	{
+	case EOliveAIProvider::ClaudeCode:
+		return TEXT("Claude Code CLI");
+	case EOliveAIProvider::OpenRouter:
+		return TEXT("OpenRouter");
+	case EOliveAIProvider::ZAI:
+		return TEXT("Z.ai");
+	case EOliveAIProvider::Anthropic:
+		return TEXT("Anthropic");
+	case EOliveAIProvider::OpenAI:
+		return TEXT("OpenAI");
+	case EOliveAIProvider::Google:
+		return TEXT("Google");
+	case EOliveAIProvider::Ollama:
+		return TEXT("Ollama");
+	case EOliveAIProvider::OpenAICompatible:
+		return TEXT("OpenAI Compatible");
+	default:
+		return TEXT("OpenRouter");
+	}
+}
+
+EOliveAIProvider ProviderFromDisplayName(const FString& ProviderName)
+{
+	if (ProviderName.Equals(TEXT("Claude Code CLI"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("claudecode"), ESearchCase::IgnoreCase))
+	{
+		return EOliveAIProvider::ClaudeCode;
+	}
+	if (ProviderName.Equals(TEXT("OpenRouter"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("openrouter"), ESearchCase::IgnoreCase))
+	{
+		return EOliveAIProvider::OpenRouter;
+	}
+	if (ProviderName.Equals(TEXT("Z.ai"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("z.ai"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("zai"), ESearchCase::IgnoreCase))
+	{
+		return EOliveAIProvider::ZAI;
+	}
+	if (ProviderName.Equals(TEXT("Anthropic"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("anthropic"), ESearchCase::IgnoreCase))
+	{
+		return EOliveAIProvider::Anthropic;
+	}
+	if (ProviderName.Equals(TEXT("OpenAI"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("openai"), ESearchCase::IgnoreCase))
+	{
+		return EOliveAIProvider::OpenAI;
+	}
+	if (ProviderName.Equals(TEXT("Google"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("google"), ESearchCase::IgnoreCase))
+	{
+		return EOliveAIProvider::Google;
+	}
+	if (ProviderName.Equals(TEXT("Ollama"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("ollama"), ESearchCase::IgnoreCase))
+	{
+		return EOliveAIProvider::Ollama;
+	}
+	if (ProviderName.Equals(TEXT("OpenAI Compatible"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("openai_compatible"), ESearchCase::IgnoreCase))
+	{
+		return EOliveAIProvider::OpenAICompatible;
+	}
+
+	return EOliveAIProvider::OpenRouter;
+}
+
+TSharedPtr<FString> FindOptionByValue(TArray<TSharedPtr<FString>>& Options, const FString& Value)
+{
+	for (const TSharedPtr<FString>& Option : Options)
+	{
+		if (Option.IsValid() && Option->Equals(Value, ESearchCase::CaseSensitive))
+		{
+			return Option;
+		}
+	}
+	return nullptr;
+}
+} // namespace
 
 const FName SOliveAIChatPanel::TabId(TEXT("OliveAIChatPanel"));
 
@@ -102,6 +192,19 @@ void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 	SafetyPresetOptions.Add(MakeShared<FString>(TEXT("Fast")));
 	SafetyPresetOptions.Add(MakeShared<FString>(TEXT("YOLO")));
 	CurrentSafetyPreset = SafetyPresetOptions[static_cast<int32>(UOliveAISettings::Get()->SafetyPreset)];
+
+	RefreshProviderOptions();
+	if (UOliveAISettings* CurrentSettings = UOliveAISettings::Get())
+	{
+		const FString SelectedProviderName = ProviderDisplayName(CurrentSettings->Provider);
+		CurrentProviderOption = FindOptionByValue(ProviderOptions, SelectedProviderName);
+		if (!CurrentProviderOption.IsValid())
+		{
+			CurrentProviderOption = MakeShared<FString>(SelectedProviderName);
+			ProviderOptions.Add(CurrentProviderOption);
+		}
+		RefreshModelOptionsForProvider(CurrentSettings->Provider);
+	}
 
 	FString ProviderError;
 	if (!ConfigureProviderFromSettings(ProviderError))
@@ -187,6 +290,11 @@ void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 			]
 		]
 	];
+
+	if (UOliveAISettings* CurrentSettings = UOliveAISettings::Get())
+	{
+		RefreshModelOptionsForProvider(CurrentSettings->Provider);
+	}
 }
 
 SOliveAIChatPanel::~SOliveAIChatPanel()
@@ -224,6 +332,22 @@ TSharedRef<SWidget> SOliveAIChatPanel::BuildHeader()
 			SNew(STextBlock)
 			.Text(LOCTEXT("PanelTitle", "Olive AI Chat"))
 			.TextStyle(FAppStyle::Get(), "LargeText")
+		]
+
+		// Provider Selector
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.Padding(4, 0)
+		[
+			BuildProviderSelector()
+		]
+
+		// Model Selector
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.Padding(4, 0)
+		[
+			BuildModelSelector()
 		]
 
 		// Focus Profile Dropdown
@@ -269,25 +393,10 @@ TSharedRef<SWidget> SOliveAIChatPanel::BuildHeader()
 
 TSharedRef<SWidget> SOliveAIChatPanel::BuildFocusDropdown()
 {
-	return SAssignNew(FocusDropdown, SComboBox<TSharedPtr<FString>>)
-		.OptionsSource(&FocusProfiles)
-		.InitiallySelectedItem(CurrentFocusProfile)
-		.OnSelectionChanged(this, &SOliveAIChatPanel::OnFocusProfileChanged)
-		.OnGenerateWidget_Lambda([](TSharedPtr<FString> Item)
-		{
-			if (!Item.IsValid())
-			{
-				return SNew(STextBlock).Text(FText::GetEmpty());
-			}
-
-			const TOptional<FOliveFocusProfile> Profile = FOliveFocusProfileManager::Get().GetProfile(*Item);
-			const FText Display = Profile.IsSet() ? Profile->DisplayName : FText::FromString(*Item);
-			const FText Tooltip = Profile.IsSet() ? Profile->Description : FText::GetEmpty();
-
-			return SNew(STextBlock)
-				.Text(Display)
-				.ToolTipText(Tooltip);
-		})
+	return SAssignNew(FocusDropdown, SComboButton)
+		.ContentPadding(FMargin(4, 2))
+		.HasDownArrow(true)
+		.ButtonContent()
 		[
 			SNew(STextBlock)
 			.Text_Lambda([this]()
@@ -300,7 +409,153 @@ TSharedRef<SWidget> SOliveAIChatPanel::BuildFocusDropdown()
 				const TOptional<FOliveFocusProfile> Profile = FOliveFocusProfileManager::Get().GetProfile(*CurrentFocusProfile);
 				return Profile.IsSet() ? Profile->DisplayName : FText::FromString(*CurrentFocusProfile);
 			})
+		]
+		.OnGetMenuContent(FOnGetContent::CreateSP(this, &SOliveAIChatPanel::BuildFocusProfileMenuContent));
+}
+
+TSharedRef<SWidget> SOliveAIChatPanel::BuildProviderSelector()
+{
+	return SAssignNew(ProviderComboBox, SComboBox<TSharedPtr<FString>>)
+		.OptionsSource(&ProviderOptions)
+		.InitiallySelectedItem(CurrentProviderOption)
+		.IsEnabled_Lambda([this]() { return !bIsProcessing; })
+		.OnSelectionChanged(this, &SOliveAIChatPanel::OnProviderChanged)
+		.OnGenerateWidget_Lambda([](TSharedPtr<FString> Item)
+		{
+			return SNew(STextBlock)
+				.Text(Item.IsValid() ? FText::FromString(*Item) : FText::GetEmpty());
+		})
+		.ToolTipText(LOCTEXT("ProviderPickerTooltip", "Select the active AI provider"))
+		[
+			SNew(STextBlock)
+			.Text_Lambda([this]()
+			{
+				return CurrentProviderOption.IsValid() ? FText::FromString(*CurrentProviderOption) : LOCTEXT("ProviderUnset", "Provider");
+			})
 		];
+}
+
+TSharedRef<SWidget> SOliveAIChatPanel::BuildModelSelector()
+{
+	return SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		[
+			SNew(SBox)
+			.WidthOverride(220.0f)
+			[
+				SAssignNew(ModelTextBox, SEditableTextBox)
+				.IsEnabled_Lambda([this]() { return !bIsProcessing; })
+				.HintText(LOCTEXT("ModelHint", "Model"))
+				.ToolTipText(LOCTEXT("ModelPickerTooltip", "Set model id for the selected provider"))
+				.OnTextCommitted(this, &SOliveAIChatPanel::OnModelCommitted)
+			]
+		]
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.Padding(2.0f, 0.0f, 0.0f, 0.0f)
+		[
+			SAssignNew(ModelComboBox, SComboBox<TSharedPtr<FString>>)
+			.OptionsSource(&ModelOptions)
+			.IsEnabled_Lambda([this]() { return !bIsProcessing; })
+			.OnSelectionChanged(this, &SOliveAIChatPanel::OnModelSuggestionSelected)
+			.OnGenerateWidget_Lambda([](TSharedPtr<FString> Item)
+			{
+				return SNew(STextBlock)
+					.Text(Item.IsValid() ? FText::FromString(*Item) : FText::GetEmpty());
+			})
+			.ToolTipText(LOCTEXT("ModelSuggestionTooltip", "Suggested models for this provider"))
+			[
+				SNew(STextBlock)
+				.Text(LOCTEXT("ModelSuggestions", "Suggestions"))
+			]
+		];
+}
+
+TSharedRef<SWidget> SOliveAIChatPanel::BuildFocusProfileMenuContent()
+{
+	// Primary profiles shown at the top level
+	const TArray<FString> PrimaryProfileNames = { TEXT("Auto"), TEXT("Blueprint"), TEXT("C++") };
+
+	// Gather advanced profiles (custom / non-primary)
+	TArray<FOliveFocusProfile> AllProfiles = FOliveFocusProfileManager::Get().GetAllProfiles();
+	TArray<FOliveFocusProfile> AdvancedProfiles;
+	for (const FOliveFocusProfile& Profile : AllProfiles)
+	{
+		bool bIsPrimary = false;
+		for (const FString& PrimaryName : PrimaryProfileNames)
+		{
+			if (Profile.Name.Equals(PrimaryName, ESearchCase::IgnoreCase))
+			{
+				bIsPrimary = true;
+				break;
+			}
+		}
+		if (!bIsPrimary)
+		{
+			AdvancedProfiles.Add(Profile);
+		}
+	}
+
+	FMenuBuilder MenuBuilder(/*bInShouldCloseWindowAfterMenuSelection=*/ true, nullptr);
+
+	// Primary section
+	MenuBuilder.BeginSection(TEXT("PrimaryProfiles"), LOCTEXT("PrimaryProfilesHeading", "Profiles"));
+	{
+		for (const FString& PrimaryName : PrimaryProfileNames)
+		{
+			const TOptional<FOliveFocusProfile> Profile = FOliveFocusProfileManager::Get().GetProfile(PrimaryName);
+			const FText DisplayName = Profile.IsSet() ? Profile->DisplayName : FText::FromString(PrimaryName);
+			const FText Tooltip = Profile.IsSet() ? Profile->Description : FText::GetEmpty();
+
+			MenuBuilder.AddMenuEntry(
+				DisplayName,
+				Tooltip,
+				FSlateIcon(),
+				FUIAction(
+					FExecuteAction::CreateLambda([this, PrimaryName]() { OnFocusProfileSelected(PrimaryName); }),
+					FCanExecuteAction(),
+					FIsActionChecked::CreateLambda([this, PrimaryName]()
+					{
+						return CurrentFocusProfile.IsValid() && CurrentFocusProfile->Equals(PrimaryName, ESearchCase::IgnoreCase);
+					})
+				),
+				NAME_None,
+				EUserInterfaceActionType::RadioButton
+			);
+		}
+	}
+	MenuBuilder.EndSection();
+
+	// Advanced section (only if there are non-primary profiles)
+	if (AdvancedProfiles.Num() > 0)
+	{
+		MenuBuilder.BeginSection(TEXT("AdvancedProfiles"), LOCTEXT("AdvancedProfilesHeading", "Advanced"));
+		{
+			for (const FOliveFocusProfile& AdvProfile : AdvancedProfiles)
+			{
+				const FString ProfileName = AdvProfile.Name;
+				MenuBuilder.AddMenuEntry(
+					AdvProfile.DisplayName,
+					AdvProfile.Description,
+					FSlateIcon(),
+					FUIAction(
+						FExecuteAction::CreateLambda([this, ProfileName]() { OnFocusProfileSelected(ProfileName); }),
+						FCanExecuteAction(),
+						FIsActionChecked::CreateLambda([this, ProfileName]()
+						{
+							return CurrentFocusProfile.IsValid() && CurrentFocusProfile->Equals(ProfileName, ESearchCase::IgnoreCase);
+						})
+					),
+					NAME_None,
+					EUserInterfaceActionType::RadioButton
+				);
+			}
+		}
+		MenuBuilder.EndSection();
+	}
+
+	return MenuBuilder.MakeWidget();
 }
 
 TSharedRef<SWidget> SOliveAIChatPanel::BuildContextBar()
@@ -435,6 +690,16 @@ void SOliveAIChatPanel::OnMessageSubmitted(const FString& Message)
 		return;
 	}
 
+	if (UOliveAISettings* Settings = UOliveAISettings::Get())
+	{
+		const FString PendingModel = ModelTextBox.IsValid() ? ModelTextBox->GetText().ToString().TrimStartAndEnd() : TEXT("");
+		if (!PendingModel.IsEmpty())
+		{
+			Settings->SetSelectedModelForProvider(Settings->Provider, PendingModel);
+			Settings->SaveConfig();
+		}
+	}
+
 	// Refresh provider from current settings so key/provider changes apply immediately.
 	FString ProviderError;
 	if (!ConfigureProviderFromSettings(ProviderError))
@@ -459,26 +724,39 @@ void SOliveAIChatPanel::OnMessageSubmitted(const FString& Message)
 	}
 }
 
-void SOliveAIChatPanel::OnFocusProfileChanged(TSharedPtr<FString> NewProfile, ESelectInfo::Type SelectInfo)
+void SOliveAIChatPanel::OnFocusProfileSelected(const FString& ProfileName)
 {
-	if (!NewProfile.IsValid())
-	{
-		return;
-	}
+	const FString NormalizedProfile = FOliveFocusProfileManager::Get().NormalizeProfileName(ProfileName);
 
-	const FString NormalizedProfile = FOliveFocusProfileManager::Get().NormalizeProfileName(*NewProfile);
+	// Check if this profile is already in our options list
+	bool bFound = false;
 	for (const TSharedPtr<FString>& ProfileOption : FocusProfiles)
 	{
 		if (ProfileOption.IsValid() && ProfileOption->Equals(NormalizedProfile, ESearchCase::IgnoreCase))
 		{
 			CurrentFocusProfile = ProfileOption;
+			bFound = true;
 			break;
 		}
+	}
+
+	// If it is an advanced/custom profile not in the primary list, add it dynamically
+	if (!bFound)
+	{
+		TSharedPtr<FString> NewEntry = MakeShared<FString>(NormalizedProfile);
+		FocusProfiles.Add(NewEntry);
+		CurrentFocusProfile = NewEntry;
 	}
 
 	if (ConversationManager.IsValid())
 	{
 		ConversationManager->SetFocusProfile(NormalizedProfile);
+	}
+
+	// Close the combo dropdown
+	if (FocusDropdown.IsValid())
+	{
+		FocusDropdown->SetIsOpen(false);
 	}
 }
 
@@ -522,34 +800,7 @@ bool SOliveAIChatPanel::ConfigureProviderFromSettings(FString& OutError)
 		return false;
 	}
 
-	FString ProviderName;
-	switch (Settings->Provider)
-	{
-	case EOliveAIProvider::ClaudeCode:
-		ProviderName = TEXT("Claude Code CLI");
-		break;
-	case EOliveAIProvider::OpenRouter:
-		ProviderName = TEXT("OpenRouter");
-		break;
-	case EOliveAIProvider::Anthropic:
-		ProviderName = TEXT("Anthropic");
-		break;
-	case EOliveAIProvider::OpenAI:
-		ProviderName = TEXT("OpenAI");
-		break;
-	case EOliveAIProvider::Google:
-		ProviderName = TEXT("Google");
-		break;
-	case EOliveAIProvider::Ollama:
-		ProviderName = TEXT("Ollama");
-		break;
-	case EOliveAIProvider::OpenAICompatible:
-		ProviderName = TEXT("OpenAI Compatible");
-		break;
-	default:
-		ProviderName = TEXT("OpenRouter");
-		break;
-	}
+	const FString ProviderName = ProviderDisplayName(Settings->Provider);
 
 	TSharedPtr<IOliveAIProvider> Provider = FOliveProviderFactory::CreateProvider(ProviderName);
 	if (!Provider.IsValid())
@@ -559,22 +810,47 @@ bool SOliveAIChatPanel::ConfigureProviderFromSettings(FString& OutError)
 		return false;
 	}
 
+	FString ModelId = Settings->GetSelectedModelForProvider(Settings->Provider);
+	if (ModelId.IsEmpty())
+	{
+		ModelId = Provider->GetRecommendedModel();
+		if (ModelId.IsEmpty())
+		{
+			const TArray<FString> AvailableModels = Provider->GetAvailableModels();
+			if (AvailableModels.Num() > 0)
+			{
+				ModelId = AvailableModels[0];
+			}
+		}
+
+		if (!ModelId.IsEmpty())
+		{
+			Settings->SetSelectedModelForProvider(Settings->Provider, ModelId);
+			Settings->SaveConfig();
+		}
+	}
+
 	FOliveProviderConfig ProviderConfig;
 	ProviderConfig.ProviderName = ProviderName;
 	ProviderConfig.ApiKey = Settings->GetCurrentApiKey();
 	ProviderConfig.BaseUrl = Settings->GetCurrentBaseUrl();
-	ProviderConfig.ModelId = Settings->SelectedModel;
+	ProviderConfig.ModelId = ModelId;
 	ProviderConfig.Temperature = Settings->Temperature;
 	ProviderConfig.MaxTokens = Settings->MaxTokens;
 	ProviderConfig.TimeoutSeconds = Settings->RequestTimeoutSeconds;
 	Provider->Configure(ProviderConfig);
+
+	if (ModelTextBox.IsValid())
+	{
+		ModelTextBox->SetText(FText::FromString(ModelId));
+	}
 
 	ConversationManager->SetProvider(Provider);
 
 	// Trigger async connection validation
 	bIsValidating = true;
 	ValidationMessage = TEXT("Checking connection...");
-	Provider->ValidateConnection([this](bool bSuccess, const FString& Message)
+	Provider->ValidateConnection([this, ModelId](bool bSuccess, const FString& Message)
 	{
 		// Must dispatch to game thread if called from HTTP thread
 		AsyncTask(ENamedThreads::GameThread, [this, bSuccess, Message]()
@@ -590,6 +866,7 @@ bool SOliveAIChatPanel::ConfigureProviderFromSettings(FString& OutError)
 			{
 				UE_LOG(LogOliveAI, Log, TEXT("Provider validation passed: %s"), *Message);
 			}
+
 		});
 	});
 
@@ -837,11 +1114,32 @@ FText SOliveAIChatPanel::GetStatusText() const
 	if (ConversationManager.IsValid() && ConversationManager->GetProvider().IsValid())
 	{
 		FString ProviderName = ConversationManager->GetProvider()->GetProviderName();
+		FString ModelName = ConversationManager->GetProvider()->GetConfig().ModelId;
+		const bool bHasModel = !ModelName.TrimStartAndEnd().IsEmpty();
 		if (bValidationSuccess && !ValidationMessage.IsEmpty())
 		{
-			return FText::Format(LOCTEXT("StatusReadyValidated", "{0} - {1}"), FText::FromString(ProviderName), FText::FromString(ValidationMessage));
+			if (bHasModel)
+			{
+				return FText::Format(
+					LOCTEXT("StatusReadyValidatedWithModel", "{0} ({1}) - {2}"),
+					FText::FromString(ProviderName),
+					FText::FromString(ModelName),
+					FText::FromString(ValidationMessage));
+			}
+			return FText::Format(
+				LOCTEXT("StatusReadyValidatedNoModel", "{0} - {1}"),
+				FText::FromString(ProviderName),
+				FText::FromString(ValidationMessage));
 		}
-		return FText::Format(LOCTEXT("StatusReady", "Ready - {0}"), FText::FromString(ProviderName));
+
+		if (bHasModel)
+		{
+			return FText::Format(
+				LOCTEXT("StatusReadyWithModel", "Ready - {0} ({1})"),
+				FText::FromString(ProviderName),
+				FText::FromString(ModelName));
+		}
+		return FText::Format(LOCTEXT("StatusReadyNoModel", "Ready - {0}"), FText::FromString(ProviderName));
 	}
 
 	return LOCTEXT("StatusNoProvider", "No provider configured");
@@ -922,6 +1220,226 @@ void SOliveAIChatPanel::OnSafetyPresetChanged(TSharedPtr<FString> NewPreset, ESe
 			Preset = EOliveSafetyPreset::YOLO;
 		}
 		UOliveAISettings::Get()->SetSafetyPreset(Preset);
+	}
+}
+
+void SOliveAIChatPanel::OnProviderChanged(TSharedPtr<FString> NewProvider, ESelectInfo::Type SelectInfo)
+{
+	if (!NewProvider.IsValid() || bIsProcessing)
+	{
+		return;
+	}
+
+	UOliveAISettings* Settings = UOliveAISettings::Get();
+	if (!Settings)
+	{
+		return;
+	}
+
+	const FString CurrentTypedModel = ModelTextBox.IsValid() ? ModelTextBox->GetText().ToString().TrimStartAndEnd() : TEXT("");
+	if (!CurrentTypedModel.IsEmpty())
+	{
+		Settings->SetSelectedModelForProvider(Settings->Provider, CurrentTypedModel);
+	}
+
+	const EOliveAIProvider NewProviderType = ProviderFromDisplayName(*NewProvider);
+	FString NewModel = Settings->GetSelectedModelForProvider(NewProviderType);
+	if (NewModel.IsEmpty())
+	{
+		const TSharedPtr<IOliveAIProvider> TempProvider = FOliveProviderFactory::CreateProvider(ProviderDisplayName(NewProviderType));
+		if (TempProvider.IsValid())
+		{
+			NewModel = TempProvider->GetRecommendedModel();
+			if (NewModel.IsEmpty())
+			{
+				const TArray<FString> AvailableModels = TempProvider->GetAvailableModels();
+				if (AvailableModels.Num() > 0)
+				{
+					NewModel = AvailableModels[0];
+				}
+			}
+		}
+	}
+
+	CurrentProviderOption = NewProvider;
+	ApplyProviderAndModelSelection(NewProviderType, NewModel, true);
+}
+
+void SOliveAIChatPanel::OnModelSuggestionSelected(TSharedPtr<FString> NewModel, ESelectInfo::Type SelectInfo)
+{
+	if (!NewModel.IsValid() || bIsProcessing)
+	{
+		return;
+	}
+
+	CurrentModelOption = NewModel;
+	if (ModelTextBox.IsValid())
+	{
+		ModelTextBox->SetText(FText::FromString(*NewModel));
+	}
+
+	if (UOliveAISettings* Settings = UOliveAISettings::Get())
+	{
+		ApplyProviderAndModelSelection(Settings->Provider, *NewModel, true);
+	}
+}
+
+void SOliveAIChatPanel::OnModelCommitted(const FText& NewText, ETextCommit::Type CommitType)
+{
+	if (bIsProcessing)
+	{
+		return;
+	}
+
+	if (CommitType != ETextCommit::OnEnter && CommitType != ETextCommit::OnUserMovedFocus)
+	{
+		return;
+	}
+
+	const FString ModelId = NewText.ToString().TrimStartAndEnd();
+	if (ModelId.IsEmpty())
+	{
+		return;
+	}
+
+	if (UOliveAISettings* Settings = UOliveAISettings::Get())
+	{
+		ApplyProviderAndModelSelection(Settings->Provider, ModelId, true);
+	}
+}
+
+void SOliveAIChatPanel::RefreshProviderOptions()
+{
+	ProviderOptions.Empty();
+
+	const TArray<FString> AvailableProviders = FOliveProviderFactory::GetAvailableProviders();
+	for (const FString& ProviderName : AvailableProviders)
+	{
+		ProviderOptions.Add(MakeShared<FString>(ProviderName));
+	}
+
+	if (const UOliveAISettings* Settings = UOliveAISettings::Get())
+	{
+		const FString ActiveProviderName = ProviderDisplayName(Settings->Provider);
+		if (!FindOptionByValue(ProviderOptions, ActiveProviderName).IsValid())
+		{
+			ProviderOptions.Add(MakeShared<FString>(ActiveProviderName));
+		}
+	}
+}
+
+void SOliveAIChatPanel::RefreshModelOptionsForProvider(EOliveAIProvider ProviderType)
+{
+	ModelOptions.Empty();
+
+	const FString ProviderName = ProviderDisplayName(ProviderType);
+	const TSharedPtr<IOliveAIProvider> TempProvider = FOliveProviderFactory::CreateProvider(ProviderName);
+	if (TempProvider.IsValid())
+	{
+		const TArray<FString> AvailableModels = TempProvider->GetAvailableModels();
+		for (const FString& Model : AvailableModels)
+		{
+			ModelOptions.Add(MakeShared<FString>(Model));
+		}
+	}
+
+	UOliveAISettings* Settings = UOliveAISettings::Get();
+	if (!Settings)
+	{
+		return;
+	}
+
+	FString ActiveModel = Settings->GetSelectedModelForProvider(ProviderType);
+	if (ActiveModel.IsEmpty() && TempProvider.IsValid())
+	{
+		ActiveModel = TempProvider->GetRecommendedModel();
+	}
+	if (ActiveModel.IsEmpty() && TempProvider.IsValid())
+	{
+		const TArray<FString> AvailableModels = TempProvider->GetAvailableModels();
+		if (AvailableModels.Num() > 0)
+		{
+			ActiveModel = AvailableModels[0];
+		}
+	}
+
+	if (!ActiveModel.IsEmpty())
+	{
+		CurrentModelOption = FindOptionByValue(ModelOptions, ActiveModel);
+		if (!CurrentModelOption.IsValid())
+		{
+			CurrentModelOption = MakeShared<FString>(ActiveModel);
+		}
+
+		if (ModelTextBox.IsValid())
+		{
+			ModelTextBox->SetText(FText::FromString(ActiveModel));
+		}
+	}
+}
+
+void SOliveAIChatPanel::ApplyProviderAndModelSelection(EOliveAIProvider ProviderType, const FString& ModelId, bool bSaveConfig)
+{
+	UOliveAISettings* Settings = UOliveAISettings::Get();
+	if (!Settings)
+	{
+		return;
+	}
+
+	FString FinalModelId = ModelId.TrimStartAndEnd();
+	if (FinalModelId.IsEmpty())
+	{
+		if (const TSharedPtr<IOliveAIProvider> TempProvider = FOliveProviderFactory::CreateProvider(ProviderDisplayName(ProviderType)); TempProvider.IsValid())
+		{
+			FinalModelId = TempProvider->GetRecommendedModel();
+			if (FinalModelId.IsEmpty())
+			{
+				const TArray<FString> AvailableModels = TempProvider->GetAvailableModels();
+				if (AvailableModels.Num() > 0)
+				{
+					FinalModelId = AvailableModels[0];
+				}
+			}
+		}
+	}
+
+	Settings->Provider = ProviderType;
+	if (!FinalModelId.IsEmpty())
+	{
+		Settings->SetSelectedModelForProvider(ProviderType, FinalModelId);
+	}
+
+	if (bSaveConfig)
+	{
+		Settings->SaveConfig();
+	}
+
+	const FString ProviderName = ProviderDisplayName(ProviderType);
+	CurrentProviderOption = FindOptionByValue(ProviderOptions, ProviderName);
+	if (!CurrentProviderOption.IsValid())
+	{
+		CurrentProviderOption = MakeShared<FString>(ProviderName);
+		ProviderOptions.Add(CurrentProviderOption);
+	}
+
+	RefreshModelOptionsForProvider(ProviderType);
+	if (!FinalModelId.IsEmpty())
+	{
+		CurrentModelOption = FindOptionByValue(ModelOptions, FinalModelId);
+		if (ModelTextBox.IsValid())
+		{
+			ModelTextBox->SetText(FText::FromString(FinalModelId));
+		}
+	}
+
+	FString ProviderError;
+	if (!ConfigureProviderFromSettings(ProviderError))
+	{
+		HandleError(ProviderError);
+	}
+	else
+	{
+		CurrentErrorMessage.Empty();
 	}
 }
 

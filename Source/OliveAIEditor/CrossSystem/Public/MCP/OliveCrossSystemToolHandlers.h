@@ -37,7 +37,9 @@ private:
 
 	// Registration helpers
 	void RegisterBulkTools();
+	void RegisterBatchTools();
 	void RegisterSnapshotTools();
+	void RegisterIndexTools();
 
 	// Bulk operation handlers
 	FOliveToolResult HandleBulkRead(const TSharedPtr<FJsonObject>& Params);
@@ -46,11 +48,19 @@ private:
 	FOliveToolResult HandleCreateAICharacter(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleMoveToCpp(const TSharedPtr<FJsonObject>& Params);
 
+	// Batch write handler
+	FOliveToolResult HandleBatchWrite(const TSharedPtr<FJsonObject>& Params);
+
 	// Snapshot handlers
 	FOliveToolResult HandleSnapshot(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleListSnapshots(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleRollback(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleDiff(const TSharedPtr<FJsonObject>& Params);
+
+	// Index / context handlers
+	FOliveToolResult HandleIndexBuild(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandleIndexStatus(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandleGetRelevantContext(const TSharedPtr<FJsonObject>& Params);
 
 	TArray<FString> RegisteredToolNames;
 };

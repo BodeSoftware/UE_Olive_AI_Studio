@@ -34,6 +34,46 @@ namespace OliveCrossSystemSchemas
 	// Bulk Operations
 	// ============================================================================
 
+	TSharedPtr<FJsonObject> ProjectBatchWrite()
+	{
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		TSharedPtr<FJsonObject> Props = MakeProperties();
+
+		Props->SetObjectField(TEXT("path"),
+			OliveBlueprintSchemas::StringProp(TEXT("Target asset path — all operations must target this asset")));
+
+		// Build the op item schema: { id?: string, tool: string, params: object }
+		auto OpItemProps = MakeProperties();
+		OpItemProps->SetObjectField(TEXT("id"),
+			OliveBlueprintSchemas::StringProp(TEXT("Optional ID for this operation, used by later ops via ${id.field} template references")));
+		OpItemProps->SetObjectField(TEXT("tool"),
+			OliveBlueprintSchemas::StringProp(TEXT("Tool name to execute (e.g., blueprint.add_node, blueprint.connect_pins)")));
+
+		auto ParamsObjSchema = MakeSchema(TEXT("object"));
+		ParamsObjSchema->SetStringField(TEXT("description"), TEXT("Parameters for the tool call"));
+		OpItemProps->SetObjectField(TEXT("params"), ParamsObjSchema);
+
+		auto OpItemSchema = MakeSchema(TEXT("object"));
+		OpItemSchema->SetObjectField(TEXT("properties"), OpItemProps);
+		AddRequired(OpItemSchema, { TEXT("tool"), TEXT("params") });
+
+		Props->SetObjectField(TEXT("ops"),
+			OliveBlueprintSchemas::ArrayProp(TEXT("Ordered array of operations to execute atomically"), OpItemSchema));
+
+		Props->SetObjectField(TEXT("graph"),
+			OliveBlueprintSchemas::StringProp(TEXT("Default graph name injected into ops missing a graph param")));
+		Props->SetObjectField(TEXT("dry_run"),
+			OliveBlueprintSchemas::BoolProp(TEXT("If true, validate and return normalized ops without executing"), false));
+		Props->SetObjectField(TEXT("auto_compile"),
+			OliveBlueprintSchemas::BoolProp(TEXT("Compile the Blueprint after all operations succeed"), true));
+		Props->SetObjectField(TEXT("stop_on_error"),
+			OliveBlueprintSchemas::BoolProp(TEXT("Stop execution on first operation failure"), true));
+
+		Schema->SetObjectField(TEXT("properties"), Props);
+		AddRequired(Schema, { TEXT("path"), TEXT("ops") });
+		return Schema;
+	}
+
 	TSharedPtr<FJsonObject> ProjectBulkRead()
 	{
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
@@ -209,6 +249,48 @@ namespace OliveCrossSystemSchemas
 
 		Schema->SetObjectField(TEXT("properties"), Props);
 		AddRequired(Schema, { TEXT("snapshot_id") });
+		return Schema;
+	}
+
+	// ============================================================================
+	// Index / Context Operations
+	// ============================================================================
+
+	TSharedPtr<FJsonObject> ProjectIndexBuild()
+	{
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		TSharedPtr<FJsonObject> Props = MakeProperties();
+
+		Props->SetObjectField(TEXT("force"),
+			OliveBlueprintSchemas::BoolProp(TEXT("Force re-export even if the index is not stale"), false));
+
+		Schema->SetObjectField(TEXT("properties"), Props);
+		return Schema;
+	}
+
+	TSharedPtr<FJsonObject> ProjectIndexStatus()
+	{
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		TSharedPtr<FJsonObject> Props = MakeProperties();
+		Schema->SetObjectField(TEXT("properties"), Props);
+		return Schema;
+	}
+
+	TSharedPtr<FJsonObject> ProjectGetRelevantContext()
+	{
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		TSharedPtr<FJsonObject> Props = MakeProperties();
+
+		Props->SetObjectField(TEXT("query"),
+			OliveBlueprintSchemas::StringProp(TEXT("Search query to find relevant assets")));
+		Props->SetObjectField(TEXT("max_assets"),
+			OliveBlueprintSchemas::IntProp(TEXT("Maximum number of assets to return"), 1, 50));
+		Props->SetObjectField(TEXT("kinds"),
+			OliveBlueprintSchemas::ArrayProp(TEXT("Filter by asset kind (e.g., Blueprint, BehaviorTree, PCG, Material)"),
+				OliveBlueprintSchemas::StringProp(TEXT("Asset kind"))));
+
+		Schema->SetObjectField(TEXT("properties"), Props);
+		AddRequired(Schema, { TEXT("query") });
 		return Schema;
 	}
 }

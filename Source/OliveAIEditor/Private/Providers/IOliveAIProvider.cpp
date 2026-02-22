@@ -8,6 +8,7 @@
 #include "Providers/OliveOllamaProvider.h"
 #include "Providers/OliveOpenAICompatibleProvider.h"
 #include "Providers/OliveGoogleProvider.h"
+#include "Providers/OliveZAIProvider.h"
 #include "Serialization/JsonSerializer.h"
 
 // ==========================================
@@ -124,6 +125,14 @@ TSharedPtr<IOliveAIProvider> FOliveProviderFactory::CreateProvider(const FString
 		return MakeShared<FOliveOpenRouterProvider>();
 	}
 
+	if (ProviderName.Equals(TEXT("zai"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("z.ai"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("Z.ai"), ESearchCase::CaseSensitive) ||
+		ProviderName.Equals(TEXT("ZAI"), ESearchCase::CaseSensitive))
+	{
+		return MakeShared<FOliveZAIProvider>();
+	}
+
 	if (ProviderName.Equals(TEXT("claudecode"), ESearchCase::IgnoreCase) ||
 		ProviderName.Equals(TEXT("Claude Code"), ESearchCase::IgnoreCase) ||
 		ProviderName.Equals(TEXT("Claude Code CLI"), ESearchCase::IgnoreCase))
@@ -176,6 +185,9 @@ TArray<FString> FOliveProviderFactory::GetAvailableProviders()
 
 	// OpenRouter - API key required
 	Providers.Add(TEXT("OpenRouter"));
+
+	// Z.ai - API key required
+	Providers.Add(TEXT("Z.ai"));
 
 	// Anthropic direct - API key required
 	Providers.Add(TEXT("Anthropic"));

@@ -14,6 +14,7 @@ enum class EOliveAIProvider : uint8
 {
 	ClaudeCode UMETA(DisplayName = "Claude Code CLI (No API Key)"),
 	OpenRouter UMETA(DisplayName = "OpenRouter (API Key)"),
+	ZAI        UMETA(DisplayName = "Z.ai (API Key)"),
 	Anthropic UMETA(DisplayName = "Anthropic (API Key)"),
 	OpenAI UMETA(DisplayName = "OpenAI (API Key)"),
 	Google UMETA(DisplayName = "Google AI (API Key)"),
@@ -82,6 +83,16 @@ public:
 		meta=(DisplayName="OpenRouter API Key", PasswordField=true))
 	FString OpenRouterApiKey;
 
+	/** Z.ai API key */
+	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
+		meta=(DisplayName="Z.ai API Key", PasswordField=true))
+	FString ZaiApiKey;
+
+	/** Use Z.ai's coding endpoint variant (if supported by your account) */
+	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
+		meta=(DisplayName="Z.ai: Use Coding Endpoint"))
+	bool bZaiUseCodingEndpoint = false;
+
 	/** Anthropic API key for direct Claude access. Get one at https://console.anthropic.com */
 	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
 		meta=(DisplayName="Anthropic API Key", PasswordField=true))
@@ -116,6 +127,10 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
 		meta=(DisplayName="Model"))
 	FString SelectedModel = TEXT("anthropic/claude-sonnet-4");
+
+	/** Internal JSON map of provider enum key -> last selected model id */
+	UPROPERTY(Config)
+	FString ProviderModelOverridesJson;
 
 	/** Temperature for responses. 0 = deterministic, higher = more creative */
 	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
@@ -276,6 +291,26 @@ public:
 	int32 CheckpointIntervalSteps = 5;
 
 	// ==========================================
+	// Brain Layer Settings
+	// ==========================================
+
+	/** Maximum number of operations allowed in a single project.batch_write call */
+	UPROPERTY(Config, EditAnywhere, Category = "Brain Layer", meta = (ClampMin = 1, ClampMax = 1000))
+	int32 BatchWriteMaxOps = 200;
+
+	/** Maximum number of assets returned by project.get_relevant_context */
+	UPROPERTY(Config, EditAnywhere, Category = "Brain Layer", meta = (ClampMin = 1, ClampMax = 50))
+	int32 RelevantContextMaxAssets = 10;
+
+	/** Number of recent tool result pairs to keep at full detail in distilled prompts */
+	UPROPERTY(Config, EditAnywhere, Category = "Brain Layer", meta = (ClampMin = 1, ClampMax = 5))
+	int32 PromptDistillationRawResults = 2;
+
+	/** Maximum correction cycles before the brain layer stops retrying a failed operation */
+	UPROPERTY(Config, EditAnywhere, Category = "Brain Layer", meta = (ClampMin = 1, ClampMax = 20))
+	int32 MaxCorrectionCyclesPerRun = 5;
+
+	// ==========================================
 	// Utility Functions
 	// ==========================================
 
@@ -290,4 +325,10 @@ public:
 
 	/** Check if the current provider is configured (has API key) */
 	bool IsProviderConfigured() const;
+
+	/** Get selected model for a specific provider, with legacy fallback for current provider */
+	FString GetSelectedModelForProvider(EOliveAIProvider InProvider) const;
+
+	/** Set selected model for a specific provider (updates legacy SelectedModel for active provider) */
+	void SetSelectedModelForProvider(EOliveAIProvider InProvider, const FString& InModel);
 };

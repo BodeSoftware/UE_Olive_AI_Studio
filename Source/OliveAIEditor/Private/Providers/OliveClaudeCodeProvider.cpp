@@ -104,6 +104,8 @@ TArray<FString> FOliveClaudeCodeProvider::GetAvailableModels() const
 {
 	// Claude Code CLI uses whatever model the user's subscription supports
 	return {
+		TEXT("claude-opus-4-6"),
+		TEXT("claude-sonnet-4-6"),
 		TEXT("claude-sonnet-4-20250514"),
 		TEXT("claude-opus-4-20250514"),
 		TEXT("claude-haiku-3-5-20241022")
@@ -112,7 +114,8 @@ TArray<FString> FOliveClaudeCodeProvider::GetAvailableModels() const
 
 FString FOliveClaudeCodeProvider::GetRecommendedModel() const
 {
-	return TEXT("claude-sonnet-4-20250514");
+	// Prefer stable, current model ids; fall back to dated ids if needed.
+	return TEXT("claude-sonnet-4-6");
 }
 
 void FOliveClaudeCodeProvider::Configure(const FOliveProviderConfig& Config)

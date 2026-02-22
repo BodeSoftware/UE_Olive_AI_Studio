@@ -4,6 +4,7 @@
 #include "OliveAIEditorModule.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Misc/EngineVersion.h"
+#include "Misc/FileHelper.h"
 #include "Interfaces/IPluginManager.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -513,6 +514,7 @@ void FOliveProjectIndex::OnAssetAdded(const FAssetData& AssetData)
 
 	FScopeLock Lock(&IndexLock);
 	AssetIndex.Add(Info.Path, Info);
+	bDirty = true;
 
 	UE_LOG(LogOliveAI, Verbose, TEXT("Asset added to index: %s"), *Info.Path);
 }
@@ -523,6 +525,7 @@ void FOliveProjectIndex::OnAssetRemoved(const FAssetData& AssetData)
 
 	FScopeLock Lock(&IndexLock);
 	AssetIndex.Remove(Path);
+	bDirty = true;
 
 	UE_LOG(LogOliveAI, Verbose, TEXT("Asset removed from index: %s"), *Path);
 }
@@ -535,6 +538,7 @@ void FOliveProjectIndex::OnAssetRenamed(const FAssetData& AssetData, const FStri
 
 	FOliveAssetInfo Info = AssetDataToInfo(AssetData);
 	AssetIndex.Add(Info.Path, Info);
+	bDirty = true;
 
 	UE_LOG(LogOliveAI, Verbose, TEXT("Asset renamed in index: %s -> %s"), *OldPath, *Info.Path);
 }
@@ -545,6 +549,7 @@ void FOliveProjectIndex::OnAssetUpdated(const FAssetData& AssetData)
 
 	FScopeLock Lock(&IndexLock);
 	AssetIndex.Add(Info.Path, Info);  // Overwrite existing
+	bDirty = true;
 
 	UE_LOG(LogOliveAI, Verbose, TEXT("Asset updated in index: %s"), *Info.Path);
 }
@@ -699,6 +704,80 @@ FString FOliveProjectIndex::GetClassHierarchyJson(FName RootClass) const
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
 	FJsonSerializer::Serialize(Json.ToSharedRef(), Writer);
 	return OutputString;
+}
+
+// Project Map Export
+
+FString FOliveProjectIndex::GetDefaultProjectMapPath()
+{
+	return FPaths::ProjectSavedDir() / TEXT("OliveAI/ProjectMap.json");
+}
+
+bool FOliveProjectIndex::IsProjectMapStale() const
+{
+	return bDirty;
+}
+
+bool FOliveProjectIndex::ExportProjectMap(const FString& FilePath) const
+{
+	TSharedPtr<FJsonObject> Root = MakeShared<FJsonObject>();
+
+	// Metadata
+	{
+		TSharedPtr<FJsonObject> Metadata = MakeShared<FJsonObject>();
+		Metadata->SetStringField(TEXT("timestamp"), FDateTime::UtcNow().ToIso8601());
+		Metadata->SetNumberField(TEXT("asset_count"), GetAssetCount());
+
+		FScopeLock Lock(&IndexLock);
+		Metadata->SetNumberField(TEXT("class_count"), ClassHierarchy.Num());
+		Root->SetObjectField(TEXT("metadata"), Metadata);
+	}
+
+	// Assets
+	{
+		TArray<TSharedPtr<FJsonValue>> AssetsArray;
+		FScopeLock Lock(&IndexLock);
+		for (const auto& Pair : AssetIndex)
+		{
+			AssetsArray.Add(MakeShared<FJsonValueObject>(Pair.Value.ToJson()));
+		}
+		Root->SetArrayField(TEXT("assets"), AssetsArray);
+	}
+
+	// Class hierarchy
+	{
+		TSharedPtr<FJsonObject> HierarchyJson = MakeShared<FJsonObject>();
+		TArray<TSharedPtr<FJsonValue>> NodesArray;
+		FScopeLock Lock(&IndexLock);
+		for (const auto& Pair : ClassHierarchy)
+		{
+			NodesArray.Add(MakeShared<FJsonValueObject>(Pair.Value.ToJson()));
+		}
+		HierarchyJson->SetArrayField(TEXT("classes"), NodesArray);
+		Root->SetObjectField(TEXT("class_hierarchy"), HierarchyJson);
+	}
+
+	// Project config
+	Root->SetObjectField(TEXT("project_config"), ProjectConfig.ToJson());
+
+	// Serialize to string
+	FString OutputString;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
+	FJsonSerializer::Serialize(Root.ToSharedRef(), Writer);
+
+	// Ensure directory exists and save
+	FString Directory = FPaths::GetPath(FilePath);
+	IFileManager::Get().MakeDirectory(*Directory, true);
+
+	if (FFileHelper::SaveStringToFile(OutputString, *FilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+	{
+		bDirty = false;
+		UE_LOG(LogOliveAI, Log, TEXT("Project map exported to: %s"), *FilePath);
+		return true;
+	}
+
+	UE_LOG(LogOliveAI, Error, TEXT("Failed to export project map to: %s"), *FilePath);
+	return false;
 }
 
 TSharedPtr<FJsonObject> FOliveClassHierarchyNode::ToJson() const

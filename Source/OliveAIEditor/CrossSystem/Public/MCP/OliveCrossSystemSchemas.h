@@ -18,6 +18,9 @@ namespace OliveCrossSystemSchemas
 	// Bulk Operations
 	// ============================================================================
 
+	/** Schema for project.batch_write: {path, ops[], dry_run?, auto_compile?, stop_on_error?} */
+	TSharedPtr<FJsonObject> ProjectBatchWrite();
+
 	/** Schema for project.bulk_read: {paths: string[], read_mode?: "summary"|"full"} */
 	TSharedPtr<FJsonObject> ProjectBulkRead();
 
@@ -48,4 +51,17 @@ namespace OliveCrossSystemSchemas
 
 	/** Schema for project.diff: {snapshot_id: string, paths?: string[]} */
 	TSharedPtr<FJsonObject> ProjectDiff();
+
+	// ============================================================================
+	// Index / Context Operations
+	// ============================================================================
+
+	/** Schema for project.index_build: {force?: bool} */
+	TSharedPtr<FJsonObject> ProjectIndexBuild();
+
+	/** Schema for project.index_status: no params */
+	TSharedPtr<FJsonObject> ProjectIndexStatus();
+
+	/** Schema for project.get_relevant_context: {query: string, max_assets?: int, kinds?: string[]} */
+	TSharedPtr<FJsonObject> ProjectGetRelevantContext();
 }

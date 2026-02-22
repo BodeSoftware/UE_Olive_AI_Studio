@@ -8,7 +8,7 @@
 #include "Serialization/JsonWriter.h"
 
 const FString FOliveAnthropicProvider::AnthropicApiUrl = TEXT("https://api.anthropic.com/v1/messages");
-const FString FOliveAnthropicProvider::DefaultModel = TEXT("claude-sonnet-4-5");
+const FString FOliveAnthropicProvider::DefaultModel = TEXT("claude-sonnet-4-6");
 
 FOliveAnthropicProvider::FOliveAnthropicProvider()
 {
@@ -26,6 +26,8 @@ FOliveAnthropicProvider::~FOliveAnthropicProvider()
 TArray<FString> FOliveAnthropicProvider::GetAvailableModels() const
 {
 	return {
+		TEXT("claude-opus-4-6"),
+		TEXT("claude-sonnet-4-6"),
 		TEXT("claude-sonnet-4-5"),
 		TEXT("claude-opus-4-1"),
 		TEXT("claude-3-5-sonnet-latest"),
