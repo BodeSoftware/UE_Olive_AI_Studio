@@ -182,3 +182,112 @@ If `blueprint.apply_plan_json` succeeds but returns `wiring_errors`, some connec
 1. Read the `wiring_errors` array -- each entry tells you which step and pin failed
 2. Call `blueprint.read` on the target graph to see actual pin names on created nodes
 3. Use `blueprint.connect_pins` or `blueprint.set_pin_default` with the exact pin names from the read result
+
+## REFERENCE: Complete Tool-Call Sequence Examples
+
+Follow these exact patterns. Each "CALL" is one MCP tool invocation.
+
+### Example 1: Projectile Blueprint
+
+Task: "Create BP_Bullet that moves forward and self-destructs after 3 seconds"
+
+CALL 1: blueprint.create
+  {"path": "/Game/Blueprints/BP_Bullet", "parent_class": "Actor"}
+  → success
+
+CALL 2: blueprint.add_component
+  {"path": "/Game/Blueprints/BP_Bullet", "component_class": "SphereComponent", "name": "CollisionSphere", "is_root": true}
+  → success
+
+CALL 3: blueprint.add_component
+  {"path": "/Game/Blueprints/BP_Bullet", "component_class": "ProjectileMovementComponent", "name": "ProjectileMovement"}
+  → success
+
+CALL 4: blueprint.add_component
+  {"path": "/Game/Blueprints/BP_Bullet", "component_class": "StaticMeshComponent", "name": "BulletMesh"}
+  → success
+
+CALL 5: blueprint.add_variable
+  {"path": "/Game/Blueprints/BP_Bullet", "name": "BulletSpeed", "type": "Float", "default_value": "3000.0"}
+  → success
+
+CALL 6: blueprint.apply_plan_json
+  {
+    "path": "/Game/Blueprints/BP_Bullet",
+    "plan": {
+      "schema_version": "2.0",
+      "target_graph": "EventGraph",
+      "steps": [
+        {"id": "s1", "op": "event", "target": "BeginPlay"},
+        {"id": "s2", "op": "call", "target": "SetLifeSpan", "inputs": {"InLifespan": "3.0"}, "exec_after": "s1"}
+      ]
+    }
+  }
+  → success, 2 nodes, 1 exec connection
+
+CALL 7: blueprint.read
+  {"path": "/Game/Blueprints/BP_Bullet", "detail": "summary"}
+  → verify: 3 components, 1 variable, EventGraph with 2 nodes
+
+DONE. Total: 7 tool calls.
+
+---
+
+### Example 2: Interactive Actor with Branch Logic
+
+Task: "Create BP_HealthPickup that heals the player on overlap and destroys itself"
+
+CALL 1: blueprint.create
+  {"path": "/Game/Blueprints/BP_HealthPickup", "parent_class": "Actor"}
+
+CALL 2: blueprint.add_component
+  {"path": "/Game/Blueprints/BP_HealthPickup", "component_class": "SphereComponent", "name": "OverlapSphere", "is_root": true}
+
+CALL 3: blueprint.add_component
+  {"path": "/Game/Blueprints/BP_HealthPickup", "component_class": "StaticMeshComponent", "name": "PickupMesh"}
+
+CALL 4: blueprint.add_variable
+  {"path": "/Game/Blueprints/BP_HealthPickup", "name": "HealAmount", "type": "Float", "default_value": "25.0"}
+
+CALL 5: blueprint.apply_plan_json
+  {
+    "path": "/Game/Blueprints/BP_HealthPickup",
+    "plan": {
+      "schema_version": "2.0",
+      "target_graph": "EventGraph",
+      "steps": [
+        {"id": "s1", "op": "event", "target": "ActorBeginOverlap"},
+        {"id": "s2", "op": "cast", "target": "Character", "inputs": {"Object": "@s1.auto"}, "exec_after": "s1"},
+        {"id": "s3", "op": "call", "target": "DestroyActor", "exec_after": "s2"}
+      ]
+    }
+  }
+
+CALL 6: blueprint.read
+  {"path": "/Game/Blueprints/BP_HealthPickup", "detail": "summary"}
+
+---
+
+### Common Mistakes — NEVER DO THESE
+
+❌ Path without asset name:
+   blueprint.create {"path": "/Game/Blueprints"}
+   → ERROR: This is a folder. Use "/Game/Blueprints/BP_Name"
+
+❌ Reading before creating:
+   blueprint.read_event_graph {"path": "/Game/Blueprints/BP_Gun"}
+   → ERROR: Asset does not exist. Create it first.
+
+❌ Individual node calls instead of plan JSON:
+   blueprint.add_node {"path": "...", "node_class": "K2Node_CallFunction", ...}
+   blueprint.add_node {"path": "...", "node_class": "K2Node_Event", ...}
+   blueprint.connect_pins {"path": "...", ...}
+   → WRONG: Use one blueprint.apply_plan_json call instead. It's faster and handles wiring.
+
+❌ Missing parent_class:
+   blueprint.create {"path": "/Game/Blueprints/BP_Gun"}
+   → ERROR: parent_class required. Use "Actor", "Character", "Pawn", "ActorComponent", etc.
+
+❌ Wrong variable type format:
+   blueprint.add_variable {"name": "MyRef", "type": "class Actor"}
+   → ERROR: Use "TSubclassOf<Actor>" for class refs, "TArray<Float>" for arrays

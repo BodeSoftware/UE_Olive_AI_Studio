@@ -201,7 +201,12 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::CreateBlueprint(
 	// Validate asset name
 	if (AssetName.IsEmpty())
 	{
-		return FOliveBlueprintWriteResult::Error(TEXT("Invalid asset name"));
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(
+				TEXT("Path '%s' is a folder, not an asset path. "
+					 "Append the Blueprint name, e.g. '%s/BP_MyBlueprint'. "
+					 "The path must end with the asset name like '/Game/Blueprints/BP_Gun'."),
+				*AssetPath, *AssetPath));
 	}
 
 	// Check if asset already exists (UObject path = Package.ObjectName)

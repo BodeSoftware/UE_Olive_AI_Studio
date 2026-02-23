@@ -1490,6 +1490,42 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 		);
 	}
 
+	// Defensive: detect folder-only paths before they reach the writer
+	{
+		FString ShortName = FPackageName::GetShortName(AssetPath);
+		if (ShortName.IsEmpty() || AssetPath.EndsWith(TEXT("/")))
+		{
+			FOliveToolResult Result = FOliveToolResult::Error(
+				TEXT("VALIDATION_PATH_IS_FOLDER"),
+				FString::Printf(TEXT("'%s' is a folder path, not an asset path. The last segment must be the Blueprint name."), *AssetPath),
+				FString::Printf(TEXT("Append a Blueprint name like '%s/BP_MyBlueprint'. Example: /Game/Blueprints/BP_Gun"), *AssetPath)
+			);
+			if (Result.Data.IsValid())
+			{
+				Result.Data->SetStringField(TEXT("self_correction_hint"),
+					FString::Printf(TEXT("You used '%s' which is a folder. Add the BP name: '%s/BP_MyBlueprint'. Then retry blueprint.create."),
+						*AssetPath, *AssetPath));
+			}
+			return Result;
+		}
+
+		// Also catch paths missing /Game/ prefix
+		if (!AssetPath.StartsWith(TEXT("/Game/")))
+		{
+			FOliveToolResult Result = FOliveToolResult::Error(
+				TEXT("VALIDATION_INVALID_PATH_PREFIX"),
+				FString::Printf(TEXT("Path '%s' must start with '/Game/'."), *AssetPath),
+				FString::Printf(TEXT("Use '/Game/Blueprints/%s' or another path under /Game/"), *ShortName)
+			);
+			if (Result.Data.IsValid())
+			{
+				Result.Data->SetStringField(TEXT("self_correction_hint"),
+					FString::Printf(TEXT("Paths must start with /Game/. Try: /Game/Blueprints/%s"), *ShortName));
+			}
+			return Result;
+		}
+	}
+
 	// Extract parent_class
 	FString ParentClass;
 	if (!Params->TryGetStringField(TEXT("parent_class"), ParentClass) || ParentClass.IsEmpty())

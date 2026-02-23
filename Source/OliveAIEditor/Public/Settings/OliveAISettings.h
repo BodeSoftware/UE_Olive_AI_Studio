@@ -327,7 +327,7 @@ public:
 	/** Enable intent-level Blueprint plan JSON tools (preview + apply). */
 	UPROPERTY(Config, EditAnywhere, Category="Blueprint Plan",
 		meta=(DisplayName="Enable Plan JSON Tools"))
-	bool bEnableBlueprintPlanJsonTools = false;
+	bool bEnableBlueprintPlanJsonTools = true;
 
 	/** Maximum steps allowed in a single plan JSON */
 	UPROPERTY(Config, EditAnywhere, Category="Blueprint Plan",
