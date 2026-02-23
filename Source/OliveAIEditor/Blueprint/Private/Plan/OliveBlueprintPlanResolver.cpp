@@ -12,6 +12,7 @@
 #include "Plan/OliveBlueprintPlanResolver.h"
 #include "Writer/OliveNodeFactory.h"
 #include "Catalog/OliveNodeCatalog.h"
+#include "Plan/OliveFunctionResolver.h"
 #include "Engine/Blueprint.h"
 #include "Misc/SecureHash.h"
 #include "Dom/JsonObject.h"
@@ -301,108 +302,106 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 		return false;
 	}
 
-	Out.Properties.Add(TEXT("function_name"), Step.Target);
+	// --- Smart function resolution via FOliveFunctionResolver ---
+	FOliveFunctionMatch Match = FOliveFunctionResolver::Resolve(
+		Step.Target, Step.TargetClass, BP);
 
-	// If TargetClass is explicitly provided, use it directly for disambiguation
+	if (Match.IsValid())
+	{
+		// Resolver found a concrete UFunction* -- use its canonical name and class
+		const FString ResolvedFunctionName = Match.Function->GetName();
+		const FString ResolvedClassName = Match.OwningClass ? Match.OwningClass->GetName() : FString();
+
+		Out.Properties.Add(TEXT("function_name"), ResolvedFunctionName);
+		if (!ResolvedClassName.IsEmpty())
+		{
+			Out.Properties.Add(TEXT("target_class"), ResolvedClassName);
+		}
+
+		// Emit a warning if the resolution was not exact (so the AI learns the correct name)
+		if (Match.Confidence < 90)
+		{
+			Warnings.Add(FString::Printf(
+				TEXT("Step '%s': '%s' resolved to '%s::%s' (confidence: %d, method: %s)"),
+				*Step.StepId, *Step.Target,
+				*ResolvedClassName, *ResolvedFunctionName,
+				Match.Confidence,
+				*FOliveFunctionResolver::MatchMethodToString(Match.MatchMethod)));
+		}
+
+		UE_LOG(LogOlivePlanResolver, Verbose,
+			TEXT("Step '%s': Resolved call '%s' -> '%s::%s' (confidence: %d, method: %s)"),
+			*Step.StepId, *Step.Target,
+			*ResolvedClassName, *ResolvedFunctionName,
+			Match.Confidence,
+			*FOliveFunctionResolver::MatchMethodToString(Match.MatchMethod));
+		return true;
+	}
+
+	// --- Resolver found nothing. Gather suggestions for error reporting. ---
+
+	// If TargetClass was explicitly provided but function was not found, this is an error.
 	if (!Step.TargetClass.IsEmpty())
 	{
-		Out.Properties.Add(TEXT("target_class"), Step.TargetClass);
-
-		UE_LOG(LogOlivePlanResolver, Verbose,
-			TEXT("Step '%s': Resolved call '%s' on class '%s'"),
-			*Step.StepId, *Step.Target, *Step.TargetClass);
-		return true;
-	}
-
-	// No TargetClass — search the catalog for disambiguation
-	FOliveNodeCatalog& Catalog = FOliveNodeCatalog::Get();
-
-	if (!Catalog.IsInitialized())
-	{
-		// Catalog not ready — accept the call as-is without disambiguation
-		Warnings.Add(FString::Printf(
-			TEXT("Step '%s': Node catalog not initialized, accepting function '%s' without disambiguation"),
-			*Step.StepId, *Step.Target));
-		return true;
-	}
-
-	TArray<FOliveNodeTypeInfo> SearchResults = Catalog.Search(Step.Target, CATALOG_SEARCH_LIMIT);
-
-	// Filter to only function-call results that match the target name
-	TArray<FOliveNodeTypeInfo> MatchingFunctions;
-	for (const FOliveNodeTypeInfo& Info : SearchResults)
-	{
-		// Match if the function name matches (case-insensitive) or the display name matches
-		if (Info.FunctionName.Equals(Step.Target, ESearchCase::IgnoreCase) ||
-			Info.DisplayName.Equals(Step.Target, ESearchCase::IgnoreCase))
-		{
-			MatchingFunctions.Add(Info);
-		}
-	}
-
-	if (MatchingFunctions.Num() == 1)
-	{
-		// Exact single match — use it
-		const FOliveNodeTypeInfo& Match = MatchingFunctions[0];
-		if (!Match.FunctionClass.IsEmpty())
-		{
-			Out.Properties.Add(TEXT("target_class"), Match.FunctionClass);
-		}
-		// Use the matched function name in case casing differs
-		Out.Properties[TEXT("function_name")] = Match.FunctionName.IsEmpty() ? Step.Target : Match.FunctionName;
-
-		UE_LOG(LogOlivePlanResolver, Verbose,
-			TEXT("Step '%s': Resolved call '%s' via catalog (class: %s)"),
-			*Step.StepId, *Step.Target, *Match.FunctionClass);
-		return true;
-	}
-
-	if (MatchingFunctions.Num() > 1)
-	{
-		// Ambiguous — return error with alternatives
+		TArray<FOliveFunctionMatch> Candidates = FOliveFunctionResolver::GetCandidates(Step.Target, CATALOG_SEARCH_LIMIT);
 		TArray<FString> Alternatives;
-		for (const FOliveNodeTypeInfo& Info : MatchingFunctions)
+		for (const FOliveFunctionMatch& C : Candidates)
 		{
-			FString Alt = Info.FunctionName;
-			if (!Info.FunctionClass.IsEmpty())
+			if (C.IsValid())
 			{
-				Alt = FString::Printf(TEXT("%s (class: %s)"), *Info.FunctionName, *Info.FunctionClass);
+				Alternatives.Add(FString::Printf(TEXT("%s::%s (confidence: %d)"),
+					C.OwningClass ? *C.OwningClass->GetName() : TEXT("?"),
+					*C.Function->GetName(), C.Confidence));
 			}
-			Alternatives.Add(MoveTemp(Alt));
 		}
 
 		FOliveIRBlueprintPlanError Error = FOliveIRBlueprintPlanError::MakeStepError(
-			TEXT("AMBIGUOUS_TARGET"),
+			TEXT("FUNCTION_NOT_FOUND"),
 			Step.StepId,
 			FString::Printf(TEXT("/steps/%d/target"), Idx),
-			FString::Printf(TEXT("Function '%s' is ambiguous — %d candidates found"), *Step.Target, MatchingFunctions.Num()),
-			TEXT("Specify 'target_class' to disambiguate"));
+			FString::Printf(TEXT("Function '%s' not found on class '%s'"), *Step.Target, *Step.TargetClass),
+			Alternatives.Num() > 0
+				? FString::Printf(TEXT("Did you mean: %s"), *FString::Join(Alternatives, TEXT(", ")))
+				: TEXT("Check the function name and class name"));
 		Error.Alternatives = MoveTemp(Alternatives);
 		Errors.Add(MoveTemp(Error));
 		return false;
 	}
 
-	// No exact name match in catalog — try fuzzy match for suggestions, but still accept the call.
-	// The function may exist but not be in the catalog (e.g., Blueprint-defined functions,
-	// dynamically loaded plugins). The factory will validate at creation time.
-	TArray<FOliveNodeSuggestion> Suggestions = Catalog.FuzzyMatch(Step.Target, CATALOG_SEARCH_LIMIT);
+	// No TargetClass and resolver couldn't find it.
+	// Still accept the call as-is -- the function may exist but not be discoverable
+	// (e.g., Blueprint-defined functions, dynamically loaded plugins).
+	// The factory will validate at creation time.
+	Out.Properties.Add(TEXT("function_name"), Step.Target);
 
-	if (Suggestions.Num() > 0 && Suggestions[0].Score >= MIN_AUTO_MATCH_SCORE)
+	// Try to get candidates for a helpful warning
+	TArray<FOliveFunctionMatch> Candidates = FOliveFunctionResolver::GetCandidates(Step.Target, CATALOG_SEARCH_LIMIT);
+	if (Candidates.Num() > 0 && Candidates[0].IsValid())
 	{
-		// High-confidence fuzzy match — add a warning but accept
 		Warnings.Add(FString::Printf(
-			TEXT("Step '%s': Function '%s' not found in catalog. Did you mean '%s'?"),
-			*Step.StepId, *Step.Target, *Suggestions[0].DisplayName));
+			TEXT("Step '%s': Function '%s' not found by resolver. Did you mean '%s::%s'?"),
+			*Step.StepId, *Step.Target,
+			Candidates[0].OwningClass ? *Candidates[0].OwningClass->GetName() : TEXT("?"),
+			*Candidates[0].Function->GetName()));
 	}
-	else if (Suggestions.Num() > 0)
+	else
 	{
-		Warnings.Add(FString::Printf(
-			TEXT("Step '%s': Function '%s' not found in catalog. Closest matches: %s"),
-			*Step.StepId, *Step.Target, *Suggestions[0].DisplayName));
+		// Fall back to catalog fuzzy for suggestion text
+		FOliveNodeCatalog& Catalog = FOliveNodeCatalog::Get();
+		if (Catalog.IsInitialized())
+		{
+			TArray<FOliveNodeSuggestion> Suggestions = Catalog.FuzzyMatch(Step.Target, CATALOG_SEARCH_LIMIT);
+			if (Suggestions.Num() > 0)
+			{
+				Warnings.Add(FString::Printf(
+					TEXT("Step '%s': Function '%s' not found by resolver. Closest catalog match: '%s'"),
+					*Step.StepId, *Step.Target, *Suggestions[0].DisplayName));
+			}
+		}
 	}
 
 	UE_LOG(LogOlivePlanResolver, Verbose,
-		TEXT("Step '%s': Accepted call '%s' without catalog match (will validate at creation)"),
+		TEXT("Step '%s': Accepted call '%s' without definitive match (will validate at creation)"),
 		*Step.StepId, *Step.Target);
 
 	return true;

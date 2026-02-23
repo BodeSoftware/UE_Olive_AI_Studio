@@ -694,6 +694,7 @@ void FOliveConversationManager::ExecuteToolCall(const FOliveStreamChunk& ToolCal
 	FOliveToolCallContext ToolContext;
 	ToolContext.Origin = EOliveToolCallOrigin::EditorChat;
 	ToolContext.SessionId = SessionId.ToString();
+	ToolContext.RunId = Brain.IsValid() ? Brain->GetCurrentRunId() : TEXT("");
 	ToolContext.ActiveFocusProfile = FName(*ActiveFocusProfile);
 	ToolContext.bRunModeActive = bRunModeActive;
 	FOliveToolExecutionContextScope ContextScope(ToolContext);

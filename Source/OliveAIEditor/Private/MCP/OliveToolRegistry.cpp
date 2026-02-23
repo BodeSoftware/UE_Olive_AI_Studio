@@ -5,10 +5,127 @@
 #include "Services/OliveValidationEngine.h"
 #include "Services/OliveErrorBuilder.h"
 #include "Profiles/OliveFocusProfileManager.h"
+#include "Settings/OliveAISettings.h"
+#include "Brain/OliveToolExecutionContext.h"
 #include "OliveAIEditorModule.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "Async/Async.h"
+
+namespace
+{
+	bool IsBlueprintTool(const FString& ToolName)
+	{
+		return ToolName.StartsWith(TEXT("blueprint."));
+	}
+
+	bool IsBlueprintPlanTool(const FString& ToolName)
+	{
+		return ToolName == TEXT("blueprint.preview_plan_json")
+			|| ToolName == TEXT("blueprint.apply_plan_json");
+	}
+
+	bool IsBlueprintGranularGraphTool(const FString& ToolName)
+	{
+		return ToolName == TEXT("blueprint.add_node")
+			|| ToolName == TEXT("blueprint.remove_node")
+			|| ToolName == TEXT("blueprint.connect_pins")
+			|| ToolName == TEXT("blueprint.disconnect_pins")
+			|| ToolName == TEXT("blueprint.set_pin_default")
+			|| ToolName == TEXT("blueprint.set_node_property");
+	}
+
+	FString GetRoutingContextKey()
+	{
+		if (const FOliveToolCallContext* Ctx = FOliveToolExecutionContext::Get())
+		{
+			if (!Ctx->RunId.IsEmpty())
+			{
+				return FString::Printf(TEXT("run:%s"), *Ctx->RunId);
+			}
+			if (!Ctx->SessionId.IsEmpty())
+			{
+				return FString::Printf(TEXT("session:%s"), *Ctx->SessionId);
+			}
+		}
+		return TEXT("global");
+	}
+
+	TSharedPtr<FJsonObject> CloneParams(const TSharedPtr<FJsonObject>& Params)
+	{
+		TSharedPtr<FJsonObject> Cloned = MakeShared<FJsonObject>();
+		if (Params.IsValid())
+		{
+			for (const auto& Pair : Params->Values)
+			{
+				Cloned->Values.Add(Pair.Key, Pair.Value);
+			}
+		}
+		return Cloned;
+	}
+
+	TSharedPtr<FJsonObject> NormalizeBlueprintParams(
+		const FString& ToolName,
+		const TSharedPtr<FJsonObject>& Params,
+		TArray<FString>& OutNormalizedFields)
+	{
+		if (!IsBlueprintTool(ToolName))
+		{
+			return Params;
+		}
+
+		TSharedPtr<FJsonObject> Effective = CloneParams(Params);
+		const TCHAR* CanonicalField = IsBlueprintPlanTool(ToolName) ? TEXT("asset_path") : TEXT("path");
+
+		FString CanonicalValue;
+		const bool bHasCanonical = Effective->TryGetStringField(CanonicalField, CanonicalValue) && !CanonicalValue.IsEmpty();
+
+		auto TryAlias = [&](const FString& AliasName) -> bool
+		{
+			FString AliasValue;
+			if (Effective->TryGetStringField(AliasName, AliasValue) && !AliasValue.IsEmpty())
+			{
+				Effective->SetStringField(CanonicalField, AliasValue);
+				OutNormalizedFields.Add(FString::Printf(TEXT("%s->%s"), *AliasName, CanonicalField));
+				return true;
+			}
+			return false;
+		};
+
+		if (!bHasCanonical)
+		{
+			TryAlias(TEXT("asset_path")) || TryAlias(TEXT("path")) || TryAlias(TEXT("asset")) || TryAlias(TEXT("blueprint"));
+		}
+
+		// Keep both common path keys in sync to avoid schema/handler drift between tools.
+		FString PathValue;
+		const bool bHasPath = Effective->TryGetStringField(TEXT("path"), PathValue) && !PathValue.IsEmpty();
+		FString AssetPathValue;
+		const bool bHasAssetPath = Effective->TryGetStringField(TEXT("asset_path"), AssetPathValue) && !AssetPathValue.IsEmpty();
+
+		if (bHasPath && !bHasAssetPath)
+		{
+			Effective->SetStringField(TEXT("asset_path"), PathValue);
+			OutNormalizedFields.Add(TEXT("path->asset_path"));
+		}
+		else if (!bHasPath && bHasAssetPath)
+		{
+			Effective->SetStringField(TEXT("path"), AssetPathValue);
+			OutNormalizedFields.Add(TEXT("asset_path->path"));
+		}
+
+		return Effective;
+	}
+
+	struct FBlueprintRoutingStats
+	{
+		int32 GranularGraphCalls = 0;
+		int32 PlanCalls = 0;
+	};
+
+	FCriticalSection GBlueprintRoutingStatsLock;
+	TMap<FString, FBlueprintRoutingStats> GBlueprintRoutingStatsByContext;
+}
 
 // ==========================================
 // FOliveToolDefinition
@@ -283,6 +400,79 @@ int32 FOliveToolRegistry::GetToolCount() const
 FOliveToolResult FOliveToolRegistry::ExecuteTool(const FString& Name, const TSharedPtr<FJsonObject>& Params)
 {
 	double StartTime = FPlatformTime::Seconds();
+	TArray<FString> NormalizedFields;
+	TSharedPtr<FJsonObject> EffectiveParams = NormalizeBlueprintParams(Name, Params, NormalizedFields);
+
+	const bool bIsPlanTool = IsBlueprintPlanTool(Name);
+	const bool bIsGranularGraphTool = IsBlueprintGranularGraphTool(Name);
+	FString RoutingReasonCode;
+	bool bAttachRoutingReason = false;
+
+	if (IsBlueprintTool(Name))
+	{
+		if (const UOliveAISettings* Settings = UOliveAISettings::Get())
+		{
+			const bool bPlanRoutingEnabled = Settings->bEnableBlueprintPlanJsonTools && Settings->bEnforcePlanFirstGraphRouting;
+			const int32 Threshold = FMath::Max(1, Settings->PlanFirstGraphRoutingThreshold);
+			if (bPlanRoutingEnabled && (bIsPlanTool || bIsGranularGraphTool))
+			{
+				const FString ContextKey = GetRoutingContextKey();
+				bool bBypassForUnsupported = false;
+				FString RoutingHint;
+				if (EffectiveParams.IsValid() && EffectiveParams->TryGetStringField(TEXT("routing_reason"), RoutingHint))
+				{
+					bBypassForUnsupported = RoutingHint.Equals(TEXT("op_unsupported"), ESearchCase::IgnoreCase);
+				}
+
+				{
+					FScopeLock Lock(&GBlueprintRoutingStatsLock);
+					FBlueprintRoutingStats& Stats = GBlueprintRoutingStatsByContext.FindOrAdd(ContextKey);
+
+					if (bIsPlanTool)
+					{
+						Stats.PlanCalls++;
+					}
+					else
+					{
+						if (bBypassForUnsupported)
+						{
+							Stats.GranularGraphCalls++;
+							RoutingReasonCode = TEXT("ROUTE_OP_UNSUPPORTED");
+							bAttachRoutingReason = true;
+						}
+						else
+						{
+							const int32 NextCount = Stats.GranularGraphCalls + 1;
+							if (Stats.PlanCalls == 0 && NextCount >= Threshold)
+							{
+								TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
+								ErrorData->SetStringField(TEXT("reason_code"), TEXT("ROUTE_PLAN_REQUIRED"));
+								ErrorData->SetStringField(TEXT("message"),
+									TEXT("Granular graph edits exceeded threshold for this run/session; use plan preview/apply flow."));
+								ErrorData->SetNumberField(TEXT("threshold"), Threshold);
+								ErrorData->SetNumberField(TEXT("granular_graph_calls"), NextCount);
+								TArray<TSharedPtr<FJsonValue>> RecommendedTools;
+								RecommendedTools.Add(MakeShared<FJsonValueString>(TEXT("blueprint.preview_plan_json")));
+								RecommendedTools.Add(MakeShared<FJsonValueString>(TEXT("blueprint.apply_plan_json")));
+								ErrorData->SetArrayField(TEXT("recommended_tools"), RecommendedTools);
+
+								FOliveToolResult RouteError = FOliveToolResult::Error(
+									TEXT("ROUTE_PLAN_REQUIRED"),
+									TEXT("Plan-first routing required for multi-step graph edits."),
+									TEXT("Call blueprint.preview_plan_json, then blueprint.apply_plan_json."));
+								RouteError.Data = ErrorData;
+								return RouteError;
+							}
+
+							Stats.GranularGraphCalls = NextCount;
+							RoutingReasonCode = TEXT("ROUTE_SMALL_EDIT_ALLOWED");
+							bAttachRoutingReason = true;
+						}
+					}
+				}
+			}
+		}
+	}
 
 	// Find tool
 	FOliveToolHandler Handler;
@@ -303,7 +493,7 @@ FOliveToolResult FOliveToolRegistry::ExecuteTool(const FString& Name, const TSha
 	}
 
 	// Validate with validation engine
-	FOliveValidationResult ValidationResult = FOliveValidationEngine::Get().ValidateOperation(Name, Params, nullptr);
+	FOliveValidationResult ValidationResult = FOliveValidationEngine::Get().ValidateOperation(Name, EffectiveParams, nullptr);
 	if (ValidationResult.HasErrors())
 	{
 		TArray<FOliveIRMessage> Errors = ValidationResult.GetErrors();
@@ -326,7 +516,7 @@ FOliveToolResult FOliveToolRegistry::ExecuteTool(const FString& Name, const TSha
 	FOliveToolResult Result;
 	if (Handler.IsBound())
 	{
-		Result = Handler.Execute(Params);
+		Result = Handler.Execute(EffectiveParams);
 	}
 	else
 	{
@@ -343,6 +533,30 @@ FOliveToolResult FOliveToolRegistry::ExecuteTool(const FString& Name, const TSha
 
 	UE_LOG(LogOliveAI, Log, TEXT("Tool '%s' executed in %.2fms - %s"),
 		*Name, Result.ExecutionTimeMs, Result.bSuccess ? TEXT("success") : TEXT("failed"));
+
+	if (NormalizedFields.Num() > 0 || bAttachRoutingReason)
+	{
+		if (!Result.Data.IsValid())
+		{
+			Result.Data = MakeShared<FJsonObject>();
+		}
+
+		if (NormalizedFields.Num() > 0)
+		{
+			Result.Data->SetBoolField(TEXT("normalized_params"), true);
+			TArray<TSharedPtr<FJsonValue>> Fields;
+			for (const FString& Field : NormalizedFields)
+			{
+				Fields.Add(MakeShared<FJsonValueString>(Field));
+			}
+			Result.Data->SetArrayField(TEXT("normalized_fields"), Fields);
+		}
+
+		if (bAttachRoutingReason)
+		{
+			Result.Data->SetStringField(TEXT("reason_code"), RoutingReasonCode);
+		}
+	}
 
 	return Result;
 }
@@ -361,6 +575,12 @@ void FOliveToolRegistry::ExecuteToolAsync(
 			Callback(Result);
 		}
 	});
+}
+
+void FOliveToolRegistry::ClearBlueprintRoutingStats(const FString& ContextKey)
+{
+	FScopeLock Lock(&GBlueprintRoutingStatsLock);
+	GBlueprintRoutingStatsByContext.Remove(ContextKey);
 }
 
 // ==========================================

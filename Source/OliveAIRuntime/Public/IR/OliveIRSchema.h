@@ -28,6 +28,9 @@ namespace OliveIR
 	/** Minimum supported minor version for reading IR */
 	constexpr int32 MinSupportedMinor = 0;
 
+	/** Maximum supported Blueprint Plan JSON schema major version (plan-specific, independent of general IR version) */
+	constexpr int32 MaxPlanSchemaVersionMajor = 2;
+
 	// ============================================================================
 	// Locked IR Design Rules (Phase 1)
 	// ============================================================================

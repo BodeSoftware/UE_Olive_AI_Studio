@@ -1,6 +1,7 @@
 // Copyright Bode Software. All Rights Reserved.
 
 #include "Brain/OliveBrainLayer.h"
+#include "MCP/OliveToolRegistry.h"
 #include "OliveAIEditorModule.h"
 #include "Misc/Guid.h"
 
@@ -107,6 +108,10 @@ void FOliveBrainLayer::CompleteRun(EOliveRunOutcome Outcome)
 	LastOutcome = Outcome;
 	UE_LOG(LogOliveAI, Log, TEXT("Brain: Run completed [%s] outcome=%d"),
 		*CurrentRunId, static_cast<int32>(Outcome));
+
+	// Clean up routing stats for this run
+	FOliveToolRegistry::Get().ClearBlueprintRoutingStats(
+		FString::Printf(TEXT("run:%s"), *CurrentRunId));
 
 	if (Outcome == EOliveRunOutcome::Failed)
 	{

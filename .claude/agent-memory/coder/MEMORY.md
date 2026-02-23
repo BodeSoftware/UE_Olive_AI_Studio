@@ -19,6 +19,26 @@
 - FOliveBlueprintReader is singleton with `Get()`, has `LoadBlueprint()` (public) and `GetGraphReader()` accessor
 - FOliveGraphReader builds `NodeIdMap` (TMap<const UEdGraphNode*, FString>) before serializing nodes
 
+## Graph-From-Description (Phase B: Plan Executor)
+- `OlivePlanExecutor.h/cpp` at `Blueprint/Public/Plan/` and `Blueprint/Private/Plan/`
+- NOT a singleton; instantiate fresh per execution on the stack
+- Uses `FOlivePinConnector::Get().Connect()` directly (NOT GraphWriter.ConnectPins) for wiring
+- Uses `Node->FindPin()` + `Schema->TrySetDefaultValue()` directly for defaults
+- Uses `FOliveGraphWriter::Get().AddNode()` for node creation (gets UEdGraphNode* via `GetCachedNode`)
+- Event reuse: `FBlueprintEditorUtils::FindOverrideForFunction()` for native events, `UK2Node_CustomEvent::CustomFunctionName` iteration for custom events
+- Phase 1 (nodes) = FAIL-FAST, Phases 3/4/5 (wiring) = CONTINUE-ON-FAILURE, Phase 6 (layout) = ALWAYS SUCCEEDS
+- Pin manifests built via `FOlivePinManifest::Build()` after each node creation for ground-truth pin names
+- `@step.auto` = type-based auto-match, `@step.~hint` = fuzzy prefix, `@step.pinName` = standard smart resolution
+
+## Phase D: Graph Layout Engine
+- `OliveGraphLayoutEngine.h/cpp` at `Blueprint/Public/Plan/` and `Blueprint/Private/Plan/`
+- Stateless static utility class (same pattern as FOliveFunctionResolver)
+- `ComputeLayout(Plan, Context)` -> `TMap<FString, FOliveLayoutEntry>`; `ApplyLayout(Layout, Context)` -> void
+- Internal phases: BuildExecGraph -> AssignColumns (BFS) -> AssignRows (branch-aware) -> PlacePureNodes (consumer-relative) -> ComputePositions (multi-chain stacking)
+- Constants: HORIZONTAL_SPACING=350, VERTICAL_SPACING=200, BRANCH_OFFSET=250, PURE_NODE_OFFSET_Y=-120, CHAIN_GAP_ROWS=2
+- Log category: LogOliveGraphLayout
+- BuildConsumerMap scans inputs for @stepId refs to identify pure-node consumers
+
 ## Phase 2 Task 6 (Large-Graph Read Mode)
 - Constants: `OLIVE_LARGE_GRAPH_THRESHOLD = 500`, `OLIVE_GRAPH_PAGE_SIZE = 100` in OliveGraphReader.h
 - `ReadGraphSummary()`: builds NodeIdMap, counts connections, but leaves Nodes array empty

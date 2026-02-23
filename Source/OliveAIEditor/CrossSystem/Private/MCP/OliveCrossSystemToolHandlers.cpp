@@ -371,7 +371,11 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleBatchWrite(const TSharedPt
 		FBatchOp Op;
 		OpObj->TryGetStringField(TEXT("id"), Op.Id);
 		Op.ToolName = OpObj->GetStringField(TEXT("tool"));
-		Op.OpParams = OpObj->GetObjectField(TEXT("params"));
+		const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
+		if (OpObj->TryGetObjectField(TEXT("params"), ParamsObj) && ParamsObj && ParamsObj->IsValid())
+		{
+			Op.OpParams = *ParamsObj;
+		}
 
 		if (Op.ToolName.IsEmpty())
 		{
@@ -418,6 +422,13 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleBatchWrite(const TSharedPt
 		// Validate template references point to earlier ops
 		for (const auto& ParamPair : Op.OpParams->Values)
 		{
+			if (!ParamPair.Value.IsValid())
+			{
+				return FOliveToolResult::Error(
+					TEXT("INVALID_PARAM_VALUE"),
+					FString::Printf(TEXT("Op %d: param '%s' has an invalid null JSON value"), i + 1, *ParamPair.Key));
+			}
+
 			if (ParamPair.Value->Type != EJson::String)
 			{
 				continue;

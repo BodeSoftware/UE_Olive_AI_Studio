@@ -700,15 +700,28 @@ FOliveIRResult FOliveIRValidator::ValidateBlueprintPlanJson(
 	else
 	{
 		FString Version = Json->GetStringField(TEXT("schema_version"));
-		if (!IsSchemaVersionCompatible(Version))
+
+		// Use plan-specific version acceptance rather than the general IR version check.
+		// Plan JSON v2.0 was introduced in Phase A-D; both v1.x and v2.x are valid.
+		int32 PlanMajor = 0, PlanMinor = 0;
+		if (!ParseVersionString(Version, PlanMajor, PlanMinor))
+		{
+			AddError(
+				TEXT("PLAN_INVALID_VERSION_FORMAT"),
+				TEXT("/schema_version"),
+				FString::Printf(TEXT("Plan schema_version '%s' is not a valid version string"), *Version),
+				TEXT("schema_version must be in \"major.minor\" format, e.g. \"1.0\" or \"2.0\""));
+		}
+		else if (PlanMajor < OliveIR::MinSupportedMajor || PlanMajor > OliveIR::MaxPlanSchemaVersionMajor)
 		{
 			AddError(
 				TEXT("PLAN_INCOMPATIBLE_VERSION"),
 				TEXT("/schema_version"),
-				FString::Printf(TEXT("Plan schema version '%s' is incompatible with current version '%s'"),
-					*Version, *OliveIR::SchemaVersion),
-				FString::Printf(TEXT("Use schema_version \"%s\""), *OliveIR::SchemaVersion));
+				FString::Printf(TEXT("Plan schema version '%s' is not supported (supported major versions: %d-%d)"),
+					*Version, OliveIR::MinSupportedMajor, OliveIR::MaxPlanSchemaVersionMajor),
+				FString::Printf(TEXT("Use schema_version \"1.0\" or \"%d.0\""), OliveIR::MaxPlanSchemaVersionMajor));
 		}
+		// else: version is within supported range, continue validation
 	}
 
 	// --- steps array ---

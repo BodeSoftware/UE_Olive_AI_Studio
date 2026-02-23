@@ -324,7 +324,7 @@ public:
 	// Blueprint Plan JSON
 	// ==========================================
 
-	/** Enable intent-level Blueprint plan JSON tools (preview + apply). Default off for Phase 1. */
+	/** Enable intent-level Blueprint plan JSON tools (preview + apply). */
 	UPROPERTY(Config, EditAnywhere, Category="Blueprint Plan",
 		meta=(DisplayName="Enable Plan JSON Tools"))
 	bool bEnableBlueprintPlanJsonTools = false;
@@ -338,6 +338,16 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category="Blueprint Plan",
 		meta=(DisplayName="Require Preview Before Apply"))
 	bool bPlanJsonRequirePreviewForApply = true;
+
+	/** Enforce plan-first routing for granular graph-edit tools after threshold calls in a run/session */
+	UPROPERTY(Config, EditAnywhere, Category="Blueprint Plan",
+		meta=(DisplayName="Enforce Plan-First Graph Routing"))
+	bool bEnforcePlanFirstGraphRouting = true;
+
+	/** Number of granular graph-edit calls allowed before requiring plan preview/apply */
+	UPROPERTY(Config, EditAnywhere, Category="Blueprint Plan",
+		meta=(DisplayName="Plan Routing Threshold", ClampMin=1, ClampMax=50))
+	int32 PlanFirstGraphRoutingThreshold = 3;
 
 	// ==========================================
 	// Utility Functions

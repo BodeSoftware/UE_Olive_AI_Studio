@@ -862,7 +862,7 @@ namespace OliveBlueprintSchemas
 			IntProp(TEXT("Y position in graph"), -10000, 10000));
 
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Add a node to a Blueprint graph"));
+		Schema->SetStringField(TEXT("description"), TEXT("Add a node to a Blueprint graph. For 3+ node operations, prefer blueprint.apply_plan_json (schema_version 2.0) which provides automatic pin resolution and atomic execution."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path"), TEXT("graph"), TEXT("type")});
 
@@ -883,7 +883,7 @@ namespace OliveBlueprintSchemas
 			StringProp(TEXT("Node ID to remove")));
 
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Remove a node from a Blueprint graph"));
+		Schema->SetStringField(TEXT("description"), TEXT("Remove a node from a Blueprint graph. Pass routing_reason: 'op_unsupported' if plan path cannot express this operation."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path"), TEXT("graph"), TEXT("node_id")});
 
@@ -906,10 +906,22 @@ namespace OliveBlueprintSchemas
 		Properties->SetObjectField(TEXT("target"),
 			StringProp(TEXT("Target pin reference (format: 'node_id.pin_name')")));
 
+		// Optional semantic endpoint objects for deterministic server-side pin resolution.
+		TSharedPtr<FJsonObject> SourceRefProp = MakeSchema(TEXT("object"));
+		SourceRefProp->SetStringField(TEXT("description"),
+			TEXT("Optional source endpoint object: {node_id: string, pin?: string, semantic?: string}"));
+		Properties->SetObjectField(TEXT("source_ref"), SourceRefProp);
+
+		TSharedPtr<FJsonObject> TargetRefProp = MakeSchema(TEXT("object"));
+		TargetRefProp->SetStringField(TEXT("description"),
+			TEXT("Optional target endpoint object: {node_id: string, pin?: string, semantic?: string}"));
+		Properties->SetObjectField(TEXT("target_ref"), TargetRefProp);
+
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Connect two pins in a Blueprint graph"));
+		Schema->SetStringField(TEXT("description"),
+			TEXT("Connect two pins in a Blueprint graph. Use source/target exact pin refs or source_ref/target_ref semantic endpoint objects. For multi-step graph construction, prefer blueprint.apply_plan_json which handles pin wiring automatically via @step.auto syntax."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("path"), TEXT("graph"), TEXT("source"), TEXT("target")});
+		AddRequired(Schema, {TEXT("path"), TEXT("graph")});
 
 		return Schema;
 	}
@@ -931,7 +943,7 @@ namespace OliveBlueprintSchemas
 			StringProp(TEXT("Target pin reference (format: 'node_id.pin_name')")));
 
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Disconnect two pins in a Blueprint graph"));
+		Schema->SetStringField(TEXT("description"), TEXT("Disconnect two pins in a Blueprint graph. Pass routing_reason: 'op_unsupported' if plan path cannot express this operation."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path"), TEXT("graph"), TEXT("source"), TEXT("target")});
 
@@ -955,7 +967,7 @@ namespace OliveBlueprintSchemas
 			StringProp(TEXT("Default value to set")));
 
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Set the default value of an input pin"));
+		Schema->SetStringField(TEXT("description"), TEXT("Set the default value of an input pin. For bulk defaults, prefer blueprint.apply_plan_json which sets defaults via the inputs map."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path"), TEXT("graph"), TEXT("pin"), TEXT("value")});
 
@@ -982,7 +994,7 @@ namespace OliveBlueprintSchemas
 			StringProp(TEXT("Property value")));
 
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Set a property on a node"));
+		Schema->SetStringField(TEXT("description"), TEXT("Set a property on a node. Pass routing_reason: 'op_unsupported' if plan path cannot express this operation."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path"), TEXT("graph"), TEXT("node_id"), TEXT("property"), TEXT("value")});
 
@@ -1013,12 +1025,12 @@ namespace OliveBlueprintSchemas
 		// plan_json — required object containing the intent-level plan
 		TSharedPtr<FJsonObject> PlanJsonProp = MakeSchema(TEXT("object"));
 		PlanJsonProp->SetStringField(TEXT("description"),
-			TEXT("Intent-level plan describing steps to add to the graph. Contains schema_version (string) and steps array. Each step has step_id, op (from vocabulary: call, get_var, set_var, branch, sequence, cast, event, custom_event, for_loop, for_each_loop, delay, is_valid, print_string, spawn_actor, make_struct, break_struct, return, comment), target, and optional inputs/exec_after/exec_outputs."));
+			TEXT("Intent-level plan. Use schema_version \"2.0\" (recommended): the executor creates nodes first, introspects actual pin names, then wires using ground-truth names — you do not need to know exact pin names. v2.0 inputs support @step.auto (type-based auto-match), @step.~hint (fuzzy prefix match), and @step.pinName (standard). v1.0 (legacy) uses a lowerer that maps ops to concrete nodes. Fields: schema_version (string), steps array. Each step: step_id, op (call, get_var, set_var, branch, sequence, cast, event, custom_event, for_loop, for_each_loop, delay, is_valid, print_string, spawn_actor, make_struct, break_struct, return, comment), target, and optional inputs/exec_after/exec_outputs."));
 		Properties->SetObjectField(TEXT("plan_json"), PlanJsonProp);
 
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
 		Schema->SetStringField(TEXT("description"),
-			TEXT("Preview an intent-level Blueprint plan without mutating the asset. Validates the plan, resolves intents to concrete node types, computes a diff against the current graph, and returns a fingerprint for drift detection. Use before blueprint.apply_plan_json to verify correctness."));
+			TEXT("Preview an intent-level Blueprint plan without mutating the asset. v2.0 plans (schema_version \"2.0\") return resolved_steps with ground-truth pin names (no lowering needed). v1.0 plans return lowered_ops_count and plan_summary. Both paths validate the plan, compute a diff against the current graph, and return a fingerprint for drift detection. Use before blueprint.apply_plan_json to verify correctness."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("asset_path"), TEXT("plan_json")});
 
@@ -1045,7 +1057,7 @@ namespace OliveBlueprintSchemas
 		// plan_json — required object containing the intent-level plan
 		TSharedPtr<FJsonObject> PlanJsonProp = MakeSchema(TEXT("object"));
 		PlanJsonProp->SetStringField(TEXT("description"),
-			TEXT("Intent-level plan describing steps to add to the graph. Contains schema_version (string) and steps array. Each step has step_id, op (from vocabulary: call, get_var, set_var, branch, sequence, cast, event, custom_event, for_loop, for_each_loop, delay, is_valid, print_string, spawn_actor, make_struct, break_struct, return, comment), target, and optional inputs/exec_after/exec_outputs."));
+			TEXT("Intent-level plan. Use schema_version \"2.0\" (recommended): the executor creates nodes first, introspects actual pin names, then wires using ground-truth names — you do not need to know exact pin names. v2.0 inputs support @step.auto (type-based auto-match), @step.~hint (fuzzy prefix match), and @step.pinName (standard). v1.0 (legacy) uses a lowerer that maps ops to concrete nodes. Fields: schema_version (string), steps array. Each step: step_id, op (call, get_var, set_var, branch, sequence, cast, event, custom_event, for_loop, for_each_loop, delay, is_valid, print_string, spawn_actor, make_struct, break_struct, return, comment), target, and optional inputs/exec_after/exec_outputs."));
 		Properties->SetObjectField(TEXT("plan_json"), PlanJsonProp);
 
 		// preview_fingerprint — optional string for drift detection
@@ -1054,7 +1066,7 @@ namespace OliveBlueprintSchemas
 
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
 		Schema->SetStringField(TEXT("description"),
-			TEXT("Apply an intent-level Blueprint plan atomically. Re-validates and re-resolves the plan, optionally checks the preview fingerprint for graph drift, then executes all lowered operations in a single transaction. Compiles once at the end. Returns step-to-node mapping and compile results."));
+			TEXT("Apply an intent-level Blueprint plan atomically. Supports schema_version \"1.0\" (lowerer path: maps ops to concrete nodes) and \"2.0\" (plan executor: creates nodes first, introspects real pin names via pin manifests, then wires using ground-truth names). v2.0 supports @step.auto (type-based auto-match) and @step.~hint (fuzzy prefix) data wire syntax so you never need to guess pin names. Optionally checks the preview fingerprint for graph drift. Result includes wiring_errors and pin_manifests for self-correction. Compiles once at the end."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("asset_path"), TEXT("plan_json")});
 

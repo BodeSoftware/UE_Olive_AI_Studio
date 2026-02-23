@@ -26,9 +26,13 @@
 #include "K2Node_Event.h"
 #include "K2Node_CustomEvent.h"
 #include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
 #include "Plan/OliveBlueprintPlanResolver.h"
 #include "Plan/OliveBlueprintPlanLowerer.h"
+#include "Plan/OlivePlanExecutor.h"
+#include "Plan/OlivePinManifest.h"
+#include "Plan/OliveFunctionResolver.h"
 #include "Services/OliveGraphBatchExecutor.h"
 #include "Services/OliveBatchExecutionScope.h"
 #include "IR/OliveIRSchema.h"
@@ -256,6 +260,150 @@ FOliveWriteResult ExecuteWithOptionalConfirmation(
 	}
 
 	return Pipeline.Execute(Request, Executor);
+}
+
+FString NormalizeSemanticToken(const FString& InValue)
+{
+	FString Out = InValue;
+	Out.ReplaceInline(TEXT(" "), TEXT(""));
+	Out.ReplaceInline(TEXT("_"), TEXT(""));
+	Out.ReplaceInline(TEXT("-"), TEXT(""));
+	Out = Out.ToLower();
+	return Out;
+}
+
+TSharedPtr<FJsonObject> BuildPinDescriptor(const UEdGraphPin* Pin)
+{
+	TSharedPtr<FJsonObject> PinObj = MakeShared<FJsonObject>();
+	PinObj->SetStringField(TEXT("name"), Pin->GetName());
+	PinObj->SetStringField(TEXT("display_name"), Pin->GetDisplayName().ToString());
+	PinObj->SetStringField(TEXT("direction"), Pin->Direction == EGPD_Input ? TEXT("input") : TEXT("output"));
+	PinObj->SetStringField(TEXT("category"), Pin->PinType.PinCategory.ToString());
+	PinObj->SetBoolField(TEXT("is_exec"), Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec);
+	return PinObj;
+}
+
+TSharedPtr<FJsonObject> BuildPinManifest(const UEdGraphNode* Node)
+{
+	TSharedPtr<FJsonObject> PinsObj = MakeShared<FJsonObject>();
+	TArray<TSharedPtr<FJsonValue>> Inputs;
+	TArray<TSharedPtr<FJsonValue>> Outputs;
+
+	for (const UEdGraphPin* Pin : Node->Pins)
+	{
+		if (!Pin)
+		{
+			continue;
+		}
+
+		TSharedPtr<FJsonValueObject> PinValue = MakeShared<FJsonValueObject>(BuildPinDescriptor(Pin));
+		if (Pin->Direction == EGPD_Input)
+		{
+			Inputs.Add(PinValue);
+		}
+		else
+		{
+			Outputs.Add(PinValue);
+		}
+	}
+
+	PinsObj->SetArrayField(TEXT("inputs"), Inputs);
+	PinsObj->SetArrayField(TEXT("outputs"), Outputs);
+	return PinsObj;
+}
+
+bool ResolveSemanticPinOnNode(
+	const UEdGraphNode* Node,
+	const FString& Semantic,
+	EEdGraphPinDirection Direction,
+	FString& OutPinName,
+	TArray<TSharedPtr<FJsonValue>>& OutCandidates)
+{
+	if (!Node)
+	{
+		return false;
+	}
+
+	const FString SemanticNorm = NormalizeSemanticToken(Semantic);
+	TArray<const UEdGraphPin*> DirectionPins;
+	for (const UEdGraphPin* Pin : Node->Pins)
+	{
+		if (!Pin || Pin->Direction != Direction)
+		{
+			continue;
+		}
+
+		DirectionPins.Add(Pin);
+		OutCandidates.Add(MakeShared<FJsonValueObject>(BuildPinDescriptor(Pin)));
+
+		const FString PinNorm = NormalizeSemanticToken(Pin->GetName());
+		const FString DisplayNorm = NormalizeSemanticToken(Pin->GetDisplayName().ToString());
+		if (SemanticNorm == PinNorm || SemanticNorm == DisplayNorm)
+		{
+			OutPinName = Pin->GetName();
+			return true;
+		}
+	}
+
+	auto PickFirstPin = [&](bool bExec) -> bool
+	{
+		for (const UEdGraphPin* Pin : DirectionPins)
+		{
+			const bool bPinExec = (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec);
+			if (bPinExec == bExec)
+			{
+				OutPinName = Pin->GetName();
+				return true;
+			}
+		}
+		return false;
+	};
+
+	auto PickByContains = [&](const FString& Token) -> bool
+	{
+		for (const UEdGraphPin* Pin : DirectionPins)
+		{
+			const FString PinNorm = NormalizeSemanticToken(Pin->GetName());
+			const FString DisplayNorm = NormalizeSemanticToken(Pin->GetDisplayName().ToString());
+			if (PinNorm.Contains(Token) || DisplayNorm.Contains(Token))
+			{
+				OutPinName = Pin->GetName();
+				return true;
+			}
+		}
+		return false;
+	};
+
+	if (SemanticNorm == TEXT("execout") || SemanticNorm == TEXT("then"))
+	{
+		return PickFirstPin(true);
+	}
+	if (SemanticNorm == TEXT("execin") || SemanticNorm == TEXT("execute"))
+	{
+		return PickFirstPin(true);
+	}
+	if (SemanticNorm == TEXT("datain"))
+	{
+		return PickFirstPin(false);
+	}
+	if (SemanticNorm == TEXT("dataout"))
+	{
+		return PickFirstPin(false);
+	}
+	if (SemanticNorm == TEXT("true"))
+	{
+		return PickByContains(TEXT("true"));
+	}
+	if (SemanticNorm == TEXT("false"))
+	{
+		return PickByContains(TEXT("false"));
+	}
+	if (SemanticNorm == TEXT("condition"))
+	{
+		return PickByContains(TEXT("condition"));
+	}
+
+	return false;
 }
 } // namespace
 
@@ -3503,6 +3651,12 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddNode(const TShar
 		ResultData->SetStringField(TEXT("node_id"), WriteResult.CreatedNodeId);
 		ResultData->SetStringField(TEXT("message"), FString::Printf(TEXT("Successfully added node '%s' with ID '%s'"), *NodeType, *WriteResult.CreatedNodeId));
 
+		// Deterministic pin manifest to avoid pin-name guessing retries.
+		if (UEdGraphNode* CreatedNode = GraphWriter.GetCachedNode(AssetPath, WriteResult.CreatedNodeId))
+		{
+			ResultData->SetObjectField(TEXT("pins"), BuildPinManifest(CreatedNode));
+		}
+
 		FOliveWriteResult Result = FOliveWriteResult::Success(ResultData);
 		Result.CreatedNodeIds.Add(WriteResult.CreatedNodeId);
 		return Result;
@@ -3676,24 +3830,99 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintConnectPins(const T
 		);
 	}
 
-	FString SourcePin;
-	if (!Params->TryGetStringField(TEXT("source"), SourcePin))
+	FOliveGraphWriter& GraphWriter = FOliveGraphWriter::Get();
+
+	auto BuildResolveError = [](const FString& Message, const TArray<TSharedPtr<FJsonValue>>& Candidates) -> FOliveToolResult
 	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Missing required parameter 'source'"),
-			TEXT("Provide the source pin reference in 'node_id.pin_name' format")
-		);
+		TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
+		ErrorData->SetStringField(TEXT("reason_code"), TEXT("CONNECT_PIN_RESOLUTION_FAILED"));
+		ErrorData->SetArrayField(TEXT("candidates"), Candidates);
+
+		FOliveToolResult Result = FOliveToolResult::Error(
+			TEXT("CONNECT_PIN_RESOLUTION_FAILED"),
+			Message,
+			TEXT("Use exact pin names from blueprint.add_node pin manifest or pass valid semantic endpoints."));
+		Result.Data = ErrorData;
+		return Result;
+	};
+
+	auto ResolveEndpoint = [&](const FString& StringField, const FString& RefField, EEdGraphPinDirection Direction, FString& OutPinRef) -> TOptional<FOliveToolResult>
+	{
+		FString DirectRef;
+		if (Params->TryGetStringField(StringField, DirectRef) && !DirectRef.IsEmpty())
+		{
+			OutPinRef = DirectRef;
+			return TOptional<FOliveToolResult>();
+		}
+
+		const TSharedPtr<FJsonObject>* RefPtr = nullptr;
+		if (!Params->TryGetObjectField(RefField, RefPtr) || !RefPtr || !(*RefPtr).IsValid())
+		{
+			return TOptional<FOliveToolResult>(FOliveToolResult::Error(
+				TEXT("VALIDATION_MISSING_PARAM"),
+				FString::Printf(TEXT("Missing required parameter '%s'"), *StringField),
+				FString::Printf(TEXT("Provide '%s' as 'node_id.pin_name' or '%s' object with node_id + semantic/pin"), *StringField, *RefField)));
+		}
+
+		FString NodeId;
+		(*RefPtr)->TryGetStringField(TEXT("node_id"), NodeId);
+		if (NodeId.IsEmpty())
+		{
+			return TOptional<FOliveToolResult>(FOliveToolResult::Error(
+				TEXT("VALIDATION_MISSING_PARAM"),
+				FString::Printf(TEXT("Field '%s.node_id' is required"), *RefField),
+				TEXT("Provide node_id in semantic endpoint object")));
+		}
+
+		FString ExactPin;
+		if ((*RefPtr)->TryGetStringField(TEXT("pin"), ExactPin) && !ExactPin.IsEmpty())
+		{
+			OutPinRef = FString::Printf(TEXT("%s.%s"), *NodeId, *ExactPin);
+			return TOptional<FOliveToolResult>();
+		}
+
+		FString Semantic;
+		(*RefPtr)->TryGetStringField(TEXT("semantic"), Semantic);
+		if (Semantic.IsEmpty())
+		{
+			return TOptional<FOliveToolResult>(FOliveToolResult::Error(
+				TEXT("VALIDATION_MISSING_PARAM"),
+				FString::Printf(TEXT("Field '%s.semantic' is required when '%s.pin' is omitted"), *RefField, *RefField),
+				TEXT("Provide a semantic such as 'exec_out', 'exec_in', 'data_out', 'data_in', 'True', or 'False'")));
+		}
+
+		UEdGraphNode* Node = GraphWriter.GetCachedNode(AssetPath, NodeId);
+		if (!Node)
+		{
+			return TOptional<FOliveToolResult>(FOliveToolResult::Error(
+				TEXT("NODE_NOT_FOUND"),
+				FString::Printf(TEXT("Node '%s' not found in cache for semantic pin resolution"), *NodeId),
+				TEXT("Create/read nodes first so IDs are available, or use exact pin references.")));
+		}
+
+		FString ResolvedPinName;
+		TArray<TSharedPtr<FJsonValue>> Candidates;
+		if (!ResolveSemanticPinOnNode(Node, Semantic, Direction, ResolvedPinName, Candidates))
+		{
+			return TOptional<FOliveToolResult>(BuildResolveError(
+				FString::Printf(TEXT("Could not resolve semantic pin '%s' on node '%s'"), *Semantic, *NodeId),
+				Candidates));
+		}
+
+		OutPinRef = FString::Printf(TEXT("%s.%s"), *NodeId, *ResolvedPinName);
+		return TOptional<FOliveToolResult>();
+	};
+
+	FString SourcePin;
+	if (TOptional<FOliveToolResult> Err = ResolveEndpoint(TEXT("source"), TEXT("source_ref"), EGPD_Output, SourcePin))
+	{
+		return Err.GetValue();
 	}
 
 	FString TargetPin;
-	if (!Params->TryGetStringField(TEXT("target"), TargetPin))
+	if (TOptional<FOliveToolResult> Err = ResolveEndpoint(TEXT("target"), TEXT("target_ref"), EGPD_Input, TargetPin))
 	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Missing required parameter 'target'"),
-			TEXT("Provide the target pin reference in 'node_id.pin_name' format")
-		);
+		return Err.GetValue();
 	}
 
 	// Load Blueprint for target asset
@@ -5632,21 +5861,27 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 	}
 
 	// ------------------------------------------------------------------
-	// 8. Lower to batch ops
+	// 8. Lower (v1.0 only) or skip (v2.0)
 	// ------------------------------------------------------------------
-	FOlivePlanLowerResult LowerResult = FOliveBlueprintPlanLowerer::Lower(
-		ResolveResult.ResolvedSteps, Plan, GraphTarget, AssetPath);
-	if (!LowerResult.bSuccess)
+	const bool bIsV2Plan = (Plan.SchemaVersion == TEXT("2.0"));
+
+	FOlivePlanLowerResult LowerResult;
+	if (!bIsV2Plan)
 	{
-		TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
-		ErrorData->SetStringField(TEXT("phase"), TEXT("lower"));
-		ErrorData->SetArrayField(TEXT("errors"), SerializePlanErrors(LowerResult.Errors));
-		FOliveToolResult Result = FOliveToolResult::Error(
-			TEXT("PLAN_LOWER_FAILED"),
-			FString::Printf(TEXT("Plan lowering failed with %d error(s)"), LowerResult.Errors.Num()),
-			LowerResult.Errors.Num() > 0 ? LowerResult.Errors[0].Suggestion : TEXT(""));
-		Result.Data = ErrorData;
-		return Result;
+		LowerResult = FOliveBlueprintPlanLowerer::Lower(
+			ResolveResult.ResolvedSteps, Plan, GraphTarget, AssetPath);
+		if (!LowerResult.bSuccess)
+		{
+			TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
+			ErrorData->SetStringField(TEXT("phase"), TEXT("lower"));
+			ErrorData->SetArrayField(TEXT("errors"), SerializePlanErrors(LowerResult.Errors));
+			FOliveToolResult Result = FOliveToolResult::Error(
+				TEXT("PLAN_LOWER_FAILED"),
+				FString::Printf(TEXT("Plan lowering failed with %d error(s)"), LowerResult.Errors.Num()),
+				LowerResult.Errors.Num() > 0 ? LowerResult.Errors[0].Suggestion : TEXT(""));
+			Result.Data = ErrorData;
+			return Result;
+		}
 	}
 
 	// ------------------------------------------------------------------
@@ -5661,9 +5896,47 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 	// ------------------------------------------------------------------
 	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
 	ResultData->SetStringField(TEXT("preview_fingerprint"), Fingerprint);
+	ResultData->SetStringField(TEXT("schema_version"), Plan.SchemaVersion);
 	ResultData->SetObjectField(TEXT("diff"), Diff);
-	ResultData->SetObjectField(TEXT("plan_summary"), BuildPlanSummary(Plan, LowerResult));
-	ResultData->SetNumberField(TEXT("lowered_ops_count"), LowerResult.Ops.Num());
+
+	if (bIsV2Plan)
+	{
+		// v2.0: No lowered ops. Report step count and resolved function names.
+		ResultData->SetNumberField(TEXT("resolved_steps_count"), ResolveResult.ResolvedSteps.Num());
+
+		// Include per-step resolution summary so AI can verify resolved function names
+		TArray<TSharedPtr<FJsonValue>> StepSummaries;
+		StepSummaries.Reserve(ResolveResult.ResolvedSteps.Num());
+		for (const FOliveResolvedStep& Resolved : ResolveResult.ResolvedSteps)
+		{
+			TSharedPtr<FJsonObject> StepObj = MakeShared<FJsonObject>();
+			StepObj->SetStringField(TEXT("step_id"), Resolved.StepId);
+			StepObj->SetStringField(TEXT("node_type"), Resolved.NodeType);
+
+			// Include resolved function_name and target_class if present
+			const FString* FnName = Resolved.Properties.Find(TEXT("function_name"));
+			if (FnName && !FnName->IsEmpty())
+			{
+				StepObj->SetStringField(TEXT("resolved_function"), *FnName);
+			}
+			const FString* TargetCls = Resolved.Properties.Find(TEXT("target_class"));
+			if (TargetCls && !TargetCls->IsEmpty())
+			{
+				StepObj->SetStringField(TEXT("resolved_class"), *TargetCls);
+			}
+
+			StepSummaries.Add(MakeShared<FJsonValueObject>(StepObj));
+		}
+		ResultData->SetArrayField(TEXT("resolved_steps"), StepSummaries);
+		ResultData->SetStringField(TEXT("execution_mode"), TEXT("plan_executor_v2"));
+	}
+	else
+	{
+		// v1.0: Include lowered ops summary
+		ResultData->SetObjectField(TEXT("plan_summary"), BuildPlanSummary(Plan, LowerResult));
+		ResultData->SetNumberField(TEXT("lowered_ops_count"), LowerResult.Ops.Num());
+		ResultData->SetStringField(TEXT("execution_mode"), TEXT("lowerer_v1"));
+	}
 
 	if (bGraphWillBeCreated)
 	{
@@ -5671,7 +5944,21 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 		ResultData->SetStringField(TEXT("new_graph_name"), GraphTarget);
 	}
 
-	TArray<TSharedPtr<FJsonValue>> Warnings = CollectWarnings(ResolveResult, LowerResult);
+	// Collect warnings from resolution (and lowering for v1.0)
+	TArray<TSharedPtr<FJsonValue>> Warnings;
+	if (!bIsV2Plan)
+	{
+		Warnings = CollectWarnings(ResolveResult, LowerResult);
+	}
+	else
+	{
+		// v2.0: warnings come from resolution only
+		for (const FString& Warn : ResolveResult.Warnings)
+		{
+			Warnings.Add(MakeShared<FJsonValueString>(Warn));
+		}
+	}
+
 	if (bGraphWillBeCreated)
 	{
 		Warnings.Add(MakeShared<FJsonValueString>(
@@ -5683,8 +5970,8 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 	}
 
 	UE_LOG(LogOliveBPTools, Log,
-		TEXT("Plan preview for '%s' graph '%s': %d steps, %d lowered ops, fingerprint=%s, new_graph=%s"),
-		*AssetPath, *GraphTarget, Plan.Steps.Num(), LowerResult.Ops.Num(), *Fingerprint,
+		TEXT("Plan preview for '%s' graph '%s': %d steps, schema=%s, fingerprint=%s, new_graph=%s"),
+		*AssetPath, *GraphTarget, Plan.Steps.Num(), *Plan.SchemaVersion, *Fingerprint,
 		bGraphWillBeCreated ? TEXT("true") : TEXT("false"));
 
 	return FOliveToolResult::Success(ResultData);
@@ -5823,8 +6110,10 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 	}
 
 	// ------------------------------------------------------------------
-	// 8. Resolve + Lower
+	// 8. Resolve (always) + Lower (v1.0 only)
 	// ------------------------------------------------------------------
+	const bool bIsV2Plan = (Plan.SchemaVersion == TEXT("2.0"));
+
 	FOlivePlanResolveResult ResolveResult = FOliveBlueprintPlanResolver::Resolve(Plan, Blueprint);
 	if (!ResolveResult.bSuccess)
 	{
@@ -5839,19 +6128,24 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 		return Result;
 	}
 
-	FOlivePlanLowerResult LowerResult = FOliveBlueprintPlanLowerer::Lower(
-		ResolveResult.ResolvedSteps, Plan, GraphTarget, AssetPath);
-	if (!LowerResult.bSuccess)
+	// v1.0 path: lower to batch ops (v2.0 skips this entirely)
+	FOlivePlanLowerResult LowerResult;
+	if (!bIsV2Plan)
 	{
-		TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
-		ErrorData->SetStringField(TEXT("phase"), TEXT("lower"));
-		ErrorData->SetArrayField(TEXT("errors"), SerializePlanErrors(LowerResult.Errors));
-		FOliveToolResult Result = FOliveToolResult::Error(
-			TEXT("PLAN_LOWER_FAILED"),
-			FString::Printf(TEXT("Plan lowering failed with %d error(s)"), LowerResult.Errors.Num()),
-			LowerResult.Errors.Num() > 0 ? LowerResult.Errors[0].Suggestion : TEXT(""));
-		Result.Data = ErrorData;
-		return Result;
+		LowerResult = FOliveBlueprintPlanLowerer::Lower(
+			ResolveResult.ResolvedSteps, Plan, GraphTarget, AssetPath);
+		if (!LowerResult.bSuccess)
+		{
+			TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
+			ErrorData->SetStringField(TEXT("phase"), TEXT("lower"));
+			ErrorData->SetArrayField(TEXT("errors"), SerializePlanErrors(LowerResult.Errors));
+			FOliveToolResult Result = FOliveToolResult::Error(
+				TEXT("PLAN_LOWER_FAILED"),
+				FString::Printf(TEXT("Plan lowering failed with %d error(s)"), LowerResult.Errors.Num()),
+				LowerResult.Errors.Num() > 0 ? LowerResult.Errors[0].Suggestion : TEXT(""));
+			Result.Data = ErrorData;
+			return Result;
+		}
 	}
 
 	// ------------------------------------------------------------------
@@ -5863,134 +6157,284 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 	Request.AssetPath = AssetPath;
 	Request.TargetAsset = Blueprint;
 	Request.OperationDescription = FText::Format(
-		NSLOCTEXT("OliveBPTools", "ApplyPlanJson", "AI Agent: Apply Plan JSON ({0} steps)"),
-		FText::AsNumber(Plan.Steps.Num()));
+		NSLOCTEXT("OliveBPTools", "ApplyPlanJson", "AI Agent: Apply Plan JSON ({0} steps, v{1})"),
+		FText::AsNumber(Plan.Steps.Num()),
+		FText::FromString(Plan.SchemaVersion));
 	Request.OperationCategory = TEXT("plan_apply");
 	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = true;
 	Request.bSkipVerification = false;
 
 	// ------------------------------------------------------------------
-	// 10. Build executor delegate
+	// 10. Build executor delegate (version-gated)
 	// ------------------------------------------------------------------
-	// Capture lowered ops and plan metadata by value for the executor lambda.
-	// The lambda runs inside the pipeline's transaction scope.
-	TArray<FOliveLoweredOp> CapturedOps = LowerResult.Ops;
-	TMap<FString, int32> CapturedStepMap = LowerResult.StepToFirstOpIndex;
-
 	FOliveWriteExecutor Executor;
-	Executor.BindLambda(
-		[CapturedOps = MoveTemp(CapturedOps), CapturedStepMap = MoveTemp(CapturedStepMap), AssetPath, GraphTarget]
-		(const FOliveWriteRequest& InRequest, UObject* TargetAsset) -> FOliveWriteResult
-		{
-			UBlueprint* BP = Cast<UBlueprint>(TargetAsset);
-			if (!BP)
+
+	if (bIsV2Plan)
+	{
+		// ============================================================
+		// v2.0 PATH: FOlivePlanExecutor with pin introspection
+		// ============================================================
+
+		// Capture resolved steps and plan by value for the lambda.
+		// ResolvedSteps is small (one struct per step). Plan is also small.
+		TArray<FOliveResolvedStep> CapturedResolvedSteps = ResolveResult.ResolvedSteps;
+		FOliveIRBlueprintPlan CapturedPlan = Plan;
+
+		Executor.BindLambda(
+			[CapturedResolvedSteps = MoveTemp(CapturedResolvedSteps),
+			 CapturedPlan = MoveTemp(CapturedPlan),
+			 AssetPath, GraphTarget]
+			(const FOliveWriteRequest& InRequest, UObject* TargetAsset) -> FOliveWriteResult
 			{
-				return FOliveWriteResult::ExecutionError(
-					TEXT("INVALID_TARGET"),
-					TEXT("Target asset is not a valid Blueprint"),
-					TEXT("Ensure the asset_path points to a Blueprint"));
-			}
-
-			// Suppress inner transactions -- the pipeline owns the outer transaction
-			FOliveBatchExecutionScope BatchScope;
-
-			BP->Modify();
-
-			// Ensure target graph exists inside the pipeline transaction so creation
-			// participates in rollback if later ops fail.
-			bool bGraphCreatedInTxn = false;
-			UEdGraph* ExecutionGraph = FindOrCreateFunctionGraph(BP, GraphTarget, bGraphCreatedInTxn);
-			if (!ExecutionGraph)
-			{
-				return FOliveWriteResult::ExecutionError(
-					TEXT("GRAPH_NOT_FOUND"),
-					FString::Printf(TEXT("Graph '%s' not found and could not be created"), *GraphTarget),
-					TEXT("EventGraph must already exist; other names are created as function graphs."));
-			}
-
-			TMap<FString, TSharedPtr<FJsonObject>> OpResultsById;
-			TMap<FString, FString> StepToNodeMap;
-			TArray<FString> CreatedNodeIds;
-			int32 AppliedCount = 0;
-
-			for (int32 i = 0; i < CapturedOps.Num(); ++i)
-			{
-				// Copy params so template resolution can mutate them
-				TSharedPtr<FJsonObject> OpParams = MakeShared<FJsonObject>();
-				for (const auto& Field : CapturedOps[i].Params->Values)
-				{
-					OpParams->Values.Add(Field.Key, Field.Value);
-				}
-
-				// Resolve ${opId.field} template references
-				FString TemplateError;
-				if (!FOliveGraphBatchExecutor::ResolveTemplateReferences(OpParams, OpResultsById, TemplateError))
+				UBlueprint* BP = Cast<UBlueprint>(TargetAsset);
+				if (!BP)
 				{
 					return FOliveWriteResult::ExecutionError(
-						TEXT("TEMPLATE_RESOLVE_FAILED"),
-						FString::Printf(TEXT("Template resolution failed at op %d (id='%s'): %s"),
-							i, *CapturedOps[i].Id, *TemplateError),
-						TEXT("Check that referenced step IDs exist and produced node_id results"));
+						TEXT("INVALID_TARGET"),
+						TEXT("Target asset is not a valid Blueprint"),
+						TEXT("Ensure the asset_path points to a Blueprint"));
 				}
 
-				// Dispatch to writer
-				FOliveBlueprintWriteResult WriteResult = FOliveGraphBatchExecutor::DispatchWriterOp(
-					CapturedOps[i].ToolName, AssetPath, OpParams);
+				// Suppress inner transactions -- the pipeline owns the outer transaction
+				FOliveBatchExecutionScope BatchScope;
 
-				if (!WriteResult.bSuccess)
+				BP->Modify();
+
+				// Ensure target graph exists inside the pipeline transaction
+				bool bGraphCreatedInTxn = false;
+				UEdGraph* ExecutionGraph = FindOrCreateFunctionGraph(BP, GraphTarget, bGraphCreatedInTxn);
+				if (!ExecutionGraph)
 				{
-					FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
 					return FOliveWriteResult::ExecutionError(
-						TEXT("OP_FAILED"),
-						FString::Printf(TEXT("Op %d failed (id='%s', tool='%s'): %s"),
-							i, *CapturedOps[i].Id, *CapturedOps[i].ToolName, *ErrorMsg),
-						TEXT("Check the plan step definition for this operation"));
+						TEXT("GRAPH_NOT_FOUND"),
+						FString::Printf(TEXT("Graph '%s' not found and could not be created"), *GraphTarget),
+						TEXT("EventGraph must already exist; other names are created as function graphs."));
 				}
 
-				AppliedCount++;
+				// Execute the multi-phase plan
+				FOlivePlanExecutor PlanExecutor;
+				FOliveIRBlueprintPlanResult PlanResult = PlanExecutor.Execute(
+					CapturedPlan, CapturedResolvedSteps,
+					BP, ExecutionGraph, AssetPath, GraphTarget);
 
-				// Build result data for template resolution by later ops
-				TSharedPtr<FJsonObject> OpData = MakeShared<FJsonObject>();
-				if (!WriteResult.CreatedNodeId.IsEmpty())
+				// Build the result data JSON
+				TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
+
+				// step_to_node_map
+				TSharedPtr<FJsonObject> MapObj = MakeShared<FJsonObject>();
+				for (const auto& Pair : PlanResult.StepToNodeMap)
 				{
-					OpData->SetStringField(TEXT("node_id"), WriteResult.CreatedNodeId);
-					CreatedNodeIds.Add(WriteResult.CreatedNodeId);
+					MapObj->SetStringField(Pair.Key, Pair.Value);
 				}
-				if (!WriteResult.CreatedItemName.IsEmpty())
-				{
-					OpData->SetStringField(TEXT("item_name"), WriteResult.CreatedItemName);
-				}
+				ResultData->SetObjectField(TEXT("step_to_node_map"), MapObj);
+				ResultData->SetNumberField(TEXT("applied_ops_count"), PlanResult.AppliedOpsCount);
+				ResultData->SetStringField(TEXT("schema_version"), TEXT("2.0"));
 
-				// Store result for template resolution
-				if (!CapturedOps[i].Id.IsEmpty())
+				// Serialize wiring errors (for AI self-correction)
+				if (PlanResult.Errors.Num() > 0)
 				{
-					OpResultsById.Add(CapturedOps[i].Id, OpData);
-
-					// If this is an add_node op (has a step mapping), record in StepToNodeMap
-					if (CapturedStepMap.Contains(CapturedOps[i].Id) && !WriteResult.CreatedNodeId.IsEmpty())
+					TArray<TSharedPtr<FJsonValue>> ErrorsArr;
+					ErrorsArr.Reserve(PlanResult.Errors.Num());
+					for (const FOliveIRBlueprintPlanError& Err : PlanResult.Errors)
 					{
-						StepToNodeMap.Add(CapturedOps[i].Id, WriteResult.CreatedNodeId);
+						ErrorsArr.Add(MakeShared<FJsonValueObject>(Err.ToJson()));
+					}
+					ResultData->SetArrayField(TEXT("wiring_errors"), ErrorsArr);
+				}
+
+				// Serialize warnings
+				if (PlanResult.Warnings.Num() > 0)
+				{
+					TArray<TSharedPtr<FJsonValue>> WarningsArr;
+					WarningsArr.Reserve(PlanResult.Warnings.Num());
+					for (const FString& Warn : PlanResult.Warnings)
+					{
+						WarningsArr.Add(MakeShared<FJsonValueString>(Warn));
+					}
+					ResultData->SetArrayField(TEXT("warnings"), WarningsArr);
+				}
+
+				// Forward pin manifests for AI self-correction
+				if (PlanResult.PinManifestJsons.Num() > 0)
+				{
+					TSharedPtr<FJsonObject> ManifestsObj = MakeShared<FJsonObject>();
+					for (const auto& Pair : PlanResult.PinManifestJsons)
+					{
+						ManifestsObj->SetObjectField(Pair.Key, Pair.Value);
+					}
+					ResultData->SetObjectField(TEXT("pin_manifests"), ManifestsObj);
+				}
+
+				// Self-correction hint when wiring partially failed
+				const bool bHasWiringErrors =
+					(PlanResult.Errors.Num() > 0) &&
+					PlanResult.bSuccess; // Only include hint on partial success, not total failure
+				if (bHasWiringErrors)
+				{
+					ResultData->SetStringField(TEXT("self_correction_hint"),
+						TEXT("Some wiring failed. Use blueprint.read on the target graph to see "
+							 "actual pin names on created nodes, then use granular connect_pins/set_pin_default "
+							 "to fix failed connections. See wiring_errors for details."));
+				}
+
+				if (!PlanResult.bSuccess)
+				{
+					// Node creation failed entirely
+					FOliveWriteResult ErrorResult = FOliveWriteResult::ExecutionError(
+						TEXT("PLAN_EXECUTION_FAILED"),
+						FString::Printf(TEXT("Plan execution failed: %d of %d nodes created"),
+							static_cast<int32>(PlanResult.StepToNodeMap.Num()),
+							CapturedPlan.Steps.Num()),
+						PlanResult.Errors.Num() > 0 ? PlanResult.Errors[0].Suggestion : TEXT(""));
+					ErrorResult.ResultData = ResultData;
+					return ErrorResult;
+				}
+
+				FOliveWriteResult SuccessResult = FOliveWriteResult::Success(ResultData);
+
+				// Collect created node IDs for the pipeline's verification stage
+				TArray<FString> CreatedNodeIds;
+				CreatedNodeIds.Reserve(PlanResult.StepToNodeMap.Num());
+				for (const auto& Pair : PlanResult.StepToNodeMap)
+				{
+					CreatedNodeIds.Add(Pair.Value);
+				}
+				SuccessResult.CreatedNodeIds = MoveTemp(CreatedNodeIds);
+
+				return SuccessResult;
+			});
+	}
+	else
+	{
+		// ============================================================
+		// v1.0 PATH: Existing lowerer + batch dispatch (unchanged)
+		// ============================================================
+		TArray<FOliveLoweredOp> CapturedOps = LowerResult.Ops;
+		TMap<FString, int32> CapturedStepMap = LowerResult.StepToFirstOpIndex;
+
+		Executor.BindLambda(
+			[CapturedOps = MoveTemp(CapturedOps), CapturedStepMap = MoveTemp(CapturedStepMap), AssetPath, GraphTarget]
+			(const FOliveWriteRequest& InRequest, UObject* TargetAsset) -> FOliveWriteResult
+			{
+				UBlueprint* BP = Cast<UBlueprint>(TargetAsset);
+				if (!BP)
+				{
+					return FOliveWriteResult::ExecutionError(
+						TEXT("INVALID_TARGET"),
+						TEXT("Target asset is not a valid Blueprint"),
+						TEXT("Ensure the asset_path points to a Blueprint"));
+				}
+
+				// Suppress inner transactions -- the pipeline owns the outer transaction
+				FOliveBatchExecutionScope BatchScope;
+
+				BP->Modify();
+
+				// Ensure target graph exists inside the pipeline transaction so creation
+				// participates in rollback if later ops fail.
+				bool bGraphCreatedInTxn = false;
+				UEdGraph* ExecutionGraph = FindOrCreateFunctionGraph(BP, GraphTarget, bGraphCreatedInTxn);
+				if (!ExecutionGraph)
+				{
+					return FOliveWriteResult::ExecutionError(
+						TEXT("GRAPH_NOT_FOUND"),
+						FString::Printf(TEXT("Graph '%s' not found and could not be created"), *GraphTarget),
+						TEXT("EventGraph must already exist; other names are created as function graphs."));
+				}
+
+				TMap<FString, TSharedPtr<FJsonObject>> OpResultsById;
+				TMap<FString, FString> StepToNodeMap;
+				TArray<FString> CreatedNodeIds;
+				int32 AppliedCount = 0;
+
+				for (int32 i = 0; i < CapturedOps.Num(); ++i)
+				{
+					if (!CapturedOps[i].Params.IsValid())
+					{
+						return FOliveWriteResult::ExecutionError(
+							TEXT("INVALID_OP_PARAMS"),
+							FString::Printf(TEXT("Op %d has invalid null params (id='%s', tool='%s')"),
+								i, *CapturedOps[i].Id, *CapturedOps[i].ToolName),
+							TEXT("Regenerate the plan and retry."));
+					}
+
+					// Copy params so template resolution can mutate them
+					TSharedPtr<FJsonObject> OpParams = MakeShared<FJsonObject>();
+					for (const auto& Field : CapturedOps[i].Params->Values)
+					{
+						OpParams->Values.Add(Field.Key, Field.Value);
+					}
+
+					// Resolve ${opId.field} template references
+					FString TemplateError;
+					if (!FOliveGraphBatchExecutor::ResolveTemplateReferences(OpParams, OpResultsById, TemplateError))
+					{
+						return FOliveWriteResult::ExecutionError(
+							TEXT("TEMPLATE_RESOLVE_FAILED"),
+							FString::Printf(TEXT("Template resolution failed at op %d (id='%s'): %s"),
+								i, *CapturedOps[i].Id, *TemplateError),
+							TEXT("Check that referenced step IDs exist and produced node_id results"));
+					}
+
+					// Dispatch to writer
+					FOliveBlueprintWriteResult WriteResult = FOliveGraphBatchExecutor::DispatchWriterOp(
+						CapturedOps[i].ToolName, AssetPath, OpParams);
+
+					if (!WriteResult.bSuccess)
+					{
+						FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+						return FOliveWriteResult::ExecutionError(
+							TEXT("OP_FAILED"),
+							FString::Printf(TEXT("Op %d failed (id='%s', tool='%s'): %s"),
+								i, *CapturedOps[i].Id, *CapturedOps[i].ToolName, *ErrorMsg),
+							TEXT("Check the plan step definition for this operation"));
+					}
+
+					AppliedCount++;
+
+					// Build result data for template resolution by later ops
+					TSharedPtr<FJsonObject> OpData = MakeShared<FJsonObject>();
+					if (!WriteResult.CreatedNodeId.IsEmpty())
+					{
+						OpData->SetStringField(TEXT("node_id"), WriteResult.CreatedNodeId);
+						CreatedNodeIds.Add(WriteResult.CreatedNodeId);
+					}
+					if (!WriteResult.CreatedItemName.IsEmpty())
+					{
+						OpData->SetStringField(TEXT("item_name"), WriteResult.CreatedItemName);
+					}
+
+					// Store result for template resolution
+					if (!CapturedOps[i].Id.IsEmpty())
+					{
+						OpResultsById.Add(CapturedOps[i].Id, OpData);
+
+						// If this is an add_node op (has a step mapping), record in StepToNodeMap
+						if (CapturedStepMap.Contains(CapturedOps[i].Id) && !WriteResult.CreatedNodeId.IsEmpty())
+						{
+							StepToNodeMap.Add(CapturedOps[i].Id, WriteResult.CreatedNodeId);
+						}
 					}
 				}
-			}
 
-			// Build success result
-			TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
+				// Build success result
+				TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
 
-			// Serialize step_to_node_map
-			TSharedPtr<FJsonObject> MapObj = MakeShared<FJsonObject>();
-			for (const auto& Pair : StepToNodeMap)
-			{
-				MapObj->SetStringField(Pair.Key, Pair.Value);
-			}
-			ResultData->SetObjectField(TEXT("step_to_node_map"), MapObj);
-			ResultData->SetNumberField(TEXT("applied_ops_count"), AppliedCount);
+				// Serialize step_to_node_map
+				TSharedPtr<FJsonObject> MapObj = MakeShared<FJsonObject>();
+				for (const auto& Pair : StepToNodeMap)
+				{
+					MapObj->SetStringField(Pair.Key, Pair.Value);
+				}
+				ResultData->SetObjectField(TEXT("step_to_node_map"), MapObj);
+				ResultData->SetNumberField(TEXT("applied_ops_count"), AppliedCount);
 
-			FOliveWriteResult SuccessResult = FOliveWriteResult::Success(ResultData);
-			SuccessResult.CreatedNodeIds = MoveTemp(CreatedNodeIds);
-			return SuccessResult;
-		});
+				FOliveWriteResult SuccessResult = FOliveWriteResult::Success(ResultData);
+				SuccessResult.CreatedNodeIds = MoveTemp(CreatedNodeIds);
+				return SuccessResult;
+			});
+	}
 
 	// ------------------------------------------------------------------
 	// 11. Execute through write pipeline
@@ -5998,12 +6442,12 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
 	FOliveWriteResult PipelineResult = Pipeline.Execute(Request, Executor);
 
-	// Convert to tool result and inject step_to_node_map if available
+	// Convert to tool result and inject data from executor result
 	FOliveToolResult ToolResult = PipelineResult.ToToolResult();
 
-	// Merge step_to_node_map from executor result into tool result data
 	if (PipelineResult.bSuccess && PipelineResult.ResultData.IsValid() && ToolResult.Data.IsValid())
 	{
+		// Forward all fields from the executor's ResultData into the tool result
 		const TSharedPtr<FJsonObject>* StepMapObj = nullptr;
 		if (PipelineResult.ResultData->TryGetObjectField(TEXT("step_to_node_map"), StepMapObj))
 		{
@@ -6015,11 +6459,70 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 		{
 			ToolResult.Data->SetNumberField(TEXT("applied_ops_count"), AppliedOps);
 		}
+
+		// v2.0-specific result fields
+		if (bIsV2Plan)
+		{
+			FString SchemaVersion;
+			if (PipelineResult.ResultData->TryGetStringField(TEXT("schema_version"), SchemaVersion))
+			{
+				ToolResult.Data->SetStringField(TEXT("schema_version"), SchemaVersion);
+			}
+
+			const TArray<TSharedPtr<FJsonValue>>* WiringErrors = nullptr;
+			if (PipelineResult.ResultData->TryGetArrayField(TEXT("wiring_errors"), WiringErrors))
+			{
+				ToolResult.Data->SetArrayField(TEXT("wiring_errors"), *WiringErrors);
+			}
+
+			const TArray<TSharedPtr<FJsonValue>>* Warnings = nullptr;
+			if (PipelineResult.ResultData->TryGetArrayField(TEXT("warnings"), Warnings))
+			{
+				ToolResult.Data->SetArrayField(TEXT("warnings"), *Warnings);
+			}
+
+			FString SelfCorrectionHint;
+			if (PipelineResult.ResultData->TryGetStringField(TEXT("self_correction_hint"), SelfCorrectionHint))
+			{
+				ToolResult.Data->SetStringField(TEXT("self_correction_hint"), SelfCorrectionHint);
+			}
+
+			const TSharedPtr<FJsonObject>* PinManifests = nullptr;
+			if (PipelineResult.ResultData->TryGetObjectField(TEXT("pin_manifests"), PinManifests))
+			{
+				ToolResult.Data->SetObjectField(TEXT("pin_manifests"), *PinManifests);
+			}
+		}
+	}
+	else if (!PipelineResult.bSuccess && PipelineResult.ResultData.IsValid())
+	{
+		// On failure, still forward wiring_errors, warnings, and pin_manifests if present (v2.0)
+		if (bIsV2Plan && ToolResult.Data.IsValid())
+		{
+			const TArray<TSharedPtr<FJsonValue>>* WiringErrors = nullptr;
+			if (PipelineResult.ResultData->TryGetArrayField(TEXT("wiring_errors"), WiringErrors))
+			{
+				ToolResult.Data->SetArrayField(TEXT("wiring_errors"), *WiringErrors);
+			}
+
+			const TArray<TSharedPtr<FJsonValue>>* Warnings = nullptr;
+			if (PipelineResult.ResultData->TryGetArrayField(TEXT("warnings"), Warnings))
+			{
+				ToolResult.Data->SetArrayField(TEXT("warnings"), *Warnings);
+			}
+
+			const TSharedPtr<FJsonObject>* PinManifests = nullptr;
+			if (PipelineResult.ResultData->TryGetObjectField(TEXT("pin_manifests"), PinManifests))
+			{
+				ToolResult.Data->SetObjectField(TEXT("pin_manifests"), *PinManifests);
+			}
+		}
 	}
 
 	UE_LOG(LogOliveBPTools, Log,
-		TEXT("Plan apply for '%s' graph '%s': success=%s"),
-		*AssetPath, *GraphTarget, PipelineResult.bSuccess ? TEXT("true") : TEXT("false"));
+		TEXT("Plan apply for '%s' graph '%s': success=%s, schema_version=%s"),
+		*AssetPath, *GraphTarget, PipelineResult.bSuccess ? TEXT("true") : TEXT("false"),
+		*Plan.SchemaVersion);
 
 	return ToolResult;
 }

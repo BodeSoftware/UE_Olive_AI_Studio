@@ -106,6 +106,13 @@ private:
 	 */
 	FString BuildPrompt(const TArray<FOliveChatMessage>& Messages, const TArray<FOliveToolDefinition>& Tools) const;
 
+	/**
+	 * Build domain-specific system prompt using the prompt assembler.
+	 * Must be called on the game thread (accesses UObject settings).
+	 * @param UserTask The user's task description (passed to template as TaskDescription)
+	 */
+	FString BuildSystemPrompt(const FString& UserTask, const TArray<FOliveToolDefinition>& Tools) const;
+
 	// ==========================================
 	// Process Management
 	// ==========================================

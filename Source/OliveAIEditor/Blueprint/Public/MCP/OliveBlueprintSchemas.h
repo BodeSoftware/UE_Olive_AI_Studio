@@ -277,7 +277,7 @@ namespace OliveBlueprintSchemas
 	/**
 	 * Schema for blueprint.connect_pins
 	 * Connect two pins
-	 * Params: {path: string, graph: string, source: string, target: string}
+	 * Params: {path: string, graph: string, source?: string, target?: string, source_ref?: object, target_ref?: object}
 	 */
 	TSharedPtr<FJsonObject> BlueprintConnectPins();
 

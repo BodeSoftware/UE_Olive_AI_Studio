@@ -192,6 +192,9 @@ public:
 		TFunction<void(FOliveToolResult)> Callback
 	);
 
+	/** Clear blueprint routing stats for a given context key (called when run/session ends) */
+	void ClearBlueprintRoutingStats(const FString& ContextKey);
+
 	// ==========================================
 	// MCP Format
 	// ==========================================

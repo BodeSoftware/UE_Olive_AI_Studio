@@ -188,6 +188,7 @@ void FOliveToolPackManager::RegisterDefaultPacks()
 	};
 
 	PackDefinitions.FindOrAdd(EOliveToolPack::WritePackGraph) = {
+		TEXT("blueprint.preview_plan_json"), TEXT("blueprint.apply_plan_json"),
 		TEXT("blueprint.add_node"), TEXT("blueprint.remove_node"),
 		TEXT("blueprint.connect_pins"), TEXT("blueprint.disconnect_pins"),
 		TEXT("blueprint.set_pin_default"), TEXT("blueprint.set_node_property")

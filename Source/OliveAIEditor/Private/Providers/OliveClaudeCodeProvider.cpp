@@ -1,6 +1,7 @@
 // Copyright Bode Software. All Rights Reserved.
 
 #include "Providers/OliveClaudeCodeProvider.h"
+#include "Chat/OlivePromptAssembler.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
@@ -265,12 +266,13 @@ void FOliveClaudeCodeProvider::SendMessage(
 	bIsBusy = true;
 	AccumulatedResponse.Empty();
 
-	// Build the prompt from messages and currently available tools
+	// Build prompt and system prompt on the game thread (prompt assembler accesses UObject settings)
 	FString Prompt = BuildPrompt(Messages, Tools);
+	FString SystemPromptText = BuildSystemPrompt(Prompt, Tools);
 
 	// Spawn claude process with --print flag for JSON output
 	// Use --dangerously-skip-permissions to avoid interactive prompts
-	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this, Prompt]()
+	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this, Prompt, SystemPromptText]()
 	{
 		FString ClaudePath = GetClaudeExecutablePath();
 		if (ClaudePath.IsEmpty())
@@ -289,6 +291,11 @@ void FOliveClaudeCodeProvider::SendMessage(
 		EscapedPrompt.ReplaceInline(TEXT("\\"), TEXT("\\\\"));
 		EscapedPrompt.ReplaceInline(TEXT("\""), TEXT("\\\""));
 
+		// Escape system prompt for command line
+		FString EscapedSystemPrompt = SystemPromptText;
+		EscapedSystemPrompt.ReplaceInline(TEXT("\\"), TEXT("\\\\"));
+		EscapedSystemPrompt.ReplaceInline(TEXT("\""), TEXT("\\\""));
+
 		const FString ProjectDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
 		const FString MCPConfigPath = FPaths::Combine(WorkingDirectory, TEXT(".mcp.json"));
 		const bool bHasMCPConfig = IFileManager::Get().FileExists(*MCPConfigPath);
@@ -300,13 +307,21 @@ void FOliveClaudeCodeProvider::SendMessage(
 		// --dangerously-skip-permissions: avoid interactive prompts in editor context
 		// --add-dir: allow access to the full Unreal project even when running from plugin dir
 		// --mcp-config: force-load plugin MCP bridge so olive-ai-studio tools are available
+		// --append-system-prompt: inject domain-specific guidance (Worker_Blueprint.txt etc.)
+		FString SystemPromptArg;
+		if (!EscapedSystemPrompt.IsEmpty())
+		{
+			SystemPromptArg = FString::Printf(TEXT("--append-system-prompt \"%s\" "), *EscapedSystemPrompt);
+		}
+
 		FString ClaudeArgs;
 		if (bHasMCPConfig)
 		{
 			ClaudeArgs = FString::Printf(
-				TEXT("--print --output-format stream-json --verbose --dangerously-skip-permissions --add-dir \"%s\" --mcp-config \"%s\" --strict-mcp-config -p \"%s\""),
+				TEXT("--print --output-format stream-json --verbose --dangerously-skip-permissions --add-dir \"%s\" --mcp-config \"%s\" --strict-mcp-config %s-p \"%s\""),
 				*ProjectDir,
 				*MCPConfigPath,
+				*SystemPromptArg,
 				*EscapedPrompt
 			);
 
@@ -315,13 +330,16 @@ void FOliveClaudeCodeProvider::SendMessage(
 		else
 		{
 			ClaudeArgs = FString::Printf(
-				TEXT("--print --output-format stream-json --verbose --dangerously-skip-permissions --add-dir \"%s\" -p \"%s\""),
+				TEXT("--print --output-format stream-json --verbose --dangerously-skip-permissions --add-dir \"%s\" %s-p \"%s\""),
 				*ProjectDir,
+				*SystemPromptArg,
 				*EscapedPrompt
 			);
 
 			UE_LOG(LogOliveClaudeCode, Warning, TEXT("No .mcp.json found at %s. Claude may not have Olive MCP tools."), *MCPConfigPath);
 		}
+
+		UE_LOG(LogOliveClaudeCode, Log, TEXT("System prompt injected: %d chars"), SystemPromptText.Len());
 
 		// Determine executable and args
 		FString Executable;
@@ -481,8 +499,7 @@ void FOliveClaudeCodeProvider::SendMessage(
 
 FString FOliveClaudeCodeProvider::BuildPrompt(const TArray<FOliveChatMessage>& Messages, const TArray<FOliveToolDefinition>& Tools) const
 {
-	// Claude CLI in print mode is stateless here, so we build a compact instruction prompt
-	// around the latest user request and available Olive MCP tools.
+	// Extract last user message
 	FString LastUserMessage;
 	for (int32 i = Messages.Num() - 1; i >= 0; --i)
 	{
@@ -498,33 +515,80 @@ FString FOliveClaudeCodeProvider::BuildPrompt(const TArray<FOliveChatMessage>& M
 		return TEXT("");
 	}
 
-	FString ToolNames;
-	for (const FOliveToolDefinition& Tool : Tools)
-	{
-		if (!ToolNames.IsEmpty())
-		{
-			ToolNames += TEXT(", ");
-		}
-		ToolNames += Tool.Name;
-	}
+	// Wrap the user request with a brief, forceful routing instruction.
+	// This is the -p prompt — Claude Code treats it as the primary user request,
+	// so routing guidance here is followed more reliably than in --append-system-prompt.
+	const FString Wrapper =
+		TEXT("You have Olive AI Studio MCP tools. Use them to complete this task.\n\n")
+		TEXT("REQUIRED WORKFLOW:\n")
+		TEXT("1. blueprint.create — create any needed Blueprints (use /Game/Blueprints/BP_ prefix)\n")
+		TEXT("2. blueprint.add_component — add components to each Blueprint\n")
+		TEXT("3. blueprint.add_variable — add variables (use simple type names: Float, Boolean, Vector, ")
+		TEXT("\"TSubclassOf<Actor>\" for class refs)\n")
+		TEXT("4. For ALL graph logic (event graphs, functions): use blueprint.preview_plan_json then ")
+		TEXT("blueprint.apply_plan_json. Do NOT use individual add_node/connect_pins calls — plan JSON ")
+		TEXT("handles node creation, wiring, and pin defaults in one atomic operation.\n")
+		TEXT("5. blueprint.read — verify the result\n\n")
+		TEXT("The plan JSON format is described in your system prompt. Key: use schema_version 2.0, ")
+		TEXT("@step.auto for data wires, exec_after for exec flow.\n\n")
+		TEXT("USER REQUEST: ");
 
-	const FString Header =
-		TEXT("You are Olive AI running inside Unreal Editor.\n")
-		TEXT("For Unreal asset operations, use available MCP tools instead of giving manual editor steps.\n")
-		TEXT("Do not claim you cannot edit .uasset files directly when tools exist; call the appropriate tool.\n")
-		TEXT("Keep responses concise. Do not narrate internal step-by-step tool troubleshooting.\n")
-		TEXT("After completing operations, return one short final outcome summary.\n");
+	return Wrapper + LastUserMessage;
+}
 
-	if (!ToolNames.IsEmpty())
-	{
-		return FString::Printf(
-			TEXT("%s\nAvailable tools: %s\n\nUser request:\n%s"),
-			*Header,
-			*ToolNames,
-			*LastUserMessage);
-	}
+FString FOliveClaudeCodeProvider::BuildSystemPrompt(const FString& UserTask, const TArray<FOliveToolDefinition>& Tools) const
+{
+	// Keep the system prompt focused on REFERENCE MATERIAL only — the plan JSON format
+	// and data wire syntax that the AI needs to look up when constructing plans.
+	// Routing instructions go in the -p prompt (BuildPrompt) where Claude Code follows them.
+	//
+	// This prompt is ~3KB instead of ~10KB, staying well within useful context.
 
-	return FString::Printf(TEXT("%s\nUser request:\n%s"), *Header, *LastUserMessage);
+	const FString SystemPrompt =
+		TEXT("You are an Unreal Engine 5.5 Blueprint specialist with MCP tools.\n\n")
+
+		TEXT("## Plan JSON Format (v2.0)\n")
+		TEXT("Use this format with blueprint.preview_plan_json and blueprint.apply_plan_json:\n")
+		TEXT("```json\n")
+		TEXT("{\"schema_version\":\"2.0\",\"steps\":[\n")
+		TEXT("  {\"step_id\":\"evt\",\"op\":\"event\",\"target\":\"BeginPlay\"},\n")
+		TEXT("  {\"step_id\":\"spawn\",\"op\":\"spawn_actor\",\"target\":\"Actor\",")
+		TEXT("\"inputs\":{\"Location\":\"@get_loc.auto\"},\"exec_after\":\"evt\"},\n")
+		TEXT("  {\"step_id\":\"print\",\"op\":\"call\",\"target\":\"PrintString\",")
+		TEXT("\"inputs\":{\"InString\":\"Done\"},\"exec_after\":\"spawn\"}\n")
+		TEXT("]}\n")
+		TEXT("```\n\n")
+
+		TEXT("## Available Ops\n")
+		TEXT("event, custom_event, call, get_var, set_var, branch, sequence, cast, ")
+		TEXT("for_loop, for_each_loop, delay, is_valid, print_string, spawn_actor, ")
+		TEXT("make_struct, break_struct, return, comment\n\n")
+
+		TEXT("## Data Wires (@ref syntax)\n")
+		TEXT("- @step.auto — auto-match by type (use this ~80% of the time)\n")
+		TEXT("- @step.~hint — fuzzy match with hint (e.g. @get_loc.~Location)\n")
+		TEXT("- @step.PinName — smart name match\n")
+		TEXT("- Literal values (no @) set pin defaults: \"InString\":\"Hello\"\n\n")
+
+		TEXT("## Exec Flow\n")
+		TEXT("- exec_after: step whose exec output connects to this step's exec input\n")
+		TEXT("- exec_outputs: {\"True\":\"step_a\",\"False\":\"step_b\"} for Branch etc.\n\n")
+
+		TEXT("## Function Resolution\n")
+		TEXT("For op:call, use natural names. The system resolves K2_ prefixes, aliases ")
+		TEXT("(Destroy->K2_DestroyActor, Print->PrintString), and fuzzy matching automatically.\n\n")
+
+		TEXT("## Key Rules\n")
+		TEXT("- Read before write: always blueprint.read first\n")
+		TEXT("- Create BPs at /Game/Blueprints/BP_Name\n")
+		TEXT("- Variable types: Float, Boolean, Integer, Vector, Rotator, String, ")
+		TEXT("\"TSubclassOf<Actor>\", Name\n")
+		TEXT("- Component class names: StaticMeshComponent, SphereComponent, ")
+		TEXT("ArrowComponent, ProjectileMovementComponent, BoxComponent, CapsuleComponent\n")
+		TEXT("- After apply_plan_json, if wiring_errors exist, use blueprint.read to see ")
+		TEXT("actual pin names, then fix with blueprint.connect_pins\n");
+
+	return SystemPrompt;
 }
 
 void FOliveClaudeCodeProvider::ParseOutputLine(const FString& Line)

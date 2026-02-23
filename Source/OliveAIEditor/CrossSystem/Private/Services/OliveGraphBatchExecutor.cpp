@@ -94,14 +94,24 @@ bool FOliveGraphBatchExecutor::ResolveTemplateReferences(
 		return true;
 	}
 
-	for (auto& Pair : OpParams->Values)
+	// Collect resolved values separately to avoid mutating the map during iteration
+	TArray<TPair<FString, FString>> ResolvedFields;
+
+	for (const auto& Pair : OpParams->Values)
 	{
+		if (!Pair.Value.IsValid())
+		{
+			OutError = FString::Printf(TEXT("Invalid null JSON value for param '%s'"), *Pair.Key);
+			return false;
+		}
+
 		if (Pair.Value->Type != EJson::String)
 		{
 			continue;
 		}
 
 		FString Value = Pair.Value->AsString();
+		bool bModified = false;
 
 		// Check for ${...} pattern
 		int32 StartIdx = 0;
@@ -149,13 +159,22 @@ bool FOliveGraphBatchExecutor::ResolveTemplateReferences(
 			// Replace the template token with the resolved value
 			FString TemplateToken = FString::Printf(TEXT("${%s}"), *TemplateContent);
 			Value = Value.Replace(*TemplateToken, *ResolvedValue);
+			bModified = true;
 
 			// Advance past the replacement
 			StartIdx = TemplateStart + ResolvedValue.Len();
 		}
 
-		// Write back the resolved string
-		OpParams->SetStringField(Pair.Key, Value);
+		if (bModified)
+		{
+			ResolvedFields.Emplace(Pair.Key, MoveTemp(Value));
+		}
+	}
+
+	// Apply resolved values after iteration is complete
+	for (const auto& Resolved : ResolvedFields)
+	{
+		OpParams->SetStringField(Resolved.Key, Resolved.Value);
 	}
 
 	return true;

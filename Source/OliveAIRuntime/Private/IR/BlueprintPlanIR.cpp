@@ -302,6 +302,11 @@ TSharedPtr<FJsonObject> FOliveIRBlueprintPlanResult::ToJson() const
 
 	Json->SetBoolField(TEXT("success"), bSuccess);
 	Json->SetNumberField(TEXT("applied_ops_count"), AppliedOpsCount);
+	Json->SetBoolField(TEXT("partial"), bPartial);
+	Json->SetNumberField(TEXT("connections_succeeded"), ConnectionsSucceeded);
+	Json->SetNumberField(TEXT("connections_failed"), ConnectionsFailed);
+	Json->SetNumberField(TEXT("defaults_succeeded"), DefaultsSucceeded);
+	Json->SetNumberField(TEXT("defaults_failed"), DefaultsFailed);
 
 	if (StepToNodeMap.Num() > 0)
 	{
@@ -329,6 +334,16 @@ TSharedPtr<FJsonObject> FOliveIRBlueprintPlanResult::ToJson() const
 		Json->SetArrayField(TEXT("warnings"), StringArrayToJsonArray(Warnings));
 	}
 
+	if (PinManifestJsons.Num() > 0)
+	{
+		TSharedPtr<FJsonObject> ManifestsObj = MakeShared<FJsonObject>();
+		for (const auto& Pair : PinManifestJsons)
+		{
+			ManifestsObj->SetObjectField(Pair.Key, Pair.Value);
+		}
+		Json->SetObjectField(TEXT("pin_manifests"), ManifestsObj);
+	}
+
 	return Json;
 }
 
@@ -342,6 +357,11 @@ FOliveIRBlueprintPlanResult FOliveIRBlueprintPlanResult::FromJson(const TSharedP
 
 	Json->TryGetBoolField(TEXT("success"), Result.bSuccess);
 	Json->TryGetNumberField(TEXT("applied_ops_count"), Result.AppliedOpsCount);
+	Json->TryGetBoolField(TEXT("partial"), Result.bPartial);
+	Json->TryGetNumberField(TEXT("connections_succeeded"), Result.ConnectionsSucceeded);
+	Json->TryGetNumberField(TEXT("connections_failed"), Result.ConnectionsFailed);
+	Json->TryGetNumberField(TEXT("defaults_succeeded"), Result.DefaultsSucceeded);
+	Json->TryGetNumberField(TEXT("defaults_failed"), Result.DefaultsFailed);
 
 	const TSharedPtr<FJsonObject>* StepMapObj = nullptr;
 	if (Json->TryGetObjectField(TEXT("step_to_node_map"), StepMapObj))
@@ -373,6 +393,19 @@ FOliveIRBlueprintPlanResult FOliveIRBlueprintPlanResult::FromJson(const TSharedP
 	if (Json->TryGetArrayField(TEXT("warnings"), WarningsArr))
 	{
 		Result.Warnings = JsonArrayToStringArray(*WarningsArr);
+	}
+
+	const TSharedPtr<FJsonObject>* ManifestsObj = nullptr;
+	if (Json->TryGetObjectField(TEXT("pin_manifests"), ManifestsObj))
+	{
+		for (const auto& Pair : (*ManifestsObj)->Values)
+		{
+			const TSharedPtr<FJsonObject>* ManifestObj = nullptr;
+			if (Pair.Value->TryGetObject(ManifestObj))
+			{
+				Result.PinManifestJsons.Add(Pair.Key, *ManifestObj);
+			}
+		}
 	}
 
 	return Result;

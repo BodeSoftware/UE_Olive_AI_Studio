@@ -276,12 +276,39 @@ struct OLIVEAIRUNTIME_API FOliveIRBlueprintPlanResult
 	UPROPERTY()
 	int32 AppliedOpsCount = 0;
 
+	/** Whether the result is a partial success (all nodes created, but some wiring failed) */
+	UPROPERTY()
+	bool bPartial = false;
+
+	/** Number of exec + data connections that succeeded */
+	UPROPERTY()
+	int32 ConnectionsSucceeded = 0;
+
+	/** Number of exec + data connections that failed */
+	UPROPERTY()
+	int32 ConnectionsFailed = 0;
+
+	/** Number of pin defaults that were set successfully */
+	UPROPERTY()
+	int32 DefaultsSucceeded = 0;
+
+	/** Number of pin defaults that failed */
+	UPROPERTY()
+	int32 DefaultsFailed = 0;
+
 	/**
 	 * Compilation result after plan execution.
 	 * Not a UPROPERTY because TOptional is not supported by UHT.
 	 * Only set when compilation was triggered (bAutoCompile or explicit).
 	 */
 	TOptional<FOliveIRCompileResult> CompileResult;
+
+	/**
+	 * Pin manifests for each created step (for AI self-correction).
+	 * Maps StepId -> JSON manifest with exact pin names, types, and directions.
+	 * Not a UPROPERTY because TSharedPtr<FJsonObject> is not supported by UHT.
+	 */
+	TMap<FString, TSharedPtr<FJsonObject>> PinManifestJsons;
 
 	/** Structured errors encountered during plan execution */
 	UPROPERTY()

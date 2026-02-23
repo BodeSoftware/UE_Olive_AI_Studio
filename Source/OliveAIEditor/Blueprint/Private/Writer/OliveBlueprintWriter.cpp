@@ -204,11 +204,12 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::CreateBlueprint(
 		return FOliveBlueprintWriteResult::Error(TEXT("Invalid asset name"));
 	}
 
-	// Check if asset already exists
-	if (FindObject<UBlueprint>(nullptr, *AssetPath))
+	// Check if asset already exists (UObject path = Package.ObjectName)
+	FString FullObjectPath = AssetPath + TEXT(".") + AssetName;
+	if (FindObject<UBlueprint>(nullptr, *FullObjectPath))
 	{
 		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Asset already exists at path: %s"), *AssetPath));
+			FString::Printf(TEXT("Blueprint already exists at path: %s"), *AssetPath));
 	}
 
 	// Create the package
@@ -314,11 +315,12 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::DuplicateBlueprint(
 	FString DestPackagePath = FPackageName::GetLongPackagePath(DestPath);
 	FString DestAssetName = FPackageName::GetShortName(DestPath);
 
-	// Check if destination already exists
-	if (FindObject<UBlueprint>(nullptr, *DestPath))
+	// Check if destination already exists (UObject path = Package.ObjectName)
+	FString FullDestObjectPath = DestPath + TEXT(".") + DestAssetName;
+	if (FindObject<UBlueprint>(nullptr, *FullDestObjectPath))
 	{
 		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Asset already exists at destination: %s"), *DestPath));
+			FString::Printf(TEXT("Blueprint already exists at destination: %s"), *DestPath));
 	}
 
 	// Use asset tools to duplicate
