@@ -291,6 +291,14 @@ FOliveProviderErrorInfo FOliveProviderRetryManager::ClassifyError(const FString&
 		return FOliveProviderErrorInfo::Transient(ErrorMessage, HttpStatus > 0 ? HttpStatus : 500);
 	}
 
+	// Process crash / abnormal exit (e.g. command-line overflow, segfault)
+	if (LowerMessage.Contains(TEXT("process exited with code")) ||
+		LowerMessage.Contains(TEXT("process crashed")) ||
+		LowerMessage.Contains(TEXT("process terminated")))
+	{
+		return FOliveProviderErrorInfo::Transient(ErrorMessage, 0);
+	}
+
 	// Use explicit HttpStatus hint if provided
 	if (HttpStatus >= 500 && HttpStatus < 600)
 	{

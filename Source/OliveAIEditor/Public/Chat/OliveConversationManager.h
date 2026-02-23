@@ -185,6 +185,9 @@ public:
 	/** Check if waiting for user confirmation */
 	bool IsWaitingForConfirmation() const { return bWaitingForConfirmation; }
 
+	/** Queue the next pending confirmation (if any) and notify UI. */
+	void ActivateNextPendingConfirmation();
+
 	// ==========================================
 	// Run Mode
 	// ==========================================
@@ -343,6 +346,25 @@ private:
 	/** Number of pending tool executions */
 	int32 PendingToolExecutions = 0;
 
+	/** Snapshot of tool call arguments by ID, built in ProcessPendingToolCalls.
+	 *  Used by HandleToolResult confirmation flow after PendingToolCalls is moved to a local. */
+	TMap<FString, TSharedPtr<FJsonObject>> ActiveToolCallArgs;
+
+	/** Count of failed tool results in the current batch (for correction directive) */
+	int32 CurrentBatchFailureCount = 0;
+
+	/** Accumulated correction summary for the current batch */
+	FString CurrentBatchCorrectionSummary;
+
+	/** Whether there are unresolved failures that require the AI to retry */
+	bool bHasPendingCorrections = false;
+
+	/** Number of times we have re-prompted the AI to address corrections in the current turn */
+	int32 CorrectionRepromptCount = 0;
+
+	/** Maximum re-prompts for unresolved corrections per turn */
+	static constexpr int32 MaxCorrectionReprompts = 2;
+
 	// ==========================================
 	// Confirmation State
 	// ==========================================
@@ -362,12 +384,29 @@ private:
 	/** Pending confirmation token issued by write pipeline */
 	FString PendingConfirmationToken;
 
+	/** Queued confirmation requests when multiple tools require confirmation in one batch. */
+	struct FPendingConfirmationRequest
+	{
+		FString ToolCallId;
+		FString ToolName;
+		TSharedPtr<FJsonObject> Arguments;
+		FString ConfirmationToken;
+		FString Plan;
+	};
+	TArray<FPendingConfirmationRequest> PendingConfirmationQueue;
+
 	/** Turn-level intent flags for tool-pack policy */
 	bool bTurnHasExplicitWriteIntent = false;
 	bool bTurnHasDangerIntent = false;
 
 	/** Stop the current tool loop after results are added to history */
 	bool bStopAfterToolResults = false;
+
+	/** Skip remaining tools in current batch (foundational tool failed), but continue agentic loop */
+	bool bSkipRemainingBatch = false;
+
+	/** Name of the failed foundational tool (for skip messages) */
+	FString FailedFoundationalTool;
 
 	// ==========================================
 	// Brain Layer Components

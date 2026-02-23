@@ -232,6 +232,11 @@ public:
 		meta=(DisplayName="Component Operations"))
 	EOliveConfirmationTier ComponentOperationsTier = EOliveConfirmationTier::Tier1_AutoExecute;
 
+	/** Override tier for create operations (new Blueprints, new assets) */
+	UPROPERTY(Config, EditAnywhere, Category="Confirmation",
+		meta=(DisplayName="Create Operations"))
+	EOliveConfirmationTier CreateOperationsTier = EOliveConfirmationTier::Tier1_AutoExecute;
+
 	/** Override tier for function creation */
 	UPROPERTY(Config, EditAnywhere, Category="Confirmation",
 		meta=(DisplayName="Function Creation"))

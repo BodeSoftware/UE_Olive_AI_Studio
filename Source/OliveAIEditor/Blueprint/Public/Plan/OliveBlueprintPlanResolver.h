@@ -85,7 +85,7 @@ public:
 	 * the fingerprint will no longer match, indicating the plan may be stale.
 	 * @param CurrentGraph The current graph IR (from FOliveGraphReader)
 	 * @param Plan The plan being previewed/applied
-	 * @return Hex string fingerprint (SHA1-based)
+	 * @return 8-char lowercase hex fingerprint (SHA1-based, truncated for LLM friendliness)
 	 */
 	static FString ComputePlanFingerprint(
 		const FOliveIRGraph& CurrentGraph,

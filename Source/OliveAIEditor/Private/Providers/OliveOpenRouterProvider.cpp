@@ -35,9 +35,13 @@ TArray<FString> FOliveOpenRouterProvider::GetAvailableModels() const
 		TEXT("anthropic/claude-opus-4"),
 		TEXT("anthropic/claude-3.5-sonnet"),
 		TEXT("anthropic/claude-3-opus"),
-		TEXT("openai/gpt-4-turbo"),
 		TEXT("openai/gpt-4o"),
 		TEXT("openai/gpt-4o-mini"),
+		TEXT("openai/gpt-4.1"),
+		TEXT("openai/gpt-4.1-mini"),
+		TEXT("openai/o3"),
+		TEXT("openai/o3-mini"),
+		TEXT("openai/o4-mini"),
 		TEXT("google/gemini-pro-1.5"),
 		TEXT("meta-llama/llama-3.1-70b-instruct"),
 		TEXT("meta-llama/llama-3.1-405b-instruct")
@@ -193,6 +197,23 @@ void FOliveOpenRouterProvider::CancelRequest()
 // Request Building
 // ==========================================
 
+bool FOliveOpenRouterProvider::IsReasoningModel(const FString& ModelId)
+{
+	// OpenRouter model IDs have provider prefix (e.g., "openai/o3")
+	// Extract the model part after the last slash
+	FString ModelPart = ModelId;
+	int32 SlashIdx;
+	if (ModelId.FindLastChar(TEXT('/'), SlashIdx))
+	{
+		ModelPart = ModelId.Mid(SlashIdx + 1);
+	}
+
+	return ModelPart.StartsWith(TEXT("o1"))
+		|| ModelPart.StartsWith(TEXT("o3"))
+		|| ModelPart.StartsWith(TEXT("o4"))
+		|| ModelPart.Contains(TEXT("gpt-4.1"));
+}
+
 TSharedPtr<FJsonObject> FOliveOpenRouterProvider::BuildRequestBody(
 	const TArray<FOliveChatMessage>& Messages,
 	const TArray<FOliveToolDefinition>& Tools,
@@ -215,8 +236,17 @@ TSharedPtr<FJsonObject> FOliveOpenRouterProvider::BuildRequestBody(
 	}
 
 	Body->SetBoolField(TEXT("stream"), true);
-	Body->SetNumberField(TEXT("temperature"), EffectiveTemperature);
-	Body->SetNumberField(TEXT("max_tokens"), EffectiveMaxTokens);
+
+	if (IsReasoningModel(Config.ModelId))
+	{
+		Body->SetNumberField(TEXT("max_completion_tokens"), EffectiveMaxTokens);
+		// Reasoning models reject temperature and top_p
+	}
+	else
+	{
+		Body->SetNumberField(TEXT("temperature"), EffectiveTemperature);
+		Body->SetNumberField(TEXT("max_tokens"), EffectiveMaxTokens);
+	}
 
 	return Body;
 }

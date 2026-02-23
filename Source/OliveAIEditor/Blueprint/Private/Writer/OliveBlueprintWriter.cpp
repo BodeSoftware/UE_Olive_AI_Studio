@@ -1486,10 +1486,19 @@ bool FOliveBlueprintWriter::ValidateVariableTypeForCreation(
 
 	if (bNeedsSubType && PinType.PinSubCategoryObject == nullptr)
 	{
+		FString NameHint;
+		if (!Variable.Type.ClassName.IsEmpty()) NameHint = Variable.Type.ClassName;
+		else if (!Variable.Type.StructName.IsEmpty()) NameHint = Variable.Type.StructName;
+		else if (!Variable.Type.EnumName.IsEmpty()) NameHint = Variable.Type.EnumName;
+		else NameHint = TEXT("(empty)");
+
 		OutError = FString::Printf(
-			TEXT("Type resolution failed for variable '%s' (%s). Provide a valid class/struct/enum name."),
+			TEXT("Type resolution failed for variable '%s': could not find '%s'. "
+				 "Use UE class names without prefix: 'Actor' not 'AActor', "
+				 "'StaticMeshComponent' not 'UStaticMeshComponent'. "
+				 "For TSubclassOf<Actor>, use category:'class' + class_name:'Actor'."),
 			*Variable.Name,
-			*Variable.Type.GetDisplayName());
+			*NameHint);
 		return false;
 	}
 
@@ -1544,6 +1553,35 @@ FOliveBlueprintWriter::FOliveVariableCorrectionDecision FOliveBlueprintWriter::A
 	return FOliveVariableCorrectionDecision();
 }
 
+UClass* FOliveBlueprintWriter::ResolveClassByName(const FString& ClassName)
+{
+	// 1. Exact match
+	UClass* Class = FindObject<UClass>(nullptr, *ClassName);
+	if (Class) return Class;
+
+	// 2. FindFirstObject (searches all packages)
+	Class = FindFirstObject<UClass>(*ClassName);
+	if (Class) return Class;
+
+	// 3. Strip A/U prefix (AActor -> Actor, UObject -> Object)
+	if (ClassName.Len() > 1 && (ClassName[0] == TEXT('A') || ClassName[0] == TEXT('U')))
+	{
+		FString Stripped = ClassName.Mid(1);
+		Class = FindFirstObject<UClass>(*Stripped);
+		if (Class) return Class;
+	}
+
+	// 4. Try adding A prefix (Actor -> AActor)
+	Class = FindFirstObject<UClass>(*(TEXT("A") + ClassName));
+	if (Class) return Class;
+
+	// 5. Try adding U prefix (Object -> UObject)
+	Class = FindFirstObject<UClass>(*(TEXT("U") + ClassName));
+	if (Class) return Class;
+
+	return nullptr;
+}
+
 FEdGraphPinType FOliveBlueprintWriter::ConvertIRType(const FOliveIRType& IRType)
 {
 	FEdGraphPinType PinType;
@@ -1564,10 +1602,15 @@ FEdGraphPinType FOliveBlueprintWriter::ConvertIRType(const FOliveIRType& IRType)
 		PinType.PinCategory = UEdGraphSchema_K2::PC_Int64;
 		break;
 	case EOliveIRTypeCategory::Float:
-		PinType.PinCategory = UEdGraphSchema_K2::PC_Float;
+		// UE 5.5+: Float/Double use PC_Real as PinCategory with PC_Float/PC_Double as PinSubCategory.
+		// Using PC_Float directly as PinCategory causes "Can't parse default value" warnings
+		// because the engine cannot resolve a FProperty from a bare PC_Float category.
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Real;
+		PinType.PinSubCategory = UEdGraphSchema_K2::PC_Float;
 		break;
 	case EOliveIRTypeCategory::Double:
-		PinType.PinCategory = UEdGraphSchema_K2::PC_Double;
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Real;
+		PinType.PinSubCategory = UEdGraphSchema_K2::PC_Double;
 		break;
 	case EOliveIRTypeCategory::String:
 		PinType.PinCategory = UEdGraphSchema_K2::PC_String;
@@ -1606,11 +1649,7 @@ FEdGraphPinType FOliveBlueprintWriter::ConvertIRType(const FOliveIRType& IRType)
 		PinType.PinCategory = UEdGraphSchema_K2::PC_Object;
 		if (!IRType.ClassName.IsEmpty())
 		{
-			UClass* Class = FindObject<UClass>(nullptr, *IRType.ClassName);
-			if (!Class)
-			{
-				Class = FindFirstObject<UClass>( *IRType.ClassName);
-			}
+			UClass* Class = ResolveClassByName(IRType.ClassName);
 			if (Class)
 			{
 				PinType.PinSubCategoryObject = Class;
@@ -1621,11 +1660,7 @@ FEdGraphPinType FOliveBlueprintWriter::ConvertIRType(const FOliveIRType& IRType)
 		PinType.PinCategory = UEdGraphSchema_K2::PC_Class;
 		if (!IRType.ClassName.IsEmpty())
 		{
-			UClass* Class = FindObject<UClass>(nullptr, *IRType.ClassName);
-			if (!Class)
-			{
-				Class = FindFirstObject<UClass>( *IRType.ClassName);
-			}
+			UClass* Class = ResolveClassByName(IRType.ClassName);
 			if (Class)
 			{
 				PinType.PinSubCategoryObject = Class;
@@ -1636,11 +1671,7 @@ FEdGraphPinType FOliveBlueprintWriter::ConvertIRType(const FOliveIRType& IRType)
 		PinType.PinCategory = UEdGraphSchema_K2::PC_Interface;
 		if (!IRType.ClassName.IsEmpty())
 		{
-			UClass* Class = FindObject<UClass>(nullptr, *IRType.ClassName);
-			if (!Class)
-			{
-				Class = FindFirstObject<UClass>( *IRType.ClassName);
-			}
+			UClass* Class = ResolveClassByName(IRType.ClassName);
 			if (Class)
 			{
 				PinType.PinSubCategoryObject = Class;

@@ -6,6 +6,7 @@
 #include "IOliveAIProvider.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/Runnable.h"
+#include "Providers/OliveCLIToolCallParser.h"
 
 /**
  * Claude Code CLI Provider
@@ -100,6 +101,15 @@ private:
 	 * Parse a line of JSON output from claude
 	 */
 	void ParseOutputLine(const FString& Line);
+
+	/**
+	 * Called when the claude process completes. Parses tool calls from
+	 * accumulated response text and emits them via OnToolCall before
+	 * completing. Bridges CLI output to ConversationManager's agentic loop.
+	 *
+	 * @param ReturnCode Process exit code
+	 */
+	void HandleResponseComplete(int32 ReturnCode);
 
 	/**
 	 * Build the prompt/message to send to claude

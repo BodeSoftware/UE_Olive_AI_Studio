@@ -393,6 +393,9 @@ private:
 	 * @param IRType The IR type to convert
 	 * @return Equivalent UE pin type
 	 */
+	/** Resolve a UClass by name with UE prefix fallback (A/U prefix strip/add) */
+	static UClass* ResolveClassByName(const FString& ClassName);
+
 	FEdGraphPinType ConvertIRType(const FOliveIRType& IRType);
 
 	/**

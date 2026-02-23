@@ -39,6 +39,15 @@ struct OLIVEAIEDITOR_API FOliveDistillationConfig
 	/** Max chars for a single tool result before forced summarization */
 	int32 MaxResultChars = 4000;
 
+	/** Maximum total characters for all tool result messages combined.
+	  * When exceeded, older tool results are progressively summarized.
+	  * 0 = no limit. Default 80000 (~20K tokens). */
+	int32 MaxTotalResultChars = 80000;
+
+	/** Max chars for a single assistant message before truncation.
+	  * Only applied to non-recent assistant messages. 0 = no limit. */
+	int32 MaxAssistantChars = 4000;
+
 	/** Target token budget for the distilled conversation (0 = no limit, just apply rules) */
 	int32 TargetTokenBudget = 0;
 };

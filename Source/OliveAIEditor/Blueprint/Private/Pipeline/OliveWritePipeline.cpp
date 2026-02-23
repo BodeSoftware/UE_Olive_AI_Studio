@@ -64,7 +64,7 @@ FOliveWriteResult FOliveWriteResult::ValidationError(const FOliveValidationResul
 FOliveWriteResult FOliveWriteResult::ConfirmationNeeded(EOliveConfirmationRequirement Requirement, const FString& Plan)
 {
 	FOliveWriteResult WriteResult;
-	WriteResult.bSuccess = false; // Not an error, but not completed
+	WriteResult.bSuccess = true; // Confirmation is a valid (non-error) pipeline outcome
 	WriteResult.CompletedStage = EOliveWriteStage::Confirm;
 	WriteResult.ConfirmationRequired = Requirement;
 	WriteResult.PlanDescription = Plan;

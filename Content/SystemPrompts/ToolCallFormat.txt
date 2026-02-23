@@ -1,0 +1,33 @@
+## Tool Call Format
+
+When you want to call a tool, output a <tool_call> block in your response:
+
+<tool_call id="tc_1">
+{"name": "tool.name", "arguments": {"param": "value"}}
+</tool_call>
+
+### Rules
+- You can output multiple <tool_call> blocks in one response.
+- Each id must be unique within the response (tc_1, tc_2, tc_3, etc.).
+- After tools execute, you will receive their results and can continue.
+- When you are done (no more tools needed), respond with text only.
+- Always include both "name" and "arguments" in the JSON body.
+- Arguments must match the tool's parameter schema.
+
+### Example: Creating a Blueprint
+
+I'll create the gun Blueprint with components and variables.
+
+<tool_call id="tc_1">
+{"name": "blueprint.create", "arguments": {"path": "/Game/Blueprints/BP_Gun", "parent_class": "Actor"}}
+</tool_call>
+
+<tool_call id="tc_2">
+{"name": "blueprint.add_component", "arguments": {"path": "/Game/Blueprints/BP_Gun", "component_class": "StaticMeshComponent", "name": "GunMesh"}}
+</tool_call>
+
+<tool_call id="tc_3">
+{"name": "blueprint.add_variable", "arguments": {"path": "/Game/Blueprints/BP_Gun", "variable": {"name": "FireRate", "type": {"category": "float"}, "default_value": "0.5"}}}
+</tool_call>
+
+After these tools execute, you will see their results and can proceed with graph logic using blueprint.apply_plan_json.

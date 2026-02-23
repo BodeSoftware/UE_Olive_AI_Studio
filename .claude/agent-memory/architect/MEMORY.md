@@ -83,6 +83,15 @@
 - **C5 key decision**: v2.0 preview skips lowering entirely. Returns `resolved_steps` array with `resolved_function` and `resolved_class` per step so AI can verify resolution.
 - **Pin manifests NOT serialized in result**: Phase C uses a `self_correction_hint` string instead of serialized manifest JSON. The AI is told to use `blueprint.read` for actual pin names. Full manifest serialization deferred to a follow-up.
 
+### Self-Correction Fix Plan - Feb 2026
+- `plans/self-correction-fix-tasks.md` -- 7 fixes across 3 phases for self-correction system
+- **Root cause**: CLI prompt via `-p` arg exceeds Win32 32KB cmd-line limit after 3+ agentic iterations. Process crashes, crash classified as Terminal (no retry), and even when corrections reach AI, nothing forces retry.
+- **Fix 1 (stdin pipe)**: `FPlatformProcess::CreatePipe(R, W, bWritePipeLocal=true)` for stdin. Pass ReadEnd to CreateProc's PipeReadChild param. Use `uint8*` WritePipe overload (FString overload auto-appends `\n`). Close write end after writing to signal EOF.
+- **Fix 2 (crash classification)**: Match `"process exited with code"` as Transient in ClassifyError Tier 2.
+- **Fix 6 (correction directive)**: Injected as User role message (not System) for cross-provider compatibility. Appended in ContinueAfterToolResults before SendToProvider.
+- **Fix 7 (block premature completion)**: Max 2 re-prompts. `EOliveRunOutcome::PartialSuccess` already exists in the enum. bHasPendingCorrections cleared when a batch has 0 failures.
+- **`EOliveRunOutcome` enum**: Completed, PartialSuccess, Failed, Cancelled -- defined in OliveBrainState.h line 36.
+
 ## File Structure
 - Tool handlers: `Source/OliveAIEditor/Blueprint/Private/MCP/OliveBlueprintToolHandlers.cpp` (very large file, 3000+ lines)
 - Schemas: `Source/OliveAIEditor/Blueprint/Private/MCP/OliveBlueprintSchemas.cpp`

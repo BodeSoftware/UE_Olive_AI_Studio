@@ -39,6 +39,10 @@
 - Log category: LogOliveGraphLayout
 - BuildConsumerMap scans inputs for @stepId refs to identify pure-node consumers
 
+## UE 5.5 API Quirks
+- **Float/Double PinType**: In UE 5.5, `PC_Float` and `PC_Double` must NOT be used as `PinCategory`. Instead use `PinCategory = PC_Real` with `PinSubCategory = PC_Float` (or `PC_Double`). Using `PC_Float` directly as category causes "Can't parse default value" compile warnings because the engine can't resolve an FProperty from a bare `PC_Float` category.
+- Source: `EdGraphSchema_K2.cpp` lines 3503-3512 (ConvertPropertyToPinType sets PC_Real+subcategory for both FFloatProperty and FDoubleProperty)
+
 ## Phase 2 Task 6 (Large-Graph Read Mode)
 - Constants: `OLIVE_LARGE_GRAPH_THRESHOLD = 500`, `OLIVE_GRAPH_PAGE_SIZE = 100` in OliveGraphReader.h
 - `ReadGraphSummary()`: builds NodeIdMap, counts connections, but leaves Nodes array empty

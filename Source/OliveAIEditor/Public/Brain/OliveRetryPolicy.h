@@ -54,6 +54,9 @@ public:
 	/** Get total number of correction attempts across all signatures */
 	int32 GetTotalAttempts() const { return TotalAttempts; }
 
+	/** Get the attempt count for a specific error signature */
+	int32 GetAttemptCount(const FString& ErrorSignature) const;
+
 	/** Check if total correction budget is exceeded */
 	bool IsBudgetExhausted(const FOliveRetryPolicy& Policy) const;
 

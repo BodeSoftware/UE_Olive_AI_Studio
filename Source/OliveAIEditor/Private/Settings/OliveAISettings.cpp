@@ -275,6 +275,10 @@ EOliveConfirmationTier UOliveAISettings::GetEffectiveTier(const FString& Operati
 	{
 		BaseTier = ComponentOperationsTier;
 	}
+	else if (OperationCategory == TEXT("create"))
+	{
+		BaseTier = CreateOperationsTier;
+	}
 	else if (OperationCategory == TEXT("function_creation"))
 	{
 		BaseTier = FunctionCreationTier;

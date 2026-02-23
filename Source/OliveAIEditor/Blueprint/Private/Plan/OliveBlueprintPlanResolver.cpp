@@ -538,11 +538,37 @@ bool FOliveBlueprintPlanResolver::ResolveEventOp(
 		return false;
 	}
 
-	Out.Properties.Add(TEXT("event_name"), Step.Target);
+	// Map user-friendly event names to their internal UFunction equivalents.
+	// In UE5, Blueprint-overridable native events use a "Receive" prefix
+	// (e.g., BeginPlay -> ReceiveBeginPlay) but the editor displays them without it.
+	// Names already in Receive* form pass through unchanged (no double-mapping).
+	static const TMap<FString, FString> EventNameMap = {
+		{ TEXT("BeginPlay"),          TEXT("ReceiveBeginPlay") },
+		{ TEXT("EndPlay"),            TEXT("ReceiveEndPlay") },
+		{ TEXT("Tick"),               TEXT("ReceiveTick") },
+		{ TEXT("ActorBeginOverlap"),  TEXT("ReceiveActorBeginOverlap") },
+		{ TEXT("ActorEndOverlap"),    TEXT("ReceiveActorEndOverlap") },
+		{ TEXT("AnyDamage"),          TEXT("ReceiveAnyDamage") },
+		{ TEXT("Hit"),                TEXT("ReceiveHit") },
+		{ TEXT("PointDamage"),        TEXT("ReceivePointDamage") },
+		{ TEXT("RadialDamage"),       TEXT("ReceiveRadialDamage") },
+		{ TEXT("Destroyed"),          TEXT("ReceiveDestroyed") },
+	};
+
+	FString ResolvedEventName = Step.Target;
+	if (const FString* MappedName = EventNameMap.Find(Step.Target))
+	{
+		ResolvedEventName = *MappedName;
+		UE_LOG(LogOlivePlanResolver, Log,
+			TEXT("Step '%s': Mapped event name '%s' -> '%s'"),
+			*Step.StepId, *Step.Target, *ResolvedEventName);
+	}
+
+	Out.Properties.Add(TEXT("event_name"), ResolvedEventName);
 
 	UE_LOG(LogOlivePlanResolver, Verbose,
 		TEXT("Step '%s': Resolved event '%s'"),
-		*Step.StepId, *Step.Target);
+		*Step.StepId, *ResolvedEventName);
 
 	return true;
 }
@@ -700,7 +726,7 @@ FString FOliveBlueprintPlanResolver::ComputePlanFingerprint(
 	FSHAHash Hash;
 	FSHA1::HashBuffer(TCHAR_TO_UTF8(*Utf8Input), Utf8Input.Len(), Hash.Hash);
 
-	return Hash.ToString();
+	return Hash.ToString().Left(8).ToLower();
 }
 
 // ============================================================================

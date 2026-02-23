@@ -58,6 +58,9 @@ private:
 		const FOliveRequestOptions& Options
 	);
 
+	/** Check if a model requires max_completion_tokens instead of max_tokens */
+	static bool IsReasoningModel(const FString& ModelId);
+
 	/** Convert messages to JSON format */
 	TArray<TSharedPtr<FJsonValue>> ConvertMessagesToJson(const TArray<FOliveChatMessage>& Messages);
 

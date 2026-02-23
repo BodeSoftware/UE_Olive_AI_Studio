@@ -984,10 +984,24 @@ void FOlivePlanExecutor::PhaseSetDefaults(
                 continue;
             }
 
+            // For set_var steps, UE names the data input pin after the variable
+            // (e.g., "bCanFire"), not "value". Remap the generic "value" key to
+            // the actual variable name stored in Step.Target.
+            FString ResolvedPinKey = PinKey;
+            if (Step.Op == OlivePlanOps::SetVar
+                && PinKey.Equals(TEXT("value"), ESearchCase::IgnoreCase)
+                && !Step.Target.IsEmpty())
+            {
+                ResolvedPinKey = Step.Target;
+                UE_LOG(LogOlivePlanExecutor, Verbose,
+                    TEXT("Step '%s': Remapped generic 'value' pin key to variable name '%s' for set_var"),
+                    *Step.StepId, *Step.Target);
+            }
+
             // Resolve the target input pin using the manifest
             FString MatchMethod;
             const FOlivePinManifestEntry* PinEntry = Manifest->FindPinSmart(
-                PinKey, /*bIsInput=*/true,
+                ResolvedPinKey, /*bIsInput=*/true,
                 EOliveIRTypeCategory::Unknown, &MatchMethod);
 
             if (!PinEntry)

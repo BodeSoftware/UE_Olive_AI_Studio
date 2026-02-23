@@ -12,6 +12,7 @@
 #include "Brain/OliveToolExecutionContext.h"
 #include "Chat/OliveRunManager.h"
 #include "Misc/Guid.h"
+#include "Serialization/JsonSerializer.h"
 
 namespace
 {
@@ -59,6 +60,15 @@ bool DetectWriteIntent(const FString& UserMessage)
 		TEXT("fire")
 	};
 	return MessageContainsAnyKeyword(UserMessage, WriteKeywords);
+}
+
+bool IsFoundationalTool(const FString& ToolName)
+{
+	return ToolName == TEXT("blueprint.create")
+		|| ToolName == TEXT("behaviortree.create")
+		|| ToolName == TEXT("pcg.create_graph")
+		|| ToolName == TEXT("cpp.create_class")
+		|| ToolName == TEXT("blueprint.preview_plan_json");
 }
 
 bool DetectDangerIntent(const FString& UserMessage)
@@ -146,11 +156,17 @@ void FOliveConversationManager::ClearHistory()
 	MessageHistory.Empty();
 	PendingToolCalls.Empty();
 	PendingToolResults.Empty();
+	ActiveToolCallArgs.Reset();
 	CurrentStreamingContent.Empty();
 	bTurnHasExplicitWriteIntent = false;
 	bTurnHasDangerIntent = false;
 	bStopAfterToolResults = false;
 	PendingConfirmationToken.Empty();
+	PendingConfirmationQueue.Empty();
+	CurrentBatchFailureCount = 0;
+	CurrentBatchCorrectionSummary.Empty();
+	bHasPendingCorrections = false;
+	CorrectionRepromptCount = 0;
 
 	// Clear any queued messages so they are not sent into a fresh session
 	if (Queue)
@@ -215,6 +231,8 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 	bTurnHasExplicitWriteIntent = DetectWriteIntent(Message);
 	bTurnHasDangerIntent = DetectDangerIntent(Message);
 	bStopAfterToolResults = false;
+	bHasPendingCorrections = false;
+	CorrectionRepromptCount = 0;
 
 	// Begin a Brain run
 	if (Brain.IsValid())
@@ -257,14 +275,20 @@ void FOliveConversationManager::CancelCurrentRequest()
 	PendingToolCalls.Empty();
 	PendingToolResults.Empty();
 	PendingToolExecutions = 0;
+	ActiveToolCallArgs.Reset();
 	CurrentStreamingContent.Empty();
 	PendingConfirmationToolCallId.Empty();
 	PendingConfirmationToolName.Empty();
 	PendingConfirmationArguments.Reset();
 	PendingConfirmationToken.Empty();
+	PendingConfirmationQueue.Empty();
 	bTurnHasExplicitWriteIntent = false;
 	bTurnHasDangerIntent = false;
 	bStopAfterToolResults = false;
+	CurrentBatchFailureCount = 0;
+	CurrentBatchCorrectionSummary.Empty();
+	bHasPendingCorrections = false;
+	CorrectionRepromptCount = 0;
 }
 
 // ==========================================
@@ -403,6 +427,8 @@ void FOliveConversationManager::SendToProvider()
 	{
 		DistillConfig.RecentPairsToKeep = Settings->PromptDistillationRawResults;
 	}
+	DistillConfig.MaxTotalResultChars = 80000; // ~20K tokens // TODO: make configurable via UOliveAISettings
+	DistillConfig.MaxAssistantChars = 4000;
 	const FOliveDistillationResult DistillResult = PromptDistiller.Distill(MessagesToSend, DistillConfig);
 
 	// Inject a context truncation note so the model knows earlier messages were summarized.
@@ -569,18 +595,61 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 	}
 	else
 	{
+		// Check if AI responded text-only despite unresolved failures
+		if (bHasPendingCorrections && CorrectionRepromptCount < MaxCorrectionReprompts)
+		{
+			CorrectionRepromptCount++;
+
+			FString RepromptText = FString::Printf(
+				TEXT("[SYSTEM: You responded with text but there are still unresolved tool failures "
+					 "from a previous batch. You MUST call the appropriate tools to fix these errors "
+					 "before completing. Re-prompt %d/%d.]"),
+				CorrectionRepromptCount, MaxCorrectionReprompts);
+
+			FOliveChatMessage RepromptMessage;
+			RepromptMessage.Role = EOliveChatRole::User;
+			RepromptMessage.Content = RepromptText;
+			RepromptMessage.Timestamp = FDateTime::UtcNow();
+			AddMessage(RepromptMessage);
+
+			UE_LOG(LogOliveAI, Warning,
+				TEXT("AI responded text-only with unresolved corrections. Re-prompting (%d/%d)"),
+				CorrectionRepromptCount, MaxCorrectionReprompts);
+
+			// Re-enter the agentic loop
+			SendToProvider();
+			return;
+		}
+
+		// Determine final outcome based on whether corrections were resolved
+		EOliveRunOutcome FinalOutcome = bHasPendingCorrections
+			? EOliveRunOutcome::PartialSuccess
+			: EOliveRunOutcome::Completed;
+
+		if (bHasPendingCorrections)
+		{
+			UE_LOG(LogOliveAI, Warning,
+				TEXT("Completing with PartialSuccess: unresolved corrections remain after %d re-prompts"),
+				CorrectionRepromptCount);
+		}
+
 		// Complete run if active
 		if (bRunModeActive && FOliveRunManager::Get().HasActiveRun())
 		{
 			FOliveRunManager::Get().CompleteRun();
 			bRunModeActive = false;
 		}
-		// Brain: transition to Completed → Idle
+		// Brain: transition to Completed/PartialSuccess -> Idle
 		if (Brain.IsValid() && Brain->GetState() != EOliveBrainState::Idle)
 		{
-			Brain->CompleteRun(EOliveRunOutcome::Completed);
+			Brain->CompleteRun(FinalOutcome);
 			Brain->ResetToIdle();
 		}
+
+		// Reset correction state
+		bHasPendingCorrections = false;
+		CorrectionRepromptCount = 0;
+
 		// No tool calls, we're done
 		bIsProcessing = false;
 		OnProcessingComplete.Broadcast();
@@ -616,6 +685,7 @@ void FOliveConversationManager::HandleError(const FString& ErrorMessage)
 	PendingToolCalls.Empty();
 	PendingToolResults.Empty();
 	PendingConfirmationToken.Empty();
+	PendingConfirmationQueue.Empty();
 	bStopAfterToolResults = false;
 
 	OnError.Broadcast(ErrorMessage);
@@ -668,19 +738,105 @@ void FOliveConversationManager::ProcessPendingToolCalls()
 
 	// Clear previous results
 	PendingToolResults.Empty();
-	PendingToolExecutions = PendingToolCalls.Num();
+	bSkipRemainingBatch = false;
+	FailedFoundationalTool.Empty();
+	PendingConfirmationQueue.Empty();
+	CurrentBatchFailureCount = 0;
+	CurrentBatchCorrectionSummary.Empty();
 
-	UE_LOG(LogOliveAI, Log, TEXT("Processing %d tool calls (iteration %d)"),
-		PendingToolCalls.Num(), CurrentToolIteration);
+	// Snapshot: move pending calls into a local so callbacks can safely
+	// mutate the member array (ContinueAfterToolResults clears it;
+	// HandleToolCall may re-populate it via a new provider response).
+	TArray<FOliveStreamChunk> CallsToProcess = MoveTemp(PendingToolCalls);
+	PendingToolCalls.Reset();
 
-	// Execute each tool call
-	for (const FOliveStreamChunk& ToolCall : PendingToolCalls)
+	// Defensive dedupe by tool_call id. Some provider outputs can repeat the same
+	// call block, and executing duplicates can create unintended duplicate writes.
+	TSet<FString> SeenToolCallIds;
+	TArray<FOliveStreamChunk> UniqueCalls;
+	UniqueCalls.Reserve(CallsToProcess.Num());
+	for (const FOliveStreamChunk& TC : CallsToProcess)
 	{
-		ExecuteToolCall(ToolCall);
+		if (!TC.ToolCallId.IsEmpty())
+		{
+			if (SeenToolCallIds.Contains(TC.ToolCallId))
+			{
+				UE_LOG(LogOliveAI, Warning, TEXT("Skipping duplicate tool call id '%s' (%s)"),
+					*TC.ToolCallId, *TC.ToolName);
+				continue;
+			}
+			SeenToolCallIds.Add(TC.ToolCallId);
+		}
+		UniqueCalls.Add(TC);
+	}
+	CallsToProcess = MoveTemp(UniqueCalls);
+
+	// Build ID->Args lookup for HandleToolResult's confirmation flow
+	ActiveToolCallArgs.Reset();
+	for (const FOliveStreamChunk& TC : CallsToProcess)
+	{
+		if (!TC.ToolCallId.IsEmpty())
+		{
+			ActiveToolCallArgs.Add(TC.ToolCallId, TC.ToolArguments);
+		}
 	}
 
-	// Tool results will be collected asynchronously
-	// ContinueAfterToolResults will be called when all are done
+	PendingToolExecutions = CallsToProcess.Num();
+
+	UE_LOG(LogOliveAI, Log, TEXT("Processing %d tool calls (iteration %d)"),
+		CallsToProcess.Num(), CurrentToolIteration);
+
+	// Execute each tool call from the local snapshot
+	for (const FOliveStreamChunk& ToolCall : CallsToProcess)
+	{
+		// If a previous tool in this batch triggered stop, skip remaining tools
+		if (bStopAfterToolResults)
+		{
+			FOliveChatMessage SkipMessage;
+			SkipMessage.Role = EOliveChatRole::Tool;
+			SkipMessage.ToolCallId = ToolCall.ToolCallId;
+			SkipMessage.ToolName = ToolCall.ToolName;
+			SkipMessage.Content = TEXT("{\"success\":false,\"error\":{\"code\":\"SKIPPED\",\"message\":\"Skipped: a previous tool call in this batch triggered a stop.\"}}");
+			SkipMessage.Timestamp = FDateTime::UtcNow();
+			PendingToolResults.Add(SkipMessage);
+
+			PendingToolExecutions--;
+			continue;
+		}
+
+		// If a foundational tool in this batch failed, skip remaining dependent tools
+		if (bSkipRemainingBatch)
+		{
+			FOliveChatMessage SkipMessage;
+			SkipMessage.Role = EOliveChatRole::Tool;
+			SkipMessage.ToolCallId = ToolCall.ToolCallId;
+			SkipMessage.ToolName = ToolCall.ToolName;
+			SkipMessage.Content = FString::Printf(
+				TEXT("{\"success\":false,\"error\":{\"code\":\"SKIPPED\",\"message\":\"Skipped: prerequisite tool '%s' failed. Fix it and retry.\"}}")
+				, *FailedFoundationalTool);
+			SkipMessage.Timestamp = FDateTime::UtcNow();
+			PendingToolResults.Add(SkipMessage);
+			PendingToolExecutions--;
+			continue;
+		}
+
+		ExecuteToolCall(ToolCall);
+
+		// ExecuteToolCall() is synchronous today and may finalize the batch
+		// via HandleToolResult()->ContinueAfterToolResults() when the last
+		// pending execution completes. Avoid double-finalizing/sending.
+		if (PendingToolExecutions <= 0)
+		{
+			return;
+		}
+	}
+
+	// If all tools were skipped (bStopAfterToolResults was set before the loop ran any),
+	// finalize immediately since no async HandleToolResult will fire
+	if (PendingToolExecutions <= 0)
+	{
+		ContinueAfterToolResults();
+	}
 }
 
 void FOliveConversationManager::ExecuteToolCall(const FOliveStreamChunk& ToolCall)
@@ -700,6 +856,19 @@ void FOliveConversationManager::ExecuteToolCall(const FOliveStreamChunk& ToolCal
 	FOliveToolExecutionContextScope ContextScope(ToolContext);
 
 	FOliveToolResult Result = FOliveToolRegistry::Get().ExecuteTool(ToolCall.ToolName, ToolCall.ToolArguments);
+
+	// Log full arguments on failure for debugging
+	if (!Result.bSuccess)
+	{
+		FString ArgsStr;
+		if (ToolCall.ToolArguments.IsValid())
+		{
+			auto Writer = TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&ArgsStr);
+			FJsonSerializer::Serialize(ToolCall.ToolArguments.ToSharedRef(), Writer);
+			Writer->Close();
+		}
+		UE_LOG(LogOliveAI, Warning, TEXT("Tool '%s' FAILED with args: %s"), *ToolCall.ToolName, *ArgsStr);
+	}
 
 	// Record in operation history
 	{
@@ -749,35 +918,83 @@ void FOliveConversationManager::HandleToolResult(
 				? Result.Data->GetStringField(TEXT("plan"))
 				: TEXT("This operation requires confirmation.");
 
-			// Store pending state
-			bWaitingForConfirmation = true;
-			PendingConfirmationToolCallId = ToolCallId;
-			PendingConfirmationToolName = ToolName;
-			Result.Data->TryGetStringField(TEXT("confirmation_token"), PendingConfirmationToken);
+			FPendingConfirmationRequest Request;
+			Request.ToolCallId = ToolCallId;
+			Request.ToolName = ToolName;
+			Request.Plan = Plan;
+			Result.Data->TryGetStringField(TEXT("confirmation_token"), Request.ConfirmationToken);
 
-			// Find the matching tool call arguments for re-execution
-			for (const FOliveStreamChunk& TC : PendingToolCalls)
+			// Find the matching tool call arguments for re-execution.
+			if (const TSharedPtr<FJsonObject>* FoundArgs = ActiveToolCallArgs.Find(ToolCallId))
 			{
-				if (TC.ToolCallId == ToolCallId)
-				{
-					PendingConfirmationArguments = TC.ToolArguments;
-					break;
-				}
+				Request.Arguments = *FoundArgs;
 			}
 
-			// Fire confirmation delegate for UI
-			OnConfirmationRequired.Broadcast(ToolCallId, ToolName, Plan);
+			if (!bWaitingForConfirmation)
+			{
+				bWaitingForConfirmation = true;
+				PendingConfirmationToolCallId = Request.ToolCallId;
+				PendingConfirmationToolName = Request.ToolName;
+				PendingConfirmationArguments = Request.Arguments;
+				PendingConfirmationToken = Request.ConfirmationToken;
 
-			UE_LOG(LogOliveAI, Log, TEXT("Confirmation required for tool '%s' (id: %s)"), *ToolName, *ToolCallId);
-			return; // Pause the agentic loop
+				// Fire confirmation delegate for UI.
+				OnConfirmationRequired.Broadcast(PendingConfirmationToolCallId, PendingConfirmationToolName, Request.Plan);
+			}
+			else
+			{
+				PendingConfirmationQueue.Add(MoveTemp(Request));
+			}
+
+			UE_LOG(LogOliveAI, Log, TEXT("Confirmation required for tool '%s' (id: %s). queued=%d"),
+				*ToolName, *ToolCallId, PendingConfirmationQueue.Num());
+			return; // Wait for confirmation; PendingToolExecutions decremented on confirm/deny.
 		}
 	}
 
 	// Use SelfCorrectionPolicy to evaluate the result
 	FString ResultContent = Result.ToJsonString();
 	{
+		// Extract asset context from original tool args for per-asset signature tracking
+		FString AssetContext;
+		if (const TSharedPtr<FJsonObject>* FoundArgs = ActiveToolCallArgs.Find(ToolCallId))
+		{
+			if (!(*FoundArgs)->TryGetStringField(TEXT("path"), AssetContext))
+			{
+				(*FoundArgs)->TryGetStringField(TEXT("asset_path"), AssetContext);
+			}
+
+			// Add finer-grained context for variable operations so batched writes
+			// on different variable names do not collapse into one retry signature.
+			if (ToolName == TEXT("blueprint.add_variable")
+				|| ToolName == TEXT("blueprint.modify_variable")
+				|| ToolName == TEXT("blueprint.remove_variable"))
+			{
+				FString VariableName;
+				const TSharedPtr<FJsonObject>* VariableObj = nullptr;
+				if ((*FoundArgs)->TryGetObjectField(TEXT("variable"), VariableObj) && VariableObj && (*VariableObj).IsValid())
+				{
+					(*VariableObj)->TryGetStringField(TEXT("name"), VariableName);
+				}
+				if (VariableName.IsEmpty())
+				{
+					(*FoundArgs)->TryGetStringField(TEXT("name"), VariableName);
+				}
+				if (VariableName.IsEmpty())
+				{
+					(*FoundArgs)->TryGetStringField(TEXT("variable_name"), VariableName);
+				}
+				if (!VariableName.IsEmpty())
+				{
+					AssetContext = AssetContext.IsEmpty()
+						? FString::Printf(TEXT("var=%s"), *VariableName)
+						: FString::Printf(TEXT("%s|var=%s"), *AssetContext, *VariableName);
+				}
+			}
+		}
+
 		FOliveCorrectionDecision Decision = SelfCorrectionPolicy.Evaluate(
-			ToolName, ResultContent, LoopDetector, RetryPolicy);
+			ToolName, ResultContent, LoopDetector, RetryPolicy, AssetContext);
 
 		switch (Decision.Action)
 		{
@@ -794,17 +1011,42 @@ void FOliveConversationManager::HandleToolResult(
 			// Loop detected — stop and report
 			ResultContent = ResultContent + TEXT("\n\n") + Decision.LoopReport;
 			UE_LOG(LogOliveAI, Warning, TEXT("Self-correction loop detected for tool '%s'. Stopping."), *ToolName);
-			if (Brain.IsValid())
-			{
-				Brain->CompleteRun(EOliveRunOutcome::Failed);
-			}
 			bStopAfterToolResults = true;
+			// CompleteRun(Failed) is called once in ContinueAfterToolResults after all results are collected
 			break;
 
 		case EOliveCorrectionAction::Continue:
 		default:
 			break;
 		}
+	}
+
+	// Track failures for batch-level correction directive
+	if (!Result.bSuccess)
+	{
+		CurrentBatchFailureCount++;
+		FString ErrorCode = TEXT("UNKNOWN");
+		FString ErrorMsg = TEXT("Unknown error");
+		if (Result.Data.IsValid())
+		{
+			const TSharedPtr<FJsonObject>* ErrorObj;
+			if (Result.Data->TryGetObjectField(TEXT("error"), ErrorObj))
+			{
+				(*ErrorObj)->TryGetStringField(TEXT("code"), ErrorCode);
+				(*ErrorObj)->TryGetStringField(TEXT("message"), ErrorMsg);
+			}
+		}
+		CurrentBatchCorrectionSummary += FString::Printf(
+			TEXT("- %s (id: %s): %s - %s\n"),
+			*ToolName, *ToolCallId, *ErrorCode, *ErrorMsg);
+	}
+
+	// If a foundational tool failed, skip remaining dependent tools in this batch
+	if (!Result.bSuccess && IsFoundationalTool(ToolName))
+	{
+		bSkipRemainingBatch = true;
+		FailedFoundationalTool = ToolName;
+		UE_LOG(LogOliveAI, Warning, TEXT("Foundational tool '%s' failed. Skipping remaining batch tools."), *ToolName);
 	}
 
 	// Create tool result message
@@ -836,6 +1078,8 @@ void FOliveConversationManager::ConfirmPendingOperation()
 		*PendingConfirmationToolName, *PendingConfirmationToolCallId);
 
 	bWaitingForConfirmation = false;
+	const FString CompletedToolCallId = PendingConfirmationToolCallId;
+	const FString CompletedToolName = PendingConfirmationToolName;
 
 	// Re-execute the tool with confirmation token from write pipeline
 	TSharedPtr<FJsonObject> ConfirmedArgs = PendingConfirmationArguments.IsValid()
@@ -850,8 +1094,8 @@ void FOliveConversationManager::ConfirmPendingOperation()
 
 		FOliveChatMessage ToolResultMessage;
 		ToolResultMessage.Role = EOliveChatRole::Tool;
-		ToolResultMessage.ToolCallId = PendingConfirmationToolCallId;
-		ToolResultMessage.ToolName = PendingConfirmationToolName;
+		ToolResultMessage.ToolCallId = CompletedToolCallId;
+		ToolResultMessage.ToolName = CompletedToolName;
 		ToolResultMessage.Content = MissingTokenResult.ToJsonString();
 		ToolResultMessage.Timestamp = FDateTime::UtcNow();
 
@@ -863,6 +1107,11 @@ void FOliveConversationManager::ConfirmPendingOperation()
 		PendingToolResults.Add(ToolResultMessage);
 		OnToolCallCompleted.Broadcast(ToolResultMessage.ToolName, ToolResultMessage.ToolCallId, MissingTokenResult);
 		PendingToolExecutions--;
+		ActivateNextPendingConfirmation();
+		if (bWaitingForConfirmation)
+		{
+			return;
+		}
 		if (PendingToolExecutions <= 0)
 		{
 			ContinueAfterToolResults();
@@ -877,13 +1126,13 @@ void FOliveConversationManager::ConfirmPendingOperation()
 	ToolContext.ActiveFocusProfile = FName(*ActiveFocusProfile);
 	FOliveToolExecutionContextScope ContextScope(ToolContext);
 
-	FOliveToolResult Result = FOliveToolRegistry::Get().ExecuteTool(PendingConfirmationToolName, ConfirmedArgs);
+	FOliveToolResult Result = FOliveToolRegistry::Get().ExecuteTool(CompletedToolName, ConfirmedArgs);
 
 	// Create result message
 	FOliveChatMessage ToolResultMessage;
 	ToolResultMessage.Role = EOliveChatRole::Tool;
-	ToolResultMessage.ToolCallId = PendingConfirmationToolCallId;
-	ToolResultMessage.ToolName = PendingConfirmationToolName;
+	ToolResultMessage.ToolCallId = CompletedToolCallId;
+	ToolResultMessage.ToolName = CompletedToolName;
 	ToolResultMessage.Content = Result.ToJsonString();
 	ToolResultMessage.Timestamp = FDateTime::UtcNow();
 
@@ -898,6 +1147,11 @@ void FOliveConversationManager::ConfirmPendingOperation()
 	OnToolCallCompleted.Broadcast(ToolResultMessage.ToolName, ToolResultMessage.ToolCallId, Result);
 
 	PendingToolExecutions--;
+	ActivateNextPendingConfirmation();
+	if (bWaitingForConfirmation)
+	{
+		return;
+	}
 	if (PendingToolExecutions <= 0)
 	{
 		ContinueAfterToolResults();
@@ -915,12 +1169,14 @@ void FOliveConversationManager::DenyPendingOperation()
 		*PendingConfirmationToolName, *PendingConfirmationToolCallId);
 
 	bWaitingForConfirmation = false;
+	const FString CompletedToolCallId = PendingConfirmationToolCallId;
+	const FString CompletedToolName = PendingConfirmationToolName;
 
 	// Create denial result message
 	FOliveChatMessage ToolResultMessage;
 	ToolResultMessage.Role = EOliveChatRole::Tool;
-	ToolResultMessage.ToolCallId = PendingConfirmationToolCallId;
-	ToolResultMessage.ToolName = PendingConfirmationToolName;
+	ToolResultMessage.ToolCallId = CompletedToolCallId;
+	ToolResultMessage.ToolName = CompletedToolName;
 	ToolResultMessage.Content = TEXT("{\"success\":false,\"error\":{\"code\":\"USER_DENIED\",\"message\":\"User denied this operation. Please ask the user how they would like to proceed.\"}}");
 	ToolResultMessage.Timestamp = FDateTime::UtcNow();
 
@@ -934,10 +1190,36 @@ void FOliveConversationManager::DenyPendingOperation()
 	PendingToolResults.Add(ToolResultMessage);
 
 	PendingToolExecutions--;
+	ActivateNextPendingConfirmation();
+	if (bWaitingForConfirmation)
+	{
+		return;
+	}
 	if (PendingToolExecutions <= 0)
 	{
 		ContinueAfterToolResults();
 	}
+}
+
+void FOliveConversationManager::ActivateNextPendingConfirmation()
+{
+	if (PendingConfirmationQueue.Num() <= 0)
+	{
+		return;
+	}
+
+	FPendingConfirmationRequest Next = PendingConfirmationQueue[0];
+	PendingConfirmationQueue.RemoveAt(0);
+
+	bWaitingForConfirmation = true;
+	PendingConfirmationToolCallId = Next.ToolCallId;
+	PendingConfirmationToolName = Next.ToolName;
+	PendingConfirmationArguments = Next.Arguments;
+	PendingConfirmationToken = Next.ConfirmationToken;
+
+	OnConfirmationRequired.Broadcast(Next.ToolCallId, Next.ToolName, Next.Plan);
+	UE_LOG(LogOliveAI, Log, TEXT("Activated queued confirmation for tool '%s' (id: %s). remaining_queue=%d"),
+		*Next.ToolName, *Next.ToolCallId, PendingConfirmationQueue.Num());
 }
 
 void FOliveConversationManager::ContinueAfterToolResults()
@@ -952,11 +1234,49 @@ void FOliveConversationManager::ContinueAfterToolResults()
 	PendingToolCalls.Empty();
 	PendingToolResults.Empty();
 
+	// Pause the loop while waiting on user confirmation.
+	if (bWaitingForConfirmation)
+	{
+		UE_LOG(LogOliveAI, Log, TEXT("Pausing agentic loop: waiting for confirmation '%s' (id: %s), queued=%d"),
+			*PendingConfirmationToolName, *PendingConfirmationToolCallId, PendingConfirmationQueue.Num());
+		return;
+	}
+
 	// Complete current run step
 	if (bRunModeActive && FOliveRunManager::Get().HasActiveRun())
 	{
 		FOliveRunManager::Get().CompleteStep(true);
 	}
+
+	// Inject correction directive if there were failures in this batch
+	if (CurrentBatchFailureCount > 0 && !bStopAfterToolResults)
+	{
+		bHasPendingCorrections = true;
+
+		FString Directive = FString::Printf(
+			TEXT("[CORRECTION REQUIRED: %d tool(s) failed in this batch. Failed operations:\n%s"
+				 "You MUST retry the failed operations before proceeding to new work. "
+				 "Read the asset state first if you are unsure of current values.]"),
+			CurrentBatchFailureCount, *CurrentBatchCorrectionSummary);
+
+		FOliveChatMessage DirectiveMessage;
+		DirectiveMessage.Role = EOliveChatRole::User;
+		DirectiveMessage.Content = Directive;
+		DirectiveMessage.Timestamp = FDateTime::UtcNow();
+		AddMessage(DirectiveMessage);
+
+		UE_LOG(LogOliveAI, Log, TEXT("Injected correction directive for %d failed tools"), CurrentBatchFailureCount);
+	}
+	else if (CurrentBatchFailureCount == 0)
+	{
+		// All tools in this batch succeeded -- corrections are resolved
+		bHasPendingCorrections = false;
+		CorrectionRepromptCount = 0;
+	}
+
+	// Reset batch failure tracking
+	CurrentBatchFailureCount = 0;
+	CurrentBatchCorrectionSummary.Empty();
 
 	if (bStopAfterToolResults)
 	{

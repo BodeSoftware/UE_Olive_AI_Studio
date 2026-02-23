@@ -15,6 +15,12 @@ void FOliveLoopDetector::RecordAttempt(const FString& ErrorSignature, const FStr
 		Fixes.Num(), *ErrorSignature);
 }
 
+int32 FOliveLoopDetector::GetAttemptCount(const FString& ErrorSignature) const
+{
+	const TArray<FString>* Fixes = AttemptHistory.Find(ErrorSignature);
+	return Fixes ? Fixes->Num() : 0;
+}
+
 bool FOliveLoopDetector::IsLooping(const FString& ErrorSignature, const FOliveRetryPolicy& Policy) const
 {
 	const TArray<FString>* Fixes = AttemptHistory.Find(ErrorSignature);

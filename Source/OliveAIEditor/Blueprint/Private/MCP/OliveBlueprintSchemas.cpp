@@ -1060,13 +1060,13 @@ namespace OliveBlueprintSchemas
 			TEXT("Intent-level plan. Use schema_version \"2.0\" (recommended): the executor creates nodes first, introspects actual pin names, then wires using ground-truth names — you do not need to know exact pin names. v2.0 inputs support @step.auto (type-based auto-match), @step.~hint (fuzzy prefix match), and @step.pinName (standard). v1.0 (legacy) uses a lowerer that maps ops to concrete nodes. Fields: schema_version (string), steps array. Each step: step_id, op (call, get_var, set_var, branch, sequence, cast, event, custom_event, for_loop, for_each_loop, delay, is_valid, print_string, spawn_actor, make_struct, break_struct, return, comment), target, and optional inputs/exec_after/exec_outputs."));
 		Properties->SetObjectField(TEXT("plan_json"), PlanJsonProp);
 
-		// preview_fingerprint — optional string for drift detection
+		// preview_fingerprint — optional string for drift detection (never required)
 		Properties->SetObjectField(TEXT("preview_fingerprint"),
-			StringProp(TEXT("Fingerprint from a prior preview call. Required when PlanJsonRequirePreviewForApply setting is true. Ensures graph hasn't changed since preview.")));
+			StringProp(TEXT("Optional 8-char hex fingerprint from a prior blueprint.preview_plan_json call. Used for drift detection — if omitted or mismatched, apply proceeds with inline validation via the resolve+execute pipeline.")));
 
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
 		Schema->SetStringField(TEXT("description"),
-			TEXT("Apply an intent-level Blueprint plan atomically. Supports schema_version \"1.0\" (lowerer path: maps ops to concrete nodes) and \"2.0\" (plan executor: creates nodes first, introspects real pin names via pin manifests, then wires using ground-truth names). v2.0 supports @step.auto (type-based auto-match) and @step.~hint (fuzzy prefix) data wire syntax so you never need to guess pin names. Optionally checks the preview fingerprint for graph drift. Result includes wiring_errors and pin_manifests for self-correction. Compiles once at the end."));
+			TEXT("Apply an intent-level Blueprint plan atomically. Supports schema_version \"1.0\" (lowerer path: maps ops to concrete nodes) and \"2.0\" (plan executor: creates nodes first, introspects real pin names via pin manifests, then wires using ground-truth names). v2.0 supports @step.auto (type-based auto-match) and @step.~hint (fuzzy prefix) data wire syntax so you never need to guess pin names. preview_fingerprint is optional — if omitted, apply proceeds with inline validation. Result includes wiring_errors and pin_manifests for self-correction. Compiles once at the end."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("asset_path"), TEXT("plan_json")});
 

@@ -2,6 +2,7 @@
 
 #include "Providers/OliveOpenAICompatibleProvider.h"
 #include "OliveAIEditorModule.h"
+#include "MCP/OliveToolRegistry.h"
 #include "HttpModule.h"
 #include "Interfaces/IHttpResponse.h"
 #include "Serialization/JsonSerializer.h"
@@ -198,6 +199,16 @@ void FOliveOpenAICompatibleProvider::CancelRequest()
 // Request Building
 // ==========================================
 
+bool FOliveOpenAICompatibleProvider::IsReasoningModel(const FString& ModelId)
+{
+	// OpenAI reasoning models: o1, o1-mini, o1-pro, o3, o3-mini, o4-mini
+	// gpt-4.1 series also requires max_completion_tokens
+	return ModelId.StartsWith(TEXT("o1"))
+		|| ModelId.StartsWith(TEXT("o3"))
+		|| ModelId.StartsWith(TEXT("o4"))
+		|| ModelId.Contains(TEXT("gpt-4.1"));
+}
+
 TSharedPtr<FJsonObject> FOliveOpenAICompatibleProvider::BuildRequestBody(
 	const TArray<FOliveChatMessage>& Messages,
 	const TArray<FOliveToolDefinition>& Tools,
@@ -220,8 +231,17 @@ TSharedPtr<FJsonObject> FOliveOpenAICompatibleProvider::BuildRequestBody(
 	}
 
 	Body->SetBoolField(TEXT("stream"), true);
-	Body->SetNumberField(TEXT("temperature"), EffectiveTemperature);
-	Body->SetNumberField(TEXT("max_tokens"), EffectiveMaxTokens);
+
+	if (IsReasoningModel(Config.ModelId))
+	{
+		Body->SetNumberField(TEXT("max_completion_tokens"), EffectiveMaxTokens);
+		// Reasoning models reject temperature and top_p
+	}
+	else
+	{
+		Body->SetNumberField(TEXT("temperature"), EffectiveTemperature);
+		Body->SetNumberField(TEXT("max_tokens"), EffectiveMaxTokens);
+	}
 
 	return Body;
 }
@@ -251,6 +271,15 @@ TArray<TSharedPtr<FJsonValue>> FOliveOpenAICompatibleProvider::ConvertToolsToJso
 		TSharedPtr<FJsonObject> ToolJson = Tool.ToMCPJson();
 		if (ToolJson.IsValid())
 		{
+			// OpenAI-compatible endpoints may reject dots in function names — replace with underscores on the wire
+			const TSharedPtr<FJsonObject>* FuncObj;
+			if (ToolJson->TryGetObjectField(TEXT("function"), FuncObj))
+			{
+				FString WireName = (*FuncObj)->GetStringField(TEXT("name"));
+				WireName.ReplaceInline(TEXT("."), TEXT("_"));
+				(*FuncObj)->SetStringField(TEXT("name"), WireName);
+			}
+
 			JsonTools.Add(MakeShared<FJsonValueObject>(ToolJson));
 		}
 	}
@@ -534,6 +563,16 @@ void FOliveOpenAICompatibleProvider::FinalizePendingToolCalls()
 		else
 		{
 			Call.ToolArguments = MakeShared<FJsonObject>();
+		}
+
+		// Reverse the dot→underscore mapping: if name isn't registered, try restoring dots
+		if (!FOliveToolRegistry::Get().HasTool(Call.ToolName))
+		{
+			FString DottedName = Call.ToolName.Replace(TEXT("_"), TEXT("."));
+			if (FOliveToolRegistry::Get().HasTool(DottedName))
+			{
+				Call.ToolName = DottedName;
+			}
 		}
 
 		UE_LOG(LogOliveAI, Log, TEXT("OpenAI-compatible tool call: %s (id: %s)"), *Call.ToolName, *Call.ToolCallId);

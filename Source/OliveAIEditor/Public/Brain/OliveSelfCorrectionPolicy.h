@@ -64,7 +64,8 @@ public:
 		const FString& ToolName,
 		const FString& ResultJson,
 		FOliveLoopDetector& LoopDetector,
-		const FOliveRetryPolicy& Policy
+		const FOliveRetryPolicy& Policy,
+		const FString& AssetContext = TEXT("")
 	);
 
 	/** Reset state for a new run */
@@ -104,6 +105,4 @@ private:
 		int32 MaxAttempts
 	) const;
 
-	/** Current attempt count within this run */
-	int32 CurrentAttemptCount = 0;
 };

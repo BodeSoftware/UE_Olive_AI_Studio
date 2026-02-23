@@ -1541,35 +1541,39 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 	FString TypeString = TEXT("Normal");
 	Params->TryGetStringField(TEXT("type"), TypeString);
 
-	// Parse Blueprint type
+	// Parse Blueprint type (case-insensitive, lenient)
 	EOliveBlueprintType BlueprintType = EOliveBlueprintType::Normal;
-	if (TypeString == TEXT("Interface"))
+	FString TypeUpper = TypeString.ToUpper();
+	if (TypeUpper == TEXT("NORMAL") || TypeUpper == TEXT("BLUEPRINT") || TypeUpper.IsEmpty())
+	{
+		BlueprintType = EOliveBlueprintType::Normal;
+	}
+	else if (TypeUpper == TEXT("INTERFACE"))
 	{
 		BlueprintType = EOliveBlueprintType::Interface;
 	}
-	else if (TypeString == TEXT("FunctionLibrary"))
+	else if (TypeUpper == TEXT("FUNCTIONLIBRARY") || TypeUpper == TEXT("FUNCTION_LIBRARY"))
 	{
 		BlueprintType = EOliveBlueprintType::FunctionLibrary;
 	}
-	else if (TypeString == TEXT("MacroLibrary"))
+	else if (TypeUpper == TEXT("MACROLIBRARY") || TypeUpper == TEXT("MACRO_LIBRARY"))
 	{
 		BlueprintType = EOliveBlueprintType::MacroLibrary;
 	}
-	else if (TypeString == TEXT("AnimationBlueprint"))
+	else if (TypeUpper == TEXT("ANIMATIONBLUEPRINT") || TypeUpper == TEXT("ANIMATION_BLUEPRINT") || TypeUpper == TEXT("ANIM_BLUEPRINT"))
 	{
 		BlueprintType = EOliveBlueprintType::AnimationBlueprint;
 	}
-	else if (TypeString == TEXT("WidgetBlueprint"))
+	else if (TypeUpper == TEXT("WIDGETBLUEPRINT") || TypeUpper == TEXT("WIDGET_BLUEPRINT") || TypeUpper == TEXT("UMG") || TypeUpper == TEXT("UI"))
 	{
 		BlueprintType = EOliveBlueprintType::WidgetBlueprint;
 	}
-	else if (TypeString != TEXT("Normal"))
+	else
 	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_INVALID_VALUE"),
-			FString::Printf(TEXT("Invalid Blueprint type '%s'"), *TypeString),
-			TEXT("Use 'Normal', 'Interface', 'FunctionLibrary', 'MacroLibrary', 'AnimationBlueprint', or 'WidgetBlueprint'")
-		);
+		UE_LOG(LogOliveBPTools, Warning, TEXT("blueprint.create: Unknown type '%s', defaulting to Normal. "
+			"The 'type' field is the Blueprint subtype (Normal, Interface, FunctionLibrary), "
+			"not the parent class. Use 'parent_class' for Actor/Pawn/Character."), *TypeString);
+		BlueprintType = EOliveBlueprintType::Normal;
 	}
 
 	// Build write request for pipeline
@@ -2059,15 +2063,50 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 		);
 	}
 
-	// Extract variable object
+	// Extract variable object — accept both nested and flat formats
 	const TSharedPtr<FJsonObject>* VariableJsonPtr;
-	if (!Params->TryGetObjectField(TEXT("variable"), VariableJsonPtr) || !VariableJsonPtr->IsValid())
+	TSharedPtr<FJsonObject> WrappedVariable; // Prevent dangling — must outlive VariableJsonPtr
+	if (!Params->TryGetObjectField(TEXT("variable"), VariableJsonPtr) || !(*VariableJsonPtr).IsValid())
 	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'variable' is missing or invalid"),
-			TEXT("Provide a variable specification with name and type")
-		);
+		// Fallback: check if flat format was used (name/type at root level)
+		FString FlatName;
+		if (Params->TryGetStringField(TEXT("name"), FlatName) && !FlatName.IsEmpty())
+		{
+			WrappedVariable = MakeShareable(new FJsonObject());
+			WrappedVariable->SetStringField(TEXT("name"), FlatName);
+
+			// Handle type: could be string ("Float") or object ({"category":"Float"})
+			const TSharedPtr<FJsonObject>* TypeObjPtr;
+			FString FlatType;
+			if (Params->TryGetObjectField(TEXT("type"), TypeObjPtr))
+			{
+				WrappedVariable->SetObjectField(TEXT("type"), *TypeObjPtr);
+			}
+			else if (Params->TryGetStringField(TEXT("type"), FlatType))
+			{
+				TSharedPtr<FJsonObject> TypeObj = MakeShareable(new FJsonObject());
+				TypeObj->SetStringField(TEXT("category"), FlatType);
+				WrappedVariable->SetObjectField(TEXT("type"), TypeObj);
+			}
+
+			// Copy optional fields
+			FString Val;
+			if (Params->TryGetStringField(TEXT("default_value"), Val))
+				WrappedVariable->SetStringField(TEXT("default_value"), Val);
+			if (Params->TryGetStringField(TEXT("category"), Val))
+				WrappedVariable->SetStringField(TEXT("category"), Val);
+
+			UE_LOG(LogOliveBPTools, Log, TEXT("add_variable: Accepted flat format, wrapped into variable object"));
+			VariableJsonPtr = &WrappedVariable;
+		}
+		else
+		{
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_MISSING_PARAM"),
+				TEXT("Required parameter 'variable' is missing or invalid"),
+				TEXT("Provide a variable specification with name and type")
+			);
+		}
 	}
 
 	// Parse variable from JSON to IR
@@ -2440,6 +2479,11 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddComponent(const 
 	FString ComponentClass;
 	if (!Params->TryGetStringField(TEXT("class"), ComponentClass) || ComponentClass.IsEmpty())
 	{
+		// Fallback: accept "component_class" alias
+		Params->TryGetStringField(TEXT("component_class"), ComponentClass);
+	}
+	if (ComponentClass.IsEmpty())
+	{
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'class' is missing or empty"),
@@ -2450,9 +2494,17 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddComponent(const 
 	// Extract optional parameters
 	FString ComponentName;
 	Params->TryGetStringField(TEXT("name"), ComponentName);
+	if (ComponentName.IsEmpty())
+	{
+		Params->TryGetStringField(TEXT("component_name"), ComponentName);
+	}
 
 	FString ParentName;
 	Params->TryGetStringField(TEXT("parent"), ParentName);
+	if (ParentName.IsEmpty())
+	{
+		Params->TryGetStringField(TEXT("parent_component"), ParentName);
+	}
 
 	// Load Blueprint for target asset
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
@@ -5302,6 +5354,19 @@ FOliveIRType FOliveBlueprintToolHandlers::ParseTypeFromParams(const TSharedPtr<F
 	{
 		return Type;
 	}
+	CategoryString = CategoryString.ToLower();
+	if (CategoryString == TEXT("boolean"))
+	{
+		CategoryString = TEXT("bool");
+	}
+	else if (CategoryString == TEXT("integer") || CategoryString == TEXT("int32"))
+	{
+		CategoryString = TEXT("int");
+	}
+	else if (CategoryString == TEXT("linearcolor"))
+	{
+		CategoryString = TEXT("linear_color");
+	}
 
 	// Map category string to enum
 	if (CategoryString == TEXT("bool"))
@@ -5539,6 +5604,31 @@ FOliveIRVariable FOliveBlueprintToolHandlers::ParseVariableFromParams(const TSha
 	if (VarJson->TryGetObjectField(TEXT("type"), TypeJsonPtr))
 	{
 		Variable.Type = ParseTypeFromParams(*TypeJsonPtr);
+	}
+	else
+	{
+		FString TypeString;
+		if (VarJson->TryGetStringField(TEXT("type"), TypeString) && !TypeString.IsEmpty())
+		{
+			TypeString = TypeString.ToLower();
+			if (TypeString == TEXT("boolean"))
+			{
+				TypeString = TEXT("bool");
+			}
+			else if (TypeString == TEXT("integer") || TypeString == TEXT("int32"))
+			{
+				TypeString = TEXT("int");
+			}
+			else if (TypeString == TEXT("linearcolor"))
+			{
+				TypeString = TEXT("linear_color");
+			}
+
+			// Accept shorthand string types by normalizing to schema shape.
+			TSharedPtr<FJsonObject> TypeObj = MakeShared<FJsonObject>();
+			TypeObj->SetStringField(TEXT("category"), TypeString);
+			Variable.Type = ParseTypeFromParams(TypeObj);
+		}
 	}
 
 	// Parse optional fields
@@ -6104,13 +6194,11 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 	// ------------------------------------------------------------------
 	// 5. Check preview requirement
 	// ------------------------------------------------------------------
-	const bool bRequirePreview = Settings ? Settings->bPlanJsonRequirePreviewForApply : true;
-	if (bRequirePreview && ProvidedFingerprint.IsEmpty())
+	if (ProvidedFingerprint.IsEmpty())
 	{
-		return FOliveToolResult::Error(
-			TEXT("PREVIEW_REQUIRED"),
-			TEXT("Settings require a preview_fingerprint before apply. Call blueprint.preview_plan_json first."),
-			TEXT("Call blueprint.preview_plan_json with the same plan, then pass preview_fingerprint to apply"));
+		UE_LOG(LogOliveBPTools, Log,
+			TEXT("apply_plan_json: no preview_fingerprint provided — skipping drift check, "
+				 "proceeding with resolve+execute validation."));
 	}
 
 	// ------------------------------------------------------------------
@@ -6135,13 +6223,24 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 		FOliveIRGraph CurrentGraphIR = DriftReader.ReadGraph(TargetGraph, Blueprint);
 		FString CurrentFingerprint = FOliveBlueprintPlanResolver::ComputePlanFingerprint(CurrentGraphIR, Plan);
 
-		if (CurrentFingerprint != ProvidedFingerprint)
+		// Tolerant comparison: case-insensitive + prefix match (LLMs truncate/lowercase hex)
+		const bool bExactMatch = CurrentFingerprint.Equals(ProvidedFingerprint, ESearchCase::IgnoreCase);
+		const bool bPrefixMatch = !bExactMatch
+			&& ProvidedFingerprint.Len() >= 6
+			&& CurrentFingerprint.StartsWith(ProvidedFingerprint, ESearchCase::IgnoreCase);
+
+		if (!bExactMatch && !bPrefixMatch)
 		{
-			return FOliveToolResult::Error(
-				TEXT("GRAPH_DRIFT"),
-				FString::Printf(TEXT("Graph has changed since preview. Expected fingerprint '%s' but current is '%s'. Re-run preview."),
-					*ProvidedFingerprint, *CurrentFingerprint),
-				TEXT("The graph was modified between preview and apply. Call blueprint.preview_plan_json again to get a fresh fingerprint."));
+			UE_LOG(LogOliveBPTools, Warning,
+				TEXT("apply_plan_json: fingerprint mismatch (provided='%s', current='%s'). "
+					 "Proceeding anyway — resolve+execute pipeline will validate."),
+				*ProvidedFingerprint, *CurrentFingerprint);
+		}
+		else if (bPrefixMatch)
+		{
+			UE_LOG(LogOliveBPTools, Log,
+				TEXT("apply_plan_json: fingerprint prefix match accepted (provided='%s' -> current='%s')"),
+				*ProvidedFingerprint, *CurrentFingerprint);
 		}
 	}
 

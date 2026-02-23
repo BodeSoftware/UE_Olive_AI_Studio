@@ -71,6 +71,80 @@ FOliveDistillationResult FOlivePromptDistiller::Distill(TArray<FOliveChatMessage
 			Result.MessagesSummarized, ToolResultIndices.Num(), Result.ToolResultsTruncated, Result.TokensSaved);
 	}
 
+	// Pass 2: Enforce total character budget for tool results
+	if (Config.MaxTotalResultChars > 0)
+	{
+		int32 TotalResultChars = 0;
+		for (int32 i = 0; i < Messages.Num(); i++)
+		{
+			if (Messages[i].Role == EOliveChatRole::Tool)
+			{
+				TotalResultChars += Messages[i].Content.Len();
+			}
+		}
+
+		if (TotalResultChars > Config.MaxTotalResultChars)
+		{
+			for (int32 i = 0; i < Messages.Num() && TotalResultChars > Config.MaxTotalResultChars; i++)
+			{
+				if (Messages[i].Role != EOliveChatRole::Tool)
+				{
+					continue;
+				}
+
+				// Skip already-summarized messages (they start with '[toolname]')
+				if (Messages[i].Content.StartsWith(TEXT("[")))
+				{
+					continue;
+				}
+
+				const int32 OriginalLen = Messages[i].Content.Len();
+				Messages[i].Content = SummarizeToolResult(Messages[i].ToolName, Messages[i].Content);
+				const int32 NewLen = Messages[i].Content.Len();
+				TotalResultChars -= (OriginalLen - NewLen);
+
+				Result.MessagesSummarized++;
+				const int32 OriginalTokens = FMath::CeilToInt(OriginalLen / CharsPerToken);
+				const int32 NewTokens = EstimateTokens(Messages[i].Content);
+				Result.TokensSaved += FMath::Max(0, OriginalTokens - NewTokens);
+			}
+
+			UE_LOG(LogOliveAI, Verbose, TEXT("PromptDistiller: Budget pass summarized tool results (remaining %d chars, budget %d)"),
+				TotalResultChars, Config.MaxTotalResultChars);
+		}
+	}
+
+	// Pass 3: Truncate old assistant messages that are excessively long
+	if (Config.MaxAssistantChars > 0)
+	{
+		// Find the last assistant message index — always keep it verbatim
+		int32 LastAssistantIdx = -1;
+		for (int32 i = Messages.Num() - 1; i >= 0; --i)
+		{
+			if (Messages[i].Role == EOliveChatRole::Assistant)
+			{
+				LastAssistantIdx = i;
+				break;
+			}
+		}
+
+		for (int32 i = 0; i < Messages.Num(); i++)
+		{
+			if (Messages[i].Role == EOliveChatRole::Assistant
+				&& i != LastAssistantIdx
+				&& Messages[i].Content.Len() > Config.MaxAssistantChars)
+			{
+				const int32 OriginalLen = Messages[i].Content.Len();
+				Messages[i].Content = Messages[i].Content.Left(Config.MaxAssistantChars)
+					+ TEXT("\n[... truncated for context budget ...]");
+
+				Result.MessagesSummarized++;
+				const int32 SavedChars = OriginalLen - Messages[i].Content.Len();
+				Result.TokensSaved += FMath::Max(0, FMath::CeilToInt(SavedChars / CharsPerToken));
+			}
+		}
+	}
+
 	return Result;
 }
 

@@ -2,10 +2,24 @@
 
 #include "Providers/OliveOpenAIProvider.h"
 #include "OliveAIEditorModule.h"
+#include "MCP/OliveToolRegistry.h"
 #include "HttpModule.h"
 #include "Interfaces/IHttpResponse.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+
+namespace
+{
+FString NormalizeOpenAIModelId(const FString& InModelId)
+{
+	const FString Trimmed = InModelId.TrimStartAndEnd();
+	if (Trimmed.Equals(TEXT("chatgpt-5.2-codex"), ESearchCase::IgnoreCase))
+	{
+		return TEXT("gpt-5.2-codex");
+	}
+	return Trimmed;
+}
+}
 
 const FString FOliveOpenAIProvider::OpenAIApiUrl = TEXT("https://api.openai.com/v1/chat/completions");
 const FString FOliveOpenAIProvider::DefaultModel = TEXT("gpt-4o");
@@ -30,9 +44,17 @@ FOliveOpenAIProvider::~FOliveOpenAIProvider()
 TArray<FString> FOliveOpenAIProvider::GetAvailableModels() const
 {
 	return {
+		TEXT("gpt-5-codex"),
+		TEXT("gpt-5.2-codex"),
+		TEXT("chatgpt-5.2-codex"),
 		TEXT("gpt-4o"),
 		TEXT("gpt-4o-mini"),
-		TEXT("gpt-4-turbo"),
+		TEXT("gpt-4.1"),
+		TEXT("gpt-4.1-mini"),
+		TEXT("gpt-4.1-nano"),
+		TEXT("o3"),
+		TEXT("o3-mini"),
+		TEXT("o4-mini"),
 		TEXT("o1"),
 		TEXT("o1-mini")
 	};
@@ -191,6 +213,16 @@ void FOliveOpenAIProvider::CancelRequest()
 // Request Building
 // ==========================================
 
+bool FOliveOpenAIProvider::IsReasoningModel(const FString& ModelId)
+{
+	// OpenAI reasoning models: o1, o1-mini, o1-pro, o3, o3-mini, o4-mini
+	// gpt-4.1 series also requires max_completion_tokens
+	return ModelId.StartsWith(TEXT("o1"))
+		|| ModelId.StartsWith(TEXT("o3"))
+		|| ModelId.StartsWith(TEXT("o4"))
+		|| ModelId.Contains(TEXT("gpt-4.1"));
+}
+
 TSharedPtr<FJsonObject> FOliveOpenAIProvider::BuildRequestBody(
 	const TArray<FOliveChatMessage>& Messages,
 	const TArray<FOliveToolDefinition>& Tools,
@@ -202,7 +234,7 @@ TSharedPtr<FJsonObject> FOliveOpenAIProvider::BuildRequestBody(
 
 	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
 
-	Body->SetStringField(TEXT("model"), Config.ModelId);
+	Body->SetStringField(TEXT("model"), NormalizeOpenAIModelId(Config.ModelId));
 	Body->SetArrayField(TEXT("messages"), ConvertMessagesToJson(Messages));
 
 	if (Tools.Num() > 0)
@@ -213,8 +245,17 @@ TSharedPtr<FJsonObject> FOliveOpenAIProvider::BuildRequestBody(
 	}
 
 	Body->SetBoolField(TEXT("stream"), true);
-	Body->SetNumberField(TEXT("temperature"), EffectiveTemperature);
-	Body->SetNumberField(TEXT("max_tokens"), EffectiveMaxTokens);
+
+	if (IsReasoningModel(Config.ModelId))
+	{
+		Body->SetNumberField(TEXT("max_completion_tokens"), EffectiveMaxTokens);
+		// Reasoning models reject temperature and top_p
+	}
+	else
+	{
+		Body->SetNumberField(TEXT("temperature"), EffectiveTemperature);
+		Body->SetNumberField(TEXT("max_tokens"), EffectiveMaxTokens);
+	}
 
 	return Body;
 }
@@ -244,6 +285,15 @@ TArray<TSharedPtr<FJsonValue>> FOliveOpenAIProvider::ConvertToolsToJson(const TA
 		TSharedPtr<FJsonObject> ToolJson = Tool.ToMCPJson();
 		if (ToolJson.IsValid())
 		{
+			// OpenAI rejects dots in function names — replace with underscores on the wire
+			const TSharedPtr<FJsonObject>* FuncObj;
+			if (ToolJson->TryGetObjectField(TEXT("function"), FuncObj))
+			{
+				FString WireName = (*FuncObj)->GetStringField(TEXT("name"));
+				WireName.ReplaceInline(TEXT("."), TEXT("_"));
+				(*FuncObj)->SetStringField(TEXT("name"), WireName);
+			}
+
 			JsonTools.Add(MakeShared<FJsonValueObject>(ToolJson));
 		}
 	}
@@ -527,6 +577,16 @@ void FOliveOpenAIProvider::FinalizePendingToolCalls()
 		else
 		{
 			Call.ToolArguments = MakeShared<FJsonObject>();
+		}
+
+		// Reverse the dot→underscore mapping: if name isn't registered, try restoring dots
+		if (!FOliveToolRegistry::Get().HasTool(Call.ToolName))
+		{
+			FString DottedName = Call.ToolName.Replace(TEXT("_"), TEXT("."));
+			if (FOliveToolRegistry::Get().HasTool(DottedName))
+			{
+				Call.ToolName = DottedName;
+			}
 		}
 
 		UE_LOG(LogOliveAI, Log, TEXT("OpenAI tool call: %s (id: %s)"), *Call.ToolName, *Call.ToolCallId);
