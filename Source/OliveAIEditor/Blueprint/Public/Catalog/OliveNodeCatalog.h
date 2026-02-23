@@ -155,6 +155,22 @@ struct OLIVEAIEDITOR_API FOliveNodeTypeInfo
 };
 
 /**
+ * A lightweight suggestion returned by fuzzy matching against the node catalog.
+ * Not a USTRUCT -- only used transiently and serialized directly to JSON.
+ */
+struct FOliveNodeSuggestion
+{
+	/** The catalog type ID or built-in node type name */
+	FString TypeId;
+
+	/** Human-readable display name */
+	FString DisplayName;
+
+	/** Match score (higher = better match, 0 = no match) */
+	int32 Score = 0;
+};
+
+/**
  * FOliveNodeCatalog
  *
  * Searchable catalog of all Blueprint node types available in the engine.
@@ -300,6 +316,21 @@ public:
 	 * @return JSON string containing categories and node counts
 	 */
 	FString GetCategoriesJson() const;
+
+	/**
+	 * Return the top N closest matches for a query string.
+	 * Uses the existing MatchScore infrastructure on catalog entries
+	 * and also matches against built-in node type names from the
+	 * OliveNodeTypes namespace (Branch, Sequence, CallFunction, etc.).
+	 *
+	 * Useful for generating "did you mean?" suggestions when the agent
+	 * provides an unrecognized node type.
+	 *
+	 * @param Query  The unrecognized node type string to match against
+	 * @param MaxResults  Maximum suggestions to return (default 5)
+	 * @return Array of suggestions sorted by score descending
+	 */
+	TArray<FOliveNodeSuggestion> FuzzyMatch(const FString& Query, int32 MaxResults = 5) const;
 
 private:
 	FOliveNodeCatalog() = default;

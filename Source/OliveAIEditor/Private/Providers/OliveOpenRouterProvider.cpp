@@ -266,7 +266,7 @@ void FOliveOpenRouterProvider::OnResponseReceived(FHttpRequestPtr Request, FHttp
 
 	if (!bSuccess || !Response.IsValid())
 	{
-		HandleError(TEXT("Network error: Failed to connect to OpenRouter"));
+		HandleError(TEXT("[HTTP:0] Network error: Failed to connect to OpenRouter"));
 		return;
 	}
 
@@ -274,7 +274,7 @@ void FOliveOpenRouterProvider::OnResponseReceived(FHttpRequestPtr Request, FHttp
 
 	if (StatusCode == 401)
 	{
-		HandleError(TEXT("Invalid API key. Please check your OpenRouter API key in settings."));
+		HandleError(TEXT("[HTTP:401] Invalid API key. Please check your OpenRouter API key in settings."));
 		return;
 	}
 
@@ -283,11 +283,13 @@ void FOliveOpenRouterProvider::OnResponseReceived(FHttpRequestPtr Request, FHttp
 		FString RetryAfter = Response->GetHeader(TEXT("Retry-After"));
 		if (!RetryAfter.IsEmpty())
 		{
-			HandleError(FString::Printf(TEXT("Rate limited. Try again in %s seconds."), *RetryAfter));
+			int32 RetryAfterSeconds = FCString::Atoi(*RetryAfter);
+			if (RetryAfterSeconds <= 0) { RetryAfterSeconds = 60; }
+			HandleError(FString::Printf(TEXT("[HTTP:429:RetryAfter=%d] Rate limited by OpenRouter. Try again in %s seconds."), RetryAfterSeconds, *RetryAfter));
 		}
 		else
 		{
-			HandleError(TEXT("Rate limited. Please wait before trying again."));
+			HandleError(TEXT("[HTTP:429:RetryAfter=60] Rate limited by OpenRouter. Please wait before trying again."));
 		}
 		return;
 	}
@@ -305,12 +307,12 @@ void FOliveOpenRouterProvider::OnResponseReceived(FHttpRequestPtr Request, FHttp
 			if (ErrorJson->TryGetObjectField(TEXT("error"), ErrorObj))
 			{
 				FString ErrorMessage = (*ErrorObj)->GetStringField(TEXT("message"));
-				HandleError(FString::Printf(TEXT("API Error: %s"), *ErrorMessage));
+				HandleError(FString::Printf(TEXT("[HTTP:%d] API Error: %s"), StatusCode, *ErrorMessage));
 				return;
 			}
 		}
 
-		HandleError(FString::Printf(TEXT("HTTP Error %d"), StatusCode));
+		HandleError(FString::Printf(TEXT("[HTTP:%d] HTTP Error %d"), StatusCode, StatusCode));
 		return;
 	}
 
@@ -380,6 +382,9 @@ void FOliveOpenRouterProvider::ParseStreamChunk(const TSharedPtr<FJsonObject>& C
 	FString FinishReason = Choice->GetStringField(TEXT("finish_reason"));
 	if (!FinishReason.IsEmpty() && FinishReason != TEXT("null"))
 	{
+		// Store finish reason so HandleComplete can detect truncation (e.g. "length")
+		CurrentUsage.FinishReason = FinishReason;
+
 		// Finalize pending tool calls
 		FinalizePendingToolCalls();
 		return;

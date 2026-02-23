@@ -25,7 +25,9 @@
 #include "K2Node_BreakStruct.h"
 #include "K2Node_Knot.h"
 #include "K2Node_MacroInstance.h"
+#include "K2Node_InputKey.h"
 #include "EdGraphNode_Comment.h"
+#include "InputCoreTypes.h"
 
 // Utility includes
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -80,10 +82,10 @@ UEdGraphNode* FOliveNodeFactory::CreateNode(
 		return nullptr;
 	}
 
-	// Check if node type is supported
-	if (!NodeCreators.Contains(NodeType))
+	// Validate node type and property-level resolution before attempting creation
+	if (!ValidateNodeType(NodeType, Properties))
 	{
-		LastError = FString::Printf(TEXT("Unsupported node type: '%s'"), *NodeType);
+		// LastError is already set by ValidateNodeType with a structured message
 		UE_LOG(LogOliveNodeFactory, Error, TEXT("%s"), *LastError);
 		return nullptr;
 	}
@@ -131,6 +133,65 @@ TMap<FString, FString> FOliveNodeFactory::GetRequiredProperties(const FString& N
 		return *Props;
 	}
 	return TMap<FString, FString>();
+}
+
+bool FOliveNodeFactory::ValidateNodeType(const FString& NodeType, const TMap<FString, FString>& Properties) const
+{
+	// Step 1: Check if the node type exists in the creator map at all
+	if (!NodeCreators.Contains(NodeType))
+	{
+		// Cast away const for LastError -- ValidateNodeType is logically a query
+		// but LastError is a diagnostic side-channel, consistent with existing pattern
+		const_cast<FOliveNodeFactory*>(this)->LastError = FString::Printf(
+			TEXT("Unknown node type: '%s'. Use blueprint.node_catalog_search to find available node types."),
+			*NodeType);
+		return false;
+	}
+
+	// Step 2: For CallFunction, validate that function_name resolves
+	if (NodeType == OliveNodeTypes::CallFunction)
+	{
+		const FString* FunctionNamePtr = Properties.Find(TEXT("function_name"));
+		if (!FunctionNamePtr || FunctionNamePtr->IsEmpty())
+		{
+			const_cast<FOliveNodeFactory*>(this)->LastError =
+				TEXT("CallFunction node requires 'function_name' property");
+			return false;
+		}
+
+		FString TargetClassName;
+		if (const FString* TargetClassPtr = Properties.Find(TEXT("target_class")))
+		{
+			TargetClassName = *TargetClassPtr;
+		}
+
+		// Use the factory's own FindFunction to check resolution
+		UFunction* Function = const_cast<FOliveNodeFactory*>(this)->FindFunction(*FunctionNamePtr, TargetClassName);
+		if (!Function)
+		{
+			const_cast<FOliveNodeFactory*>(this)->LastError = FString::Printf(
+				TEXT("Function '%s' not found%s. Verify the function name and target class."),
+				**FunctionNamePtr,
+				TargetClassName.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" in class '%s'"), *TargetClassName));
+			return false;
+		}
+	}
+
+	// Step 3: For Event, validate that event_name resolves in parent class
+	// Note: Cannot fully validate without a Blueprint (no parent class available),
+	// but we can check if the event_name property is provided
+	if (NodeType == OliveNodeTypes::Event)
+	{
+		const FString* EventNamePtr = Properties.Find(TEXT("event_name"));
+		if (!EventNamePtr || EventNamePtr->IsEmpty())
+		{
+			const_cast<FOliveNodeFactory*>(this)->LastError =
+				TEXT("Event node requires 'event_name' property");
+			return false;
+		}
+	}
+
+	return true;
 }
 
 // ============================================================================
@@ -261,19 +322,27 @@ UK2Node* FOliveNodeFactory::CreateEventNode(
 		return nullptr;
 	}
 
-	// Find or create the override event
-	UK2Node_Event* EventNode = FBlueprintEditorUtils::FindOverrideForFunction(
+	// Check if this native event override already exists in the Blueprint.
+	// Each native event can only appear once -- silently returning the existing
+	// node would mislead the caller into thinking a new node was created.
+	UK2Node_Event* ExistingEvent = FBlueprintEditorUtils::FindOverrideForFunction(
 		Blueprint, Blueprint->ParentClass, EventName);
 
-	if (!EventNode)
+	if (ExistingEvent)
 	{
-		// Create new event node
-		EventNode = NewObject<UK2Node_Event>(Graph);
-		EventNode->EventReference.SetExternalMember(EventName, Blueprint->ParentClass);
-		EventNode->bOverrideFunction = true;
-		EventNode->AllocateDefaultPins();
-		Graph->AddNode(EventNode, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+		LastError = FString::Printf(
+			TEXT("Native event '%s' already exists in this Blueprint (node at %d, %d). "
+				 "Each native event can only appear once."),
+			**EventNamePtr, ExistingEvent->NodePosX, ExistingEvent->NodePosY);
+		return nullptr;
 	}
+
+	// Create new event node
+	UK2Node_Event* EventNode = NewObject<UK2Node_Event>(Graph);
+	EventNode->EventReference.SetExternalMember(EventName, Blueprint->ParentClass);
+	EventNode->bOverrideFunction = true;
+	EventNode->AllocateDefaultPins();
+	Graph->AddNode(EventNode, /*bFromUI=*/false, /*bSelectNewNode=*/false);
 
 	return EventNode;
 }
@@ -628,6 +697,36 @@ UK2Node* FOliveNodeFactory::CreateRerouteNode(
 	return KnotNode;
 }
 
+UK2Node* FOliveNodeFactory::CreateInputKeyNode(
+	UBlueprint* Blueprint,
+	UEdGraph* Graph,
+	const TMap<FString, FString>& Properties)
+{
+	const FString* KeyPtr = Properties.Find(TEXT("key"));
+	if (!KeyPtr || KeyPtr->IsEmpty())
+	{
+		LastError = TEXT("InputKey node requires 'key' property (e.g., \"E\", \"SpaceBar\")");
+		return nullptr;
+	}
+
+	// Resolve the key from string
+	FKey ResolvedKey(**KeyPtr);
+	if (!ResolvedKey.IsValid())
+	{
+		LastError = FString::Printf(TEXT("Key '%s' is not a valid FKey name"), **KeyPtr);
+		return nullptr;
+	}
+
+	UK2Node_InputKey* InputKeyNode = NewObject<UK2Node_InputKey>(Graph);
+	InputKeyNode->InputKey = ResolvedKey;
+	InputKeyNode->bConsumeInput = true;
+	InputKeyNode->bOverrideParentBinding = false;
+	InputKeyNode->AllocateDefaultPins();
+	Graph->AddNode(InputKeyNode, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+
+	return InputKeyNode;
+}
+
 // ============================================================================
 // Helper Methods
 // ============================================================================
@@ -842,6 +941,11 @@ void FOliveNodeFactory::InitializeNodeCreators()
 		return CreateRerouteNode(BP, G, P);
 	});
 
+	// Input
+	NodeCreators.Add(OliveNodeTypes::InputKey, [this](UBlueprint* BP, UEdGraph* G, const TMap<FString, FString>& P) -> UEdGraphNode* {
+		return CreateInputKeyNode(BP, G, P);
+	});
+
 	// ============================================================================
 	// Register Required Properties
 	// ============================================================================
@@ -896,6 +1000,11 @@ void FOliveNodeFactory::InitializeNodeCreators()
 	TMap<FString, FString> BreakStructProps;
 	BreakStructProps.Add(TEXT("struct_type"), TEXT("Struct type to break (required)"));
 	RequiredPropertiesMap.Add(OliveNodeTypes::BreakStruct, BreakStructProps);
+
+	// InputKey
+	TMap<FString, FString> InputKeyProps;
+	InputKeyProps.Add(TEXT("key"), TEXT("Key name to bind (required, e.g., \"E\", \"SpaceBar\", \"Gamepad_FaceButton_Bottom\")"));
+	RequiredPropertiesMap.Add(OliveNodeTypes::InputKey, InputKeyProps);
 
 	// Comment
 	TMap<FString, FString> CommentProps;

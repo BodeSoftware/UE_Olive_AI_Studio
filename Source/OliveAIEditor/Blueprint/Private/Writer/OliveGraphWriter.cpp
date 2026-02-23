@@ -13,6 +13,12 @@
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
+#include "K2Node_Tunnel.h"
+#include "K2Node_Composite.h"
+
+// JSON includes
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 
 // Utility includes
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -916,15 +922,36 @@ UEdGraphNode* FOliveGraphWriter::FindNodeById(
 		}
 	}
 
-	// Try to match by node_X format where X is the index in the graph
+	// Try to match by node_X format - rebuild the reader's sequential index
 	if (NodeId.StartsWith(TEXT("node_")))
 	{
 		FString IndexStr = NodeId.RightChop(5);
-		int32 Index = FCString::Atoi(*IndexStr);
+		int32 TargetIndex = FCString::Atoi(*IndexStr);
 
-		// The index corresponds to our cache generation, not graph array index
-		// So we can't directly look up by index in the graph
-		// Just return nullptr - the node wasn't found
+		// Replicate the reader's sequential indexing: iterate graph nodes,
+		// skip tunnel nodes (but not composites), count non-skipped nodes
+		int32 CurrentIndex = 0;
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (!Node)
+			{
+				continue;
+			}
+
+			// Skip tunnel nodes (same logic as FOliveGraphReader::ShouldSkipNode)
+			if (Node->IsA<UK2Node_Tunnel>() && !Node->IsA<UK2Node_Composite>())
+			{
+				continue;
+			}
+
+			if (CurrentIndex == TargetIndex)
+			{
+				// Cache for future lookups
+				CacheNode(BlueprintPath, NodeId, Node);
+				return Node;
+			}
+			CurrentIndex++;
+		}
 	}
 
 	return nullptr;
@@ -1025,6 +1052,75 @@ void FOliveGraphWriter::RemoveFromCache(const FString& BlueprintPath, const FStr
 		BlueprintCache->Remove(NodeId);
 		UE_LOG(LogOliveGraphWriter, Verbose, TEXT("Removed node '%s' from cache for Blueprint '%s'"), *NodeId, *BlueprintPath);
 	}
+}
+
+FString FOliveGraphWriter::ResolveNodeId(const FString& BlueprintPath, UEdGraphNode* Node) const
+{
+	if (!Node)
+	{
+		return TEXT("unknown");
+	}
+
+	FScopeLock Lock(&CacheLock);
+
+	if (const TMap<FString, TWeakObjectPtr<UEdGraphNode>>* BlueprintCache = NodeIdCache.Find(BlueprintPath))
+	{
+		for (const auto& Pair : *BlueprintCache)
+		{
+			if (Pair.Value.IsValid() && Pair.Value.Get() == Node)
+			{
+				return Pair.Key;
+			}
+		}
+	}
+
+	// Fallback: use the node's UObject name
+	return Node->GetName();
+}
+
+TArray<TSharedPtr<FJsonValue>> FOliveGraphWriter::CaptureNodeConnections(
+	const FString& BlueprintPath,
+	UEdGraph* Graph,
+	UEdGraphNode* Node)
+{
+	TArray<TSharedPtr<FJsonValue>> BrokenLinks;
+
+	if (!Node || !Graph)
+	{
+		return BrokenLinks;
+	}
+
+	for (UEdGraphPin* Pin : Node->Pins)
+	{
+		if (!Pin)
+		{
+			continue;
+		}
+
+		for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+		{
+			if (!LinkedPin || !LinkedPin->GetOwningNode())
+			{
+				continue;
+			}
+
+			TSharedPtr<FJsonObject> ConnectedTo = MakeShareable(new FJsonObject());
+			ConnectedTo->SetStringField(TEXT("node_id"), ResolveNodeId(BlueprintPath, LinkedPin->GetOwningNode()));
+			ConnectedTo->SetStringField(TEXT("pin"), LinkedPin->GetName());
+
+			TSharedPtr<FJsonObject> LinkObj = MakeShareable(new FJsonObject());
+			LinkObj->SetStringField(TEXT("pin"), Pin->GetName());
+			LinkObj->SetStringField(TEXT("direction"), (Pin->Direction == EGPD_Input) ? TEXT("input") : TEXT("output"));
+			LinkObj->SetObjectField(TEXT("was_connected_to"), ConnectedTo);
+
+			BrokenLinks.Add(MakeShareable(new FJsonValueObject(LinkObj)));
+		}
+	}
+
+	UE_LOG(LogOliveGraphWriter, Verbose, TEXT("Captured %d connections on node in Blueprint '%s'"),
+		BrokenLinks.Num(), *BlueprintPath);
+
+	return BrokenLinks;
 }
 
 UBlueprint* FOliveGraphWriter::LoadBlueprintForEditing(const FString& AssetPath, FString& OutError)

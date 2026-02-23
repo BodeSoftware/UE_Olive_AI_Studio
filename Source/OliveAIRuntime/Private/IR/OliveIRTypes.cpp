@@ -240,6 +240,11 @@ TSharedPtr<FJsonObject> FOliveIRMessage::ToJson() const
 		Json->SetObjectField(TEXT("details"), DetailsJson);
 	}
 
+	if (Context.IsValid())
+	{
+		Json->SetObjectField(TEXT("context"), Context);
+	}
+
 	return Json;
 }
 
@@ -267,6 +272,12 @@ FOliveIRMessage FOliveIRMessage::FromJson(const TSharedPtr<FJsonObject>& JsonObj
 		{
 			Msg.Details.Add(Pair.Key, Pair.Value->AsString());
 		}
+	}
+
+	const TSharedPtr<FJsonObject>* ContextJson;
+	if (JsonObject->TryGetObjectField(TEXT("context"), ContextJson))
+	{
+		Msg.Context = *ContextJson;
 	}
 
 	return Msg;

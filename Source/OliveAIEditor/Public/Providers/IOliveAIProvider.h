@@ -112,6 +112,10 @@ struct OLIVEAIEDITOR_API FOliveProviderUsage
 	/** Model used */
 	UPROPERTY()
 	FString Model;
+
+	/** Finish reason from the provider (e.g. "stop", "length", "tool_calls", "MAX_TOKENS") */
+	UPROPERTY()
+	FString FinishReason;
 };
 
 /**

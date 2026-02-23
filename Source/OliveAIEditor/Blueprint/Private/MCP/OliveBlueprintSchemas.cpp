@@ -329,8 +329,18 @@ namespace OliveBlueprintSchemas
 		Properties->SetObjectField(TEXT("function_name"),
 			StringProp(TEXT("Function name to read")));
 
+		Properties->SetObjectField(TEXT("page"),
+			IntProp(TEXT("Page number (0-based) for large graphs. If omitted and graph is large, returns summary instead of full data."), 0, INT32_MAX));
+
+		Properties->SetObjectField(TEXT("page_size"),
+			IntProp(TEXT("Nodes per page (default 100, max 200). Only used with 'page' parameter."), 10, 200));
+
+		Properties->SetObjectField(TEXT("mode"),
+			EnumProp(TEXT("Read mode: 'full' forces complete read even for large graphs. Default auto-detects."),
+			{TEXT("auto"), TEXT("full")}));
+
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Read a single function graph from a Blueprint"));
+		Schema->SetStringField(TEXT("description"), TEXT("Read a single function graph from a Blueprint. Large graphs (500+ nodes) auto-return a summary with paging info unless 'mode' is 'full' or 'page' is specified."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path"), TEXT("function_name")});
 
@@ -347,8 +357,18 @@ namespace OliveBlueprintSchemas
 		Properties->SetObjectField(TEXT("graph_name"),
 			StringProp(TEXT("Event graph name (defaults to 'EventGraph' if not specified)")));
 
+		Properties->SetObjectField(TEXT("page"),
+			IntProp(TEXT("Page number (0-based) for large graphs. If omitted and graph is large, returns summary instead of full data."), 0, INT32_MAX));
+
+		Properties->SetObjectField(TEXT("page_size"),
+			IntProp(TEXT("Nodes per page (default 100, max 200). Only used with 'page' parameter."), 10, 200));
+
+		Properties->SetObjectField(TEXT("mode"),
+			EnumProp(TEXT("Read mode: 'full' forces complete read even for large graphs. Default auto-detects."),
+			{TEXT("auto"), TEXT("full")}));
+
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Read an event graph from a Blueprint"));
+		Schema->SetStringField(TEXT("description"), TEXT("Read an event graph from a Blueprint. Large graphs (500+ nodes) auto-return a summary with paging info unless 'mode' is 'full' or 'page' is specified."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path")});
 
@@ -965,6 +985,78 @@ namespace OliveBlueprintSchemas
 		Schema->SetStringField(TEXT("description"), TEXT("Set a property on a node"));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path"), TEXT("graph"), TEXT("node_id"), TEXT("property"), TEXT("value")});
+
+		return Schema;
+	}
+
+	// ============================================================================
+	// Plan JSON Tool Schemas
+	// ============================================================================
+
+	TSharedPtr<FJsonObject> BlueprintPreviewPlanJson()
+	{
+		TSharedPtr<FJsonObject> Properties = MakeProperties();
+
+		Properties->SetObjectField(TEXT("asset_path"),
+			StringProp(TEXT("Content path of the target Blueprint asset (e.g., '/Game/Blueprints/BP_Player')")));
+
+		// graph_target — optional, defaults to EventGraph
+		TSharedPtr<FJsonObject> GraphTargetProp = StringProp(TEXT("Name of the graph to target"));
+		GraphTargetProp->SetStringField(TEXT("default"), TEXT("EventGraph"));
+		Properties->SetObjectField(TEXT("graph_target"), GraphTargetProp);
+
+		// mode — optional, defaults to "merge", enum restricted
+		TSharedPtr<FJsonObject> ModeProp = EnumProp(TEXT("Write mode (v1 supports merge only)"), {TEXT("merge")});
+		ModeProp->SetStringField(TEXT("default"), TEXT("merge"));
+		Properties->SetObjectField(TEXT("mode"), ModeProp);
+
+		// plan_json — required object containing the intent-level plan
+		TSharedPtr<FJsonObject> PlanJsonProp = MakeSchema(TEXT("object"));
+		PlanJsonProp->SetStringField(TEXT("description"),
+			TEXT("Intent-level plan describing steps to add to the graph. Contains schema_version (string) and steps array. Each step has step_id, op (from vocabulary: call, get_var, set_var, branch, sequence, cast, event, custom_event, for_loop, for_each_loop, delay, is_valid, print_string, spawn_actor, make_struct, break_struct, return, comment), target, and optional inputs/exec_after/exec_outputs."));
+		Properties->SetObjectField(TEXT("plan_json"), PlanJsonProp);
+
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		Schema->SetStringField(TEXT("description"),
+			TEXT("Preview an intent-level Blueprint plan without mutating the asset. Validates the plan, resolves intents to concrete node types, computes a diff against the current graph, and returns a fingerprint for drift detection. Use before blueprint.apply_plan_json to verify correctness."));
+		Schema->SetObjectField(TEXT("properties"), Properties);
+		AddRequired(Schema, {TEXT("asset_path"), TEXT("plan_json")});
+
+		return Schema;
+	}
+
+	TSharedPtr<FJsonObject> BlueprintApplyPlanJson()
+	{
+		TSharedPtr<FJsonObject> Properties = MakeProperties();
+
+		Properties->SetObjectField(TEXT("asset_path"),
+			StringProp(TEXT("Content path of the target Blueprint asset (e.g., '/Game/Blueprints/BP_Player')")));
+
+		// graph_target — optional, defaults to EventGraph
+		TSharedPtr<FJsonObject> GraphTargetProp = StringProp(TEXT("Name of the graph to target"));
+		GraphTargetProp->SetStringField(TEXT("default"), TEXT("EventGraph"));
+		Properties->SetObjectField(TEXT("graph_target"), GraphTargetProp);
+
+		// mode — optional, defaults to "merge", enum restricted
+		TSharedPtr<FJsonObject> ModeProp = EnumProp(TEXT("Write mode (v1 supports merge only)"), {TEXT("merge")});
+		ModeProp->SetStringField(TEXT("default"), TEXT("merge"));
+		Properties->SetObjectField(TEXT("mode"), ModeProp);
+
+		// plan_json — required object containing the intent-level plan
+		TSharedPtr<FJsonObject> PlanJsonProp = MakeSchema(TEXT("object"));
+		PlanJsonProp->SetStringField(TEXT("description"),
+			TEXT("Intent-level plan describing steps to add to the graph. Contains schema_version (string) and steps array. Each step has step_id, op (from vocabulary: call, get_var, set_var, branch, sequence, cast, event, custom_event, for_loop, for_each_loop, delay, is_valid, print_string, spawn_actor, make_struct, break_struct, return, comment), target, and optional inputs/exec_after/exec_outputs."));
+		Properties->SetObjectField(TEXT("plan_json"), PlanJsonProp);
+
+		// preview_fingerprint — optional string for drift detection
+		Properties->SetObjectField(TEXT("preview_fingerprint"),
+			StringProp(TEXT("Fingerprint from a prior preview call. Required when PlanJsonRequirePreviewForApply setting is true. Ensures graph hasn't changed since preview.")));
+
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		Schema->SetStringField(TEXT("description"),
+			TEXT("Apply an intent-level Blueprint plan atomically. Re-validates and re-resolves the plan, optionally checks the preview fingerprint for graph drift, then executes all lowered operations in a single transaction. Compiles once at the end. Returns step-to-node mapping and compile results."));
+		Schema->SetObjectField(TEXT("properties"), Properties);
+		AddRequired(Schema, {TEXT("asset_path"), TEXT("plan_json")});
 
 		return Schema;
 	}

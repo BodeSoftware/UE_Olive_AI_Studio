@@ -217,6 +217,26 @@ public:
 	 */
 	TArray<FOliveIRFunctionSignature> ReadOverriddenFunctions(const UBlueprint* Blueprint);
 
+	// ============================================================================
+	// Utility Accessors
+	// ============================================================================
+
+	/**
+	 * Load a Blueprint by asset path.
+	 * Public to allow tool handlers to access raw UBlueprint for advanced operations
+	 * like large-graph detection before deciding which read mode to use.
+	 * @param AssetPath The asset path to load
+	 * @return The loaded Blueprint, or nullptr if failed
+	 */
+	UBlueprint* LoadBlueprint(const FString& AssetPath) const;
+
+	/**
+	 * Get the internal graph reader for direct graph-level operations.
+	 * Used by tool handlers for summary/paged reads on large graphs.
+	 * @return Shared pointer to the graph reader (always valid after construction)
+	 */
+	TSharedPtr<FOliveGraphReader> GetGraphReader() const { return GraphReader; }
+
 private:
 	FOliveBlueprintReader();
 	~FOliveBlueprintReader() = default;
@@ -228,13 +248,6 @@ private:
 	// ============================================================================
 	// Private Helper Methods
 	// ============================================================================
-
-	/**
-	 * Load a Blueprint by asset path
-	 * @param AssetPath The asset path to load
-	 * @return The loaded Blueprint, or nullptr if failed
-	 */
-	UBlueprint* LoadBlueprint(const FString& AssetPath) const;
 
 	/**
 	 * Read interface information into the IR

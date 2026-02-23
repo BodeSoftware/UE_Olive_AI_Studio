@@ -287,7 +287,7 @@ void FOliveOllamaProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpResp
 	if (!bSuccess || !Response.IsValid())
 	{
 		// Ollama-specific: connection refused means the daemon isn't running
-		HandleError(TEXT("Ollama is not running. Start it with `ollama serve`."));
+		HandleError(TEXT("[HTTP:0] Ollama is not running. Start it with `ollama serve`."));
 		return;
 	}
 
@@ -296,7 +296,7 @@ void FOliveOllamaProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpResp
 	// Connection-level failure (no response code)
 	if (StatusCode == 0)
 	{
-		HandleError(TEXT("Ollama is not running. Start it with `ollama serve`."));
+		HandleError(TEXT("[HTTP:0] Ollama is not running. Start it with `ollama serve`."));
 		return;
 	}
 
@@ -304,20 +304,20 @@ void FOliveOllamaProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpResp
 	{
 		// Ollama returns 404 when the model isn't available
 		HandleError(FString::Printf(
-			TEXT("Model '%s' not found. Pull it with `ollama pull %s`."),
+			TEXT("[HTTP:404] Model '%s' not found. Pull it with `ollama pull %s`."),
 			*Config.ModelId, *Config.ModelId));
 		return;
 	}
 
 	if (StatusCode == 408 || StatusCode == 504)
 	{
-		HandleError(TEXT("Request timed out. Check if Ollama is still running."));
+		HandleError(FString::Printf(TEXT("[HTTP:%d] Request timed out. Check if Ollama is still running."), StatusCode));
 		return;
 	}
 
 	if (StatusCode == 429)
 	{
-		HandleError(TEXT("Ollama is overloaded. Wait a moment and try again."));
+		HandleError(TEXT("[HTTP:429:RetryAfter=10] Ollama is overloaded. Wait a moment and try again."));
 		return;
 	}
 
@@ -341,12 +341,12 @@ void FOliveOllamaProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpResp
 					if (ErrorMessage.Contains(TEXT("not found")) || ErrorMessage.Contains(TEXT("does not exist")))
 					{
 						HandleError(FString::Printf(
-							TEXT("Model '%s' not found. Pull it with `ollama pull %s`."),
-							*Config.ModelId, *Config.ModelId));
+							TEXT("[HTTP:%d] Model '%s' not found. Pull it with `ollama pull %s`."),
+							StatusCode, *Config.ModelId, *Config.ModelId));
 						return;
 					}
 
-					HandleError(FString::Printf(TEXT("Ollama error: %s"), *ErrorMessage));
+					HandleError(FString::Printf(TEXT("[HTTP:%d] Ollama error: %s"), StatusCode, *ErrorMessage));
 					return;
 				}
 			}
@@ -358,17 +358,17 @@ void FOliveOllamaProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpResp
 				if (NativeError.Contains(TEXT("not found")) || NativeError.Contains(TEXT("does not exist")))
 				{
 					HandleError(FString::Printf(
-						TEXT("Model '%s' not found. Pull it with `ollama pull %s`."),
-						*Config.ModelId, *Config.ModelId));
+						TEXT("[HTTP:%d] Model '%s' not found. Pull it with `ollama pull %s`."),
+						StatusCode, *Config.ModelId, *Config.ModelId));
 					return;
 				}
 
-				HandleError(FString::Printf(TEXT("Ollama error: %s"), *NativeError));
+				HandleError(FString::Printf(TEXT("[HTTP:%d] Ollama error: %s"), StatusCode, *NativeError));
 				return;
 			}
 		}
 
-		HandleError(FString::Printf(TEXT("Ollama HTTP error %d"), StatusCode));
+		HandleError(FString::Printf(TEXT("[HTTP:%d] Ollama HTTP error %d"), StatusCode, StatusCode));
 		return;
 	}
 
@@ -438,6 +438,9 @@ void FOliveOllamaProvider::ParseStreamChunk(const TSharedPtr<FJsonObject>& Chunk
 	FString FinishReason = Choice->GetStringField(TEXT("finish_reason"));
 	if (!FinishReason.IsEmpty() && FinishReason != TEXT("null"))
 	{
+		// Store finish reason so HandleComplete can detect truncation (e.g. "length")
+		CurrentUsage.FinishReason = FinishReason;
+
 		// Finalize pending tool calls
 		FinalizePendingToolCalls();
 		return;

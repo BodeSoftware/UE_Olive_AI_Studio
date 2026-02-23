@@ -6,6 +6,29 @@
 #include "Providers/IOliveAIProvider.h"
 
 /**
+ * Result metadata from prompt distillation.
+ * Used to inject truncation notes into model-visible context so the LLM
+ * knows that earlier messages were summarized and may request re-provision.
+ */
+struct OLIVEAIEDITOR_API FOliveDistillationResult
+{
+	/** Number of messages that were summarized */
+	int32 MessagesSummarized = 0;
+
+	/** Number of tool results truncated (subset of summarized that were oversized) */
+	int32 ToolResultsTruncated = 0;
+
+	/** Estimated tokens saved by distillation */
+	int32 TokensSaved = 0;
+
+	/** Whether any truncation occurred */
+	bool DidTruncate() const
+	{
+		return MessagesSummarized > 0 || ToolResultsTruncated > 0;
+	}
+};
+
+/**
  * Configuration for prompt distillation
  */
 struct OLIVEAIEDITOR_API FOliveDistillationConfig
@@ -42,7 +65,7 @@ public:
 	 * @param Messages The message array to distill (modified in-place)
 	 * @param Config Distillation configuration
 	 */
-	void Distill(TArray<FOliveChatMessage>& Messages, const FOliveDistillationConfig& Config) const;
+	FOliveDistillationResult Distill(TArray<FOliveChatMessage>& Messages, const FOliveDistillationConfig& Config) const;
 
 	/**
 	 * Summarize a single tool result to a one-line string.

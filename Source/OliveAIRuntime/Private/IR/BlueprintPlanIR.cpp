@@ -1,0 +1,399 @@
+// Copyright Bode Software. All Rights Reserved.
+
+#include "IR/BlueprintPlanIR.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
+
+// ---------------------------------------------------------------------------
+// OlivePlanOps namespace
+// ---------------------------------------------------------------------------
+
+namespace OlivePlanOps
+{
+	bool IsValidOp(const FString& Op)
+	{
+		return GetAllOps().Contains(Op);
+	}
+
+	const TSet<FString>& GetAllOps()
+	{
+		static const TSet<FString> Ops = {
+			Call, GetVar, SetVar, Branch, Sequence, Cast,
+			Event, CustomEvent, ForLoop, ForEachLoop, Delay,
+			IsValid, PrintString, SpawnActor, MakeStruct,
+			BreakStruct, Return, Comment
+		};
+		return Ops;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Helper: serialize TMap<FString, FString> to JSON object
+// ---------------------------------------------------------------------------
+
+namespace
+{
+	TSharedPtr<FJsonObject> StringMapToJson(const TMap<FString, FString>& Map)
+	{
+		TSharedPtr<FJsonObject> Json = MakeShared<FJsonObject>();
+		for (const auto& Pair : Map)
+		{
+			Json->SetStringField(Pair.Key, Pair.Value);
+		}
+		return Json;
+	}
+
+	TMap<FString, FString> JsonToStringMap(const TSharedPtr<FJsonObject>& Json)
+	{
+		TMap<FString, FString> Map;
+		if (Json.IsValid())
+		{
+			for (const auto& Pair : Json->Values)
+			{
+				Map.Add(Pair.Key, Pair.Value->AsString());
+			}
+		}
+		return Map;
+	}
+
+	TArray<TSharedPtr<FJsonValue>> StringArrayToJsonArray(const TArray<FString>& Arr)
+	{
+		TArray<TSharedPtr<FJsonValue>> JsonArr;
+		JsonArr.Reserve(Arr.Num());
+		for (const FString& Str : Arr)
+		{
+			JsonArr.Add(MakeShared<FJsonValueString>(Str));
+		}
+		return JsonArr;
+	}
+
+	TArray<FString> JsonArrayToStringArray(const TArray<TSharedPtr<FJsonValue>>& JsonArr)
+	{
+		TArray<FString> Arr;
+		Arr.Reserve(JsonArr.Num());
+		for (const TSharedPtr<FJsonValue>& Val : JsonArr)
+		{
+			Arr.Add(Val->AsString());
+		}
+		return Arr;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// FOliveIRBlueprintPlanStep
+// ---------------------------------------------------------------------------
+
+TSharedPtr<FJsonObject> FOliveIRBlueprintPlanStep::ToJson() const
+{
+	TSharedPtr<FJsonObject> Json = MakeShared<FJsonObject>();
+
+	Json->SetStringField(TEXT("step_id"), StepId);
+	Json->SetStringField(TEXT("op"), Op);
+
+	if (!Target.IsEmpty())
+	{
+		Json->SetStringField(TEXT("target"), Target);
+	}
+
+	if (!TargetClass.IsEmpty())
+	{
+		Json->SetStringField(TEXT("target_class"), TargetClass);
+	}
+
+	if (Inputs.Num() > 0)
+	{
+		Json->SetObjectField(TEXT("inputs"), StringMapToJson(Inputs));
+	}
+
+	if (Properties.Num() > 0)
+	{
+		Json->SetObjectField(TEXT("properties"), StringMapToJson(Properties));
+	}
+
+	if (!ExecAfter.IsEmpty())
+	{
+		Json->SetStringField(TEXT("exec_after"), ExecAfter);
+	}
+
+	if (ExecOutputs.Num() > 0)
+	{
+		Json->SetObjectField(TEXT("exec_outputs"), StringMapToJson(ExecOutputs));
+	}
+
+	return Json;
+}
+
+FOliveIRBlueprintPlanStep FOliveIRBlueprintPlanStep::FromJson(const TSharedPtr<FJsonObject>& Json)
+{
+	FOliveIRBlueprintPlanStep Step;
+	if (!Json.IsValid())
+	{
+		return Step;
+	}
+
+	Json->TryGetStringField(TEXT("step_id"), Step.StepId);
+	Json->TryGetStringField(TEXT("op"), Step.Op);
+	Json->TryGetStringField(TEXT("target"), Step.Target);
+	Json->TryGetStringField(TEXT("target_class"), Step.TargetClass);
+	Json->TryGetStringField(TEXT("exec_after"), Step.ExecAfter);
+
+	const TSharedPtr<FJsonObject>* InputsObj = nullptr;
+	if (Json->TryGetObjectField(TEXT("inputs"), InputsObj))
+	{
+		Step.Inputs = JsonToStringMap(*InputsObj);
+	}
+
+	const TSharedPtr<FJsonObject>* PropertiesObj = nullptr;
+	if (Json->TryGetObjectField(TEXT("properties"), PropertiesObj))
+	{
+		Step.Properties = JsonToStringMap(*PropertiesObj);
+	}
+
+	const TSharedPtr<FJsonObject>* ExecOutputsObj = nullptr;
+	if (Json->TryGetObjectField(TEXT("exec_outputs"), ExecOutputsObj))
+	{
+		Step.ExecOutputs = JsonToStringMap(*ExecOutputsObj);
+	}
+
+	return Step;
+}
+
+// ---------------------------------------------------------------------------
+// FOliveIRBlueprintPlan
+// ---------------------------------------------------------------------------
+
+TSharedPtr<FJsonObject> FOliveIRBlueprintPlan::ToJson() const
+{
+	TSharedPtr<FJsonObject> Json = MakeShared<FJsonObject>();
+
+	Json->SetStringField(TEXT("schema_version"), SchemaVersion);
+
+	TArray<TSharedPtr<FJsonValue>> StepsArr;
+	StepsArr.Reserve(Steps.Num());
+	for (const FOliveIRBlueprintPlanStep& Step : Steps)
+	{
+		StepsArr.Add(MakeShared<FJsonValueObject>(Step.ToJson()));
+	}
+	Json->SetArrayField(TEXT("steps"), StepsArr);
+
+	return Json;
+}
+
+FOliveIRBlueprintPlan FOliveIRBlueprintPlan::FromJson(const TSharedPtr<FJsonObject>& Json)
+{
+	FOliveIRBlueprintPlan Plan;
+	if (!Json.IsValid())
+	{
+		return Plan;
+	}
+
+	Json->TryGetStringField(TEXT("schema_version"), Plan.SchemaVersion);
+
+	const TArray<TSharedPtr<FJsonValue>>* StepsArr = nullptr;
+	if (Json->TryGetArrayField(TEXT("steps"), StepsArr))
+	{
+		Plan.Steps.Reserve(StepsArr->Num());
+		for (const TSharedPtr<FJsonValue>& StepVal : *StepsArr)
+		{
+			const TSharedPtr<FJsonObject>* StepObj = nullptr;
+			if (StepVal->TryGetObject(StepObj))
+			{
+				Plan.Steps.Add(FOliveIRBlueprintPlanStep::FromJson(*StepObj));
+			}
+		}
+	}
+
+	return Plan;
+}
+
+// ---------------------------------------------------------------------------
+// FOliveIRBlueprintPlanError
+// ---------------------------------------------------------------------------
+
+TSharedPtr<FJsonObject> FOliveIRBlueprintPlanError::ToJson() const
+{
+	TSharedPtr<FJsonObject> Json = MakeShared<FJsonObject>();
+
+	Json->SetStringField(TEXT("error_code"), ErrorCode);
+
+	if (!StepId.IsEmpty())
+	{
+		Json->SetStringField(TEXT("step_id"), StepId);
+	}
+
+	if (!LocationPointer.IsEmpty())
+	{
+		Json->SetStringField(TEXT("location"), LocationPointer);
+	}
+
+	Json->SetStringField(TEXT("message"), Message);
+
+	if (!Suggestion.IsEmpty())
+	{
+		Json->SetStringField(TEXT("suggestion"), Suggestion);
+	}
+
+	if (Alternatives.Num() > 0)
+	{
+		Json->SetArrayField(TEXT("alternatives"), StringArrayToJsonArray(Alternatives));
+	}
+
+	return Json;
+}
+
+FOliveIRBlueprintPlanError FOliveIRBlueprintPlanError::FromJson(const TSharedPtr<FJsonObject>& Json)
+{
+	FOliveIRBlueprintPlanError Error;
+	if (!Json.IsValid())
+	{
+		return Error;
+	}
+
+	Json->TryGetStringField(TEXT("error_code"), Error.ErrorCode);
+	Json->TryGetStringField(TEXT("step_id"), Error.StepId);
+	Json->TryGetStringField(TEXT("location"), Error.LocationPointer);
+	Json->TryGetStringField(TEXT("message"), Error.Message);
+	Json->TryGetStringField(TEXT("suggestion"), Error.Suggestion);
+
+	const TArray<TSharedPtr<FJsonValue>>* AlternativesArr = nullptr;
+	if (Json->TryGetArrayField(TEXT("alternatives"), AlternativesArr))
+	{
+		Error.Alternatives = JsonArrayToStringArray(*AlternativesArr);
+	}
+
+	return Error;
+}
+
+FOliveIRBlueprintPlanError FOliveIRBlueprintPlanError::MakeStepError(
+	const FString& Code,
+	const FString& InStepId,
+	const FString& InLocation,
+	const FString& InMessage,
+	const FString& InSuggestion)
+{
+	FOliveIRBlueprintPlanError Error;
+	Error.ErrorCode = Code;
+	Error.StepId = InStepId;
+	Error.LocationPointer = InLocation;
+	Error.Message = InMessage;
+	Error.Suggestion = InSuggestion;
+	return Error;
+}
+
+FOliveIRBlueprintPlanError FOliveIRBlueprintPlanError::MakePlanError(
+	const FString& Code,
+	const FString& InMessage,
+	const FString& InSuggestion)
+{
+	FOliveIRBlueprintPlanError Error;
+	Error.ErrorCode = Code;
+	Error.Message = InMessage;
+	Error.Suggestion = InSuggestion;
+	return Error;
+}
+
+// ---------------------------------------------------------------------------
+// FOliveIRBlueprintPlanResult
+// ---------------------------------------------------------------------------
+
+TSharedPtr<FJsonObject> FOliveIRBlueprintPlanResult::ToJson() const
+{
+	TSharedPtr<FJsonObject> Json = MakeShared<FJsonObject>();
+
+	Json->SetBoolField(TEXT("success"), bSuccess);
+	Json->SetNumberField(TEXT("applied_ops_count"), AppliedOpsCount);
+
+	if (StepToNodeMap.Num() > 0)
+	{
+		Json->SetObjectField(TEXT("step_to_node_map"), StringMapToJson(StepToNodeMap));
+	}
+
+	if (CompileResult.IsSet())
+	{
+		Json->SetObjectField(TEXT("compile_result"), CompileResult.GetValue().ToJson());
+	}
+
+	if (Errors.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> ErrorsArr;
+		ErrorsArr.Reserve(Errors.Num());
+		for (const FOliveIRBlueprintPlanError& Error : Errors)
+		{
+			ErrorsArr.Add(MakeShared<FJsonValueObject>(Error.ToJson()));
+		}
+		Json->SetArrayField(TEXT("errors"), ErrorsArr);
+	}
+
+	if (Warnings.Num() > 0)
+	{
+		Json->SetArrayField(TEXT("warnings"), StringArrayToJsonArray(Warnings));
+	}
+
+	return Json;
+}
+
+FOliveIRBlueprintPlanResult FOliveIRBlueprintPlanResult::FromJson(const TSharedPtr<FJsonObject>& Json)
+{
+	FOliveIRBlueprintPlanResult Result;
+	if (!Json.IsValid())
+	{
+		return Result;
+	}
+
+	Json->TryGetBoolField(TEXT("success"), Result.bSuccess);
+	Json->TryGetNumberField(TEXT("applied_ops_count"), Result.AppliedOpsCount);
+
+	const TSharedPtr<FJsonObject>* StepMapObj = nullptr;
+	if (Json->TryGetObjectField(TEXT("step_to_node_map"), StepMapObj))
+	{
+		Result.StepToNodeMap = JsonToStringMap(*StepMapObj);
+	}
+
+	const TSharedPtr<FJsonObject>* CompileObj = nullptr;
+	if (Json->TryGetObjectField(TEXT("compile_result"), CompileObj))
+	{
+		Result.CompileResult = FOliveIRCompileResult::FromJson(*CompileObj);
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* ErrorsArr = nullptr;
+	if (Json->TryGetArrayField(TEXT("errors"), ErrorsArr))
+	{
+		Result.Errors.Reserve(ErrorsArr->Num());
+		for (const TSharedPtr<FJsonValue>& Val : *ErrorsArr)
+		{
+			const TSharedPtr<FJsonObject>* ErrObj = nullptr;
+			if (Val->TryGetObject(ErrObj))
+			{
+				Result.Errors.Add(FOliveIRBlueprintPlanError::FromJson(*ErrObj));
+			}
+		}
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* WarningsArr = nullptr;
+	if (Json->TryGetArrayField(TEXT("warnings"), WarningsArr))
+	{
+		Result.Warnings = JsonArrayToStringArray(*WarningsArr);
+	}
+
+	return Result;
+}
+
+FOliveIRBlueprintPlanResult FOliveIRBlueprintPlanResult::Success(
+	const TMap<FString, FString>& InStepToNodeMap,
+	int32 InAppliedOpsCount)
+{
+	FOliveIRBlueprintPlanResult Result;
+	Result.bSuccess = true;
+	Result.StepToNodeMap = InStepToNodeMap;
+	Result.AppliedOpsCount = InAppliedOpsCount;
+	return Result;
+}
+
+FOliveIRBlueprintPlanResult FOliveIRBlueprintPlanResult::Failure(
+	const TArray<FOliveIRBlueprintPlanError>& InErrors)
+{
+	FOliveIRBlueprintPlanResult Result;
+	Result.bSuccess = false;
+	Result.Errors = InErrors;
+	return Result;
+}

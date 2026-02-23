@@ -37,11 +37,14 @@ TArray<FOliveIRComponent> FOliveComponentReader::ReadComponents(const UBlueprint
 	// Get the root nodes (top-level components)
 	const TArray<USCS_Node*>& RootNodes = SCS->GetRootNodes();
 
+	// Visited set is shared across all root-node traversals so cross-tree cycles
+	// are also caught. Each root starts at depth 0.
+	TSet<const USCS_Node*> Visited;
 	for (USCS_Node* RootNode : RootNodes)
 	{
 		if (RootNode)
 		{
-			BuildComponentTree(RootNode, Components, TEXT(""));
+			BuildComponentTree(RootNode, Components, TEXT(""), Visited, 0);
 		}
 	}
 
@@ -159,12 +162,36 @@ bool FOliveComponentReader::HasComponents(const UBlueprint* Blueprint) const
 void FOliveComponentReader::BuildComponentTree(
 	const USCS_Node* Node,
 	TArray<FOliveIRComponent>& OutComponents,
-	const FString& ParentName) const
+	const FString& ParentName,
+	TSet<const USCS_Node*>& Visited,
+	int32 Depth) const
 {
+	static constexpr int32 MaxComponentTreeDepth = 20;
+
 	if (!Node)
 	{
 		return;
 	}
+
+	// Guard against circular SCS node references
+	if (Visited.Contains(Node))
+	{
+		UE_LOG(LogOliveComponentReader, Warning,
+			TEXT("BuildComponentTree: Circular USCS_Node reference detected at component '%s' — stopping traversal"),
+			*Node->GetVariableName().ToString());
+		return;
+	}
+
+	// Guard against unreasonably deep component hierarchies
+	if (Depth >= MaxComponentTreeDepth)
+	{
+		UE_LOG(LogOliveComponentReader, Warning,
+			TEXT("BuildComponentTree: Depth cap (%d) reached at component '%s' — stopping traversal"),
+			MaxComponentTreeDepth, *Node->GetVariableName().ToString());
+		return;
+	}
+
+	Visited.Add(Node);
 
 	// Read this node
 	FOliveIRComponent Component = ReadComponentNode(Node);
@@ -175,7 +202,7 @@ void FOliveComponentReader::BuildComponentTree(
 	{
 		if (ChildNode)
 		{
-			BuildComponentTree(ChildNode, Component.Children, Component.Name);
+			BuildComponentTree(ChildNode, Component.Children, Component.Name, Visited, Depth + 1);
 		}
 	}
 

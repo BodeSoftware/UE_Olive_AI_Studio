@@ -18,11 +18,227 @@
 #include "Animation/AnimBlueprint.h"
 #include "Serialization/JsonWriter.h"
 #include "Serialization/JsonSerializer.h"
+#include "Services/OliveAssetResolver.h"
+#include "OliveNodeFactory.h"
+#include "OliveNodeCatalog.h"
+#include "OliveGraphReader.h"
+#include "Kismet2/BlueprintEditorUtils.h"
+#include "K2Node_Event.h"
+#include "K2Node_CustomEvent.h"
+#include "EdGraph/EdGraph.h"
+#include "EdGraphSchema_K2.h"
+#include "Plan/OliveBlueprintPlanResolver.h"
+#include "Plan/OliveBlueprintPlanLowerer.h"
+#include "Services/OliveGraphBatchExecutor.h"
+#include "Services/OliveBatchExecutionScope.h"
+#include "IR/OliveIRSchema.h"
+#include "IR/BlueprintPlanIR.h"
 
 DEFINE_LOG_CATEGORY(LogOliveBPTools);
 
 namespace
 {
+
+/**
+ * Build large-graph summary metadata and attach it to a graph IR JSON object.
+ * Adds is_large_graph, page_size, total_pages, event_nodes list, and node_type_breakdown.
+ *
+ * @param ResultData The graph JSON object to augment with summary fields
+ * @param Graph The raw UEdGraph to extract event nodes and type breakdown from
+ * @param NodeIdMap The node ID map built by the graph reader (for resolving event node IDs)
+ * @param PageSize The page size to report in the summary
+ */
+void AttachLargeGraphSummaryMetadata(
+	TSharedPtr<FJsonObject>& ResultData,
+	const UEdGraph* Graph,
+	const TMap<const UEdGraphNode*, FString>& NodeIdMap,
+	int32 PageSize)
+{
+	if (!ResultData.IsValid() || !Graph)
+	{
+		return;
+	}
+
+	const int32 TotalNodes = NodeIdMap.Num();
+
+	ResultData->SetBoolField(TEXT("is_large_graph"), true);
+	ResultData->SetNumberField(TEXT("page_size"), PageSize);
+	ResultData->SetNumberField(TEXT("total_pages"),
+		FMath::CeilToInt(static_cast<float>(TotalNodes) / static_cast<float>(PageSize)));
+
+	// Build event node list (entry points the agent can navigate from)
+	TArray<TSharedPtr<FJsonValue>> EventNodes;
+	// Build node type breakdown (class name -> count)
+	TMap<FString, int32> TypeBreakdown;
+
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		if (!Node)
+		{
+			continue;
+		}
+
+		// Count node types
+		FString ClassName = Node->GetClass()->GetName();
+		TypeBreakdown.FindOrAdd(ClassName, 0)++;
+
+		// Collect event nodes (entry points)
+		if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
+		{
+			const FString* NodeId = NodeIdMap.Find(Node);
+			if (NodeId)
+			{
+				TSharedPtr<FJsonObject> EventObj = MakeShareable(new FJsonObject());
+				EventObj->SetStringField(TEXT("node_id"), *NodeId);
+				EventObj->SetStringField(TEXT("event_name"),
+					EventNode->GetNodeTitle(ENodeTitleType::ListView).ToString());
+				EventObj->SetBoolField(TEXT("is_custom_event"),
+					EventNode->IsA<UK2Node_CustomEvent>());
+				EventObj->SetNumberField(TEXT("pos_x"), EventNode->NodePosX);
+				EventObj->SetNumberField(TEXT("pos_y"), EventNode->NodePosY);
+				EventNodes.Add(MakeShareable(new FJsonValueObject(EventObj)));
+			}
+		}
+	}
+
+	ResultData->SetArrayField(TEXT("event_nodes"), EventNodes);
+
+	// Build node type breakdown JSON
+	TSharedPtr<FJsonObject> BreakdownObj = MakeShareable(new FJsonObject());
+	for (const auto& Pair : TypeBreakdown)
+	{
+		BreakdownObj->SetNumberField(Pair.Key, Pair.Value);
+	}
+	ResultData->SetObjectField(TEXT("node_type_breakdown"), BreakdownObj);
+}
+
+/**
+ * Extract large-graph paging parameters from tool call params.
+ * @param Params The tool call parameters
+ * @param OutPage Set to page number if 'page' field is present (-1 if absent)
+ * @param OutPageSize Set to page size (clamped to [10, 200])
+ * @param OutMode Set to the mode string ("auto" or "full")
+ */
+void ExtractPagingParams(
+	const TSharedPtr<FJsonObject>& Params,
+	int32& OutPage,
+	int32& OutPageSize,
+	FString& OutMode)
+{
+	OutPage = -1;
+	OutPageSize = OLIVE_GRAPH_PAGE_SIZE;
+	OutMode = TEXT("auto");
+
+	if (!Params.IsValid())
+	{
+		return;
+	}
+
+	if (Params->HasField(TEXT("page")))
+	{
+		OutPage = static_cast<int32>(Params->GetNumberField(TEXT("page")));
+		if (OutPage < 0) OutPage = 0;
+	}
+
+	if (Params->HasField(TEXT("page_size")))
+	{
+		OutPageSize = static_cast<int32>(Params->GetNumberField(TEXT("page_size")));
+		OutPageSize = FMath::Clamp(OutPageSize, 10, 200);
+	}
+
+	Params->TryGetStringField(TEXT("mode"), OutMode);
+}
+
+/**
+ * Handle a graph read with large-graph detection.
+ * If the graph exceeds OLIVE_LARGE_GRAPH_THRESHOLD nodes and no page/full-mode is requested,
+ * returns a summary. If page is specified, returns that page. Otherwise returns full graph.
+ *
+ * @param Graph The raw UEdGraph
+ * @param Blueprint The owning Blueprint
+ * @param GraphReader The graph reader to use
+ * @param Params The original tool call parameters
+ * @param ResolveInfo Asset resolution info for redirect injection
+ * @return Tool result with appropriate graph data
+ */
+FOliveToolResult HandleGraphReadWithPaging(
+	UEdGraph* Graph,
+	const UBlueprint* Blueprint,
+	TSharedPtr<FOliveGraphReader>& GraphReader,
+	const TSharedPtr<FJsonObject>& Params,
+	const FOliveAssetResolveInfo& ResolveInfo)
+{
+	if (!Graph || !GraphReader.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("INTERNAL_ERROR"),
+			TEXT("Invalid graph or graph reader"),
+			TEXT("This is an internal error. Please report it.")
+		);
+	}
+
+	// Extract paging parameters
+	int32 Page = -1;
+	int32 PageSize = OLIVE_GRAPH_PAGE_SIZE;
+	FString Mode;
+	ExtractPagingParams(Params, Page, PageSize, Mode);
+
+	// Count nodes (fast -- just count the array, no serialization)
+	const int32 RawNodeCount = Graph->Nodes.Num();
+
+	// If page is explicitly requested, return that page
+	if (Page >= 0)
+	{
+		const int32 Offset = Page * PageSize;
+		FOliveIRGraph PageIR = GraphReader->ReadGraphPage(Graph, Blueprint, Offset, PageSize);
+		TSharedPtr<FJsonObject> ResultData = PageIR.ToJson();
+
+		ResultData->SetNumberField(TEXT("page"), Page);
+		ResultData->SetNumberField(TEXT("page_size"), PageSize);
+		ResultData->SetNumberField(TEXT("total_pages"),
+			FMath::CeilToInt(static_cast<float>(PageIR.NodeCount) / static_cast<float>(PageSize)));
+		ResultData->SetBoolField(TEXT("is_large_graph"), PageIR.NodeCount >= OLIVE_LARGE_GRAPH_THRESHOLD);
+
+		// Inject redirector info
+		if (!ResolveInfo.RedirectedFrom.IsEmpty() && ResultData.IsValid())
+		{
+			ResultData->SetStringField(TEXT("redirected_from"), ResolveInfo.RedirectedFrom);
+		}
+
+		return FOliveToolResult::Success(ResultData);
+	}
+
+	// If graph is large and mode is not "full", return summary
+	if (RawNodeCount >= OLIVE_LARGE_GRAPH_THRESHOLD && Mode != TEXT("full"))
+	{
+		FOliveIRGraph SummaryIR = GraphReader->ReadGraphSummary(Graph, Blueprint);
+		TSharedPtr<FJsonObject> ResultData = SummaryIR.ToJson();
+
+		// Attach large-graph metadata (event nodes, type breakdown, paging info)
+		AttachLargeGraphSummaryMetadata(ResultData, Graph, GraphReader->GetNodeIdMap(), PageSize);
+
+		// Inject redirector info
+		if (!ResolveInfo.RedirectedFrom.IsEmpty() && ResultData.IsValid())
+		{
+			ResultData->SetStringField(TEXT("redirected_from"), ResolveInfo.RedirectedFrom);
+		}
+
+		return FOliveToolResult::Success(ResultData);
+	}
+
+	// Normal full read
+	FOliveIRGraph GraphIR = GraphReader->ReadGraph(Graph, Blueprint);
+	TSharedPtr<FJsonObject> ResultData = GraphIR.ToJson();
+
+	// Inject redirector info
+	if (!ResolveInfo.RedirectedFrom.IsEmpty() && ResultData.IsValid())
+	{
+		ResultData->SetStringField(TEXT("redirected_from"), ResolveInfo.RedirectedFrom);
+	}
+
+	return FOliveToolResult::Success(ResultData);
+}
+
 FOliveWriteResult ExecuteWithOptionalConfirmation(
 	FOliveWritePipeline& Pipeline,
 	const FOliveWriteRequest& Request,
@@ -69,6 +285,15 @@ void FOliveBlueprintToolHandlers::RegisterAllTools()
 	RegisterGraphWriterTools();
 	RegisterAnimBPWriterTools();
 	RegisterWidgetWriterTools();
+
+	// Plan JSON tools (gated by settings)
+	if (const UOliveAISettings* Settings = UOliveAISettings::Get())
+	{
+		if (Settings->bEnableBlueprintPlanJsonTools)
+		{
+			RegisterPlanTools();
+		}
+	}
 
 	UE_LOG(LogOliveBPTools, Log, TEXT("Registered %d Blueprint MCP tools"), RegisteredToolNames.Num());
 }
@@ -633,17 +858,29 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRead(const TSharedP
 		);
 	}
 
+	// Resolve asset path (follows redirectors, checks existence)
+	FOliveAssetResolveInfo ResolveInfo = FOliveAssetResolver::Get().ResolveByPath(AssetPath);
+	if (!ResolveInfo.IsSuccess())
+	{
+		return FOliveToolResult::Error(
+			TEXT("ASSET_NOT_FOUND"),
+			FString::Printf(TEXT("Failed to resolve asset at path '%s'"), *AssetPath),
+			TEXT("Verify the asset path is correct and the asset exists")
+		);
+	}
+	FString ResolvedPath = ResolveInfo.ResolvedPath;
+
 	// Read Blueprint
 	FOliveBlueprintReader& Reader = FOliveBlueprintReader::Get();
 	TOptional<FOliveIRBlueprint> Result;
 
 	if (Mode == TEXT("full"))
 	{
-		Result = Reader.ReadBlueprintFull(AssetPath);
+		Result = Reader.ReadBlueprintFull(ResolvedPath);
 	}
 	else
 	{
-		Result = Reader.ReadBlueprintSummary(AssetPath);
+		Result = Reader.ReadBlueprintSummary(ResolvedPath);
 	}
 
 	if (!Result.IsSet())
@@ -657,6 +894,12 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRead(const TSharedP
 
 	// Serialize to JSON
 	TSharedPtr<FJsonObject> ResultData = Result->ToJson();
+
+	// Inject redirector info so callers know the canonical path was different
+	if (!ResolveInfo.RedirectedFrom.IsEmpty() && ResultData.IsValid())
+	{
+		ResultData->SetStringField(TEXT("redirected_from"), ResolveInfo.RedirectedFrom);
+	}
 
 	return FOliveToolResult::Success(ResultData);
 }
@@ -695,11 +938,42 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadFunction(const 
 		);
 	}
 
-	// Read function graph
-	FOliveBlueprintReader& Reader = FOliveBlueprintReader::Get();
-	TOptional<FOliveIRGraph> Result = Reader.ReadFunctionGraph(AssetPath, FunctionName);
+	// Resolve asset path (follows redirectors, checks existence)
+	FOliveAssetResolveInfo ResolveInfo = FOliveAssetResolver::Get().ResolveByPath(AssetPath);
+	if (!ResolveInfo.IsSuccess())
+	{
+		return FOliveToolResult::Error(
+			TEXT("ASSET_NOT_FOUND"),
+			FString::Printf(TEXT("Failed to resolve asset at path '%s'"), *AssetPath),
+			TEXT("Verify the asset path is correct and the asset exists")
+		);
+	}
+	FString ResolvedPath = ResolveInfo.ResolvedPath;
 
-	if (!Result.IsSet())
+	// Load the Blueprint to access raw graph for large-graph detection
+	FOliveBlueprintReader& Reader = FOliveBlueprintReader::Get();
+	UBlueprint* Blueprint = Reader.LoadBlueprint(ResolvedPath);
+	if (!Blueprint)
+	{
+		return FOliveToolResult::Error(
+			TEXT("ASSET_NOT_FOUND"),
+			FString::Printf(TEXT("Failed to load Blueprint at path '%s'"), *ResolvedPath),
+			TEXT("Verify the asset path is correct and the asset exists")
+		);
+	}
+
+	// Find the function graph by name
+	UEdGraph* TargetGraph = nullptr;
+	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+	{
+		if (Graph && Graph->GetName() == FunctionName)
+		{
+			TargetGraph = Graph;
+			break;
+		}
+	}
+
+	if (!TargetGraph)
 	{
 		return FOliveToolResult::Error(
 			TEXT("GRAPH_NOT_FOUND"),
@@ -708,10 +982,9 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadFunction(const 
 		);
 	}
 
-	// Serialize to JSON
-	TSharedPtr<FJsonObject> ResultData = Result->ToJson();
-
-	return FOliveToolResult::Success(ResultData);
+	// Delegate to the paging-aware graph read helper
+	TSharedPtr<FOliveGraphReader> GraphReader = Reader.GetGraphReader();
+	return HandleGraphReadWithPaging(TargetGraph, Blueprint, GraphReader, Params, ResolveInfo);
 }
 
 FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadEventGraph(const TSharedPtr<FJsonObject>& Params)
@@ -741,11 +1014,48 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadEventGraph(cons
 	FString GraphName = TEXT("EventGraph");
 	Params->TryGetStringField(TEXT("graph_name"), GraphName);
 
-	// Read event graph
-	FOliveBlueprintReader& Reader = FOliveBlueprintReader::Get();
-	TOptional<FOliveIRGraph> Result = Reader.ReadEventGraph(AssetPath, GraphName);
+	// Resolve asset path (follows redirectors, checks existence)
+	FOliveAssetResolveInfo ResolveInfo = FOliveAssetResolver::Get().ResolveByPath(AssetPath);
+	if (!ResolveInfo.IsSuccess())
+	{
+		return FOliveToolResult::Error(
+			TEXT("ASSET_NOT_FOUND"),
+			FString::Printf(TEXT("Failed to resolve asset at path '%s'"), *AssetPath),
+			TEXT("Verify the asset path is correct and the asset exists")
+		);
+	}
+	FString ResolvedPath = ResolveInfo.ResolvedPath;
 
-	if (!Result.IsSet())
+	// Load the Blueprint to access raw graph for large-graph detection
+	FOliveBlueprintReader& Reader = FOliveBlueprintReader::Get();
+	UBlueprint* Blueprint = Reader.LoadBlueprint(ResolvedPath);
+	if (!Blueprint)
+	{
+		return FOliveToolResult::Error(
+			TEXT("ASSET_NOT_FOUND"),
+			FString::Printf(TEXT("Failed to load Blueprint at path '%s'"), *ResolvedPath),
+			TEXT("Verify the asset path is correct and the asset exists")
+		);
+	}
+
+	// Find the event graph by name
+	UEdGraph* TargetGraph = nullptr;
+	for (UEdGraph* Graph : Blueprint->UbergraphPages)
+	{
+		if (Graph && Graph->GetName() == GraphName)
+		{
+			TargetGraph = Graph;
+			break;
+		}
+	}
+
+	// Fallback: if "EventGraph" was requested and not found by name, use first Ubergraph
+	if (!TargetGraph && GraphName == TEXT("EventGraph") && Blueprint->UbergraphPages.Num() > 0)
+	{
+		TargetGraph = Blueprint->UbergraphPages[0];
+	}
+
+	if (!TargetGraph)
 	{
 		return FOliveToolResult::Error(
 			TEXT("GRAPH_NOT_FOUND"),
@@ -754,10 +1064,9 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadEventGraph(cons
 		);
 	}
 
-	// Serialize to JSON
-	TSharedPtr<FJsonObject> ResultData = Result->ToJson();
-
-	return FOliveToolResult::Success(ResultData);
+	// Delegate to the paging-aware graph read helper
+	TSharedPtr<FOliveGraphReader> GraphReader = Reader.GetGraphReader();
+	return HandleGraphReadWithPaging(TargetGraph, Blueprint, GraphReader, Params, ResolveInfo);
 }
 
 FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadVariables(const TSharedPtr<FJsonObject>& Params)
@@ -783,9 +1092,21 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadVariables(const
 		);
 	}
 
+	// Resolve asset path (follows redirectors, checks existence)
+	FOliveAssetResolveInfo ResolveInfo = FOliveAssetResolver::Get().ResolveByPath(AssetPath);
+	if (!ResolveInfo.IsSuccess())
+	{
+		return FOliveToolResult::Error(
+			TEXT("ASSET_NOT_FOUND"),
+			FString::Printf(TEXT("Failed to resolve asset at path '%s'"), *AssetPath),
+			TEXT("Verify the asset path is correct and the asset exists")
+		);
+	}
+	FString ResolvedPath = ResolveInfo.ResolvedPath;
+
 	// Read variables
 	FOliveBlueprintReader& Reader = FOliveBlueprintReader::Get();
-	TArray<FOliveIRVariable> Variables = Reader.ReadVariables(AssetPath);
+	TArray<FOliveIRVariable> Variables = Reader.ReadVariables(ResolvedPath);
 
 	// Build result JSON
 	TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
@@ -798,6 +1119,12 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadVariables(const
 
 	ResultData->SetArrayField(TEXT("variables"), VariablesArray);
 	ResultData->SetNumberField(TEXT("count"), Variables.Num());
+
+	// Inject redirector info so callers know the canonical path was different
+	if (!ResolveInfo.RedirectedFrom.IsEmpty())
+	{
+		ResultData->SetStringField(TEXT("redirected_from"), ResolveInfo.RedirectedFrom);
+	}
 
 	return FOliveToolResult::Success(ResultData);
 }
@@ -825,9 +1152,21 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadComponents(cons
 		);
 	}
 
+	// Resolve asset path (follows redirectors, checks existence)
+	FOliveAssetResolveInfo ResolveInfo = FOliveAssetResolver::Get().ResolveByPath(AssetPath);
+	if (!ResolveInfo.IsSuccess())
+	{
+		return FOliveToolResult::Error(
+			TEXT("ASSET_NOT_FOUND"),
+			FString::Printf(TEXT("Failed to resolve asset at path '%s'"), *AssetPath),
+			TEXT("Verify the asset path is correct and the asset exists")
+		);
+	}
+	FString ResolvedPath = ResolveInfo.ResolvedPath;
+
 	// Read components
 	FOliveBlueprintReader& Reader = FOliveBlueprintReader::Get();
-	TArray<FOliveIRComponent> Components = Reader.ReadComponents(AssetPath);
+	TArray<FOliveIRComponent> Components = Reader.ReadComponents(ResolvedPath);
 
 	// Build result JSON
 	TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
@@ -849,6 +1188,12 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadComponents(cons
 	ResultData->SetArrayField(TEXT("components"), ComponentsArray);
 	ResultData->SetStringField(TEXT("root"), RootComponentName);
 	ResultData->SetNumberField(TEXT("count"), Components.Num());
+
+	// Inject redirector info so callers know the canonical path was different
+	if (!ResolveInfo.RedirectedFrom.IsEmpty())
+	{
+		ResultData->SetStringField(TEXT("redirected_from"), ResolveInfo.RedirectedFrom);
+	}
 
 	return FOliveToolResult::Success(ResultData);
 }
@@ -876,9 +1221,21 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadHierarchy(const
 		);
 	}
 
+	// Resolve asset path (follows redirectors, checks existence)
+	FOliveAssetResolveInfo ResolveInfo = FOliveAssetResolver::Get().ResolveByPath(AssetPath);
+	if (!ResolveInfo.IsSuccess())
+	{
+		return FOliveToolResult::Error(
+			TEXT("ASSET_NOT_FOUND"),
+			FString::Printf(TEXT("Failed to resolve asset at path '%s'"), *AssetPath),
+			TEXT("Verify the asset path is correct and the asset exists")
+		);
+	}
+	FString ResolvedPath = ResolveInfo.ResolvedPath;
+
 	// Read hierarchy
 	FOliveBlueprintReader& Reader = FOliveBlueprintReader::Get();
-	TArray<FString> Hierarchy = Reader.ReadHierarchy(AssetPath);
+	TArray<FString> Hierarchy = Reader.ReadHierarchy(ResolvedPath);
 
 	// Build result JSON
 	TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
@@ -891,6 +1248,12 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadHierarchy(const
 
 	ResultData->SetArrayField(TEXT("hierarchy"), HierarchyArray);
 	ResultData->SetNumberField(TEXT("depth"), Hierarchy.Num());
+
+	// Inject redirector info so callers know the canonical path was different
+	if (!ResolveInfo.RedirectedFrom.IsEmpty())
+	{
+		ResultData->SetStringField(TEXT("redirected_from"), ResolveInfo.RedirectedFrom);
+	}
 
 	return FOliveToolResult::Success(ResultData);
 }
@@ -918,9 +1281,20 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintListOverridableFunc
 		);
 	}
 
+	FOliveAssetResolveInfo ResolveInfo = FOliveAssetResolver::Get().ResolveByPath(AssetPath);
+	if (!ResolveInfo.IsSuccess())
+	{
+		return FOliveToolResult::Error(
+			TEXT("ASSET_NOT_FOUND"),
+			FString::Printf(TEXT("Failed to resolve asset at path '%s'"), *AssetPath),
+			TEXT("Verify the asset path is correct and the asset exists")
+		);
+	}
+	const FString ResolvedPath = ResolveInfo.ResolvedPath;
+
 	// Read overridable functions
 	FOliveBlueprintReader& Reader = FOliveBlueprintReader::Get();
-	TArray<FOliveIRFunctionSignature> Functions = Reader.ReadOverridableFunctions(AssetPath);
+	TArray<FOliveIRFunctionSignature> Functions = Reader.ReadOverridableFunctions(ResolvedPath);
 
 	// Build result JSON
 	TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
@@ -933,6 +1307,10 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintListOverridableFunc
 
 	ResultData->SetArrayField(TEXT("functions"), FunctionsArray);
 	ResultData->SetNumberField(TEXT("count"), Functions.Num());
+	if (!ResolveInfo.RedirectedFrom.IsEmpty())
+	{
+		ResultData->SetStringField(TEXT("redirected_from"), ResolveInfo.RedirectedFrom);
+	}
 
 	return FOliveToolResult::Success(ResultData);
 }
@@ -1035,6 +1413,8 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 		{
 			// Convert errors to FOliveWriteResult format
 			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			UE_LOG(LogOliveBPTools, Error, TEXT("blueprint.create failed: path='%s' parent='%s' type=%d error='%s'"),
+				*AssetPath, *ParentClass, static_cast<int32>(BlueprintType), *ErrorMsg);
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_CREATE_FAILED"),
 				ErrorMsg,
@@ -3002,6 +3382,39 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddNode(const TShar
 	Params->TryGetNumberField(TEXT("pos_x"), PosX);
 	Params->TryGetNumberField(TEXT("pos_y"), PosY);
 
+	// --- Pre-pipeline validation: check node type before loading Blueprint ---
+	// This is cheap (no asset load) and gives the agent actionable suggestions.
+	FOliveNodeFactory& Factory = FOliveNodeFactory::Get();
+	if (!Factory.ValidateNodeType(NodeType, NodeProperties))
+	{
+		// Query catalog for fuzzy suggestions
+		FOliveNodeCatalog& Catalog = FOliveNodeCatalog::Get();
+		TArray<FOliveNodeSuggestion> Suggestions = Catalog.FuzzyMatch(NodeType, 5);
+
+		TSharedPtr<FJsonObject> ErrorData = MakeShareable(new FJsonObject());
+		ErrorData->SetStringField(TEXT("requested_type"), NodeType);
+
+		TArray<TSharedPtr<FJsonValue>> SuggestionArray;
+		for (const FOliveNodeSuggestion& S : Suggestions)
+		{
+			TSharedPtr<FJsonObject> SugObj = MakeShareable(new FJsonObject());
+			SugObj->SetStringField(TEXT("type_id"), S.TypeId);
+			SugObj->SetStringField(TEXT("display_name"), S.DisplayName);
+			SuggestionArray.Add(MakeShareable(new FJsonValueObject(SugObj)));
+		}
+		ErrorData->SetArrayField(TEXT("suggestions"), SuggestionArray);
+
+		FOliveToolResult Result = FOliveToolResult::Error(
+			TEXT("NODE_TYPE_UNKNOWN"),
+			FString::Printf(TEXT("Node type '%s' is not recognized"), *NodeType),
+			Suggestions.Num() > 0
+				? FString::Printf(TEXT("Did you mean '%s'?"), *Suggestions[0].DisplayName)
+				: TEXT("Use blueprint.node_catalog_search to find available node types")
+		);
+		Result.Data = ErrorData;
+		return Result;
+	}
+
 	// Load Blueprint for target asset
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
 	if (!Blueprint)
@@ -3011,6 +3424,38 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddNode(const TShar
 			FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
 			TEXT("Verify the asset path is correct and the asset exists")
 		);
+	}
+
+	// Pre-pipeline check: prevent duplicate native event overrides.
+	// Native events like ReceiveBeginPlay, ReceiveTick can only exist once per Blueprint.
+	// Catching this before the write pipeline avoids opening a transaction just to reject.
+	if (NodeType == OliveNodeTypes::Event && Blueprint->ParentClass)
+	{
+		FString EventNameStr;
+		const TSharedPtr<FJsonObject>* PropsObjPtr = nullptr;
+		if (Params->TryGetObjectField(TEXT("properties"), PropsObjPtr) && PropsObjPtr->IsValid())
+		{
+			(*PropsObjPtr)->TryGetStringField(TEXT("event_name"), EventNameStr);
+		}
+
+		if (!EventNameStr.IsEmpty())
+		{
+			FName EventFName(*EventNameStr);
+			UK2Node_Event* ExistingEvent = FBlueprintEditorUtils::FindOverrideForFunction(
+				Blueprint, Blueprint->ParentClass, EventFName);
+
+			if (ExistingEvent)
+			{
+				return FOliveToolResult::Error(
+					TEXT("DUPLICATE_NATIVE_EVENT"),
+					FString::Printf(TEXT("Native event '%s' already exists at position (%d, %d). "
+						"Each native event can only appear once per Blueprint."),
+						*EventNameStr, ExistingEvent->NodePosX, ExistingEvent->NodePosY),
+					TEXT("Use blueprint.read_event_graph to see existing event nodes, "
+						 "or use 'CustomEvent' type to create user-defined events")
+				);
+			}
+		}
 	}
 
 	// Build write request for pipeline
@@ -3037,11 +3482,18 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddNode(const TShar
 		if (!WriteResult.bSuccess)
 		{
 			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
-			return FOliveWriteResult::ExecutionError(
-				TEXT("BP_ADD_NODE_FAILED"),
-				ErrorMsg,
-				TEXT("Verify the node type is valid and the graph exists")
-			);
+
+			// Defense-in-depth: detect duplicate native event from NodeFactory
+			FString ErrorCode = TEXT("BP_ADD_NODE_FAILED");
+			FString Suggestion = TEXT("Verify the node type is valid and the graph exists");
+			if (ErrorMsg.Contains(TEXT("already exists")))
+			{
+				ErrorCode = TEXT("DUPLICATE_NATIVE_EVENT");
+				Suggestion = TEXT("Use blueprint.read_event_graph to see existing event nodes, "
+					"or use 'CustomEvent' type to create user-defined events");
+			}
+
+			return FOliveWriteResult::ExecutionError(ErrorCode, ErrorMsg, Suggestion);
 		}
 
 		// Success - build result data
@@ -3125,6 +3577,52 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveNode(const TS
 	Executor.BindLambda([AssetPath, GraphName, NodeId](const FOliveWriteRequest& Req, UObject* Target) -> FOliveWriteResult
 	{
 		FOliveGraphWriter& GraphWriter = FOliveGraphWriter::Get();
+
+		// Capture connections before removal so we can report broken links
+		TArray<TSharedPtr<FJsonValue>> BrokenLinks;
+		UEdGraphNode* NodeToRemove = GraphWriter.GetCachedNode(AssetPath, NodeId);
+		if (NodeToRemove)
+		{
+			// Find the graph to pass to CaptureNodeConnections
+			UBlueprint* BP = Cast<UBlueprint>(Target);
+			UEdGraph* Graph = nullptr;
+			if (BP)
+			{
+				for (UEdGraph* G : BP->UbergraphPages)
+				{
+					if (G && G->GetName() == GraphName)
+					{
+						Graph = G;
+						break;
+					}
+				}
+				if (!Graph)
+				{
+					for (UEdGraph* G : BP->FunctionGraphs)
+					{
+						if (G && G->GetName() == GraphName)
+						{
+							Graph = G;
+							break;
+						}
+					}
+				}
+				if (!Graph)
+				{
+					for (UEdGraph* G : BP->MacroGraphs)
+					{
+						if (G && G->GetName() == GraphName)
+						{
+							Graph = G;
+							break;
+						}
+					}
+				}
+			}
+
+			BrokenLinks = GraphWriter.CaptureNodeConnections(AssetPath, Graph, NodeToRemove);
+		}
+
 		FOliveBlueprintWriteResult WriteResult = GraphWriter.RemoveNode(AssetPath, GraphName, NodeId);
 
 		if (!WriteResult.bSuccess)
@@ -3137,12 +3635,14 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveNode(const TS
 			);
 		}
 
-		// Success - build result data
+		// Success - build result data with broken link report
 		TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
 		ResultData->SetStringField(TEXT("asset_path"), WriteResult.AssetPath);
 		ResultData->SetStringField(TEXT("graph"), GraphName);
 		ResultData->SetStringField(TEXT("node_id"), NodeId);
 		ResultData->SetStringField(TEXT("message"), FString::Printf(TEXT("Successfully removed node '%s'"), *NodeId));
+		ResultData->SetArrayField(TEXT("broken_links"), BrokenLinks);
+		ResultData->SetNumberField(TEXT("broken_link_count"), static_cast<double>(BrokenLinks.Num()));
 
 		return FOliveWriteResult::Success(ResultData);
 	});
@@ -4793,5 +5293,734 @@ FOliveIRVariable FOliveBlueprintToolHandlers::ParseVariableFromParams(const TSha
 	Variable.DefinedIn = TEXT("self");
 
 	return Variable;
+}
+
+// ============================================================================
+// Plan JSON Tool Registration
+// ============================================================================
+
+void FOliveBlueprintToolHandlers::RegisterPlanTools()
+{
+	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
+
+	// blueprint.preview_plan_json
+	Registry.RegisterTool(
+		TEXT("blueprint.preview_plan_json"),
+		TEXT("Preview an intent-level Blueprint plan without mutating anything. Returns a diff, fingerprint, and lowered op count."),
+		OliveBlueprintSchemas::BlueprintPreviewPlanJson(),
+		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson),
+		{TEXT("blueprint"), TEXT("read"), TEXT("plan")},
+		TEXT("blueprint")
+	);
+	RegisteredToolNames.Add(TEXT("blueprint.preview_plan_json"));
+
+	// blueprint.apply_plan_json
+	Registry.RegisterTool(
+		TEXT("blueprint.apply_plan_json"),
+		TEXT("Apply an intent-level Blueprint plan atomically. Resolves intents to nodes, executes in a single transaction, compiles once."),
+		OliveBlueprintSchemas::BlueprintApplyPlanJson(),
+		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson),
+		{TEXT("blueprint"), TEXT("write"), TEXT("graph"), TEXT("plan")},
+		TEXT("blueprint")
+	);
+	RegisteredToolNames.Add(TEXT("blueprint.apply_plan_json"));
+
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered Plan JSON tools (preview + apply)"));
+}
+
+// ============================================================================
+// Plan JSON Tool Handlers
+// ============================================================================
+
+namespace
+{
+
+/**
+ * Find a graph on the Blueprint by name, searching both UbergraphPages and FunctionGraphs.
+ * Falls back to first UbergraphPage if GraphName is "EventGraph" and no exact match is found.
+ *
+ * @param Blueprint The Blueprint to search
+ * @param GraphName The name of the graph to find
+ * @return The found graph, or nullptr if not found
+ */
+UEdGraph* FindGraphByName(UBlueprint* Blueprint, const FString& GraphName)
+{
+	// Search UbergraphPages (event graphs)
+	for (UEdGraph* Graph : Blueprint->UbergraphPages)
+	{
+		if (Graph && Graph->GetName() == GraphName)
+		{
+			return Graph;
+		}
+	}
+
+	// Search FunctionGraphs
+	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+	{
+		if (Graph && Graph->GetName() == GraphName)
+		{
+			return Graph;
+		}
+	}
+
+	// Fallback: if "EventGraph" was requested, use first UbergraphPage
+	if (GraphName == TEXT("EventGraph") && Blueprint->UbergraphPages.Num() > 0)
+	{
+		return Blueprint->UbergraphPages[0];
+	}
+
+	return nullptr;
+}
+
+/**
+ * Find a graph by name, or create a new function graph if it doesn't exist.
+ * Only creates for non-EventGraph targets (EventGraph must already exist).
+ *
+ * @param Blueprint The owning Blueprint
+ * @param GraphName The graph name to find or create
+ * @param bOutCreated Set to true if a new graph was created
+ * @return The found or created graph, or nullptr if creation failed
+ */
+UEdGraph* FindOrCreateFunctionGraph(UBlueprint* Blueprint, const FString& GraphName, bool& bOutCreated)
+{
+	bOutCreated = false;
+
+	// Try to find existing graph first
+	UEdGraph* Existing = FindGraphByName(Blueprint, GraphName);
+	if (Existing)
+	{
+		return Existing;
+	}
+
+	// EventGraph must already exist — we don't create new ubergraph pages
+	if (GraphName == TEXT("EventGraph"))
+	{
+		return nullptr;
+	}
+
+	// Create a new function graph
+	UEdGraph* NewGraph = FBlueprintEditorUtils::CreateNewGraph(
+		Blueprint,
+		FName(*GraphName),
+		UEdGraph::StaticClass(),
+		UEdGraphSchema_K2::StaticClass()
+	);
+
+	if (!NewGraph)
+	{
+		return nullptr;
+	}
+
+	FBlueprintEditorUtils::AddFunctionGraph(Blueprint, NewGraph, /*bIsUserCreated=*/true, /*SignatureFromObject=*/static_cast<UClass*>(nullptr));
+	bOutCreated = true;
+
+	UE_LOG(LogOliveBPTools, Log, TEXT("Created new function graph '%s' on Blueprint '%s'"),
+		*GraphName, *Blueprint->GetPathName());
+
+	return NewGraph;
+}
+
+/**
+ * Build a plan summary JSON object from a resolved and lowered plan.
+ * Summarizes step count and operation type breakdown.
+ *
+ * @param Plan The original plan
+ * @param LowerResult The lowered operations result
+ * @return JSON object with plan_summary data
+ */
+TSharedPtr<FJsonObject> BuildPlanSummary(
+	const FOliveIRBlueprintPlan& Plan,
+	const FOlivePlanLowerResult& LowerResult)
+{
+	TSharedPtr<FJsonObject> Summary = MakeShared<FJsonObject>();
+	Summary->SetNumberField(TEXT("step_count"), Plan.Steps.Num());
+	Summary->SetNumberField(TEXT("lowered_ops_count"), LowerResult.Ops.Num());
+
+	// Count ops by type
+	TMap<FString, int32> OpCounts;
+	for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
+	{
+		OpCounts.FindOrAdd(Step.Op, 0)++;
+	}
+
+	TSharedPtr<FJsonObject> OpBreakdown = MakeShared<FJsonObject>();
+	for (const auto& Pair : OpCounts)
+	{
+		OpBreakdown->SetNumberField(Pair.Key, Pair.Value);
+	}
+	Summary->SetObjectField(TEXT("op_count_by_type"), OpBreakdown);
+
+	return Summary;
+}
+
+/**
+ * Collect all warnings from resolve and lower results into a JSON array.
+ *
+ * @param ResolveResult The resolve result containing warnings
+ * @param LowerResult The lower result containing error warnings
+ * @return JSON array of warning strings
+ */
+TArray<TSharedPtr<FJsonValue>> CollectWarnings(
+	const FOlivePlanResolveResult& ResolveResult,
+	const FOlivePlanLowerResult& LowerResult)
+{
+	TArray<TSharedPtr<FJsonValue>> Warnings;
+	for (const FString& W : ResolveResult.Warnings)
+	{
+		Warnings.Add(MakeShared<FJsonValueString>(W));
+	}
+	// Lower errors that are non-fatal get surfaced as warnings in preview
+	for (const FOliveIRBlueprintPlanError& E : LowerResult.Errors)
+	{
+		if (!E.Message.IsEmpty())
+		{
+			Warnings.Add(MakeShared<FJsonValueString>(
+				FString::Printf(TEXT("[%s] %s"), *E.ErrorCode, *E.Message)));
+		}
+	}
+	return Warnings;
+}
+
+/**
+ * Serialize an array of FOliveIRBlueprintPlanError to a JSON array.
+ *
+ * @param Errors The errors to serialize
+ * @return JSON array of error objects
+ */
+TArray<TSharedPtr<FJsonValue>> SerializePlanErrors(const TArray<FOliveIRBlueprintPlanError>& Errors)
+{
+	TArray<TSharedPtr<FJsonValue>> Result;
+	for (const FOliveIRBlueprintPlanError& Err : Errors)
+	{
+		Result.Add(MakeShared<FJsonValueObject>(Err.ToJson()));
+	}
+	return Result;
+}
+
+} // namespace
+
+FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(const TSharedPtr<FJsonObject>& Params)
+{
+	// ------------------------------------------------------------------
+	// 1. Validate parameters
+	// ------------------------------------------------------------------
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a valid parameters object with 'asset_path' and 'plan_json' fields"));
+	}
+
+	FString AssetPath;
+	if (!Params->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'asset_path' is missing or empty"),
+			TEXT("Provide the Blueprint asset path"));
+	}
+
+	const TSharedPtr<FJsonObject>* PlanJsonPtr = nullptr;
+	if (!Params->TryGetObjectField(TEXT("plan_json"), PlanJsonPtr) || !PlanJsonPtr || !(*PlanJsonPtr).IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'plan_json' is missing or not an object"),
+			TEXT("Provide a valid plan_json object with 'steps' array"));
+	}
+	TSharedPtr<FJsonObject> PlanJson = *PlanJsonPtr;
+
+	FString GraphTarget = TEXT("EventGraph");
+	Params->TryGetStringField(TEXT("graph_target"), GraphTarget);
+
+	FString Mode = TEXT("merge");
+	Params->TryGetStringField(TEXT("mode"), Mode);
+
+	// ------------------------------------------------------------------
+	// 2. Validate plan schema
+	// ------------------------------------------------------------------
+	const UOliveAISettings* Settings = UOliveAISettings::Get();
+	const int32 MaxSteps = Settings ? Settings->PlanJsonMaxSteps : 128;
+
+	FOliveIRResult ValidationResult = FOliveIRValidator::ValidateBlueprintPlanJson(PlanJson, MaxSteps);
+	if (!ValidationResult.bSuccess)
+	{
+		TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
+		ErrorData->SetStringField(TEXT("phase"), TEXT("validation"));
+		ErrorData->SetStringField(TEXT("error_code"), ValidationResult.ErrorCode);
+		ErrorData->SetStringField(TEXT("error_message"), ValidationResult.ErrorMessage);
+		if (ValidationResult.Data.IsValid())
+		{
+			const TArray<TSharedPtr<FJsonValue>>* Errors = nullptr;
+			if (ValidationResult.Data->TryGetArrayField(TEXT("errors"), Errors))
+			{
+				ErrorData->SetArrayField(TEXT("errors"), *Errors);
+			}
+		}
+		FOliveToolResult Result = FOliveToolResult::Error(
+			ValidationResult.ErrorCode,
+			ValidationResult.ErrorMessage,
+			ValidationResult.Suggestion);
+		Result.Data = ErrorData;
+		return Result;
+	}
+
+	// ------------------------------------------------------------------
+	// 3. Parse plan
+	// ------------------------------------------------------------------
+	FOliveIRBlueprintPlan Plan = FOliveIRBlueprintPlan::FromJson(PlanJson);
+
+	// ------------------------------------------------------------------
+	// 4. Load Blueprint
+	// ------------------------------------------------------------------
+	FOliveBlueprintReader& BPReader = FOliveBlueprintReader::Get();
+	UBlueprint* Blueprint = BPReader.LoadBlueprint(AssetPath);
+	if (!Blueprint)
+	{
+		return FOliveToolResult::Error(
+			TEXT("ASSET_NOT_FOUND"),
+			FString::Printf(TEXT("Failed to load Blueprint at path '%s'"), *AssetPath),
+			TEXT("Verify the asset path is correct and the asset exists"));
+	}
+
+	// ------------------------------------------------------------------
+	// 5. Find target graph (preview is non-mutating — report new graph in diff)
+	// ------------------------------------------------------------------
+	bool bGraphWillBeCreated = false;
+	UEdGraph* TargetGraph = FindGraphByName(Blueprint, GraphTarget);
+	if (!TargetGraph)
+	{
+		// EventGraph must exist; for other targets (function graphs), preview
+		// still succeeds but notes the graph will be created on apply.
+		if (GraphTarget == TEXT("EventGraph"))
+		{
+			return FOliveToolResult::Error(
+				TEXT("GRAPH_NOT_FOUND"),
+				FString::Printf(TEXT("EventGraph not found in Blueprint '%s'"), *AssetPath),
+				TEXT("EventGraph should always exist on a Blueprint"));
+		}
+		bGraphWillBeCreated = true;
+	}
+
+	// ------------------------------------------------------------------
+	// 6. Read current graph IR (for fingerprint + diff)
+	// ------------------------------------------------------------------
+	FOliveGraphReader GraphReader;
+	FOliveIRGraph CurrentGraphIR;
+	if (TargetGraph)
+	{
+		CurrentGraphIR = GraphReader.ReadGraph(TargetGraph, Blueprint);
+	}
+	// else: empty IR for a graph that will be created
+
+	// ------------------------------------------------------------------
+	// 7. Resolve plan
+	// ------------------------------------------------------------------
+	FOlivePlanResolveResult ResolveResult = FOliveBlueprintPlanResolver::Resolve(Plan, Blueprint);
+	if (!ResolveResult.bSuccess)
+	{
+		TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
+		ErrorData->SetStringField(TEXT("phase"), TEXT("resolve"));
+		ErrorData->SetArrayField(TEXT("errors"), SerializePlanErrors(ResolveResult.Errors));
+		FOliveToolResult Result = FOliveToolResult::Error(
+			TEXT("PLAN_RESOLVE_FAILED"),
+			FString::Printf(TEXT("Plan resolution failed with %d error(s)"), ResolveResult.Errors.Num()),
+			ResolveResult.Errors.Num() > 0 ? ResolveResult.Errors[0].Suggestion : TEXT(""));
+		Result.Data = ErrorData;
+		return Result;
+	}
+
+	// ------------------------------------------------------------------
+	// 8. Lower to batch ops
+	// ------------------------------------------------------------------
+	FOlivePlanLowerResult LowerResult = FOliveBlueprintPlanLowerer::Lower(
+		ResolveResult.ResolvedSteps, Plan, GraphTarget, AssetPath);
+	if (!LowerResult.bSuccess)
+	{
+		TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
+		ErrorData->SetStringField(TEXT("phase"), TEXT("lower"));
+		ErrorData->SetArrayField(TEXT("errors"), SerializePlanErrors(LowerResult.Errors));
+		FOliveToolResult Result = FOliveToolResult::Error(
+			TEXT("PLAN_LOWER_FAILED"),
+			FString::Printf(TEXT("Plan lowering failed with %d error(s)"), LowerResult.Errors.Num()),
+			LowerResult.Errors.Num() > 0 ? LowerResult.Errors[0].Suggestion : TEXT(""));
+		Result.Data = ErrorData;
+		return Result;
+	}
+
+	// ------------------------------------------------------------------
+	// 9. Compute fingerprint and diff
+	// ------------------------------------------------------------------
+	FString Fingerprint = FOliveBlueprintPlanResolver::ComputePlanFingerprint(CurrentGraphIR, Plan);
+	TSharedPtr<FJsonObject> Diff = FOliveBlueprintPlanResolver::ComputePlanDiff(
+		CurrentGraphIR, ResolveResult.ResolvedSteps, Plan);
+
+	// ------------------------------------------------------------------
+	// 10. Build result
+	// ------------------------------------------------------------------
+	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
+	ResultData->SetStringField(TEXT("preview_fingerprint"), Fingerprint);
+	ResultData->SetObjectField(TEXT("diff"), Diff);
+	ResultData->SetObjectField(TEXT("plan_summary"), BuildPlanSummary(Plan, LowerResult));
+	ResultData->SetNumberField(TEXT("lowered_ops_count"), LowerResult.Ops.Num());
+
+	if (bGraphWillBeCreated)
+	{
+		ResultData->SetBoolField(TEXT("will_create_graph"), true);
+		ResultData->SetStringField(TEXT("new_graph_name"), GraphTarget);
+	}
+
+	TArray<TSharedPtr<FJsonValue>> Warnings = CollectWarnings(ResolveResult, LowerResult);
+	if (bGraphWillBeCreated)
+	{
+		Warnings.Add(MakeShared<FJsonValueString>(
+			FString::Printf(TEXT("Function graph '%s' does not exist and will be created on apply"), *GraphTarget)));
+	}
+	if (Warnings.Num() > 0)
+	{
+		ResultData->SetArrayField(TEXT("warnings"), Warnings);
+	}
+
+	UE_LOG(LogOliveBPTools, Log,
+		TEXT("Plan preview for '%s' graph '%s': %d steps, %d lowered ops, fingerprint=%s, new_graph=%s"),
+		*AssetPath, *GraphTarget, Plan.Steps.Num(), LowerResult.Ops.Num(), *Fingerprint,
+		bGraphWillBeCreated ? TEXT("true") : TEXT("false"));
+
+	return FOliveToolResult::Success(ResultData);
+}
+
+FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const TSharedPtr<FJsonObject>& Params)
+{
+	// ------------------------------------------------------------------
+	// 1. Validate parameters
+	// ------------------------------------------------------------------
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a valid parameters object with 'asset_path' and 'plan_json' fields"));
+	}
+
+	FString AssetPath;
+	if (!Params->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'asset_path' is missing or empty"),
+			TEXT("Provide the Blueprint asset path"));
+	}
+
+	const TSharedPtr<FJsonObject>* PlanJsonPtr = nullptr;
+	if (!Params->TryGetObjectField(TEXT("plan_json"), PlanJsonPtr) || !PlanJsonPtr || !(*PlanJsonPtr).IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'plan_json' is missing or not an object"),
+			TEXT("Provide a valid plan_json object with 'steps' array"));
+	}
+	TSharedPtr<FJsonObject> PlanJson = *PlanJsonPtr;
+
+	FString GraphTarget = TEXT("EventGraph");
+	Params->TryGetStringField(TEXT("graph_target"), GraphTarget);
+
+	FString Mode = TEXT("merge");
+	Params->TryGetStringField(TEXT("mode"), Mode);
+
+	FString ProvidedFingerprint;
+	Params->TryGetStringField(TEXT("preview_fingerprint"), ProvidedFingerprint);
+
+	// ------------------------------------------------------------------
+	// 2. Validate plan schema
+	// ------------------------------------------------------------------
+	const UOliveAISettings* Settings = UOliveAISettings::Get();
+	const int32 MaxSteps = Settings ? Settings->PlanJsonMaxSteps : 128;
+
+	FOliveIRResult ValidationResult = FOliveIRValidator::ValidateBlueprintPlanJson(PlanJson, MaxSteps);
+	if (!ValidationResult.bSuccess)
+	{
+		TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
+		ErrorData->SetStringField(TEXT("phase"), TEXT("validation"));
+		ErrorData->SetStringField(TEXT("error_code"), ValidationResult.ErrorCode);
+		ErrorData->SetStringField(TEXT("error_message"), ValidationResult.ErrorMessage);
+		if (ValidationResult.Data.IsValid())
+		{
+			const TArray<TSharedPtr<FJsonValue>>* Errors = nullptr;
+			if (ValidationResult.Data->TryGetArrayField(TEXT("errors"), Errors))
+			{
+				ErrorData->SetArrayField(TEXT("errors"), *Errors);
+			}
+		}
+		FOliveToolResult Result = FOliveToolResult::Error(
+			ValidationResult.ErrorCode,
+			ValidationResult.ErrorMessage,
+			ValidationResult.Suggestion);
+		Result.Data = ErrorData;
+		return Result;
+	}
+
+	// ------------------------------------------------------------------
+	// 3. Parse plan
+	// ------------------------------------------------------------------
+	FOliveIRBlueprintPlan Plan = FOliveIRBlueprintPlan::FromJson(PlanJson);
+
+	// ------------------------------------------------------------------
+	// 4. Load Blueprint
+	// ------------------------------------------------------------------
+	FOliveBlueprintReader& BPReader = FOliveBlueprintReader::Get();
+	UBlueprint* Blueprint = BPReader.LoadBlueprint(AssetPath);
+	if (!Blueprint)
+	{
+		return FOliveToolResult::Error(
+			TEXT("ASSET_NOT_FOUND"),
+			FString::Printf(TEXT("Failed to load Blueprint at path '%s'"), *AssetPath),
+			TEXT("Verify the asset path is correct and the asset exists"));
+	}
+
+	// ------------------------------------------------------------------
+	// 5. Check preview requirement
+	// ------------------------------------------------------------------
+	const bool bRequirePreview = Settings ? Settings->bPlanJsonRequirePreviewForApply : true;
+	if (bRequirePreview && ProvidedFingerprint.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("PREVIEW_REQUIRED"),
+			TEXT("Settings require a preview_fingerprint before apply. Call blueprint.preview_plan_json first."),
+			TEXT("Call blueprint.preview_plan_json with the same plan, then pass preview_fingerprint to apply"));
+	}
+
+	// ------------------------------------------------------------------
+	// 6. Find target graph (create later inside pipeline transaction if needed)
+	// ------------------------------------------------------------------
+	UEdGraph* TargetGraph = FindGraphByName(Blueprint, GraphTarget);
+	const bool bGraphMissing = (TargetGraph == nullptr);
+	if (bGraphMissing && GraphTarget == TEXT("EventGraph"))
+	{
+		return FOliveToolResult::Error(
+			TEXT("GRAPH_NOT_FOUND"),
+			FString::Printf(TEXT("EventGraph not found in Blueprint '%s'"), *AssetPath),
+			TEXT("EventGraph should always exist on a Blueprint"));
+	}
+
+	// ------------------------------------------------------------------
+	// 7. Drift detection (if fingerprint provided and graph already existed)
+	// ------------------------------------------------------------------
+	if (!ProvidedFingerprint.IsEmpty() && !bGraphMissing)
+	{
+		FOliveGraphReader DriftReader;
+		FOliveIRGraph CurrentGraphIR = DriftReader.ReadGraph(TargetGraph, Blueprint);
+		FString CurrentFingerprint = FOliveBlueprintPlanResolver::ComputePlanFingerprint(CurrentGraphIR, Plan);
+
+		if (CurrentFingerprint != ProvidedFingerprint)
+		{
+			return FOliveToolResult::Error(
+				TEXT("GRAPH_DRIFT"),
+				FString::Printf(TEXT("Graph has changed since preview. Expected fingerprint '%s' but current is '%s'. Re-run preview."),
+					*ProvidedFingerprint, *CurrentFingerprint),
+				TEXT("The graph was modified between preview and apply. Call blueprint.preview_plan_json again to get a fresh fingerprint."));
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// 8. Resolve + Lower
+	// ------------------------------------------------------------------
+	FOlivePlanResolveResult ResolveResult = FOliveBlueprintPlanResolver::Resolve(Plan, Blueprint);
+	if (!ResolveResult.bSuccess)
+	{
+		TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
+		ErrorData->SetStringField(TEXT("phase"), TEXT("resolve"));
+		ErrorData->SetArrayField(TEXT("errors"), SerializePlanErrors(ResolveResult.Errors));
+		FOliveToolResult Result = FOliveToolResult::Error(
+			TEXT("PLAN_RESOLVE_FAILED"),
+			FString::Printf(TEXT("Plan resolution failed with %d error(s)"), ResolveResult.Errors.Num()),
+			ResolveResult.Errors.Num() > 0 ? ResolveResult.Errors[0].Suggestion : TEXT(""));
+		Result.Data = ErrorData;
+		return Result;
+	}
+
+	FOlivePlanLowerResult LowerResult = FOliveBlueprintPlanLowerer::Lower(
+		ResolveResult.ResolvedSteps, Plan, GraphTarget, AssetPath);
+	if (!LowerResult.bSuccess)
+	{
+		TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
+		ErrorData->SetStringField(TEXT("phase"), TEXT("lower"));
+		ErrorData->SetArrayField(TEXT("errors"), SerializePlanErrors(LowerResult.Errors));
+		FOliveToolResult Result = FOliveToolResult::Error(
+			TEXT("PLAN_LOWER_FAILED"),
+			FString::Printf(TEXT("Plan lowering failed with %d error(s)"), LowerResult.Errors.Num()),
+			LowerResult.Errors.Num() > 0 ? LowerResult.Errors[0].Suggestion : TEXT(""));
+		Result.Data = ErrorData;
+		return Result;
+	}
+
+	// ------------------------------------------------------------------
+	// 9. Build write request
+	// ------------------------------------------------------------------
+	FOliveWriteRequest Request;
+	Request.ToolName = TEXT("blueprint.apply_plan_json");
+	Request.Params = Params;
+	Request.AssetPath = AssetPath;
+	Request.TargetAsset = Blueprint;
+	Request.OperationDescription = FText::Format(
+		NSLOCTEXT("OliveBPTools", "ApplyPlanJson", "AI Agent: Apply Plan JSON ({0} steps)"),
+		FText::AsNumber(Plan.Steps.Num()));
+	Request.OperationCategory = TEXT("plan_apply");
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
+	Request.bAutoCompile = true;
+	Request.bSkipVerification = false;
+
+	// ------------------------------------------------------------------
+	// 10. Build executor delegate
+	// ------------------------------------------------------------------
+	// Capture lowered ops and plan metadata by value for the executor lambda.
+	// The lambda runs inside the pipeline's transaction scope.
+	TArray<FOliveLoweredOp> CapturedOps = LowerResult.Ops;
+	TMap<FString, int32> CapturedStepMap = LowerResult.StepToFirstOpIndex;
+
+	FOliveWriteExecutor Executor;
+	Executor.BindLambda(
+		[CapturedOps = MoveTemp(CapturedOps), CapturedStepMap = MoveTemp(CapturedStepMap), AssetPath, GraphTarget]
+		(const FOliveWriteRequest& InRequest, UObject* TargetAsset) -> FOliveWriteResult
+		{
+			UBlueprint* BP = Cast<UBlueprint>(TargetAsset);
+			if (!BP)
+			{
+				return FOliveWriteResult::ExecutionError(
+					TEXT("INVALID_TARGET"),
+					TEXT("Target asset is not a valid Blueprint"),
+					TEXT("Ensure the asset_path points to a Blueprint"));
+			}
+
+			// Suppress inner transactions -- the pipeline owns the outer transaction
+			FOliveBatchExecutionScope BatchScope;
+
+			BP->Modify();
+
+			// Ensure target graph exists inside the pipeline transaction so creation
+			// participates in rollback if later ops fail.
+			bool bGraphCreatedInTxn = false;
+			UEdGraph* ExecutionGraph = FindOrCreateFunctionGraph(BP, GraphTarget, bGraphCreatedInTxn);
+			if (!ExecutionGraph)
+			{
+				return FOliveWriteResult::ExecutionError(
+					TEXT("GRAPH_NOT_FOUND"),
+					FString::Printf(TEXT("Graph '%s' not found and could not be created"), *GraphTarget),
+					TEXT("EventGraph must already exist; other names are created as function graphs."));
+			}
+
+			TMap<FString, TSharedPtr<FJsonObject>> OpResultsById;
+			TMap<FString, FString> StepToNodeMap;
+			TArray<FString> CreatedNodeIds;
+			int32 AppliedCount = 0;
+
+			for (int32 i = 0; i < CapturedOps.Num(); ++i)
+			{
+				// Copy params so template resolution can mutate them
+				TSharedPtr<FJsonObject> OpParams = MakeShared<FJsonObject>();
+				for (const auto& Field : CapturedOps[i].Params->Values)
+				{
+					OpParams->Values.Add(Field.Key, Field.Value);
+				}
+
+				// Resolve ${opId.field} template references
+				FString TemplateError;
+				if (!FOliveGraphBatchExecutor::ResolveTemplateReferences(OpParams, OpResultsById, TemplateError))
+				{
+					return FOliveWriteResult::ExecutionError(
+						TEXT("TEMPLATE_RESOLVE_FAILED"),
+						FString::Printf(TEXT("Template resolution failed at op %d (id='%s'): %s"),
+							i, *CapturedOps[i].Id, *TemplateError),
+						TEXT("Check that referenced step IDs exist and produced node_id results"));
+				}
+
+				// Dispatch to writer
+				FOliveBlueprintWriteResult WriteResult = FOliveGraphBatchExecutor::DispatchWriterOp(
+					CapturedOps[i].ToolName, AssetPath, OpParams);
+
+				if (!WriteResult.bSuccess)
+				{
+					FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+					return FOliveWriteResult::ExecutionError(
+						TEXT("OP_FAILED"),
+						FString::Printf(TEXT("Op %d failed (id='%s', tool='%s'): %s"),
+							i, *CapturedOps[i].Id, *CapturedOps[i].ToolName, *ErrorMsg),
+						TEXT("Check the plan step definition for this operation"));
+				}
+
+				AppliedCount++;
+
+				// Build result data for template resolution by later ops
+				TSharedPtr<FJsonObject> OpData = MakeShared<FJsonObject>();
+				if (!WriteResult.CreatedNodeId.IsEmpty())
+				{
+					OpData->SetStringField(TEXT("node_id"), WriteResult.CreatedNodeId);
+					CreatedNodeIds.Add(WriteResult.CreatedNodeId);
+				}
+				if (!WriteResult.CreatedItemName.IsEmpty())
+				{
+					OpData->SetStringField(TEXT("item_name"), WriteResult.CreatedItemName);
+				}
+
+				// Store result for template resolution
+				if (!CapturedOps[i].Id.IsEmpty())
+				{
+					OpResultsById.Add(CapturedOps[i].Id, OpData);
+
+					// If this is an add_node op (has a step mapping), record in StepToNodeMap
+					if (CapturedStepMap.Contains(CapturedOps[i].Id) && !WriteResult.CreatedNodeId.IsEmpty())
+					{
+						StepToNodeMap.Add(CapturedOps[i].Id, WriteResult.CreatedNodeId);
+					}
+				}
+			}
+
+			// Build success result
+			TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
+
+			// Serialize step_to_node_map
+			TSharedPtr<FJsonObject> MapObj = MakeShared<FJsonObject>();
+			for (const auto& Pair : StepToNodeMap)
+			{
+				MapObj->SetStringField(Pair.Key, Pair.Value);
+			}
+			ResultData->SetObjectField(TEXT("step_to_node_map"), MapObj);
+			ResultData->SetNumberField(TEXT("applied_ops_count"), AppliedCount);
+
+			FOliveWriteResult SuccessResult = FOliveWriteResult::Success(ResultData);
+			SuccessResult.CreatedNodeIds = MoveTemp(CreatedNodeIds);
+			return SuccessResult;
+		});
+
+	// ------------------------------------------------------------------
+	// 11. Execute through write pipeline
+	// ------------------------------------------------------------------
+	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
+	FOliveWriteResult PipelineResult = Pipeline.Execute(Request, Executor);
+
+	// Convert to tool result and inject step_to_node_map if available
+	FOliveToolResult ToolResult = PipelineResult.ToToolResult();
+
+	// Merge step_to_node_map from executor result into tool result data
+	if (PipelineResult.bSuccess && PipelineResult.ResultData.IsValid() && ToolResult.Data.IsValid())
+	{
+		const TSharedPtr<FJsonObject>* StepMapObj = nullptr;
+		if (PipelineResult.ResultData->TryGetObjectField(TEXT("step_to_node_map"), StepMapObj))
+		{
+			ToolResult.Data->SetObjectField(TEXT("step_to_node_map"), *StepMapObj);
+		}
+
+		double AppliedOps = 0;
+		if (PipelineResult.ResultData->TryGetNumberField(TEXT("applied_ops_count"), AppliedOps))
+		{
+			ToolResult.Data->SetNumberField(TEXT("applied_ops_count"), AppliedOps);
+		}
+	}
+
+	UE_LOG(LogOliveBPTools, Log,
+		TEXT("Plan apply for '%s' graph '%s': success=%s"),
+		*AssetPath, *GraphTarget, PipelineResult.bSuccess ? TEXT("true") : TEXT("false"));
+
+	return ToolResult;
 }
 

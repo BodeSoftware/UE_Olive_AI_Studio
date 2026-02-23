@@ -278,7 +278,7 @@ void FOliveAnthropicProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpR
 
 	if (!bSuccess || !Response.IsValid())
 	{
-		HandleError(TEXT("Network error: Failed to connect to Anthropic"));
+		HandleError(TEXT("[HTTP:0] Network error: Failed to connect to Anthropic"));
 		return;
 	}
 
@@ -286,7 +286,7 @@ void FOliveAnthropicProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpR
 
 	if (StatusCode == 401)
 	{
-		HandleError(TEXT("Invalid API key. Check your Anthropic API key at https://console.anthropic.com/"));
+		HandleError(TEXT("[HTTP:401] Invalid API key. Check your Anthropic API key at https://console.anthropic.com/"));
 		return;
 	}
 
@@ -295,11 +295,13 @@ void FOliveAnthropicProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpR
 		FString RetryAfter = Response->GetHeader(TEXT("Retry-After"));
 		if (!RetryAfter.IsEmpty())
 		{
-			HandleError(FString::Printf(TEXT("Rate limited. Try again in %s seconds."), *RetryAfter));
+			int32 RetryAfterSeconds = FCString::Atoi(*RetryAfter);
+			if (RetryAfterSeconds <= 0) { RetryAfterSeconds = 60; }
+			HandleError(FString::Printf(TEXT("[HTTP:429:RetryAfter=%d] Rate limited by Anthropic. Try again in %s seconds."), RetryAfterSeconds, *RetryAfter));
 		}
 		else
 		{
-			HandleError(TEXT("Rate limited. Please wait before trying again."));
+			HandleError(TEXT("[HTTP:429:RetryAfter=60] Rate limited by Anthropic. Please wait before trying again."));
 		}
 		return;
 	}
@@ -315,11 +317,11 @@ void FOliveAnthropicProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpR
 			if (ErrorJson->TryGetObjectField(TEXT("error"), ErrorObj))
 			{
 				FString ErrorMessage = (*ErrorObj)->GetStringField(TEXT("message"));
-				HandleError(FString::Printf(TEXT("Anthropic API Error: %s"), *ErrorMessage));
+				HandleError(FString::Printf(TEXT("[HTTP:400] Anthropic API Error: %s"), *ErrorMessage));
 				return;
 			}
 		}
-		HandleError(TEXT("Anthropic API Error: Bad request (400)"));
+		HandleError(TEXT("[HTTP:400] Anthropic API Error: Bad request (400)"));
 		return;
 	}
 
@@ -334,11 +336,11 @@ void FOliveAnthropicProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpR
 			if (ErrorJson->TryGetObjectField(TEXT("error"), ErrorObj))
 			{
 				FString ErrorMessage = (*ErrorObj)->GetStringField(TEXT("message"));
-				HandleError(FString::Printf(TEXT("Anthropic API Error: %s"), *ErrorMessage));
+				HandleError(FString::Printf(TEXT("[HTTP:%d] Anthropic API Error: %s"), StatusCode, *ErrorMessage));
 				return;
 			}
 		}
-		HandleError(FString::Printf(TEXT("Anthropic API Error: HTTP %d"), StatusCode));
+		HandleError(FString::Printf(TEXT("[HTTP:%d] Anthropic API Error: HTTP %d"), StatusCode, StatusCode));
 		return;
 	}
 

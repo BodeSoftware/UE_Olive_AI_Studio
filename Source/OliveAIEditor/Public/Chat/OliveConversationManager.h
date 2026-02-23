@@ -13,6 +13,9 @@
 #include "Brain/OliveSelfCorrectionPolicy.h"
 #include "Brain/OliveToolPackManager.h"
 
+class FOliveMessageQueue;
+class FOliveProviderRetryManager;
+
 /**
  * Conversation Events
  */
@@ -24,6 +27,7 @@ DECLARE_MULTICAST_DELEGATE(FOnOliveChatProcessingStarted);
 DECLARE_MULTICAST_DELEGATE(FOnOliveChatProcessingComplete);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnOliveChatError, const FString&);
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnOliveChatConfirmationRequired, const FString& /* ToolCallId */, const FString& /* ToolName */, const FString& /* Plan */);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnOliveChatDeferredProfileApplied, const FString& /* ProfileName */);
 
 /**
  * Conversation Manager
@@ -97,7 +101,9 @@ public:
 	const TArray<FString>& GetActiveContext() const { return ActiveContextPaths; }
 
 	/**
-	 * Set focus profile for tool filtering
+	 * Set focus profile for tool filtering.
+	 * If the manager is currently processing, the switch is deferred until
+	 * the current operation completes (stored in DeferredFocusProfile).
 	 * @param ProfileName Profile name
 	 */
 	void SetFocusProfile(const FString& ProfileName);
@@ -106,6 +112,19 @@ public:
 	 * Get current focus profile
 	 */
 	const FString& GetFocusProfile() const { return ActiveFocusProfile; }
+
+	/**
+	 * Explicitly set a deferred focus profile to be applied when processing completes.
+	 * Callers that want to inspect or override the deferred value can use this.
+	 * @param ProfileName The profile name to apply later (empty to cancel deferral)
+	 */
+	void SetDeferredFocusProfile(const FString& ProfileName);
+
+	/**
+	 * Get the deferred focus profile name.
+	 * @return The deferred profile name, or empty string if no deferral is pending
+	 */
+	const FString& GetDeferredFocusProfile() const { return DeferredFocusProfile; }
 
 	// ==========================================
 	// Provider Management
@@ -150,6 +169,9 @@ public:
 	/** Fired when a tool call requires user confirmation */
 	FOnOliveChatConfirmationRequired OnConfirmationRequired;
 
+	/** Fired when a deferred focus profile switch is applied after processing completes */
+	FOnOliveChatDeferredProfileApplied OnDeferredProfileApplied;
+
 	// ==========================================
 	// Confirmation Flow
 	// ==========================================
@@ -188,6 +210,34 @@ public:
 
 	/** Set maximum tool call iterations (to prevent infinite loops) */
 	void SetMaxToolIterations(int32 Max) { MaxToolIterations = Max; }
+
+	// ==========================================
+	// Message Queue Integration
+	// ==========================================
+
+	/**
+	 * Set the retry manager (owned externally by FOliveEditorChatSession).
+	 * When set, SendToProvider() routes through RetryManager->SendWithRetry()
+	 * instead of calling Provider->SendMessage() directly.
+	 * @param InRetryManager Pointer to the retry manager. Lifetime must exceed this object's.
+	 */
+	void SetRetryManager(FOliveProviderRetryManager* InRetryManager);
+
+	/**
+	 * Set the message queue (owned externally by FOliveEditorChatSession).
+	 * When the queue is set, messages sent while processing are enqueued
+	 * instead of being rejected.
+	 * @param InQueue Pointer to the queue. Lifetime must exceed this object's.
+	 */
+	void SetMessageQueue(FOliveMessageQueue* InQueue);
+
+	/**
+	 * Attempt to dequeue and send the next queued message.
+	 * Should be called after processing completes (HandleComplete/HandleError).
+	 * Safe to call when bIsProcessing is false -- it will call SendUserMessage()
+	 * with the dequeued message, which re-enters the normal processing flow.
+	 */
+	void DrainNextQueuedMessage();
 
 private:
 	// ==========================================
@@ -250,11 +300,20 @@ private:
 	/** Active focus profile */
 	FString ActiveFocusProfile = TEXT("Auto");
 
+	/** Deferred focus profile change — applied when processing completes */
+	FString DeferredFocusProfile;
+
 	/** Active context paths */
 	TArray<FString> ActiveContextPaths;
 
 	/** Is processing a request */
 	bool bIsProcessing = false;
+
+	/** Pointer to external retry manager (not owned). Set via SetRetryManager(). */
+	FOliveProviderRetryManager* RetryManager = nullptr;
+
+	/** Pointer to external message queue (not owned). Set via SetMessageQueue(). */
+	FOliveMessageQueue* Queue = nullptr;
 
 	/** Whether run mode is active */
 	bool bRunModeActive = false;

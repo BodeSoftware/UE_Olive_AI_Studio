@@ -1,7 +1,9 @@
 // Copyright Bode Software. All Rights Reserved.
 
 #include "Chat/OliveConversationManager.h"
+#include "Chat/OliveMessageQueue.h"
 #include "Chat/OlivePromptAssembler.h"
+#include "Providers/OliveProviderRetryManager.h"
 #include "MCP/OliveToolRegistry.h"
 #include "Index/OliveProjectIndex.h"
 #include "Settings/OliveAISettings.h"
@@ -149,6 +151,15 @@ void FOliveConversationManager::ClearHistory()
 	bTurnHasDangerIntent = false;
 	bStopAfterToolResults = false;
 	PendingConfirmationToken.Empty();
+
+	// Clear any queued messages so they are not sent into a fresh session
+	if (Queue)
+	{
+		Queue->Clear();
+	}
+
+	// Clear any deferred profile switch
+	DeferredFocusProfile.Empty();
 }
 
 // ==========================================
@@ -164,7 +175,23 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 
 	if (bIsProcessing)
 	{
-		UE_LOG(LogOliveAI, Warning, TEXT("Cannot send message while processing"));
+		if (Queue)
+		{
+			// Enqueue the message for later delivery instead of discarding it.
+			// The message is added to the UI/history immediately so the user sees it.
+			FOliveChatMessage QueuedUserMessage;
+			QueuedUserMessage.Role = EOliveChatRole::User;
+			QueuedUserMessage.Content = Message;
+			QueuedUserMessage.Timestamp = FDateTime::UtcNow();
+			AddMessage(QueuedUserMessage);
+
+			Queue->Enqueue(Message);
+			UE_LOG(LogOliveAI, Log, TEXT("Message queued while processing (depth: %d)"), Queue->GetQueueDepth());
+		}
+		else
+		{
+			UE_LOG(LogOliveAI, Warning, TEXT("Cannot send message while processing (no queue configured)"));
+		}
 		return;
 	}
 
@@ -207,6 +234,12 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 
 void FOliveConversationManager::CancelCurrentRequest()
 {
+	// Cancel any pending retry before cancelling the provider request
+	if (RetryManager)
+	{
+		RetryManager->Cancel();
+	}
+
 	if (Provider.IsValid() && bIsProcessing)
 	{
 		Provider->CancelRequest();
@@ -245,7 +278,27 @@ void FOliveConversationManager::SetActiveContext(const TArray<FString>& AssetPat
 
 void FOliveConversationManager::SetFocusProfile(const FString& ProfileName)
 {
-	ActiveFocusProfile = FOliveFocusProfileManager::Get().NormalizeProfileName(ProfileName);
+	const FString NormalizedName = FOliveFocusProfileManager::Get().NormalizeProfileName(ProfileName);
+
+	if (bIsProcessing)
+	{
+		// Defer the profile switch until the current operation completes.
+		// Changing the tool set mid-operation would cause inconsistent tool availability.
+		DeferredFocusProfile = NormalizedName;
+		UE_LOG(LogOliveAI, Warning,
+			TEXT("Focus profile switch to '%s' deferred -- operation in progress"), *NormalizedName);
+		return;
+	}
+
+	ActiveFocusProfile = NormalizedName;
+	DeferredFocusProfile.Empty();
+}
+
+void FOliveConversationManager::SetDeferredFocusProfile(const FString& ProfileName)
+{
+	DeferredFocusProfile = ProfileName.IsEmpty()
+		? FString()
+		: FOliveFocusProfileManager::Get().NormalizeProfileName(ProfileName);
 }
 
 // ==========================================
@@ -257,6 +310,12 @@ void FOliveConversationManager::SetProvider(TSharedPtr<IOliveAIProvider> InProvi
 	// Cancel any pending request with old provider
 	CancelCurrentRequest();
 	Provider = InProvider;
+
+	// Keep the retry manager in sync with the active provider
+	if (RetryManager)
+	{
+		RetryManager->SetProvider(InProvider);
+	}
 }
 
 // ==========================================
@@ -344,7 +403,39 @@ void FOliveConversationManager::SendToProvider()
 	{
 		DistillConfig.RecentPairsToKeep = Settings->PromptDistillationRawResults;
 	}
-	PromptDistiller.Distill(MessagesToSend, DistillConfig);
+	const FOliveDistillationResult DistillResult = PromptDistiller.Distill(MessagesToSend, DistillConfig);
+
+	// Inject a context truncation note so the model knows earlier messages were summarized.
+	// Insert just before the final user message to maximize visibility in the context window.
+	if (DistillResult.DidTruncate())
+	{
+		FString TruncationNote = FString::Printf(
+			TEXT("[CONTEXT NOTE: %d older messages were summarized to save tokens. "
+				 "%d tool results were truncated. If you need details from earlier "
+				 "in the conversation, ask the user to re-provide the relevant context.]"),
+			DistillResult.MessagesSummarized,
+			DistillResult.ToolResultsTruncated);
+
+		FOliveChatMessage TruncationMessage;
+		TruncationMessage.Role = EOliveChatRole::System;
+		TruncationMessage.Content = TruncationNote;
+		TruncationMessage.Timestamp = FDateTime::UtcNow();
+
+		// Find the last user message and insert the note just before it
+		int32 InsertIndex = MessagesToSend.Num(); // fallback: append at end
+		for (int32 i = MessagesToSend.Num() - 1; i >= 0; --i)
+		{
+			if (MessagesToSend[i].Role == EOliveChatRole::User)
+			{
+				InsertIndex = i;
+				break;
+			}
+		}
+		MessagesToSend.Insert(TruncationMessage, InsertIndex);
+
+		UE_LOG(LogOliveAI, Log, TEXT("Injected context truncation note (%d summarized, %d truncated, ~%d tokens saved)"),
+			DistillResult.MessagesSummarized, DistillResult.ToolResultsTruncated, DistillResult.TokensSaved);
+	}
 
 	// Get available tools via Tool Pack Manager (if initialized) for reduced schema cost
 	TArray<FOliveToolDefinition> Tools;
@@ -411,7 +502,16 @@ void FOliveConversationManager::SendToProvider()
 	});
 
 	const FOliveRequestOptions RequestOptions = BuildRequestOptions();
-	Provider->SendMessage(MessagesToSend, Tools, OnChunk, OnToolCall, OnComplete, OnErr, RequestOptions);
+
+	// Route through the retry manager if available; otherwise call the provider directly.
+	if (RetryManager)
+	{
+		RetryManager->SendWithRetry(MessagesToSend, Tools, OnChunk, OnToolCall, OnComplete, OnErr, RequestOptions);
+	}
+	else
+	{
+		Provider->SendMessage(MessagesToSend, Tools, OnChunk, OnToolCall, OnComplete, OnErr, RequestOptions);
+	}
 }
 
 // ==========================================
@@ -449,6 +549,15 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 	FOliveChatMessage AssistantMessage;
 	AssistantMessage.Role = EOliveChatRole::Assistant;
 	AssistantMessage.Content = CurrentStreamingContent;
+	const FString NormalizedFinishReason = Usage.FinishReason.ToLower();
+	const bool bResponseTruncated =
+		NormalizedFinishReason == TEXT("length") ||
+		NormalizedFinishReason == TEXT("max_tokens");
+	if (bResponseTruncated)
+	{
+		AssistantMessage.Content += TEXT("\n\n[WARNING: This response was truncated due to token limits. The model may have had more to say.]");
+		UE_LOG(LogOliveAI, Warning, TEXT("Provider response truncated (finish_reason=%s)"), *Usage.FinishReason);
+	}
 	AssistantMessage.Timestamp = FDateTime::UtcNow();
 	AssistantMessage.ToolCalls = PendingToolCalls;
 	AddMessage(AssistantMessage);
@@ -475,6 +584,19 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 		// No tool calls, we're done
 		bIsProcessing = false;
 		OnProcessingComplete.Broadcast();
+
+		// Apply deferred focus profile switch if one was requested during processing
+		if (!DeferredFocusProfile.IsEmpty())
+		{
+			const FString ProfileToApply = DeferredFocusProfile;
+			DeferredFocusProfile.Empty();
+			ActiveFocusProfile = ProfileToApply;
+			UE_LOG(LogOliveAI, Log, TEXT("Deferred focus profile applied: %s"), *ProfileToApply);
+			OnDeferredProfileApplied.Broadcast(ProfileToApply);
+		}
+
+		// Drain the next queued message if any are waiting
+		DrainNextQueuedMessage();
 	}
 }
 
@@ -498,6 +620,19 @@ void FOliveConversationManager::HandleError(const FString& ErrorMessage)
 
 	OnError.Broadcast(ErrorMessage);
 	OnProcessingComplete.Broadcast();
+
+	// Apply deferred focus profile switch if one was requested during processing
+	if (!DeferredFocusProfile.IsEmpty())
+	{
+		const FString ProfileToApply = DeferredFocusProfile;
+		DeferredFocusProfile.Empty();
+		ActiveFocusProfile = ProfileToApply;
+		UE_LOG(LogOliveAI, Log, TEXT("Deferred focus profile applied after error: %s"), *ProfileToApply);
+		OnDeferredProfileApplied.Broadcast(ProfileToApply);
+	}
+
+	// Drain the next queued message if any are waiting
+	DrainNextQueuedMessage();
 }
 
 // ==========================================
@@ -832,6 +967,19 @@ void FOliveConversationManager::ContinueAfterToolResults()
 			Brain->ResetToIdle();
 		}
 		OnProcessingComplete.Broadcast();
+
+		// Apply deferred focus profile switch if one was requested during processing
+		if (!DeferredFocusProfile.IsEmpty())
+		{
+			const FString ProfileToApply = DeferredFocusProfile;
+			DeferredFocusProfile.Empty();
+			ActiveFocusProfile = ProfileToApply;
+			UE_LOG(LogOliveAI, Log, TEXT("Deferred focus profile applied after stop: %s"), *ProfileToApply);
+			OnDeferredProfileApplied.Broadcast(ProfileToApply);
+		}
+
+		// Drain the next queued message if any are waiting
+		DrainNextQueuedMessage();
 		return;
 	}
 
@@ -857,6 +1005,46 @@ void FOliveConversationManager::DisableRunMode()
 		FOliveRunManager::Get().CancelRun();
 	}
 	UE_LOG(LogOliveAI, Log, TEXT("Run mode disabled"));
+}
+
+// ==========================================
+// Message Queue Integration
+// ==========================================
+
+void FOliveConversationManager::SetRetryManager(FOliveProviderRetryManager* InRetryManager)
+{
+	RetryManager = InRetryManager;
+	UE_LOG(LogOliveAI, Log, TEXT("Retry manager %s"), RetryManager ? TEXT("attached") : TEXT("detached"));
+}
+
+void FOliveConversationManager::SetMessageQueue(FOliveMessageQueue* InQueue)
+{
+	Queue = InQueue;
+	UE_LOG(LogOliveAI, Log, TEXT("Message queue %s"), Queue ? TEXT("attached") : TEXT("detached"));
+}
+
+void FOliveConversationManager::DrainNextQueuedMessage()
+{
+	if (!Queue || !Queue->HasPending())
+	{
+		return;
+	}
+
+	// Safety check: only drain if we are NOT currently processing.
+	// This should always be the case at call sites, but guard against
+	// unexpected re-entrancy.
+	if (bIsProcessing)
+	{
+		UE_LOG(LogOliveAI, Warning, TEXT("DrainNextQueuedMessage called while still processing -- skipping"));
+		return;
+	}
+
+	const FString NextMessage = Queue->Dequeue();
+	if (!NextMessage.IsEmpty())
+	{
+		UE_LOG(LogOliveAI, Log, TEXT("Draining queued message (remaining: %d)"), Queue->GetQueueDepth());
+		SendUserMessage(NextMessage);
+	}
 }
 
 // ==========================================

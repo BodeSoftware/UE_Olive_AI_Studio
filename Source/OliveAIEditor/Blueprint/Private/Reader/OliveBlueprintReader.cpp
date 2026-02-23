@@ -285,9 +285,36 @@ TArray<FString> FOliveBlueprintReader::ReadHierarchy(const UBlueprint* Blueprint
 		CurrentClass = Blueprint->ParentClass;
 	}
 
+	// Circular traversal guard: track visited classes and cap depth to prevent
+	// infinite loops from corrupted or circular class hierarchies.
+	static constexpr int32 MaxHierarchyDepth = 20;
+	TSet<UClass*> Visited;
+	int32 Depth = 0;
+
 	// Walk up the inheritance chain
 	while (CurrentClass && CurrentClass != UObject::StaticClass())
 	{
+		// Guard against circular class references
+		if (Visited.Contains(CurrentClass))
+		{
+			UE_LOG(LogOliveBPReader, Warning,
+				TEXT("ReadHierarchy: Circular class reference detected at '%s' for Blueprint '%s' — stopping traversal"),
+				*CurrentClass->GetName(), *Blueprint->GetName());
+			break;
+		}
+
+		// Guard against unreasonably deep hierarchies
+		if (Depth >= MaxHierarchyDepth)
+		{
+			UE_LOG(LogOliveBPReader, Warning,
+				TEXT("ReadHierarchy: Depth cap (%d) reached at class '%s' for Blueprint '%s' — stopping traversal"),
+				MaxHierarchyDepth, *CurrentClass->GetName(), *Blueprint->GetName());
+			break;
+		}
+
+		Visited.Add(CurrentClass);
+		++Depth;
+
 		// Check if this is a Blueprint-generated class
 		UBlueprint* BP = Cast<UBlueprint>(CurrentClass->ClassGeneratedBy);
 		if (BP)

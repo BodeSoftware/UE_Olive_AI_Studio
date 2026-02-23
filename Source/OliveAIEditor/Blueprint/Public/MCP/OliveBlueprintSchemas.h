@@ -303,6 +303,26 @@ namespace OliveBlueprintSchemas
 	TSharedPtr<FJsonObject> BlueprintSetNodeProperty();
 
 	// ============================================================================
+	// Plan JSON Tool Schemas
+	// ============================================================================
+
+	/**
+	 * Schema for blueprint.preview_plan_json
+	 * Preview an intent-level plan without mutating the Blueprint.
+	 * Returns normalized plan, diff summary, and a fingerprint for drift detection.
+	 * Params: {asset_path: string, graph_target?: string, mode?: string, plan_json: object}
+	 */
+	TSharedPtr<FJsonObject> BlueprintPreviewPlanJson();
+
+	/**
+	 * Schema for blueprint.apply_plan_json
+	 * Apply an intent-level plan atomically to a Blueprint graph.
+	 * Resolves intents to concrete nodes, executes as a single transaction, compiles once.
+	 * Params: {asset_path: string, graph_target?: string, mode?: string, plan_json: object, preview_fingerprint?: string}
+	 */
+	TSharedPtr<FJsonObject> BlueprintApplyPlanJson();
+
+	// ============================================================================
 	// AnimBP Writer Tool Schemas
 	// ============================================================================
 

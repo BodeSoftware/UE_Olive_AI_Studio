@@ -50,6 +50,9 @@ namespace OliveNodeTypes
 	const FString MakeStruct = TEXT("MakeStruct");
 	const FString BreakStruct = TEXT("BreakStruct");
 
+	// Input
+	const FString InputKey = TEXT("InputKey");
+
 	// Utility
 	const FString PrintString = TEXT("PrintString");
 	const FString Comment = TEXT("Comment");
@@ -127,6 +130,22 @@ public:
 	 * @return Map of property names to descriptions (empty for unknown types)
 	 */
 	TMap<FString, FString> GetRequiredProperties(const FString& NodeType) const;
+
+	/**
+	 * Validate whether a node type string is recognized.
+	 * Checks both the factory's built-in node creator map and
+	 * deeper resolution for types that require property-based lookup
+	 * (e.g., CallFunction resolves function_name, Event resolves event_name).
+	 *
+	 * Unlike IsNodeTypeSupported() which only checks the NodeCreators map,
+	 * this method also validates that property-dependent types can actually
+	 * resolve their targets.
+	 *
+	 * @param NodeType  The type string to validate (use OliveNodeTypes constants)
+	 * @param Properties  The node properties (needed for CallFunction/Event resolution)
+	 * @return True if the node type can be created with the given properties
+	 */
+	bool ValidateNodeType(const FString& NodeType, const TMap<FString, FString>& Properties) const;
 
 	/**
 	 * Get the last error message from a failed operation
@@ -305,6 +324,15 @@ private:
 	 * No required properties
 	 */
 	UK2Node* CreateRerouteNode(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		const TMap<FString, FString>& Properties);
+
+	/**
+	 * Create an InputKey node (keyboard/gamepad key binding)
+	 * Required properties: "key" (e.g., "E", "SpaceBar", "Gamepad_FaceButton_Bottom")
+	 */
+	UK2Node* CreateInputKeyNode(
 		UBlueprint* Blueprint,
 		UEdGraph* Graph,
 		const TMap<FString, FString>& Properties);

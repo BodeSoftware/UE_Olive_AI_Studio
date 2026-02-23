@@ -2,7 +2,7 @@
 name: explorer
 description: Fast file explorer and code navigator. Use PROACTIVELY for quick lookups like finding where a class is defined, listing files in a module, checking what includes a file uses, finding usages of a function, or mapping directory structure. Lightweight and cheap — use this instead of Sonnet agents for simple search and navigation tasks.
 tools: Read, Grep, Glob, Bash
-model: haiku
+model: sonnet
 ---
 
 You are a fast, lightweight code navigator for an Unreal Engine AI Agent Plugin project.

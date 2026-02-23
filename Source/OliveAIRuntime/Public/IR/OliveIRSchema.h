@@ -172,4 +172,25 @@ public:
 		const FString& Version,
 		int32& OutMajor,
 		int32& OutMinor);
+
+	// ============================================================================
+	// Blueprint Plan Validation
+	// ============================================================================
+
+	/**
+	 * Validate a Blueprint Plan JSON object against the plan schema.
+	 * Checks schema_version, steps array structure, op vocabulary,
+	 * unique step_ids, @ref forward references, and per-op required fields.
+	 *
+	 * All errors are collected (not fail-fast) so the caller gets a complete
+	 * picture. The first error populates ErrorCode/ErrorMessage on the result;
+	 * all errors are stored as a JSON array in Result.Data["errors"].
+	 *
+	 * @param Json The plan JSON to validate
+	 * @param MaxSteps Maximum allowed steps (from settings, default 128)
+	 * @return Validation result with errors including JSON pointer locations
+	 */
+	static FOliveIRResult ValidateBlueprintPlanJson(
+		const TSharedPtr<FJsonObject>& Json,
+		int32 MaxSteps = 128);
 };

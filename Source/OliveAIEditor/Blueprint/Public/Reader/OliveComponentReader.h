@@ -76,15 +76,21 @@ private:
 	// ============================================================================
 
 	/**
-	 * Recursively build component tree from an SCS node
+	 * Recursively build component tree from an SCS node.
+	 * Includes visited-set and depth-cap guards to prevent infinite loops from
+	 * corrupted or circular SCS node graphs.
 	 * @param Node The current SCS node to process
 	 * @param OutComponents Array to append components to (at current level)
 	 * @param ParentName Name of the parent component (empty for root nodes)
+	 * @param Visited Set of already-visited nodes (for cycle detection)
+	 * @param Depth Current recursion depth (capped at MaxComponentTreeDepth)
 	 */
 	void BuildComponentTree(
 		const USCS_Node* Node,
 		TArray<FOliveIRComponent>& OutComponents,
-		const FString& ParentName = TEXT("")) const;
+		const FString& ParentName,
+		TSet<const USCS_Node*>& Visited,
+		int32 Depth) const;
 
 	/**
 	 * Read properties from a component node that differ from class defaults

@@ -147,6 +147,16 @@ public:
 		meta=(DisplayName="Timeout (seconds)", ClampMin=30, ClampMax=600))
 	int32 RequestTimeoutSeconds = 120;
 
+	/** Maximum retry attempts for transient network failures (0 = no retry) */
+	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
+		meta=(DisplayName="Max Retries", ClampMin=0, ClampMax=5))
+	int32 MaxProviderRetries = 3;
+
+	/** Maximum Retry-After seconds to honor for rate limits (beyond this, fail immediately) */
+	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
+		meta=(DisplayName="Max Rate Limit Wait (seconds)", ClampMin=0, ClampMax=300))
+	int32 MaxRetryAfterWaitSeconds = 120;
+
 	// ==========================================
 	// MCP Server Settings
 	// ==========================================
@@ -309,6 +319,25 @@ public:
 	/** Maximum correction cycles before the brain layer stops retrying a failed operation */
 	UPROPERTY(Config, EditAnywhere, Category = "Brain Layer", meta = (ClampMin = 1, ClampMax = 20))
 	int32 MaxCorrectionCyclesPerRun = 5;
+
+	// ==========================================
+	// Blueprint Plan JSON
+	// ==========================================
+
+	/** Enable intent-level Blueprint plan JSON tools (preview + apply). Default off for Phase 1. */
+	UPROPERTY(Config, EditAnywhere, Category="Blueprint Plan",
+		meta=(DisplayName="Enable Plan JSON Tools"))
+	bool bEnableBlueprintPlanJsonTools = false;
+
+	/** Maximum steps allowed in a single plan JSON */
+	UPROPERTY(Config, EditAnywhere, Category="Blueprint Plan",
+		meta=(DisplayName="Plan Max Steps", ClampMin=1, ClampMax=512))
+	int32 PlanJsonMaxSteps = 128;
+
+	/** When true, blueprint.apply_plan_json requires a preview_fingerprint from a prior preview call */
+	UPROPERTY(Config, EditAnywhere, Category="Blueprint Plan",
+		meta=(DisplayName="Require Preview Before Apply"))
+	bool bPlanJsonRequirePreviewForApply = true;
 
 	// ==========================================
 	// Utility Functions

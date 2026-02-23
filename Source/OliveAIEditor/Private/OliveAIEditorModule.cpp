@@ -21,6 +21,7 @@
 #include "MCP/OliveCppToolHandlers.h"
 #include "MCP/OliveCrossSystemToolHandlers.h"
 #include "OliveMCPPromptTemplates.h"
+#include "Chat/OliveEditorChatSession.h"
 #include "UI/SOliveAIChatPanel.h"
 
 #include "Framework/Docking/TabManager.h"
@@ -45,6 +46,9 @@ void FOliveAIEditorModule::StartupModule()
 
 	// Register UI elements
 	RegisterUI();
+
+	// Initialize the editor chat session singleton (owns ConversationManager)
+	FOliveEditorChatSession::Get().Initialize();
 
 	// NOTE: This module loads at PostEngineInit phase (see .uplugin).
 	// By this point, the engine is fully initialized, so we can run
@@ -92,6 +96,9 @@ void FOliveAIEditorModule::ShutdownModule()
 
 	// Shutdown project index (singleton)
 	FOliveProjectIndex::Get().Shutdown();
+
+	// Shutdown editor chat session (releases ConversationManager, queue, retry manager)
+	FOliveEditorChatSession::Get().Shutdown();
 
 	// Unregister commands
 	FOliveAIEditorCommands::Unregister();

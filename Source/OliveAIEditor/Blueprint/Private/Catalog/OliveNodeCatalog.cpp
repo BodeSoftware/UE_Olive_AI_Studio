@@ -372,6 +372,156 @@ TArray<FOliveNodeTypeInfo> FOliveNodeCatalog::Search(const FString& Query, int32
 	return Results;
 }
 
+TArray<FOliveNodeSuggestion> FOliveNodeCatalog::FuzzyMatch(const FString& Query, int32 MaxResults) const
+{
+	FScopeLock Lock(&CatalogLock);
+
+	// Collect all scored candidates: {Score, TypeId, DisplayName}
+	TArray<FOliveNodeSuggestion> Candidates;
+
+	// --- Source 1: Catalog entries (function library nodes, K2 nodes, etc.) ---
+	for (const auto& Pair : NodeTypes)
+	{
+		const FOliveNodeTypeInfo& Info = Pair.Value;
+		int32 Score = Info.MatchScore(Query);
+		if (Score > 0)
+		{
+			FOliveNodeSuggestion Suggestion;
+			Suggestion.TypeId = Info.TypeId;
+			Suggestion.DisplayName = Info.DisplayName;
+			Suggestion.Score = Score;
+			Candidates.Add(MoveTemp(Suggestion));
+		}
+	}
+
+	// --- Source 2: Built-in node type names from OliveNodeTypes namespace ---
+	// These are the type strings accepted by OliveNodeFactory::CreateNode.
+	// Match against them so typos like "BranchNode" resolve to "Branch".
+	struct FBuiltInType
+	{
+		const TCHAR* TypeId;
+		const TCHAR* DisplayName;
+	};
+
+	static const FBuiltInType BuiltInTypes[] =
+	{
+		// Control Flow
+		{ TEXT("Branch"),             TEXT("Branch") },
+		{ TEXT("Sequence"),           TEXT("Sequence") },
+		{ TEXT("ForLoop"),            TEXT("For Loop") },
+		{ TEXT("ForEachLoop"),        TEXT("For Each Loop") },
+		{ TEXT("WhileLoop"),          TEXT("While Loop") },
+		{ TEXT("DoOnce"),             TEXT("Do Once") },
+		{ TEXT("FlipFlop"),           TEXT("Flip Flop") },
+		{ TEXT("Gate"),               TEXT("Gate") },
+		{ TEXT("Delay"),              TEXT("Delay") },
+		// Function/Event
+		{ TEXT("CallFunction"),       TEXT("Call Function") },
+		{ TEXT("CallParentFunction"), TEXT("Call Parent Function") },
+		{ TEXT("GetVariable"),        TEXT("Get Variable") },
+		{ TEXT("SetVariable"),        TEXT("Set Variable") },
+		{ TEXT("Event"),              TEXT("Event (Override)") },
+		{ TEXT("CustomEvent"),        TEXT("Custom Event") },
+		// Casting/Type
+		{ TEXT("Cast"),               TEXT("Cast To") },
+		{ TEXT("IsValid"),            TEXT("Is Valid") },
+		// Object Creation
+		{ TEXT("SpawnActor"),         TEXT("Spawn Actor") },
+		// Struct Operations
+		{ TEXT("MakeStruct"),         TEXT("Make Struct") },
+		{ TEXT("BreakStruct"),        TEXT("Break Struct") },
+		// Utility
+		{ TEXT("PrintString"),        TEXT("Print String") },
+		{ TEXT("Comment"),            TEXT("Comment") },
+		{ TEXT("Reroute"),            TEXT("Reroute") },
+	};
+
+	FString LowerQuery = Query.ToLower();
+	for (const FBuiltInType& BuiltIn : BuiltInTypes)
+	{
+		FString LowerTypeId = FString(BuiltIn.TypeId).ToLower();
+		FString LowerDisplay = FString(BuiltIn.DisplayName).ToLower();
+
+		int32 Score = 0;
+
+		// Exact match on type ID
+		if (LowerTypeId == LowerQuery)
+		{
+			Score = 1000;
+		}
+		else if (LowerTypeId.StartsWith(LowerQuery))
+		{
+			Score = 500;
+		}
+		else if (LowerTypeId.Contains(LowerQuery))
+		{
+			Score = 250;
+		}
+		// Also match against display name
+		else if (LowerDisplay == LowerQuery)
+		{
+			Score = 900;
+		}
+		else if (LowerDisplay.StartsWith(LowerQuery))
+		{
+			Score = 400;
+		}
+		else if (LowerDisplay.Contains(LowerQuery))
+		{
+			Score = 200;
+		}
+		// Partial/substring match: check if query contains the type ID
+		// (handles cases like "BranchNode" containing "Branch")
+		else if (LowerQuery.Contains(LowerTypeId))
+		{
+			Score = 300;
+		}
+		else if (LowerQuery.Contains(LowerDisplay.Replace(TEXT(" "), TEXT(""))))
+		{
+			Score = 150;
+		}
+
+		if (Score > 0)
+		{
+			// Check if this TypeId is already in candidates from the catalog
+			bool bAlreadyPresent = false;
+			for (FOliveNodeSuggestion& Existing : Candidates)
+			{
+				if (Existing.TypeId == FString(BuiltIn.TypeId))
+				{
+					// Keep the higher score
+					Existing.Score = FMath::Max(Existing.Score, Score);
+					bAlreadyPresent = true;
+					break;
+				}
+			}
+
+			if (!bAlreadyPresent)
+			{
+				FOliveNodeSuggestion Suggestion;
+				Suggestion.TypeId = BuiltIn.TypeId;
+				Suggestion.DisplayName = BuiltIn.DisplayName;
+				Suggestion.Score = Score;
+				Candidates.Add(MoveTemp(Suggestion));
+			}
+		}
+	}
+
+	// Sort by score descending
+	Candidates.Sort([](const FOliveNodeSuggestion& A, const FOliveNodeSuggestion& B)
+	{
+		return A.Score > B.Score;
+	});
+
+	// Truncate to MaxResults
+	if (Candidates.Num() > MaxResults)
+	{
+		Candidates.SetNum(MaxResults);
+	}
+
+	return Candidates;
+}
+
 TArray<FOliveNodeTypeInfo> FOliveNodeCatalog::GetByCategory(const FString& Category) const
 {
 	FScopeLock Lock(&CatalogLock);

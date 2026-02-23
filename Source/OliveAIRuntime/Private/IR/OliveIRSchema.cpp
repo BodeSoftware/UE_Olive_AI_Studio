@@ -1,6 +1,8 @@
 // Copyright Bode Software. All Rights Reserved.
 
 #include "IR/OliveIRSchema.h"
+#include "IR/BlueprintPlanIR.h"
+#include "Serialization/JsonSerializer.h"
 
 // ============================================================================
 // Forbidden Field Names (Rule R4 - Positions omitted)
@@ -617,4 +619,435 @@ bool FOliveIRValidator::ParseVersionString(
 	OutMinor = FCString::Atoi(*Parts[1]);
 
 	return true;
+}
+
+// ============================================================================
+// FOliveIRValidator - Blueprint Plan JSON Validation
+// ============================================================================
+
+namespace
+{
+	/**
+	 * Ops that require a non-empty "target" field.
+	 * All other ops either have no required target or use target optionally.
+	 */
+	static const TSet<FString>& GetOpsRequiringTarget()
+	{
+		static const TSet<FString> Ops = {
+			TEXT("call"),
+			TEXT("get_var"),
+			TEXT("set_var"),
+			TEXT("event"),
+			TEXT("custom_event"),
+			TEXT("cast"),
+			TEXT("spawn_actor"),
+			TEXT("make_struct"),
+			TEXT("break_struct")
+		};
+		return Ops;
+	}
+
+	/** Helper to create an error JSON object with consistent structure. */
+	TSharedPtr<FJsonObject> MakePlanValidationError(
+		const FString& Code,
+		const FString& Location,
+		const FString& Message,
+		const FString& Suggestion = TEXT(""))
+	{
+		TSharedPtr<FJsonObject> ErrorObj = MakeShareable(new FJsonObject());
+		ErrorObj->SetStringField(TEXT("code"), Code);
+		ErrorObj->SetStringField(TEXT("location"), Location);
+		ErrorObj->SetStringField(TEXT("message"), Message);
+		if (!Suggestion.IsEmpty())
+		{
+			ErrorObj->SetStringField(TEXT("suggestion"), Suggestion);
+		}
+		return ErrorObj;
+	}
+}
+
+FOliveIRResult FOliveIRValidator::ValidateBlueprintPlanJson(
+	const TSharedPtr<FJsonObject>& Json,
+	int32 MaxSteps)
+{
+	// Collect all errors rather than failing fast, so the caller gets a complete picture
+	TArray<TSharedPtr<FJsonValue>> Errors;
+
+	auto AddError = [&Errors](const FString& Code, const FString& Location,
+		const FString& Message, const FString& Suggestion = TEXT(""))
+	{
+		Errors.Add(MakeShareable(new FJsonValueObject(
+			MakePlanValidationError(Code, Location, Message, Suggestion))));
+	};
+
+	// --- Null check ---
+	if (!Json.IsValid())
+	{
+		return FOliveIRResult::Error(
+			TEXT("PLAN_INVALID_JSON"),
+			TEXT("Plan JSON is null or invalid"));
+	}
+
+	// --- schema_version ---
+	if (!Json->HasField(TEXT("schema_version")))
+	{
+		AddError(
+			TEXT("PLAN_MISSING_FIELD"),
+			TEXT("/schema_version"),
+			TEXT("Plan is missing required field 'schema_version'"),
+			TEXT("Add \"schema_version\": \"1.0\" to the plan root"));
+	}
+	else
+	{
+		FString Version = Json->GetStringField(TEXT("schema_version"));
+		if (!IsSchemaVersionCompatible(Version))
+		{
+			AddError(
+				TEXT("PLAN_INCOMPATIBLE_VERSION"),
+				TEXT("/schema_version"),
+				FString::Printf(TEXT("Plan schema version '%s' is incompatible with current version '%s'"),
+					*Version, *OliveIR::SchemaVersion),
+				FString::Printf(TEXT("Use schema_version \"%s\""), *OliveIR::SchemaVersion));
+		}
+	}
+
+	// --- steps array ---
+	const TArray<TSharedPtr<FJsonValue>>* StepsArray = nullptr;
+	if (!Json->HasField(TEXT("steps")))
+	{
+		AddError(
+			TEXT("PLAN_MISSING_FIELD"),
+			TEXT("/steps"),
+			TEXT("Plan is missing required field 'steps'"),
+			TEXT("Add a \"steps\" array containing plan step objects"));
+	}
+	else if (!Json->TryGetArrayField(TEXT("steps"), StepsArray) || StepsArray == nullptr)
+	{
+		AddError(
+			TEXT("PLAN_INVALID_TYPE"),
+			TEXT("/steps"),
+			TEXT("'steps' must be a JSON array"),
+			TEXT("Ensure 'steps' is an array of step objects, not a single object or string"));
+	}
+	else if (StepsArray->Num() == 0)
+	{
+		AddError(
+			TEXT("PLAN_EMPTY_STEPS"),
+			TEXT("/steps"),
+			TEXT("'steps' array is empty; a plan must contain at least one step"),
+			TEXT("Add at least one step to the steps array"));
+	}
+	else if (StepsArray->Num() > MaxSteps)
+	{
+		AddError(
+			TEXT("PLAN_TOO_MANY_STEPS"),
+			TEXT("/steps"),
+			FString::Printf(TEXT("Plan has %d steps, exceeding the maximum of %d"), StepsArray->Num(), MaxSteps),
+			FString::Printf(TEXT("Reduce the plan to %d steps or fewer, or split into multiple plans"), MaxSteps));
+	}
+
+	// If we don't have a valid steps array, we can't validate individual steps
+	if (StepsArray == nullptr || StepsArray->Num() == 0)
+	{
+		// Build result from collected errors
+		if (Errors.Num() > 0)
+		{
+			TSharedPtr<FJsonObject> ErrorData = MakeShareable(new FJsonObject());
+			ErrorData->SetArrayField(TEXT("errors"), Errors);
+			ErrorData->SetNumberField(TEXT("error_count"), Errors.Num());
+
+			// First error populates primary fields
+			TSharedPtr<FJsonObject> FirstError = Errors[0]->AsObject();
+			return FOliveIRResult::Error(
+				FirstError->GetStringField(TEXT("code")),
+				FirstError->GetStringField(TEXT("message")),
+				FirstError->HasField(TEXT("suggestion")) ? FirstError->GetStringField(TEXT("suggestion")) : TEXT(""));
+		}
+		return FOliveIRResult::Success();
+	}
+
+	// --- Per-step validation ---
+	// Track step IDs for uniqueness and reference validation
+	TSet<FString> DeclaredStepIds;
+	// Ordered list for forward-reference checking on exec_after
+	TArray<FString> StepIdOrder;
+
+	for (int32 i = 0; i < StepsArray->Num(); ++i)
+	{
+		const FString StepLocation = FString::Printf(TEXT("/steps/%d"), i);
+
+		const TSharedPtr<FJsonObject>* StepObj = nullptr;
+		if (!(*StepsArray)[i]->TryGetObject(StepObj) || StepObj == nullptr || !(*StepObj).IsValid())
+		{
+			AddError(
+				TEXT("PLAN_INVALID_STEP"),
+				StepLocation,
+				FString::Printf(TEXT("Step %d is not a valid JSON object"), i),
+				TEXT("Each step must be a JSON object with at least 'step_id' and 'op' fields"));
+			continue;
+		}
+
+		const TSharedPtr<FJsonObject>& Step = *StepObj;
+
+		// --- step_id ---
+		FString StepId;
+		if (!Step->HasField(TEXT("step_id")))
+		{
+			AddError(
+				TEXT("PLAN_MISSING_STEP_ID"),
+				StepLocation + TEXT("/step_id"),
+				FString::Printf(TEXT("Step %d is missing required field 'step_id'"), i),
+				TEXT("Add a unique 'step_id' string to identify this step (e.g., \"s1\", \"print_node\")"));
+		}
+		else
+		{
+			StepId = Step->GetStringField(TEXT("step_id"));
+			if (StepId.IsEmpty())
+			{
+				AddError(
+					TEXT("PLAN_EMPTY_STEP_ID"),
+					StepLocation + TEXT("/step_id"),
+					FString::Printf(TEXT("Step %d has an empty 'step_id'"), i),
+					TEXT("Provide a non-empty unique identifier for this step"));
+			}
+			else if (DeclaredStepIds.Contains(StepId))
+			{
+				AddError(
+					TEXT("PLAN_DUPLICATE_STEP_ID"),
+					StepLocation + TEXT("/step_id"),
+					FString::Printf(TEXT("Step %d has duplicate step_id '%s'"), i, *StepId),
+					FString::Printf(TEXT("Choose a unique step_id; '%s' is already used by an earlier step"), *StepId));
+			}
+			else
+			{
+				DeclaredStepIds.Add(StepId);
+				StepIdOrder.Add(StepId);
+			}
+		}
+
+		// --- op ---
+		FString Op;
+		if (!Step->HasField(TEXT("op")))
+		{
+			AddError(
+				TEXT("PLAN_MISSING_OP"),
+				StepLocation + TEXT("/op"),
+				FString::Printf(TEXT("Step %d ('%s') is missing required field 'op'"), i, *StepId),
+				TEXT("Add an 'op' field with a valid operation (e.g., \"call\", \"branch\", \"event\")"));
+		}
+		else
+		{
+			Op = Step->GetStringField(TEXT("op"));
+			if (!OlivePlanOps::IsValidOp(Op))
+			{
+				// Build a hint with all valid ops
+				const TSet<FString>& AllOps = OlivePlanOps::GetAllOps();
+				TArray<FString> OpsList = AllOps.Array();
+				OpsList.Sort();
+				FString ValidOpsStr = FString::Join(OpsList, TEXT(", "));
+
+				AddError(
+					TEXT("PLAN_INVALID_OP"),
+					StepLocation + TEXT("/op"),
+					FString::Printf(TEXT("Step %d ('%s') has unknown op '%s'"), i, *StepId, *Op),
+					FString::Printf(TEXT("Valid ops: %s"), *ValidOpsStr));
+			}
+		}
+
+		// --- Per-op required fields (target) ---
+		if (!Op.IsEmpty() && OlivePlanOps::IsValidOp(Op))
+		{
+			if (GetOpsRequiringTarget().Contains(Op))
+			{
+				if (!Step->HasField(TEXT("target")) || Step->GetStringField(TEXT("target")).IsEmpty())
+				{
+					AddError(
+						TEXT("PLAN_MISSING_TARGET"),
+						StepLocation + TEXT("/target"),
+						FString::Printf(TEXT("Step %d ('%s'): op '%s' requires a non-empty 'target' field"), i, *StepId, *Op),
+						FString::Printf(TEXT("Add a 'target' field (e.g., function name for 'call', variable name for '%s')"), *Op));
+				}
+			}
+		}
+
+		// --- exec_after: must reference a step_id declared EARLIER ---
+		if (Step->HasField(TEXT("exec_after")))
+		{
+			FString ExecAfter = Step->GetStringField(TEXT("exec_after"));
+			if (!ExecAfter.IsEmpty())
+			{
+				// Check that the referenced step exists earlier in the array
+				// (StepIdOrder contains IDs of steps processed so far, EXCLUDING current step)
+				int32 CurrentStepOrderIndex = StepIdOrder.Find(StepId);
+				bool bFoundEarlier = false;
+
+				for (int32 j = 0; j < StepIdOrder.Num(); ++j)
+				{
+					if (StepIdOrder[j] == ExecAfter)
+					{
+						// Ensure it was declared before the current step
+						if (j < CurrentStepOrderIndex || CurrentStepOrderIndex == INDEX_NONE)
+						{
+							bFoundEarlier = true;
+						}
+						break;
+					}
+				}
+
+				if (!bFoundEarlier)
+				{
+					if (!DeclaredStepIds.Contains(ExecAfter))
+					{
+						AddError(
+							TEXT("PLAN_INVALID_EXEC_AFTER"),
+							StepLocation + TEXT("/exec_after"),
+							FString::Printf(TEXT("Step %d ('%s'): exec_after references unknown step_id '%s'"), i, *StepId, *ExecAfter),
+							TEXT("exec_after must reference a step_id that exists in the steps array and is declared before this step"));
+					}
+					else
+					{
+						AddError(
+							TEXT("PLAN_FORWARD_EXEC_AFTER"),
+							StepLocation + TEXT("/exec_after"),
+							FString::Printf(TEXT("Step %d ('%s'): exec_after references step '%s' which is not declared earlier in the array"), i, *StepId, *ExecAfter),
+							TEXT("exec_after must reference a step_id that appears before this step in the steps array"));
+					}
+				}
+			}
+		}
+
+		// --- inputs: validate @ref references ---
+		if (Step->HasField(TEXT("inputs")))
+		{
+			const TSharedPtr<FJsonObject>* InputsObj = nullptr;
+			if (Step->TryGetObjectField(TEXT("inputs"), InputsObj) && InputsObj != nullptr && (*InputsObj).IsValid())
+			{
+				for (const auto& Pair : (*InputsObj)->Values)
+				{
+					const FString& PinName = Pair.Key;
+					FString Value;
+					if (Pair.Value->TryGetString(Value) && Value.StartsWith(TEXT("@")))
+					{
+						// Parse "@stepId.pinName" format
+						FString RefBody = Value.Mid(1); // strip leading @
+						int32 DotIndex = INDEX_NONE;
+						if (!RefBody.FindChar(TEXT('.'), DotIndex) || DotIndex == 0 || DotIndex == RefBody.Len() - 1)
+						{
+							AddError(
+								TEXT("PLAN_INVALID_REF_FORMAT"),
+								StepLocation + TEXT("/inputs/") + PinName,
+								FString::Printf(TEXT("Step %d ('%s'): input '%s' has malformed @ref '%s'"), i, *StepId, *PinName, *Value),
+								TEXT("@ref format must be \"@stepId.pinName\" (e.g., \"@s1.ReturnValue\")"));
+							continue;
+						}
+
+						FString RefStepId = RefBody.Left(DotIndex);
+
+						// Referenced step must be declared EARLIER in the array
+						int32 CurrentIdx = StepIdOrder.Find(StepId);
+						bool bRefFoundEarlier = false;
+
+						for (int32 j = 0; j < StepIdOrder.Num(); ++j)
+						{
+							if (StepIdOrder[j] == RefStepId)
+							{
+								if (j < CurrentIdx || CurrentIdx == INDEX_NONE)
+								{
+									bRefFoundEarlier = true;
+								}
+								break;
+							}
+						}
+
+						if (!bRefFoundEarlier)
+						{
+							if (!DeclaredStepIds.Contains(RefStepId))
+							{
+								AddError(
+									TEXT("PLAN_INVALID_INPUT_REF"),
+									StepLocation + TEXT("/inputs/") + PinName,
+									FString::Printf(TEXT("Step %d ('%s'): input '%s' references unknown step '%s'"), i, *StepId, *PinName, *RefStepId),
+									TEXT("@ref must reference a step_id that exists in the steps array and is declared before this step"));
+							}
+							else
+							{
+								AddError(
+									TEXT("PLAN_FORWARD_INPUT_REF"),
+									StepLocation + TEXT("/inputs/") + PinName,
+									FString::Printf(TEXT("Step %d ('%s'): input '%s' references step '%s' which is not declared earlier"), i, *StepId, *PinName, *RefStepId),
+									TEXT("@ref data references must point to steps declared before this step in the array"));
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// --- exec_outputs: verify referenced stepIds exist in the steps array (forward refs allowed) ---
+		if (Step->HasField(TEXT("exec_outputs")))
+		{
+			const TSharedPtr<FJsonObject>* ExecOutputsObj = nullptr;
+			if (Step->TryGetObjectField(TEXT("exec_outputs"), ExecOutputsObj) && ExecOutputsObj != nullptr && (*ExecOutputsObj).IsValid())
+			{
+				// We need to collect all step IDs first to allow forward references.
+				// Build the full set by scanning ahead if we haven't already.
+				// Since we're iterating step-by-step, we need all step_ids from the whole array.
+				TSet<FString> AllStepIds;
+				for (int32 k = 0; k < StepsArray->Num(); ++k)
+				{
+					const TSharedPtr<FJsonObject>* OtherStepObj = nullptr;
+					if ((*StepsArray)[k]->TryGetObject(OtherStepObj) && OtherStepObj != nullptr)
+					{
+						FString OtherStepId;
+						if ((*OtherStepObj)->TryGetStringField(TEXT("step_id"), OtherStepId) && !OtherStepId.IsEmpty())
+						{
+							AllStepIds.Add(OtherStepId);
+						}
+					}
+				}
+
+				for (const auto& Pair : (*ExecOutputsObj)->Values)
+				{
+					const FString& ExecPinName = Pair.Key;
+					FString TargetStepId;
+					if (Pair.Value->TryGetString(TargetStepId) && !TargetStepId.IsEmpty())
+					{
+						if (!AllStepIds.Contains(TargetStepId))
+						{
+							AddError(
+								TEXT("PLAN_INVALID_EXEC_OUTPUT_REF"),
+								StepLocation + TEXT("/exec_outputs/") + ExecPinName,
+								FString::Printf(TEXT("Step %d ('%s'): exec_outputs pin '%s' references unknown step_id '%s'"),
+									i, *StepId, *ExecPinName, *TargetStepId),
+								TEXT("exec_outputs must reference step_ids that exist in the steps array"));
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// --- Build final result ---
+	if (Errors.Num() > 0)
+	{
+		TSharedPtr<FJsonObject> ErrorData = MakeShareable(new FJsonObject());
+		ErrorData->SetArrayField(TEXT("errors"), Errors);
+		ErrorData->SetNumberField(TEXT("error_count"), Errors.Num());
+
+		// Primary fields from first error
+		TSharedPtr<FJsonObject> FirstError = Errors[0]->AsObject();
+
+		FOliveIRResult Result;
+		Result.bSuccess = false;
+		Result.ErrorCode = FirstError->GetStringField(TEXT("code"));
+		Result.ErrorMessage = FirstError->GetStringField(TEXT("message"));
+		if (FirstError->HasField(TEXT("suggestion")))
+		{
+			Result.Suggestion = FirstError->GetStringField(TEXT("suggestion"));
+		}
+		Result.Data = ErrorData;
+		return Result;
+	}
+
+	return FOliveIRResult::Success();
 }

@@ -163,6 +163,9 @@ struct OLIVEAIRUNTIME_API FOliveIRMessage
 	UPROPERTY()
 	TMap<FString, FString> Details;
 
+	/** Optional structured context data (e.g., node class, position, pin name) */
+	TSharedPtr<FJsonObject> Context;
+
 	TSharedPtr<FJsonObject> ToJson() const;
 	static FOliveIRMessage FromJson(const TSharedPtr<FJsonObject>& JsonObject);
 };

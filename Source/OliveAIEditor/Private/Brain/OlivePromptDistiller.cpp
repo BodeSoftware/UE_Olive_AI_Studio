@@ -9,11 +9,13 @@ FOlivePromptDistiller::FOlivePromptDistiller()
 {
 }
 
-void FOlivePromptDistiller::Distill(TArray<FOliveChatMessage>& Messages, const FOliveDistillationConfig& Config) const
+FOliveDistillationResult FOlivePromptDistiller::Distill(TArray<FOliveChatMessage>& Messages, const FOliveDistillationConfig& Config) const
 {
+	FOliveDistillationResult Result;
+
 	if (Messages.Num() == 0)
 	{
-		return;
+		return Result;
 	}
 
 	// Find all tool result message indices (Role == Tool)
@@ -28,15 +30,13 @@ void FOlivePromptDistiller::Distill(TArray<FOliveChatMessage>& Messages, const F
 
 	if (ToolResultIndices.Num() == 0)
 	{
-		return;
+		return Result;
 	}
 
 	// Determine which tool results to keep verbatim
 	// Keep the last Config.RecentPairsToKeep results verbatim (unless oversized)
 	const int32 NumToKeep = FMath::Min(Config.RecentPairsToKeep, ToolResultIndices.Num());
 	const int32 FirstKeptIndex = ToolResultIndices.Num() - NumToKeep;
-
-	int32 SummarizedCount = 0;
 
 	for (int32 j = 0; j < ToolResultIndices.Num(); j++)
 	{
@@ -49,17 +49,29 @@ void FOlivePromptDistiller::Distill(TArray<FOliveChatMessage>& Messages, const F
 		// Summarize if: older than the keep window, OR oversized even if recent
 		if (!bIsRecent || bIsOversized)
 		{
+			const int32 OriginalLen = Msg.Content.Len();
 			const FString Summary = SummarizeToolResult(Msg.ToolName, Msg.Content);
 			Msg.Content = Summary;
-			SummarizedCount++;
+
+			Result.MessagesSummarized++;
+			if (bIsOversized)
+			{
+				Result.ToolResultsTruncated++;
+			}
+			// Estimate tokens saved from this summarization
+			const int32 OriginalTokens = FMath::CeilToInt(OriginalLen / CharsPerToken);
+			const int32 SummaryTokens = EstimateTokens(Summary);
+			Result.TokensSaved += FMath::Max(0, OriginalTokens - SummaryTokens);
 		}
 	}
 
-	if (SummarizedCount > 0)
+	if (Result.MessagesSummarized > 0)
 	{
-		UE_LOG(LogOliveAI, Verbose, TEXT("PromptDistiller: Summarized %d/%d tool results"),
-			SummarizedCount, ToolResultIndices.Num());
+		UE_LOG(LogOliveAI, Verbose, TEXT("PromptDistiller: Summarized %d/%d tool results (%d truncated, ~%d tokens saved)"),
+			Result.MessagesSummarized, ToolResultIndices.Num(), Result.ToolResultsTruncated, Result.TokensSaved);
 	}
+
+	return Result;
 }
 
 FString FOlivePromptDistiller::SummarizeToolResult(const FString& ToolName, const FString& ResultContent) const

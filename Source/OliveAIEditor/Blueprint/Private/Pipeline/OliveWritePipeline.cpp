@@ -9,6 +9,19 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "JsonObjectConverter.h"
 #include "Compile/OliveCompileManager.h"
+#include "UObject/StrongObjectPtr.h"
+#include "Services/OliveAssetResolver.h"
+#include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphNode.h"
+#include "EdGraph/EdGraphPin.h"
+#include "K2Node.h"
+#include "K2Node_Event.h"
+#include "K2Node_CustomEvent.h"
+#include "K2Node_FunctionResult.h"
+#include "K2Node_Knot.h"
+#include "K2Node_ExecutionSequence.h"
+#include "EdGraphSchema_K2.h"
+#include "EdGraphNode_Comment.h"
 
 DEFINE_LOG_CATEGORY(LogOliveWritePipeline);
 
@@ -138,6 +151,11 @@ FOliveWriteResult FOliveWritePipeline::Execute(const FOliveWriteRequest& Request
 	UE_LOG(LogOliveWritePipeline, Log, TEXT("Starting write pipeline for tool '%s' (category: %s, MCP: %d)"),
 		*Request.ToolName, *Request.OperationCategory, Request.bFromMCP);
 
+	// Root the target asset for the full pipeline scope (GC safety).
+	// Prevents the garbage collector from collecting the asset between stages
+	// while UE processes events during long-running pipeline operations.
+	TStrongObjectPtr<UObject> RootedAsset(Request.TargetAsset);
+
 	// Stage 1: Validate
 	FOliveWriteResult ValidateResult = StageValidate(Request);
 	if (!ValidateResult.bSuccess)
@@ -171,10 +189,19 @@ FOliveWriteResult FOliveWritePipeline::Execute(const FOliveWriteRequest& Request
 	}
 
 	// Stage 4: Execute
-	FOliveWriteResult ExecuteResult = StageExecute(Request, Request.TargetAsset, Executor);
+	UObject* EffectiveTargetAsset = Request.TargetAsset;
+	FOliveWriteResult ExecuteResult = StageExecute(Request, Request.TargetAsset, Executor, EffectiveTargetAsset);
 	if (!ExecuteResult.bSuccess)
 	{
-		UE_LOG(LogOliveWritePipeline, Error, TEXT("Execution failed for tool '%s'"), *Request.ToolName);
+		FString ErrorCode;
+		FString ErrorMessage;
+		if (ExecuteResult.ResultData.IsValid())
+		{
+			ExecuteResult.ResultData->TryGetStringField(TEXT("error_code"), ErrorCode);
+			ExecuteResult.ResultData->TryGetStringField(TEXT("error_message"), ErrorMessage);
+		}
+		UE_LOG(LogOliveWritePipeline, Error, TEXT("Execution failed for tool '%s' (%s): %s"),
+			*Request.ToolName, *ErrorCode, *ErrorMessage);
 		Transaction->Cancel(); // Roll back transaction
 		ExecuteResult.ExecutionTimeMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
 		return ExecuteResult;
@@ -184,7 +211,7 @@ FOliveWriteResult FOliveWritePipeline::Execute(const FOliveWriteRequest& Request
 	FOliveWriteResult VerifyResult = ExecuteResult;
 	if (!Request.bSkipVerification)
 	{
-		VerifyResult = StageVerify(Request, Request.TargetAsset, ExecuteResult);
+		VerifyResult = StageVerify(Request, EffectiveTargetAsset, ExecuteResult);
 		// Note: Verification warnings don't cancel the transaction
 		// Only execution errors cancel
 	}
@@ -393,9 +420,37 @@ TUniquePtr<FOliveTransactionManager::FScopedOliveTransaction> FOliveWritePipelin
 FOliveWriteResult FOliveWritePipeline::StageExecute(
 	const FOliveWriteRequest& Request,
 	UObject* TargetAsset,
-	FOliveWriteExecutor& Executor)
+	FOliveWriteExecutor& Executor,
+	UObject*& OutEffectiveTargetAsset)
 {
 	UE_LOG(LogOliveWritePipeline, Verbose, TEXT("Stage 4: Execute - tool '%s'"), *Request.ToolName);
+
+	// Re-resolve before mutation to guard against hot-reload pointer staleness.
+	// After a hot-reload the original TargetAsset pointer may point to a stale
+	// (garbage-collected or replaced) class instance. Re-resolving by path gives
+	// us the live pointer before we touch the asset.
+	// NOTE: Skip re-resolve for create operations (TargetAsset == nullptr) because
+	// the asset does not exist yet — resolving by path would always fail.
+	UObject* LiveAsset = TargetAsset;
+	if (!Request.AssetPath.IsEmpty() && TargetAsset != nullptr)
+	{
+		FOliveAssetResolveInfo Fresh = FOliveAssetResolver::Get().ResolveByPath(Request.AssetPath);
+		if (Fresh.IsSuccess() && Fresh.Asset != TargetAsset)
+		{
+			UE_LOG(LogOliveWritePipeline, Warning,
+				TEXT("StageExecute: TargetAsset pointer changed after hot-reload — using fresh pointer for '%s'"),
+				*Request.AssetPath);
+			LiveAsset = Fresh.Asset;
+		}
+		else if (!Fresh.IsSuccess())
+		{
+			return FOliveWriteResult::ExecutionError(
+				TEXT("ASSET_GONE"),
+				TEXT("Asset could not be resolved before mutation (possible hot-reload)"),
+				TEXT("Retry the operation"));
+		}
+	}
+	OutEffectiveTargetAsset = LiveAsset;
 
 	if (!Executor.IsBound())
 	{
@@ -406,8 +461,11 @@ FOliveWriteResult FOliveWritePipeline::StageExecute(
 			TEXT("This is a plugin bug - please report it"));
 	}
 
-	// Execute the mutation via the provided delegate
-	FOliveWriteResult ExecuteResult = Executor.Execute(Request, TargetAsset);
+	// Root the effective pointer for this stage in case hot-reload produced a new object.
+	TStrongObjectPtr<UObject> RootedEffectiveAsset(LiveAsset);
+
+	// Execute the mutation via the provided delegate, using the freshly resolved asset pointer
+	FOliveWriteResult ExecuteResult = Executor.Execute(Request, LiveAsset);
 	ExecuteResult.CompletedStage = EOliveWriteStage::Execute;
 
 	return ExecuteResult;
@@ -428,6 +486,50 @@ FOliveWriteResult FOliveWritePipeline::StageVerify(
 	{
 		TArray<FOliveIRMessage> StructuralMessages;
 		bool bStructureValid = VerifyBlueprintStructure(Blueprint, StructuralMessages);
+
+		// Post-op orphaned exec-flow detection for graph-editing operations
+		if (IsGraphEditOperation(Request.ToolName))
+		{
+			FString GraphName;
+			if (Request.Params.IsValid())
+			{
+				Request.Params->TryGetStringField(TEXT("graph"), GraphName);
+			}
+
+			if (!GraphName.IsEmpty())
+			{
+				// Search ubergraph pages for the affected graph
+				for (UEdGraph* Graph : Blueprint->UbergraphPages)
+				{
+					if (Graph && Graph->GetName() == GraphName)
+					{
+						int32 OrphanCount = DetectOrphanedExecFlows(Graph, StructuralMessages);
+						if (OrphanCount > 0)
+						{
+							UE_LOG(LogOliveWritePipeline, Log,
+								TEXT("Detected %d orphaned exec flow(s) in graph '%s' of Blueprint '%s'"),
+								OrphanCount, *GraphName, *Blueprint->GetName());
+						}
+						break;
+					}
+				}
+				// Also check function graphs
+				for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+				{
+					if (Graph && Graph->GetName() == GraphName)
+					{
+						int32 OrphanCount = DetectOrphanedExecFlows(Graph, StructuralMessages);
+						if (OrphanCount > 0)
+						{
+							UE_LOG(LogOliveWritePipeline, Log,
+								TEXT("Detected %d orphaned exec flow(s) in function graph '%s' of Blueprint '%s'"),
+								OrphanCount, *GraphName, *Blueprint->GetName());
+						}
+						break;
+					}
+				}
+			}
+		}
 
 		// Add structural messages to result
 		VerifyResult.ValidationMessages.Append(StructuralMessages);
@@ -478,6 +580,18 @@ FOliveWriteResult FOliveWritePipeline::StageReport(
 	{
 		const FOliveIRCompileResult& CompileResult = FinalResult.CompileResult.GetValue();
 		FinalResult.ResultData->SetObjectField(TEXT("compile_result"), CompileResult.ToJson());
+
+		// Add a concise compile_status string for easy LLM consumption
+		const FOliveIRCompileResult& CR = FinalResult.CompileResult.GetValue();
+		FString Status;
+		if (CR.HasErrors())        Status = TEXT("error");
+		else if (CR.HasWarnings()) Status = TEXT("warning");
+		else                       Status = TEXT("success");
+		FinalResult.ResultData->SetStringField(TEXT("compile_status"), Status);
+	}
+	else
+	{
+		FinalResult.ResultData->SetStringField(TEXT("compile_status"), TEXT("dirty"));
 	}
 
 	// Add validation messages to data
@@ -613,6 +727,181 @@ FOliveIRCompileResult FOliveWritePipeline::CompileAndGatherErrors(UBlueprint* Bl
 	// Delegate to the CompileManager which provides full structured error extraction
 	// including node-level errors, graph names, pattern matching, and suggestions
 	return FOliveCompileManager::Get().Compile(Blueprint);
+}
+
+// ============================================================================
+// Orphaned Exec-Flow Detection
+// ============================================================================
+
+bool FOliveWritePipeline::IsGraphEditOperation(const FString& ToolName) const
+{
+	return ToolName.StartsWith(TEXT("blueprint.add_node"))
+		|| ToolName.StartsWith(TEXT("blueprint.remove_node"))
+		|| ToolName.StartsWith(TEXT("blueprint.connect_pins"))
+		|| ToolName.StartsWith(TEXT("blueprint.disconnect_pins"));
+}
+
+int32 FOliveWritePipeline::DetectOrphanedExecFlows(const UEdGraph* Graph, TArray<FOliveIRMessage>& OutMessages) const
+{
+	if (!Graph)
+	{
+		return 0;
+	}
+
+	int32 OrphanCount = 0;
+
+	for (const UEdGraphNode* Node : Graph->Nodes)
+	{
+		if (!Node)
+		{
+			continue;
+		}
+
+		// Skip comment nodes entirely
+		if (Node->IsA<UEdGraphNode_Comment>())
+		{
+			continue;
+		}
+
+		// Skip reroute/knot nodes
+		if (Node->IsA<UK2Node_Knot>())
+		{
+			continue;
+		}
+
+		// Skip FunctionResult / return nodes (they are intended terminal nodes)
+		if (Node->IsA<UK2Node_FunctionResult>())
+		{
+			continue;
+		}
+
+		// Skip custom events -- they may be called via event dispatchers
+		// and their exec output being disconnected is a valid authoring pattern
+		if (Node->IsA<UK2Node_CustomEvent>())
+		{
+			continue;
+		}
+
+		// Cast to K2Node to check purity
+		const UK2Node* K2Node = Cast<UK2Node>(Node);
+		if (K2Node && K2Node->IsNodePure())
+		{
+			continue;
+		}
+
+		// Collect exec input and output pins
+		TArray<const UEdGraphPin*> ExecInputs;
+		TArray<const UEdGraphPin*> ExecOutputs;
+
+		for (const UEdGraphPin* Pin : Node->Pins)
+		{
+			if (!Pin || Pin->bHidden)
+			{
+				continue;
+			}
+
+			if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+			{
+				if (Pin->Direction == EGPD_Input)
+				{
+					ExecInputs.Add(Pin);
+				}
+				else if (Pin->Direction == EGPD_Output)
+				{
+					ExecOutputs.Add(Pin);
+				}
+			}
+		}
+
+		// No exec outputs means nothing to check
+		if (ExecOutputs.Num() == 0)
+		{
+			continue;
+		}
+
+		// Determine if execution can reach this node:
+		// - It is an event node (entry point, always reachable), OR
+		// - It has at least one connected exec input pin
+		bool bIsEventNode = Node->IsA<UK2Node_Event>();
+		bool bHasConnectedExecInput = false;
+		for (const UEdGraphPin* InputPin : ExecInputs)
+		{
+			if (InputPin->LinkedTo.Num() > 0)
+			{
+				bHasConnectedExecInput = true;
+				break;
+			}
+		}
+
+		if (!bIsEventNode && !bHasConnectedExecInput)
+		{
+			// Node is not reachable via exec flow -- skip it entirely.
+			// Unreachable nodes are a different kind of issue, not orphaned exec flow.
+			continue;
+		}
+
+		// For Sequence nodes: only flag if ALL exec outputs are disconnected.
+		// Having some unused Sequence outputs is a normal workflow pattern.
+		bool bIsSequenceNode = Node->IsA<UK2Node_ExecutionSequence>();
+		if (bIsSequenceNode)
+		{
+			bool bAnyOutputConnected = false;
+			for (const UEdGraphPin* OutputPin : ExecOutputs)
+			{
+				if (OutputPin->LinkedTo.Num() > 0)
+				{
+					bAnyOutputConnected = true;
+					break;
+				}
+			}
+			if (bAnyOutputConnected)
+			{
+				// At least one output is connected -- this is fine for Sequence nodes
+				continue;
+			}
+		}
+
+		// Check each exec output pin for orphaned flow
+		for (const UEdGraphPin* OutputPin : ExecOutputs)
+		{
+			if (OutputPin->LinkedTo.Num() == 0)
+			{
+				// This exec output is disconnected -- orphaned exec flow
+				FString NodeTitle = Node->GetNodeTitle(ENodeTitleType::ListView).ToString();
+				FString PinName = OutputPin->GetDisplayName().IsEmpty()
+					? OutputPin->PinName.ToString()
+					: OutputPin->GetDisplayName().ToString();
+
+				FOliveIRMessage Warning;
+				Warning.Severity = EOliveIRSeverity::Warning;
+				Warning.Code = TEXT("ORPHANED_EXEC_FLOW");
+				Warning.Message = FString::Printf(
+					TEXT("Node '%s' has disconnected exec output '%s' - execution flow will stop here"),
+					*NodeTitle, *PinName);
+				Warning.Suggestion = FString::Printf(
+					TEXT("Connect the '%s' pin to continue execution, or remove the node if not needed"),
+					*PinName);
+
+				// Build structured context
+				TSharedPtr<FJsonObject> Context = MakeShareable(new FJsonObject());
+				Context->SetStringField(TEXT("node_class"), Node->GetClass()->GetName());
+				Context->SetStringField(TEXT("node_title"), NodeTitle);
+				Context->SetStringField(TEXT("pin_name"), OutputPin->PinName.ToString());
+
+				TSharedPtr<FJsonObject> Position = MakeShareable(new FJsonObject());
+				Position->SetNumberField(TEXT("x"), Node->NodePosX);
+				Position->SetNumberField(TEXT("y"), Node->NodePosY);
+				Context->SetObjectField(TEXT("node_position"), Position);
+
+				Warning.Context = Context;
+
+				OutMessages.Add(Warning);
+				OrphanCount++;
+			}
+		}
+	}
+
+	return OrphanCount;
 }
 
 // ============================================================================

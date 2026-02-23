@@ -264,7 +264,7 @@ void FOliveOpenAIProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpResp
 
 	if (!bSuccess || !Response.IsValid())
 	{
-		HandleError(TEXT("Network error: Failed to connect to OpenAI. Check your internet connection."));
+		HandleError(TEXT("[HTTP:0] Network error: Failed to connect to OpenAI. Check your internet connection."));
 		return;
 	}
 
@@ -272,13 +272,13 @@ void FOliveOpenAIProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpResp
 
 	if (StatusCode == 401)
 	{
-		HandleError(TEXT("Invalid OpenAI API key. Check your key at platform.openai.com."));
+		HandleError(TEXT("[HTTP:401] Invalid OpenAI API key. Check your key at platform.openai.com."));
 		return;
 	}
 
 	if (StatusCode == 403)
 	{
-		HandleError(TEXT("Organization/project access denied. Check your OpenAI organization and project permissions at platform.openai.com."));
+		HandleError(TEXT("[HTTP:403] Organization/project access denied. Check your OpenAI organization and project permissions at platform.openai.com."));
 		return;
 	}
 
@@ -287,11 +287,13 @@ void FOliveOpenAIProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpResp
 		FString RetryAfter = Response->GetHeader(TEXT("Retry-After"));
 		if (!RetryAfter.IsEmpty())
 		{
-			HandleError(FString::Printf(TEXT("Rate limited. Try again in %s seconds."), *RetryAfter));
+			int32 RetryAfterSeconds = FCString::Atoi(*RetryAfter);
+			if (RetryAfterSeconds <= 0) { RetryAfterSeconds = 60; }
+			HandleError(FString::Printf(TEXT("[HTTP:429:RetryAfter=%d] Rate limited by OpenAI. Try again in %s seconds."), RetryAfterSeconds, *RetryAfter));
 		}
 		else
 		{
-			HandleError(TEXT("Rate limited. Please wait before trying again."));
+			HandleError(TEXT("[HTTP:429:RetryAfter=60] Rate limited by OpenAI. Please wait before trying again."));
 		}
 		return;
 	}
@@ -314,16 +316,16 @@ void FOliveOpenAIProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpResp
 				// Handle specific OpenAI error codes
 				if (ErrorCode == TEXT("model_not_found"))
 				{
-					HandleError(FString::Printf(TEXT("Model '%s' not available. Check model name at platform.openai.com/docs/models."), *Config.ModelId));
+					HandleError(FString::Printf(TEXT("[HTTP:%d] Model '%s' not available. Check model name at platform.openai.com/docs/models."), StatusCode, *Config.ModelId));
 					return;
 				}
 
-				HandleError(FString::Printf(TEXT("OpenAI API error: %s"), *ErrorMessage));
+				HandleError(FString::Printf(TEXT("[HTTP:%d] OpenAI API error: %s"), StatusCode, *ErrorMessage));
 				return;
 			}
 		}
 
-		HandleError(FString::Printf(TEXT("OpenAI HTTP error %d"), StatusCode));
+		HandleError(FString::Printf(TEXT("[HTTP:%d] OpenAI HTTP error %d"), StatusCode, StatusCode));
 		return;
 	}
 
@@ -393,6 +395,9 @@ void FOliveOpenAIProvider::ParseStreamChunk(const TSharedPtr<FJsonObject>& Chunk
 	FString FinishReason = Choice->GetStringField(TEXT("finish_reason"));
 	if (!FinishReason.IsEmpty() && FinishReason != TEXT("null"))
 	{
+		// Store finish reason so HandleComplete can detect truncation (e.g. "length")
+		CurrentUsage.FinishReason = FinishReason;
+
 		// Finalize pending tool calls
 		FinalizePendingToolCalls();
 		return;

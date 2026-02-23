@@ -96,6 +96,131 @@ FOliveIRGraph FOliveGraphReader::ReadGraph(const UEdGraph* Graph, const UBluepri
 	return Result;
 }
 
+FOliveIRGraph FOliveGraphReader::ReadGraphSummary(const UEdGraph* Graph, const UBlueprint* OwningBlueprint)
+{
+	FOliveIRGraph Result;
+
+	if (!Graph)
+	{
+		UE_LOG(LogOliveGraphReader, Warning, TEXT("ReadGraphSummary called with null Graph"));
+		return Result;
+	}
+
+	// Clear previous state and rebuild ID map
+	ClearCache();
+
+	Result.Name = Graph->GetName();
+	Result.GraphType = DetermineGraphType(Graph, OwningBlueprint);
+
+	// Build the full node ID map for ID stability (needed if caller later requests pages)
+	BuildNodeIdMap(Graph);
+
+	// Set node count from the ID map (which filters out skipped nodes)
+	Result.NodeCount = NodeIdMap.Num();
+
+	// Count connections by traversing output pins without serializing nodes
+	int32 ConnCount = 0;
+	for (const auto& Pair : NodeIdMap)
+	{
+		const UEdGraphNode* Node = Pair.Key;
+		if (!Node)
+		{
+			continue;
+		}
+
+		for (const UEdGraphPin* Pin : Node->Pins)
+		{
+			if (Pin && Pin->Direction == EGPD_Output)
+			{
+				ConnCount += Pin->LinkedTo.Num();
+			}
+		}
+	}
+	Result.ConnectionCount = ConnCount;
+
+	// For function graphs, extract the function signature
+	if (Result.GraphType == TEXT("Function"))
+	{
+		ReadFunctionSignature(Graph, Result);
+	}
+
+	// Nodes array intentionally left empty for summary mode
+	UE_LOG(LogOliveGraphReader, Log, TEXT("Graph summary read: %s (Nodes: %d, Connections: %d)"),
+		*Result.Name,
+		Result.NodeCount,
+		Result.ConnectionCount);
+
+	return Result;
+}
+
+FOliveIRGraph FOliveGraphReader::ReadGraphPage(
+	const UEdGraph* Graph,
+	const UBlueprint* OwningBlueprint,
+	int32 Offset,
+	int32 Limit)
+{
+	FOliveIRGraph Result;
+
+	if (!Graph)
+	{
+		UE_LOG(LogOliveGraphReader, Warning, TEXT("ReadGraphPage called with null Graph"));
+		return Result;
+	}
+
+	// Clear previous state
+	ClearCache();
+
+	Result.Name = Graph->GetName();
+	Result.GraphType = DetermineGraphType(Graph, OwningBlueprint);
+
+	// Build the FULL node ID map -- this is required even for paged reads
+	// so that cross-page connection references resolve correctly
+	BuildNodeIdMap(Graph);
+
+	// Serialize only the requested slice of nodes
+	int32 Index = 0;
+	for (const auto& Pair : NodeIdMap)
+	{
+		if (Index >= Offset + Limit)
+		{
+			break;
+		}
+
+		if (Index >= Offset)
+		{
+			const UEdGraphNode* Node = Pair.Key;
+			if (Node)
+			{
+				FOliveIRNode NodeIR = NodeSerializer->SerializeNode(Node, NodeIdMap);
+				NodeIR.Id = Pair.Value;
+				Result.Nodes.Add(MoveTemp(NodeIR));
+			}
+		}
+		Index++;
+	}
+
+	// For function graphs, extract the function signature
+	if (Result.GraphType == TEXT("Function"))
+	{
+		ReadFunctionSignature(Graph, Result);
+	}
+
+	// Calculate connection count for the page nodes only
+	CalculateStatistics(Result);
+
+	// Override NodeCount with total count (not page count)
+	// so the caller knows the full graph size
+	Result.NodeCount = NodeIdMap.Num();
+
+	UE_LOG(LogOliveGraphReader, Log, TEXT("Graph page read: %s (Page nodes: %d, Total nodes: %d, Offset: %d)"),
+		*Result.Name,
+		Result.Nodes.Num(),
+		Result.NodeCount,
+		Offset);
+
+	return Result;
+}
+
 TArray<FOliveIRNode> FOliveGraphReader::ReadNodes(
 	const TArray<UEdGraphNode*>& Nodes,
 	const FString& IdPrefix)

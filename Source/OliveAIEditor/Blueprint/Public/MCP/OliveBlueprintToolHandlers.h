@@ -125,6 +125,14 @@ private:
 	FOliveToolResult HandleBlueprintAddCustomEvent(const TSharedPtr<FJsonObject>& Params);
 
 	// ============================================================================
+	// Plan JSON Tool Handlers
+	// ============================================================================
+
+	void RegisterPlanTools();
+	FOliveToolResult HandleBlueprintPreviewPlanJson(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandleBlueprintApplyPlanJson(const TSharedPtr<FJsonObject>& Params);
+
+	// ============================================================================
 	// Graph Writer Tool Handlers
 	// ============================================================================
 

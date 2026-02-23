@@ -410,7 +410,7 @@ void FOliveGoogleProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpResp
 
 	if (!bSuccess || !Response.IsValid())
 	{
-		HandleError(TEXT("Network error: Failed to connect to Google AI API"));
+		HandleError(TEXT("[HTTP:0] Network error: Failed to connect to Google AI API"));
 		return;
 	}
 
@@ -431,18 +431,18 @@ void FOliveGoogleProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpResp
 				(*ErrorObj)->TryGetStringField(TEXT("message"), ErrorMessage);
 				if (!ErrorMessage.IsEmpty())
 				{
-					HandleError(FString::Printf(TEXT("Invalid request: %s"), *ErrorMessage));
+					HandleError(FString::Printf(TEXT("[HTTP:400] Invalid request: %s"), *ErrorMessage));
 					return;
 				}
 			}
 		}
-		HandleError(TEXT("Invalid request. Check model name and request format."));
+		HandleError(TEXT("[HTTP:400] Invalid request. Check model name and request format."));
 		return;
 	}
 
 	if (StatusCode == 403)
 	{
-		HandleError(TEXT("API key invalid or quota exceeded. Check your key at https://aistudio.google.com/apikey"));
+		HandleError(TEXT("[HTTP:403] API key invalid or quota exceeded. Check your key at https://aistudio.google.com/apikey"));
 		return;
 	}
 
@@ -451,18 +451,20 @@ void FOliveGoogleProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpResp
 		FString RetryAfter = Response->GetHeader(TEXT("Retry-After"));
 		if (!RetryAfter.IsEmpty())
 		{
-			HandleError(FString::Printf(TEXT("Rate limited. Try again in %s seconds."), *RetryAfter));
+			int32 RetryAfterSeconds = FCString::Atoi(*RetryAfter);
+			if (RetryAfterSeconds <= 0) { RetryAfterSeconds = 60; }
+			HandleError(FString::Printf(TEXT("[HTTP:429:RetryAfter=%d] Rate limited by Google AI. Try again in %s seconds."), RetryAfterSeconds, *RetryAfter));
 		}
 		else
 		{
-			HandleError(TEXT("Rate limited. Please wait before trying again."));
+			HandleError(TEXT("[HTTP:429:RetryAfter=60] Rate limited by Google AI. Please wait before trying again."));
 		}
 		return;
 	}
 
 	if (StatusCode == 404)
 	{
-		HandleError(FString::Printf(TEXT("Model '%s' not found. Check the model name."), *Config.ModelId));
+		HandleError(FString::Printf(TEXT("[HTTP:404] Model '%s' not found. Check the model name."), *Config.ModelId));
 		return;
 	}
 
@@ -480,12 +482,12 @@ void FOliveGoogleProvider::OnResponseReceived(FHttpRequestPtr Request, FHttpResp
 				(*ErrorObj)->TryGetStringField(TEXT("message"), ErrorMessage);
 				if (!ErrorMessage.IsEmpty())
 				{
-					HandleError(FString::Printf(TEXT("Google AI API Error: %s"), *ErrorMessage));
+					HandleError(FString::Printf(TEXT("[HTTP:%d] Google AI API Error: %s"), StatusCode, *ErrorMessage));
 					return;
 				}
 			}
 		}
-		HandleError(FString::Printf(TEXT("Google AI API Error: HTTP %d"), StatusCode));
+		HandleError(FString::Printf(TEXT("[HTTP:%d] Google AI API Error: HTTP %d"), StatusCode, StatusCode));
 		return;
 	}
 

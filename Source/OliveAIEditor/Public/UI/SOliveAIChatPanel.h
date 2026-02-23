@@ -134,6 +134,36 @@ private:
 	void HandleConfirmationRequired(const FString& ToolCallId, const FString& ToolName, const FString& Plan);
 
 	// ==========================================
+	// Message Queue Callbacks
+	// ==========================================
+
+	/** Handle a message being enqueued (update queue depth display) */
+	void HandleMessageQueued(int32 QueueDepth);
+
+	/** Handle the queue becoming empty after draining */
+	void HandleQueueDrained();
+
+	// ==========================================
+	// Deferred Profile Callbacks
+	// ==========================================
+
+	/** Handle a deferred focus profile being applied after processing completes */
+	void HandleDeferredProfileApplied(const FString& ProfileName);
+
+	// ==========================================
+	// Retry Manager Callbacks
+	// ==========================================
+
+	/** Handle a retry being scheduled (update countdown display) */
+	void HandleRetryScheduled(int32 Attempt, int32 MaxAttempts, float DelaySeconds);
+
+	/** Handle countdown tick during retry wait */
+	void HandleRetryCountdownTick(float SecondsRemaining);
+
+	/** Handle a retry attempt starting */
+	void HandleRetryAttemptStarted();
+
+	// ==========================================
 	// Context Updates
 	// ==========================================
 
@@ -184,7 +214,11 @@ private:
 	// State
 	// ==========================================
 
-	/** Conversation manager */
+	/**
+	 * Conversation manager -- borrowed from FOliveEditorChatSession.
+	 * The session singleton owns the lifecycle; we hold a shared reference
+	 * for convenient access. The panel MUST NOT reset or destroy this pointer.
+	 */
 	TSharedPtr<FOliveConversationManager> ConversationManager;
 
 	/** Focus profile options */
@@ -229,6 +263,27 @@ private:
 
 	bool bIsProcessing = false;
 	FString CurrentErrorMessage;
+
+	/** Current message queue depth (updated via HandleMessageQueued/HandleQueueDrained) */
+	int32 QueuedMessageCount = 0;
+
+	/** Whether a retry is currently pending (waiting for backoff/rate-limit timer) */
+	bool bIsRetryPending = false;
+
+	/** Current retry attempt number (1-based) */
+	int32 RetryAttempt = 0;
+
+	/** Max retry attempts for the current retry sequence */
+	int32 RetryMaxAttempts = 0;
+
+	/** Seconds remaining until next retry attempt */
+	float RetryCountdownSeconds = 0.0f;
+
+	/** Whether the current retry is due to rate limiting (changes display text) */
+	bool bIsRateLimited = false;
+
+	/** Warning message shown when a focus profile switch is deferred (empty = no warning) */
+	FString DeferredProfileWarning;
 
 	/** Whether a connection validation is in progress */
 	bool bIsValidating = false;

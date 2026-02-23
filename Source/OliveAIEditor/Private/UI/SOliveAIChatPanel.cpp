@@ -6,6 +6,7 @@
 #include "UI/SOliveAIContextBar.h"
 #include "UI/SOliveAIInputField.h"
 #include "Chat/OliveConversationManager.h"
+#include "Chat/OliveEditorChatSession.h"
 #include "Providers/IOliveAIProvider.h"
 #include "Settings/OliveAISettings.h"
 #include "OliveAIEditorModule.h"
@@ -149,8 +150,25 @@ void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 		CurrentFocusProfile = FocusProfiles[0];
 	}
 
-	// Create conversation manager
-	ConversationManager = MakeShared<FOliveConversationManager>();
+	// Borrow ConversationManager from the editor-lifetime session singleton.
+	// The session owns the lifecycle; the panel holds a shared reference.
+	FOliveEditorChatSession& Session = FOliveEditorChatSession::Get();
+	Session.NotifyPanelOpened();
+	ConversationManager = Session.GetConversationManager();
+
+	if (!ConversationManager.IsValid())
+	{
+		UE_LOG(LogOliveAI, Error, TEXT("SOliveAIChatPanel: ConversationManager is null -- session may not be initialized"));
+	}
+
+	// Check for background completion (operation finished while panel was closed)
+	if (Session.HasBackgroundCompletion())
+	{
+		// The toast already showed; consume the flag so it does not persist
+		const FString Summary = Session.GetBackgroundCompletionSummary();
+		Session.ConsumeBackgroundCompletion();
+		UE_LOG(LogOliveAI, Log, TEXT("Panel reopened with background completion: %s"), *Summary);
+	}
 
 	// Set up provider and profile from settings
 	UOliveAISettings* Settings = UOliveAISettings::Get();
@@ -217,6 +235,18 @@ void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 		ConversationManager->SetFocusProfile(*CurrentFocusProfile);
 	}
 
+	// Bind message queue events for queue depth indicator
+	Session.GetMessageQueue().OnMessageQueued.AddSP(this, &SOliveAIChatPanel::HandleMessageQueued);
+	Session.GetMessageQueue().OnQueueDrained.AddSP(this, &SOliveAIChatPanel::HandleQueueDrained);
+
+	// Bind retry manager events for countdown UI
+	Session.GetRetryManager().OnRetryScheduled.AddSP(this, &SOliveAIChatPanel::HandleRetryScheduled);
+	Session.GetRetryManager().OnRetryCountdownTick.AddSP(this, &SOliveAIChatPanel::HandleRetryCountdownTick);
+	Session.GetRetryManager().OnRetryAttemptStarted.AddSP(this, &SOliveAIChatPanel::HandleRetryAttemptStarted);
+
+	// Initialize queue depth from current state (in case panel reopens with queued messages)
+	QueuedMessageCount = Session.GetMessageQueue().GetQueueDepth();
+
 	// Bind conversation manager events
 	ConversationManager->OnMessageAdded.AddSP(this, &SOliveAIChatPanel::HandleMessageAdded);
 	ConversationManager->OnStreamChunk.AddSP(this, &SOliveAIChatPanel::HandleStreamChunk);
@@ -226,6 +256,7 @@ void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 	ConversationManager->OnProcessingComplete.AddSP(this, &SOliveAIChatPanel::HandleProcessingComplete);
 	ConversationManager->OnError.AddSP(this, &SOliveAIChatPanel::HandleError);
 	ConversationManager->OnConfirmationRequired.AddSP(this, &SOliveAIChatPanel::HandleConfirmationRequired);
+	ConversationManager->OnDeferredProfileApplied.AddSP(this, &SOliveAIChatPanel::HandleDeferredProfileApplied);
 
 	// Subscribe to editor events for auto-context
 	SubscribeToEditorEvents();
@@ -295,6 +326,29 @@ void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 	{
 		RefreshModelOptionsForProvider(CurrentSettings->Provider);
 	}
+
+	// Repopulate the message list from existing conversation history.
+	// This handles the case where the panel was closed and reopened --
+	// the ConversationManager (owned by the session) retains all messages.
+	if (ConversationManager.IsValid() && MessageList.IsValid())
+	{
+		const TArray<FOliveChatMessage>& History = ConversationManager->GetMessageHistory();
+		for (const FOliveChatMessage& Msg : History)
+		{
+			MessageList->AddMessage(Msg);
+		}
+		if (History.Num() > 0)
+		{
+			MessageList->ScrollToBottom();
+		}
+	}
+
+	// If the ConversationManager is currently processing, reflect that in the UI.
+	// The input field stays enabled so the user can queue messages.
+	if (ConversationManager.IsValid() && ConversationManager->IsProcessing())
+	{
+		bIsProcessing = true;
+	}
 }
 
 SOliveAIChatPanel::~SOliveAIChatPanel()
@@ -303,6 +357,18 @@ SOliveAIChatPanel::~SOliveAIChatPanel()
 	FOliveRunManager::Get().OnRunStatusChanged.RemoveAll(this);
 	FOliveRunManager::Get().OnRunStepChanged.RemoveAll(this);
 
+	// Unbind message queue delegates
+	FOliveEditorChatSession::Get().GetMessageQueue().OnMessageQueued.RemoveAll(this);
+	FOliveEditorChatSession::Get().GetMessageQueue().OnQueueDrained.RemoveAll(this);
+
+	// Unbind retry manager delegates
+	FOliveEditorChatSession::Get().GetRetryManager().OnRetryScheduled.RemoveAll(this);
+	FOliveEditorChatSession::Get().GetRetryManager().OnRetryCountdownTick.RemoveAll(this);
+	FOliveEditorChatSession::Get().GetRetryManager().OnRetryAttemptStarted.RemoveAll(this);
+
+	// Unbind all delegates from the ConversationManager.
+	// The ConversationManager itself is NOT destroyed -- it lives in
+	// FOliveEditorChatSession and survives panel close/reopen cycles.
 	if (ConversationManager.IsValid())
 	{
 		ConversationManager->OnMessageAdded.RemoveAll(this);
@@ -313,7 +379,12 @@ SOliveAIChatPanel::~SOliveAIChatPanel()
 		ConversationManager->OnProcessingComplete.RemoveAll(this);
 		ConversationManager->OnError.RemoveAll(this);
 		ConversationManager->OnConfirmationRequired.RemoveAll(this);
+		ConversationManager->OnDeferredProfileApplied.RemoveAll(this);
 	}
+
+	// Notify the session that the panel is closed. Operations in flight
+	// will continue running; completions will trigger toast notifications.
+	FOliveEditorChatSession::Get().NotifyPanelClosed();
 }
 
 // ==========================================
@@ -597,13 +668,18 @@ TSharedRef<SWidget> SOliveAIChatPanel::BuildInputArea()
 			})
 		]
 
-		// Send Button
+		// Send Button (text changes to "Queue" when processing)
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
 		.Padding(4, 0, 0, 0)
 		[
 			SNew(SButton)
-			.Text(LOCTEXT("Send", "Send"))
+			.Text_Lambda([this]()
+			{
+				return bIsProcessing
+					? LOCTEXT("Queue", "Queue")
+					: LOCTEXT("Send", "Send");
+			})
 			.IsEnabled(this, &SOliveAIChatPanel::IsSendEnabled)
 			.OnClicked(this, &SOliveAIChatPanel::OnSendMessageClicked)
 		];
@@ -728,6 +804,23 @@ void SOliveAIChatPanel::OnFocusProfileSelected(const FString& ProfileName)
 {
 	const FString NormalizedProfile = FOliveFocusProfileManager::Get().NormalizeProfileName(ProfileName);
 
+	// If the conversation manager is currently processing, the profile switch
+	// will be deferred by SetFocusProfile(). Show a warning in the status area.
+	if (ConversationManager.IsValid() && ConversationManager->IsProcessing())
+	{
+		ConversationManager->SetFocusProfile(NormalizedProfile);
+		DeferredProfileWarning = FString::Printf(
+			TEXT("Profile switch to '%s' deferred until operation completes"), *NormalizedProfile);
+		UE_LOG(LogOliveAI, Log, TEXT("%s"), *DeferredProfileWarning);
+
+		// Close the combo dropdown
+		if (FocusDropdown.IsValid())
+		{
+			FocusDropdown->SetIsOpen(false);
+		}
+		return;
+	}
+
 	// Check if this profile is already in our options list
 	bool bFound = false;
 	for (const TSharedPtr<FString>& ProfileOption : FocusProfiles)
@@ -747,6 +840,8 @@ void SOliveAIChatPanel::OnFocusProfileSelected(const FString& ProfileName)
 		FocusProfiles.Add(NewEntry);
 		CurrentFocusProfile = NewEntry;
 	}
+
+	DeferredProfileWarning.Empty();
 
 	if (ConversationManager.IsValid())
 	{
@@ -919,15 +1014,18 @@ void SOliveAIChatPanel::HandleProcessingStarted()
 	bIsProcessing = true;
 	CurrentErrorMessage.Empty();
 
-	if (InputField.IsValid())
-	{
-		InputField->SetEnabled(false);
-	}
+	// Input field stays enabled so the user can queue additional messages.
+	// The Send button text changes to "Queue" to communicate queuing behavior.
 }
 
 void SOliveAIChatPanel::HandleProcessingComplete()
 {
 	bIsProcessing = false;
+	bIsRetryPending = false;
+	RetryAttempt = 0;
+	RetryMaxAttempts = 0;
+	RetryCountdownSeconds = 0.0f;
+	bIsRateLimited = false;
 
 	if (MessageList.IsValid())
 	{
@@ -936,7 +1034,6 @@ void SOliveAIChatPanel::HandleProcessingComplete()
 
 	if (InputField.IsValid())
 	{
-		InputField->SetEnabled(true);
 		InputField->Focus();
 	}
 }
@@ -978,6 +1075,83 @@ void SOliveAIChatPanel::HandleConfirmationRequired(const FString& ToolCallId, co
 
 	FString DisplayPlan = FString::Printf(TEXT("[%s] %s"), *ToolName, *Plan);
 	MessageList->AddConfirmationWidget(ToolCallId, DisplayPlan, OnAction);
+}
+
+// ==========================================
+// Message Queue Callbacks
+// ==========================================
+
+void SOliveAIChatPanel::HandleMessageQueued(int32 QueueDepth)
+{
+	QueuedMessageCount = QueueDepth;
+	// Status text auto-updates via GetStatusText() polling
+}
+
+void SOliveAIChatPanel::HandleQueueDrained()
+{
+	QueuedMessageCount = 0;
+}
+
+// ==========================================
+// Retry Manager Callbacks
+// ==========================================
+
+void SOliveAIChatPanel::HandleRetryScheduled(int32 Attempt, int32 MaxAttempts, float DelaySeconds)
+{
+	bIsRetryPending = true;
+	RetryAttempt = Attempt;
+	RetryMaxAttempts = MaxAttempts;
+	RetryCountdownSeconds = DelaySeconds;
+
+	// Detect rate limiting: when Attempt == MaxAttempts, the retry manager is
+	// doing a single rate-limit retry rather than exponential backoff.
+	bIsRateLimited = (Attempt == MaxAttempts && DelaySeconds > 10.0f);
+
+	// Status text auto-updates via GetStatusText() polling
+}
+
+void SOliveAIChatPanel::HandleRetryCountdownTick(float SecondsRemaining)
+{
+	RetryCountdownSeconds = SecondsRemaining;
+	// Status text auto-updates via GetStatusText() polling
+}
+
+void SOliveAIChatPanel::HandleRetryAttemptStarted()
+{
+	bIsRetryPending = false;
+	RetryCountdownSeconds = 0.0f;
+	// The processing state is still active; status returns to "Processing..."
+}
+
+// ==========================================
+// Deferred Profile Callbacks
+// ==========================================
+
+void SOliveAIChatPanel::HandleDeferredProfileApplied(const FString& ProfileName)
+{
+	// Update the UI dropdown to reflect the newly applied profile
+	bool bFound = false;
+	for (const TSharedPtr<FString>& ProfileOption : FocusProfiles)
+	{
+		if (ProfileOption.IsValid() && ProfileOption->Equals(ProfileName, ESearchCase::IgnoreCase))
+		{
+			CurrentFocusProfile = ProfileOption;
+			bFound = true;
+			break;
+		}
+	}
+
+	if (!bFound)
+	{
+		TSharedPtr<FString> NewEntry = MakeShared<FString>(ProfileName);
+		FocusProfiles.Add(NewEntry);
+		CurrentFocusProfile = NewEntry;
+	}
+
+	// Clear the deferred warning from the status area
+	DeferredProfileWarning.Empty();
+
+	UE_LOG(LogOliveAI, Log, TEXT("Focus profile switch applied in UI: %s"), *ProfileName);
 }
 
 // ==========================================
@@ -1098,6 +1272,47 @@ FText SOliveAIChatPanel::GetStatusText() const
 
 	if (bIsProcessing)
 	{
+		// Retry countdown takes priority over generic "Processing..."
+		if (bIsRetryPending)
+		{
+			int32 SecondsInt = FMath::CeilToInt32(RetryCountdownSeconds);
+			if (bIsRateLimited)
+			{
+				return FText::Format(
+					LOCTEXT("StatusRateLimited", "Rate limited. Retrying in {0}s..."),
+					FText::AsNumber(SecondsInt));
+			}
+			else
+			{
+				return FText::Format(
+					LOCTEXT("StatusRetry", "Retry {0}/{1} in {2}s..."),
+					FText::AsNumber(RetryAttempt),
+					FText::AsNumber(RetryMaxAttempts),
+					FText::AsNumber(SecondsInt));
+			}
+		}
+
+		// Show deferred profile warning alongside processing status
+		if (!DeferredProfileWarning.IsEmpty())
+		{
+			if (QueuedMessageCount > 0)
+			{
+				return FText::Format(
+					LOCTEXT("StatusProcessingQueuedDeferred", "Processing... ({0} queued) | {1}"),
+					FText::AsNumber(QueuedMessageCount),
+					FText::FromString(DeferredProfileWarning));
+			}
+			return FText::Format(
+				LOCTEXT("StatusProcessingDeferred", "Processing... | {0}"),
+				FText::FromString(DeferredProfileWarning));
+		}
+
+		if (QueuedMessageCount > 0)
+		{
+			return FText::Format(
+				LOCTEXT("StatusProcessingQueued", "Processing... ({0} {0}|plural(one=message,other=messages) queued)"),
+				FText::AsNumber(QueuedMessageCount));
+		}
 		return LOCTEXT("StatusProcessing", "Processing...");
 	}
 
@@ -1154,6 +1369,11 @@ FSlateColor SOliveAIChatPanel::GetStatusColor() const
 
 	if (bIsProcessing)
 	{
+		if (bIsRetryPending && bIsRateLimited)
+		{
+			// Orange for rate-limited
+			return FLinearColor(1.0f, 0.6f, 0.1f);
+		}
 		return FLinearColor::Yellow;
 	}
 
@@ -1177,7 +1397,10 @@ FSlateColor SOliveAIChatPanel::GetStatusColor() const
 
 bool SOliveAIChatPanel::IsSendEnabled() const
 {
-	return !bIsProcessing && ConversationManager.IsValid() && ConversationManager->GetProvider().IsValid();
+	// Always enabled when the ConversationManager and provider are valid.
+	// When processing, SendUserMessage() will enqueue the message via the
+	// FOliveMessageQueue instead of rejecting it.
+	return ConversationManager.IsValid() && ConversationManager->GetProvider().IsValid();
 }
 
 // ==========================================

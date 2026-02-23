@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "OliveBlueprintWriter.h"
+#include "Dom/JsonValue.h"
 
 // Forward declarations
 class UBlueprint;
@@ -13,6 +14,7 @@ class UEdGraphPin;
 class FOliveNodeFactory;
 class FOlivePinConnector;
 struct FOliveIRNode;
+class FJsonObject;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogOliveGraphWriter, Log, All);
 
@@ -182,6 +184,28 @@ public:
 		const FString& DefaultValue);
 
 	// ============================================================================
+	// Connection Inspection
+	// ============================================================================
+
+	/**
+	 * Capture all connections on a node before removal.
+	 * Call this BEFORE RemoveNode to get a snapshot of what will break.
+	 *
+	 * Each element in the returned array is a JSON object with the shape:
+	 *   { "pin": "<pin_name>", "direction": "input"|"output",
+	 *     "was_connected_to": { "node_id": "<id>", "pin": "<pin_name>" } }
+	 *
+	 * @param BlueprintPath Asset path for node ID resolution via cache
+	 * @param Graph The graph containing the node
+	 * @param Node The node about to be removed
+	 * @return JSON array of broken link descriptors
+	 */
+	TArray<TSharedPtr<FJsonValue>> CaptureNodeConnections(
+		const FString& BlueprintPath,
+		UEdGraph* Graph,
+		UEdGraphNode* Node);
+
+	// ============================================================================
 	// Session Management
 	// ============================================================================
 
@@ -296,6 +320,15 @@ private:
 	 * @param NodeId ID of the node to remove from cache
 	 */
 	void RemoveFromCache(const FString& BlueprintPath, const FString& NodeId);
+
+	/**
+	 * Reverse-lookup a UEdGraphNode* in the NodeIdCache to find its string ID.
+	 * Falls back to the node's GetName() if the node is not present in the cache.
+	 * @param BlueprintPath Asset path used as cache key
+	 * @param Node The node pointer to look up
+	 * @return Cached node ID or the node's UObject name as fallback
+	 */
+	FString ResolveNodeId(const FString& BlueprintPath, UEdGraphNode* Node) const;
 
 	/**
 	 * Load a Blueprint for editing with validation

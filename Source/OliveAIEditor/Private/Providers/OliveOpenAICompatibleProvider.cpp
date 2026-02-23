@@ -272,7 +272,7 @@ void FOliveOpenAICompatibleProvider::OnResponseReceived(FHttpRequestPtr Request,
 	if (!bSuccess || !Response.IsValid())
 	{
 		FString Url = GetCompletionsUrl();
-		HandleError(FString::Printf(TEXT("Cannot connect to %s. Verify the server is running and the URL is correct."), *Url));
+		HandleError(FString::Printf(TEXT("[HTTP:0] Cannot connect to %s. Verify the server is running and the URL is correct."), *Url));
 		return;
 	}
 
@@ -280,13 +280,13 @@ void FOliveOpenAICompatibleProvider::OnResponseReceived(FHttpRequestPtr Request,
 
 	if (StatusCode == 401)
 	{
-		HandleError(TEXT("Authentication failed (HTTP 401). Check your API key for this endpoint."));
+		HandleError(TEXT("[HTTP:401] Authentication failed. Check your API key for this endpoint."));
 		return;
 	}
 
 	if (StatusCode == 403)
 	{
-		HandleError(TEXT("Access denied (HTTP 403). Verify your API key and permissions for this endpoint."));
+		HandleError(TEXT("[HTTP:403] Access denied. Verify your API key and permissions for this endpoint."));
 		return;
 	}
 
@@ -295,11 +295,13 @@ void FOliveOpenAICompatibleProvider::OnResponseReceived(FHttpRequestPtr Request,
 		FString RetryAfter = Response->GetHeader(TEXT("Retry-After"));
 		if (!RetryAfter.IsEmpty())
 		{
-			HandleError(FString::Printf(TEXT("Rate limited by the server. Try again in %s seconds."), *RetryAfter));
+			int32 RetryAfterSeconds = FCString::Atoi(*RetryAfter);
+			if (RetryAfterSeconds <= 0) { RetryAfterSeconds = 60; }
+			HandleError(FString::Printf(TEXT("[HTTP:429:RetryAfter=%d] Rate limited by the server. Try again in %s seconds."), RetryAfterSeconds, *RetryAfter));
 		}
 		else
 		{
-			HandleError(TEXT("Rate limited by the server. Please wait before trying again."));
+			HandleError(TEXT("[HTTP:429:RetryAfter=60] Rate limited by the server. Please wait before trying again."));
 		}
 		return;
 	}
@@ -321,16 +323,16 @@ void FOliveOpenAICompatibleProvider::OnResponseReceived(FHttpRequestPtr Request,
 
 				if (ErrorCode == TEXT("model_not_found"))
 				{
-					HandleError(FString::Printf(TEXT("Model '%s' not found on this endpoint. Check the model name."), *Config.ModelId));
+					HandleError(FString::Printf(TEXT("[HTTP:%d] Model '%s' not found on this endpoint. Check the model name."), StatusCode, *Config.ModelId));
 					return;
 				}
 
-				HandleError(FString::Printf(TEXT("Server error: %s"), *ErrorMessage));
+				HandleError(FString::Printf(TEXT("[HTTP:%d] Server error: %s"), StatusCode, *ErrorMessage));
 				return;
 			}
 		}
 
-		HandleError(FString::Printf(TEXT("Server returned HTTP %d"), StatusCode));
+		HandleError(FString::Printf(TEXT("[HTTP:%d] Server returned HTTP %d"), StatusCode, StatusCode));
 		return;
 	}
 
@@ -400,6 +402,9 @@ void FOliveOpenAICompatibleProvider::ParseStreamChunk(const TSharedPtr<FJsonObje
 	FString FinishReason = Choice->GetStringField(TEXT("finish_reason"));
 	if (!FinishReason.IsEmpty() && FinishReason != TEXT("null"))
 	{
+		// Store finish reason so HandleComplete can detect truncation (e.g. "length")
+		CurrentUsage.FinishReason = FinishReason;
+
 		// Finalize pending tool calls
 		FinalizePendingToolCalls();
 		return;

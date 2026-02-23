@@ -37,6 +37,7 @@ enum class EOliveConfirmationRequirement : uint8
 
 // Forward declarations
 class UBlueprint;
+class UEdGraph;
 struct FOliveWriteRequest;
 struct FOliveWriteResult;
 
@@ -252,7 +253,8 @@ private:
 	FOliveWriteResult StageExecute(
 		const FOliveWriteRequest& Request,
 		UObject* TargetAsset,
-		FOliveWriteExecutor& Executor);
+		FOliveWriteExecutor& Executor,
+		UObject*& OutEffectiveTargetAsset);
 
 	/**
 	 * Stage 5: Verify result (structural checks + optional compile)
@@ -321,6 +323,35 @@ private:
 	 * @return Compile result with errors/warnings
 	 */
 	FOliveIRCompileResult CompileAndGatherErrors(UBlueprint* Blueprint) const;
+
+	// ============================================================================
+	// Orphaned Exec-Flow Detection
+	// ============================================================================
+
+	/**
+	 * Detect orphaned execution flow in a graph.
+	 * An orphaned exec flow is an exec output pin that has no connections,
+	 * where the node itself has at least one connected exec input
+	 * (meaning execution reaches this node but cannot continue).
+	 *
+	 * Skips pure nodes, FunctionResult/return nodes, reroute nodes, comment nodes,
+	 * Sequence nodes with at least one connected output, and custom events.
+	 *
+	 * @param Graph The graph to analyze
+	 * @param OutMessages Warning messages for each orphaned flow detected
+	 * @return Number of orphaned exec flows found
+	 */
+	int32 DetectOrphanedExecFlows(const UEdGraph* Graph, TArray<FOliveIRMessage>& OutMessages) const;
+
+	/**
+	 * Check whether a tool name represents a graph-editing operation.
+	 * Returns true for tool names starting with blueprint.add_node,
+	 * blueprint.remove_node, blueprint.connect_pins, or blueprint.disconnect_pins.
+	 *
+	 * @param ToolName The tool name to check
+	 * @return True if this is a graph-editing tool
+	 */
+	bool IsGraphEditOperation(const FString& ToolName) const;
 
 	// ============================================================================
 	// Preview Generation Helpers

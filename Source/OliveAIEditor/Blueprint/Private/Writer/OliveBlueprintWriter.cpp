@@ -182,8 +182,16 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::CreateBlueprint(
 	UClass* ParentUClass = FindParentClass(ParentClass);
 	if (!ParentUClass)
 	{
+		UE_LOG(LogOliveBPWriter, Error, TEXT("CreateBlueprint: Parent class '%s' could not be resolved"), *ParentClass);
 		return FOliveBlueprintWriteResult::Error(
 			FString::Printf(TEXT("Parent class '%s' not found"), *ParentClass));
+	}
+
+	// Validate long package path format up front for actionable errors.
+	if (!FPackageName::IsValidLongPackageName(AssetPath))
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Invalid Blueprint asset path '%s'. Expected '/Game/.../BP_Name'"), *AssetPath));
 	}
 
 	// Parse the asset path
@@ -231,6 +239,9 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::CreateBlueprint(
 
 	if (!NewBlueprint)
 	{
+		UE_LOG(LogOliveBPWriter, Error,
+			TEXT("CreateBlueprint failed: path='%s' parent='%s' type=%d package='%s' asset='%s'"),
+			*AssetPath, *ParentClass, static_cast<int32>(Type), *PackagePath, *AssetName);
 		return FOliveBlueprintWriteResult::Error(
 			FString::Printf(TEXT("Failed to create Blueprint: %s"), *AssetPath));
 	}
@@ -1735,32 +1746,70 @@ FEdGraphPinType FOliveBlueprintWriter::ConvertIRType(const FOliveIRType& IRType)
 
 UClass* FOliveBlueprintWriter::FindParentClass(const FString& ClassName)
 {
-	// Try direct class lookup first (for native classes like "Actor", "Pawn")
-	UClass* Class = FindFirstObject<UClass>( *ClassName);
+	const FString Normalized = ClassName.TrimStartAndEnd();
+	if (Normalized.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	// Try native-first class lookup for short names (Actor, Character, Pawn, etc.)
+	UClass* Class = FindFirstObject<UClass>(*Normalized, EFindFirstObjectOptions::NativeFirst);
 	if (Class)
 	{
 		return Class;
 	}
 
-	// Try with common prefixes
-	TArray<FString> Prefixes = { TEXT("A"), TEXT("U"), TEXT("") };
-	for (const FString& Prefix : Prefixes)
+	// Try with common prefixes if not already supplied.
+	TArray<FString> Candidates;
+	Candidates.Add(Normalized);
+	Candidates.Add(Normalized + TEXT("_C"));
+	if (!Normalized.StartsWith(TEXT("A")))
 	{
-		FString PrefixedName = Prefix + ClassName;
-		Class = FindFirstObject<UClass>( *PrefixedName);
+		Candidates.Add(TEXT("A") + Normalized);
+	}
+	if (!Normalized.StartsWith(TEXT("U")))
+	{
+		Candidates.Add(TEXT("U") + Normalized);
+	}
+	for (const FString& Candidate : Candidates)
+	{
+		Class = FindFirstObject<UClass>(*Candidate, EFindFirstObjectOptions::NativeFirst);
 		if (Class)
 		{
 			return Class;
 		}
 	}
 
-	// Try as Blueprint path
-	if (ClassName.Contains(TEXT("/")))
+	// Try fully-qualified native class paths.
+	TArray<FString> ClassPaths;
+	ClassPaths.Add(FString::Printf(TEXT("/Script/Engine.%s"), *Normalized));
+	ClassPaths.Add(FString::Printf(TEXT("/Script/Engine.A%s"), *Normalized));
+	ClassPaths.Add(FString::Printf(TEXT("/Script/Engine.U%s"), *Normalized));
+	ClassPaths.Add(FString::Printf(TEXT("/Script/CoreUObject.%s"), *Normalized));
+	ClassPaths.Add(FString::Printf(TEXT("/Script/CoreUObject.U%s"), *Normalized));
+	for (const FString& ClassPath : ClassPaths)
 	{
-		UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *ClassName);
+		Class = StaticLoadClass(UObject::StaticClass(), nullptr, *ClassPath);
+		if (Class)
+		{
+			return Class;
+		}
+	}
+
+	// Try as Blueprint path.
+	if (Normalized.Contains(TEXT("/")))
+	{
+		UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *Normalized);
 		if (Blueprint && Blueprint->GeneratedClass)
 		{
 			return Blueprint->GeneratedClass;
+		}
+
+		// Also support class object references (..._C).
+		Class = LoadObject<UClass>(nullptr, *(Normalized + TEXT("_C")));
+		if (Class)
+		{
+			return Class;
 		}
 	}
 
