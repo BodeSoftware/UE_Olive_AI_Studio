@@ -4013,6 +4013,9 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintConnectPins(const T
 		return Err.GetValue();
 	}
 
+	UE_LOG(LogOliveBPTools, Log, TEXT("connect_pins: resolved source='%s', target='%s', graph='%s', asset='%s'"),
+		*SourcePin, *TargetPin, *GraphName, *AssetPath);
+
 	// Load Blueprint for target asset
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
 	if (!Blueprint)
@@ -6427,6 +6430,26 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 				}
 
 				FOliveWriteResult SuccessResult = FOliveWriteResult::Success(ResultData);
+
+				// Surface partial wiring failures loudly so the AI knows it must fix them
+				if (PlanResult.bPartial)
+				{
+					const int32 TotalFailures = PlanResult.ConnectionsFailed + PlanResult.DefaultsFailed;
+					FString PartialMessage = FString::Printf(
+						TEXT("PARTIAL: %d nodes created but %d connections FAILED. "
+							 "See wiring_errors and pin_manifests. You MUST fix these with connect_pins."),
+						PlanResult.StepToNodeMap.Num(),
+						TotalFailures);
+					ResultData->SetStringField(TEXT("message"), PartialMessage);
+					ResultData->SetStringField(TEXT("status"), TEXT("partial"));
+				}
+				else
+				{
+					ResultData->SetStringField(TEXT("message"),
+						FString::Printf(TEXT("Plan applied successfully: %d nodes created, %d connections wired"),
+							PlanResult.StepToNodeMap.Num(),
+							PlanResult.ConnectionsSucceeded));
+				}
 
 				// Collect created node IDs for the pipeline's verification stage
 				TArray<FString> CreatedNodeIds;

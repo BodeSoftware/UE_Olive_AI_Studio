@@ -4,6 +4,8 @@
 #include "IR/BlueprintPlanIR.h"
 #include "Serialization/JsonSerializer.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogOliveIRSchema, Log, All);
+
 // ============================================================================
 // Forbidden Field Names (Rule R4 - Positions omitted)
 // ============================================================================
@@ -670,6 +672,8 @@ FOliveIRResult FOliveIRValidator::ValidateBlueprintPlanJson(
 	const TSharedPtr<FJsonObject>& Json,
 	int32 MaxSteps)
 {
+	UE_LOG(LogOliveIRSchema, Verbose, TEXT("ValidateBlueprintPlanJson: validating plan with MaxSteps=%d"), MaxSteps);
+
 	// Collect all errors rather than failing fast, so the caller gets a complete picture
 	TArray<TSharedPtr<FJsonValue>> Errors;
 
@@ -678,6 +682,7 @@ FOliveIRResult FOliveIRValidator::ValidateBlueprintPlanJson(
 	{
 		Errors.Add(MakeShareable(new FJsonValueObject(
 			MakePlanValidationError(Code, Location, Message, Suggestion))));
+		UE_LOG(LogOliveIRSchema, Warning, TEXT("  Schema validation error [%s] at '%s': %s"), *Code, *Location, *Message);
 	};
 
 	// --- Null check ---
@@ -949,8 +954,11 @@ FOliveIRResult FOliveIRValidator::ValidateBlueprintPlanJson(
 							AddError(
 								TEXT("PLAN_INVALID_REF_FORMAT"),
 								StepLocation + TEXT("/inputs/") + PinName,
-								FString::Printf(TEXT("Step %d ('%s'): input '%s' has malformed @ref '%s'"), i, *StepId, *PinName, *Value),
-								TEXT("@ref format must be \"@stepId.pinName\" (e.g., \"@s1.ReturnValue\")"));
+								FString::Printf(TEXT("Step %d ('%s'): input '%s' has malformed @ref '%s' — @ref must reference a step_id from this plan, not a component, variable, or actor name"),
+									i, *StepId, *PinName, *Value),
+								TEXT("@ref format is \"@step_id.pin_name\" (e.g., \"@s1.ReturnValue\"). "
+									 "To access a component, add a 'call' step targeting GetComponentByClass and reference that step's output. "
+									 "To access a variable, add a 'get_var' step and reference its output."));
 							continue;
 						}
 
@@ -974,6 +982,8 @@ FOliveIRResult FOliveIRValidator::ValidateBlueprintPlanJson(
 
 						if (!bRefFoundEarlier)
 						{
+							FString RefPinHint = RefBody.Mid(DotIndex + 1);
+
 							if (!DeclaredStepIds.Contains(RefStepId))
 							{
 								AddError(
@@ -981,6 +991,11 @@ FOliveIRResult FOliveIRValidator::ValidateBlueprintPlanJson(
 									StepLocation + TEXT("/inputs/") + PinName,
 									FString::Printf(TEXT("Step %d ('%s'): input '%s' references unknown step '%s'"), i, *StepId, *PinName, *RefStepId),
 									TEXT("@ref must reference a step_id that exists in the steps array and is declared before this step"));
+
+								FString DeclaredList = FString::Join(DeclaredStepIds.Array(), TEXT(", "));
+								UE_LOG(LogOliveIRSchema, Warning,
+									TEXT("  Declared step_ids at this point: [%s]. Ref '@%s.%s' references unknown step '%s'"),
+									*DeclaredList, *RefStepId, *RefPinHint, *RefStepId);
 							}
 							else
 							{
@@ -989,6 +1004,11 @@ FOliveIRResult FOliveIRValidator::ValidateBlueprintPlanJson(
 									StepLocation + TEXT("/inputs/") + PinName,
 									FString::Printf(TEXT("Step %d ('%s'): input '%s' references step '%s' which is not declared earlier"), i, *StepId, *PinName, *RefStepId),
 									TEXT("@ref data references must point to steps declared before this step in the array"));
+
+								FString DeclaredList = FString::Join(DeclaredStepIds.Array(), TEXT(", "));
+								UE_LOG(LogOliveIRSchema, Warning,
+									TEXT("  Declared step_ids at this point: [%s]. Ref '@%s.%s' is a forward reference to step '%s' (exists but declared later)"),
+									*DeclaredList, *RefStepId, *RefPinHint, *RefStepId);
 							}
 						}
 					}

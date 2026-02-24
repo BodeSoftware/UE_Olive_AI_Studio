@@ -11,6 +11,7 @@
 - Blueprint reader: `Source/OliveAIEditor/Blueprint/Public/Reader/OliveBlueprintReader.h`
 - IR types: `Source/OliveAIRuntime/Public/IR/CommonIR.h` (FOliveIRGraph, FOliveIRNode, etc.)
 - Asset resolver: `Source/OliveAIEditor/Public/Services/OliveAssetResolver.h`
+- Class resolver: `Source/OliveAIEditor/Blueprint/Public/OliveClassResolver.h` / `Private/OliveClassResolver.cpp`
 
 ## Patterns
 - Tool handler pattern: validate params -> resolve asset path -> load Blueprint -> execute -> serialize result
@@ -38,6 +39,14 @@
 - Constants: HORIZONTAL_SPACING=350, VERTICAL_SPACING=200, BRANCH_OFFSET=250, PURE_NODE_OFFSET_Y=-120, CHAIN_GAP_ROWS=2
 - Log category: LogOliveGraphLayout
 - BuildConsumerMap scans inputs for @stepId refs to identify pure-node consumers
+
+## Current Task: Fix Blueprint Class Resolution (4 tasks)
+- Design plan: `plans/fix-blueprint-class-resolution-design.md`
+- Task 1: Create `FOliveClassResolver` (new .h/.cpp) — 6-step resolution chain + LRU cache
+- Task 2: Rewire 3 callers (OliveNodeFactory, OliveBlueprintWriter, OliveFunctionResolver) to use it
+- Task 3: Improve PLAN_INVALID_REF_FORMAT error message in OliveIRSchema.cpp
+- Task 4: Improve BP_CONNECT_PINS_FAILED + BP_ADD_NODE_FAILED self-correction hints in OliveSelfCorrectionPolicy.cpp
+- Task 2 is blocked by Task 1
 
 ## UE 5.5 API Quirks
 - **Float/Double PinType**: In UE 5.5, `PC_Float` and `PC_Double` must NOT be used as `PinCategory`. Instead use `PinCategory = PC_Real` with `PinSubCategory = PC_Float` (or `PC_Double`). Using `PC_Float` directly as category causes "Can't parse default value" compile warnings because the engine can't resolve an FProperty from a bare `PC_Float` category.

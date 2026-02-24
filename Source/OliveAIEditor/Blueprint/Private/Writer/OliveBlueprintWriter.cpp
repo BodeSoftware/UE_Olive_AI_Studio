@@ -2,6 +2,7 @@
 
 #include "OliveBlueprintWriter.h"
 #include "OliveBlueprintTypes.h"
+#include "OliveClassResolver.h"
 #include "Services/OliveTransactionManager.h"
 
 #include "Engine/Blueprint.h"
@@ -1790,65 +1791,10 @@ UClass* FOliveBlueprintWriter::FindParentClass(const FString& ClassName)
 		return nullptr;
 	}
 
-	// Try native-first class lookup for short names (Actor, Character, Pawn, etc.)
-	UClass* Class = FindFirstObject<UClass>(*Normalized, EFindFirstObjectOptions::NativeFirst);
-	if (Class)
+	FOliveClassResolveResult Result = FOliveClassResolver::Resolve(Normalized);
+	if (Result.IsValid())
 	{
-		return Class;
-	}
-
-	// Try with common prefixes if not already supplied.
-	TArray<FString> Candidates;
-	Candidates.Add(Normalized);
-	Candidates.Add(Normalized + TEXT("_C"));
-	if (!Normalized.StartsWith(TEXT("A")))
-	{
-		Candidates.Add(TEXT("A") + Normalized);
-	}
-	if (!Normalized.StartsWith(TEXT("U")))
-	{
-		Candidates.Add(TEXT("U") + Normalized);
-	}
-	for (const FString& Candidate : Candidates)
-	{
-		Class = FindFirstObject<UClass>(*Candidate, EFindFirstObjectOptions::NativeFirst);
-		if (Class)
-		{
-			return Class;
-		}
-	}
-
-	// Try fully-qualified native class paths.
-	TArray<FString> ClassPaths;
-	ClassPaths.Add(FString::Printf(TEXT("/Script/Engine.%s"), *Normalized));
-	ClassPaths.Add(FString::Printf(TEXT("/Script/Engine.A%s"), *Normalized));
-	ClassPaths.Add(FString::Printf(TEXT("/Script/Engine.U%s"), *Normalized));
-	ClassPaths.Add(FString::Printf(TEXT("/Script/CoreUObject.%s"), *Normalized));
-	ClassPaths.Add(FString::Printf(TEXT("/Script/CoreUObject.U%s"), *Normalized));
-	for (const FString& ClassPath : ClassPaths)
-	{
-		Class = StaticLoadClass(UObject::StaticClass(), nullptr, *ClassPath);
-		if (Class)
-		{
-			return Class;
-		}
-	}
-
-	// Try as Blueprint path.
-	if (Normalized.Contains(TEXT("/")))
-	{
-		UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *Normalized);
-		if (Blueprint && Blueprint->GeneratedClass)
-		{
-			return Blueprint->GeneratedClass;
-		}
-
-		// Also support class object references (..._C).
-		Class = LoadObject<UClass>(nullptr, *(Normalized + TEXT("_C")));
-		if (Class)
-		{
-			return Class;
-		}
+		return Result.Class;
 	}
 
 	return nullptr;

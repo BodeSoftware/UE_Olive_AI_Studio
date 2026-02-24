@@ -39,7 +39,8 @@ Exec: exec_after:"step_id" (chains then→execute), exec_outputs:{"True":"a","Fa
 ## Function Graphs vs EventGraph
 - EventGraph: use op:"event" with target:"BeginPlay"/"Tick"/etc. as entry points
 - Function graphs (blueprint.add_function): the entry node is auto-created.
-  First impure step should NOT use exec_after. It auto-chains from the entry node.
+  The first impure step auto-chains from the entry node — do NOT give it an exec_after.
+  Subsequent impure steps MUST have exec_after pointing to the previous impure step.
   Pure steps (get_var, pure function calls) need no exec wiring.
 
 ## Function Resolution

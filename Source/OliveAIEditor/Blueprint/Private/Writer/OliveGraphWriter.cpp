@@ -445,6 +445,11 @@ FOliveBlueprintWriteResult FOliveGraphWriter::ConnectPins(
 			BlueprintPath);
 	}
 
+	UE_LOG(LogOliveGraphWriter, Log, TEXT("ConnectPins: '%s' (node='%s', pin='%s') -> '%s' (node='%s', pin='%s') in graph '%s'"),
+		*SourcePinRef, *SourceNodeId, *SourcePinName,
+		*TargetPinRef, *TargetNodeId, *TargetPinName,
+		*GraphName);
+
 	// Load the Blueprint
 	FString LoadError;
 	UBlueprint* Blueprint = LoadBlueprintForEditing(BlueprintPath, LoadError);
@@ -890,10 +895,15 @@ UEdGraphNode* FOliveGraphWriter::FindNodeById(
 	const FString& BlueprintPath,
 	const FString& NodeId)
 {
+	UE_LOG(LogOliveGraphWriter, Verbose, TEXT("FindNodeById: looking for '%s' in graph '%s' of '%s'"),
+		*NodeId, *Graph->GetName(), *BlueprintPath);
+
 	// First check the cache
 	UEdGraphNode* CachedNode = GetCachedNode(BlueprintPath, NodeId);
 	if (CachedNode)
 	{
+		UE_LOG(LogOliveGraphWriter, Verbose, TEXT("FindNodeById: '%s' found in cache"), *NodeId);
+
 		// Verify the node is still in the graph
 		if (Graph->Nodes.Contains(CachedNode))
 		{
@@ -901,6 +911,8 @@ UEdGraphNode* FOliveGraphWriter::FindNodeById(
 		}
 		else
 		{
+			UE_LOG(LogOliveGraphWriter, Verbose, TEXT("FindNodeById: '%s' was in cache but no longer in graph, removed from cache"), *NodeId);
+
 			// Node was removed from graph - clear from cache
 			RemoveFromCache(BlueprintPath, NodeId);
 		}
@@ -915,6 +927,8 @@ UEdGraphNode* FOliveGraphWriter::FindNodeById(
 		{
 			if (Node && Node->NodeGuid == ParsedGuid)
 			{
+				UE_LOG(LogOliveGraphWriter, Verbose, TEXT("FindNodeById: '%s' matched by GUID"), *NodeId);
+
 				// Cache for future lookups
 				CacheNode(BlueprintPath, NodeId, Node);
 				return Node;
@@ -946,6 +960,8 @@ UEdGraphNode* FOliveGraphWriter::FindNodeById(
 
 			if (CurrentIndex == TargetIndex)
 			{
+				UE_LOG(LogOliveGraphWriter, Verbose, TEXT("FindNodeById: '%s' matched by sequential index (%d)"), *NodeId, TargetIndex);
+
 				// Cache for future lookups
 				CacheNode(BlueprintPath, NodeId, Node);
 				return Node;
@@ -953,6 +969,25 @@ UEdGraphNode* FOliveGraphWriter::FindNodeById(
 			CurrentIndex++;
 		}
 	}
+
+	// Build available nodes list for diagnostic logging
+	FString AvailableNodes;
+	int32 Idx = 0;
+	for (UEdGraphNode* N : Graph->Nodes)
+	{
+		if (!N) continue;
+		// Skip tunnel nodes (same logic as above)
+		if (N->IsA<UK2Node_Tunnel>() && !N->IsA<UK2Node_Composite>())
+			continue;
+
+		AvailableNodes += FString::Printf(TEXT("\n  node_%d: %s [%s]"),
+			Idx, *N->GetNodeTitle(ENodeTitleType::ListView).ToString(),
+			*N->GetClass()->GetName());
+		Idx++;
+	}
+	UE_LOG(LogOliveGraphWriter, Warning,
+		TEXT("FindNodeById: '%s' NOT FOUND in graph '%s' (%d nodes). Available nodes:%s"),
+		*NodeId, *Graph->GetName(), Idx, *AvailableNodes);
 
 	return nullptr;
 }

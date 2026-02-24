@@ -45,6 +45,7 @@ FOliveCorrectionDecision FOliveSelfCorrectionPolicy::Evaluate(
 		Decision.EnrichedMessage = BuildCompileErrorMessage(ToolName, CompileErrors, SignatureAttempts, Policy.MaxRetriesPerError);
 		UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Compile failure on '%s', attempt %d/%d"),
 			*AssetPath, SignatureAttempts, Policy.MaxRetriesPerError);
+		UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Injecting compile correction:\n%s"), *Decision.EnrichedMessage);
 		return Decision;
 	}
 
@@ -74,6 +75,7 @@ FOliveCorrectionDecision FOliveSelfCorrectionPolicy::Evaluate(
 		Decision.EnrichedMessage = BuildToolErrorMessage(ToolName, ErrorCode, ErrorMessage, SignatureAttempts, Policy.MaxRetriesPerError);
 		UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Tool failure '%s' error '%s', attempt %d/%d"),
 			*ToolName, *ErrorCode, SignatureAttempts, Policy.MaxRetriesPerError);
+		UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Injecting tool correction:\n%s"), *Decision.EnrichedMessage);
 		return Decision;
 	}
 
@@ -134,6 +136,7 @@ bool FOliveSelfCorrectionPolicy::HasCompileFailure(const FString& ResultJson, FS
 		JsonObj->TryGetStringField(TEXT("blueprint_path"), OutAssetPath);
 	}
 
+	UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Extracted compile failure — asset='%s', errors:\n%s"), *OutAssetPath, *OutErrors);
 	return true;
 }
 
@@ -162,6 +165,7 @@ bool FOliveSelfCorrectionPolicy::HasToolFailure(const FString& ResultJson, FStri
 			OutErrorCode = TEXT("UNKNOWN");
 			OutErrorMessage = TEXT("Tool execution failed");
 		}
+		UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Extracted tool failure — code='%s', message='%s'"), *OutErrorCode, *OutErrorMessage);
 		return true;
 	}
 
@@ -204,7 +208,18 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 	}
 	else if (ErrorCode == TEXT("NODE_TYPE_UNKNOWN") || ErrorCode == TEXT("BP_ADD_NODE_FAILED"))
 	{
-		Guidance = TEXT("The node type was not found. Use blueprint.search_nodes to find the correct node type identifier, then retry.");
+		if (ErrorMessage.Contains(TEXT("class")) && ErrorMessage.Contains(TEXT("not found")))
+		{
+			Guidance = TEXT("The specified class was not found. "
+				"If this is a Blueprint class, provide the full asset path (e.g., '/Game/Blueprints/BP_Bullet'). "
+				"Use project.search_assets to find the correct path. "
+				"If this is a native C++ class, use the full prefixed name (e.g., 'ACharacter', 'APawn'). "
+				"Do NOT guess class names — search first.");
+		}
+		else
+		{
+			Guidance = TEXT("The node type was not found. Use blueprint.search_nodes to find the correct node type identifier, then retry.");
+		}
 	}
 	else if (ErrorCode == TEXT("FUNCTION_NOT_FOUND"))
 	{
@@ -265,11 +280,26 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 	}
 	else if (ErrorCode == TEXT("BP_CONNECT_PINS_FAILED"))
 	{
-		Guidance = TEXT("Pin connection failed. Common causes: "
-			"1) Node not found — node_ids are scoped per graph. "
-			"2) Pin format — use 'node_id.pin_name' (dot, NOT colon). "
-			"3) Pin name mismatch — use pin_manifests from apply_plan_json result. "
-			"4) Type mismatch — ensure compatible pin types.");
+		Guidance = TEXT("Pin connection failed. BEFORE RETRYING: call blueprint.read "
+			"with include_pins:true on the target graph to get the ACTUAL pin names. "
+			"Do NOT guess or hallucinate pin names. "
+			"Common causes: "
+			"1) Pin name mismatch — pins often have internal names different from display names "
+			"(e.g., 'SpawnTransform' not 'Location', 'ReturnValue' not 'Result'). "
+			"2) Node not found — node_ids are scoped per graph. Use blueprint.read to verify. "
+			"3) Pin format — use 'node_id.pin_name' (dot separator, NOT colon). "
+			"4) Type mismatch — ensure compatible pin types. "
+			"MANDATORY: your next tool call MUST be blueprint.read (or blueprint.read_function / "
+			"blueprint.read_event_graph) with include_pins:true. Never retry connect_pins "
+			"with the same pin names that just failed.");
+	}
+	else if (ErrorCode == TEXT("INVALID_EXEC_REF"))
+	{
+		Guidance = TEXT("exec_after references a step_id that doesn't exist in the plan. "
+			"IMPORTANT: exec_after expects step_ids from YOUR plan (e.g. 'evt', 'spawn'), "
+			"NOT K2Node IDs from blueprint.read (e.g. 'K2Node_Event_1'). "
+			"If adding to an existing graph, create a new event/custom_event step in your plan "
+			"as the entry point — don't reference existing graph nodes in exec_after.");
 	}
 	else
 	{

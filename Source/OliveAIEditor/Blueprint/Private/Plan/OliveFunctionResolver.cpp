@@ -1,6 +1,7 @@
 // Copyright Bode Software. All Rights Reserved.
 
 #include "OliveFunctionResolver.h"
+#include "OliveClassResolver.h"
 
 // Blueprint includes
 #include "Engine/Blueprint.h"
@@ -579,25 +580,8 @@ UClass* FOliveFunctionResolver::FindClassByName(const FString& ClassName)
         return nullptr;
     }
 
-    // Try direct lookup first
-    UClass* Found = FindFirstObject<UClass>(*ClassName, EFindFirstObjectOptions::NativeFirst);
-    if (Found)
-    {
-        return Found;
-    }
-
-    // Try with common prefixes
-    for (const TCHAR* Prefix : { TEXT("U"), TEXT("A"), TEXT("") })
-    {
-        FString PrefixedName = FString(Prefix) + ClassName;
-        Found = FindFirstObject<UClass>(*PrefixedName, EFindFirstObjectOptions::NativeFirst);
-        if (Found)
-        {
-            return Found;
-        }
-    }
-
-    return nullptr;
+    FOliveClassResolveResult Result = FOliveClassResolver::Resolve(ClassName);
+    return Result.Class;  // nullptr if not found
 }
 
 // ============================================================================

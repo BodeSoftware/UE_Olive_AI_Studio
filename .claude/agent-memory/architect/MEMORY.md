@@ -92,6 +92,14 @@
 - **Fix 7 (block premature completion)**: Max 2 re-prompts. `EOliveRunOutcome::PartialSuccess` already exists in the enum. bHasPendingCorrections cleared when a batch has 0 failures.
 - **`EOliveRunOutcome` enum**: Completed, PartialSuccess, Failed, Cancelled -- defined in OliveBrainState.h line 36.
 
+### Blueprint Class Resolution Fix - Feb 2026
+- `plans/fix-blueprint-class-resolution-design.md` -- 4 tasks fixing class resolution + error messages
+- **FOliveClassResolver**: New shared static utility class at `Blueprint/Public/OliveClassResolver.h`. NOT a singleton -- all static methods. Provides `Resolve()` with 6-step chain: direct lookup -> prefix (A/U) -> _C suffix -> native paths -> Blueprint path -> asset registry search.
+- **LRU cache**: 256 entries max, TWeakObjectPtr-based (detects GC'd classes as stale). NOT thread-safe (game thread only).
+- **Three callers rewired**: `FOliveNodeFactory::FindClass()`, `FOliveBlueprintWriter::FindParentClass()`, `FOliveFunctionResolver::FindClassByName()` all delegate to `FOliveClassResolver::Resolve()`.
+- **Asset registry search for short BP names**: The critical fix. `TryAssetRegistrySearch()` tries common paths first (`/Game/Blueprints/X`, `/Game/X`) then falls back to full `GetAssets()` with `UBlueprint` class filter + name match.
+- **Self-correction improvements**: `PLAN_INVALID_REF_FORMAT` message now explains @ref must reference step_ids, not components. `BP_CONNECT_PINS_FAILED` now mandates `blueprint.read` before retry. `BP_ADD_NODE_FAILED` now has class-specific guidance.
+
 ## File Structure
 - Tool handlers: `Source/OliveAIEditor/Blueprint/Private/MCP/OliveBlueprintToolHandlers.cpp` (very large file, 3000+ lines)
 - Schemas: `Source/OliveAIEditor/Blueprint/Private/MCP/OliveBlueprintSchemas.cpp`
@@ -102,3 +110,4 @@
 - Pin manifest: `Source/OliveAIEditor/Blueprint/Public/Plan/OlivePinManifest.h` (new)
 - Function resolver: `Source/OliveAIEditor/Blueprint/Public/Plan/OliveFunctionResolver.h` (new)
 - Layout engine: `Source/OliveAIEditor/Blueprint/Public/Plan/OliveGraphLayoutEngine.h` (new)
+- Class resolver: `Source/OliveAIEditor/Blueprint/Public/OliveClassResolver.h` (new)

@@ -93,7 +93,7 @@ FOliveGraphLayoutEngine::FOliveExecGraph FOliveGraphLayoutEngine::BuildExecGraph
         Graph.Successors.FindOrAdd(Step.StepId);
 
         // ExecAfter: this step executes after another step
-        if (!Step.ExecAfter.IsEmpty())
+        if (!Step.ExecAfter.IsEmpty() && Step.ExecAfter != Step.StepId)
         {
             Graph.Successors.FindOrAdd(Step.ExecAfter).AddUnique(Step.StepId);
             Graph.Predecessor.Add(Step.StepId, Step.ExecAfter);
@@ -102,6 +102,14 @@ FOliveGraphLayoutEngine::FOliveExecGraph FOliveGraphLayoutEngine::BuildExecGraph
         // ExecOutputs: this step's named exec outputs connect to other steps
         for (const auto& ExecOut : Step.ExecOutputs)
         {
+            // Skip self-loops (e.g., LLM mistakenly wiring a step's exec output back to itself)
+            if (ExecOut.Value == Step.StepId)
+            {
+                UE_LOG(LogOliveGraphLayout, Warning,
+                    TEXT("BuildExecGraph: Skipping self-loop on step '%s' (exec_output '%s' -> self)"),
+                    *Step.StepId, *ExecOut.Key);
+                continue;
+            }
             Graph.Successors.FindOrAdd(Step.StepId).AddUnique(ExecOut.Value);
             Graph.Predecessor.FindOrAdd(ExecOut.Value) = Step.StepId;
         }
@@ -140,8 +148,21 @@ TMap<FString, int32> FOliveGraphLayoutEngine::AssignColumns(
         BfsQueue.Enqueue(Root);
     }
 
+    // Safety bound: in a DAG the max BFS iterations is O(V*E). Use a generous
+    // upper bound to prevent infinite loops from unexpected cycles in the plan.
+    const int32 MaxIterations = ExecGraph.AllStepIds.Num() * ExecGraph.AllStepIds.Num() + 100;
+    int32 Iterations = 0;
+
     while (!BfsQueue.IsEmpty())
     {
+        if (++Iterations > MaxIterations)
+        {
+            UE_LOG(LogOliveGraphLayout, Error,
+                TEXT("AssignColumns: BFS exceeded %d iterations (possible cycle in exec graph). Aborting column assignment."),
+                MaxIterations);
+            break;
+        }
+
         FString Current;
         BfsQueue.Dequeue(Current);
 

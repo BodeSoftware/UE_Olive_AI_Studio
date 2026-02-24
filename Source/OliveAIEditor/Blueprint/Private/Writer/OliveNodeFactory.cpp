@@ -2,6 +2,7 @@
 
 #include "OliveNodeFactory.h"
 #include "OliveBlueprintTypes.h"
+#include "OliveClassResolver.h"
 
 // Blueprint/Graph includes
 #include "Engine/Blueprint.h"
@@ -137,6 +138,8 @@ TMap<FString, FString> FOliveNodeFactory::GetRequiredProperties(const FString& N
 
 bool FOliveNodeFactory::ValidateNodeType(const FString& NodeType, const TMap<FString, FString>& Properties) const
 {
+	UE_LOG(LogOliveNodeFactory, Verbose, TEXT("ValidateNodeType: type='%s', properties=%d"), *NodeType, Properties.Num());
+
 	// Step 1: Check if the node type exists in the creator map at all
 	if (!NodeCreators.Contains(NodeType))
 	{
@@ -315,9 +318,15 @@ UK2Node* FOliveNodeFactory::CreateEventNode(
 	}
 
 	// Find the event function in parent class
+	UE_LOG(LogOliveNodeFactory, Log, TEXT("CreateEventNode: looking for event '%s' in parent class '%s'"),
+		**EventNamePtr, *Blueprint->ParentClass->GetName());
+
 	UFunction* EventFunction = Blueprint->ParentClass->FindFunctionByName(EventName);
 	if (!EventFunction)
 	{
+		UE_LOG(LogOliveNodeFactory, Warning,
+			TEXT("CreateEventNode: event '%s' not found via FindFunctionByName on '%s'. Note: only native events are supported, not Enhanced Input Actions."),
+			**EventNamePtr, *Blueprint->ParentClass->GetName());
 		LastError = FString::Printf(TEXT("Event '%s' not found in parent class"), **EventNamePtr);
 		return nullptr;
 	}
@@ -330,6 +339,8 @@ UK2Node* FOliveNodeFactory::CreateEventNode(
 
 	if (ExistingEvent)
 	{
+		UE_LOG(LogOliveNodeFactory, Warning, TEXT("CreateEventNode: native event '%s' already exists at (%d, %d)"),
+			**EventNamePtr, ExistingEvent->NodePosX, ExistingEvent->NodePosY);
 		LastError = FString::Printf(
 			TEXT("Native event '%s' already exists in this Blueprint (node at %d, %d). "
 				 "Each native event can only appear once."),
@@ -442,12 +453,17 @@ UK2Node* FOliveNodeFactory::CreateSpawnActorNode(
 		return nullptr;
 	}
 
+	UE_LOG(LogOliveNodeFactory, Log, TEXT("CreateSpawnActorNode: resolving actor class '%s'"), **ActorClassPtr);
+
 	UClass* ActorClass = FindClass(*ActorClassPtr);
 	if (!ActorClass)
 	{
 		LastError = FString::Printf(TEXT("Actor class '%s' not found"), **ActorClassPtr);
 		return nullptr;
 	}
+
+	UE_LOG(LogOliveNodeFactory, Verbose, TEXT("CreateSpawnActorNode: class '%s' resolved to '%s', checking Actor inheritance"),
+		**ActorClassPtr, *ActorClass->GetName());
 
 	if (!ActorClass->IsChildOf(AActor::StaticClass()))
 	{
@@ -742,35 +758,15 @@ void FOliveNodeFactory::SetNodePosition(UEdGraphNode* Node, int32 PosX, int32 Po
 
 UClass* FOliveNodeFactory::FindClass(const FString& ClassName)
 {
-	// Try direct lookup first
-	UClass* Class = FindFirstObject<UClass>(*ClassName, EFindFirstObjectOptions::NativeFirst);
-	if (Class)
+	FOliveClassResolveResult Result = FOliveClassResolver::Resolve(ClassName);
+	if (Result.IsValid())
 	{
-		return Class;
+		UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindClass('%s'): resolved -> %s"),
+			*ClassName, *Result.Class->GetName());
+		return Result.Class;
 	}
 
-	// Try with common prefixes
-	TArray<FString> Prefixes = { TEXT("A"), TEXT("U"), TEXT("") };
-	for (const FString& Prefix : Prefixes)
-	{
-		FString PrefixedName = Prefix + ClassName;
-		Class = FindFirstObject<UClass>(*PrefixedName, EFindFirstObjectOptions::NativeFirst);
-		if (Class)
-		{
-			return Class;
-		}
-	}
-
-	// Try as Blueprint path
-	if (ClassName.Contains(TEXT("/")))
-	{
-		UBlueprint* BP = LoadObject<UBlueprint>(nullptr, *ClassName);
-		if (BP && BP->GeneratedClass)
-		{
-			return BP->GeneratedClass;
-		}
-	}
-
+	UE_LOG(LogOliveNodeFactory, Warning, TEXT("FindClass('%s'): FAILED — all resolution strategies exhausted"), *ClassName);
 	return nullptr;
 }
 
@@ -779,12 +775,14 @@ UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FS
 	// If class name specified, search in that class
 	if (!ClassName.IsEmpty())
 	{
+		UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s', class='%s'): searching specified class"), *FunctionName, *ClassName);
 		UClass* Class = FindClass(ClassName);
 		if (Class)
 		{
 			UFunction* Func = Class->FindFunctionByName(FName(*FunctionName));
 			if (Func)
 			{
+				UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): found in class '%s'"), *FunctionName, *Class->GetName());
 				return Func;
 			}
 		}
@@ -799,13 +797,17 @@ UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FS
 
 	for (UClass* LibClass : LibraryClasses)
 	{
+		UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): trying library class '%s'"), *FunctionName, *LibClass->GetName());
 		UFunction* Func = LibClass->FindFunctionByName(FName(*FunctionName));
 		if (Func)
 		{
+			UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): found in library class '%s'"), *FunctionName, *LibClass->GetName());
 			return Func;
 		}
 	}
 
+	UE_LOG(LogOliveNodeFactory, Warning, TEXT("FindFunction('%s', class='%s'): FAILED — searched specified class + library classes [KismetSystemLibrary, Object, Actor]"),
+		*FunctionName, *ClassName);
 	return nullptr;
 }
 

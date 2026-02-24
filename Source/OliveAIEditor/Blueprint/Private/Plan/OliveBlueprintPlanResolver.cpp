@@ -160,6 +160,10 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 
 	const FString& Op = Step.Op;
 
+	UE_LOG(LogOlivePlanResolver, Log,
+		TEXT("  Resolving step %d: step_id='%s', op='%s', target='%s'"),
+		StepIndex, *Step.StepId, *Op, *Step.Target);
+
 	bool bResult = false;
 
 	if (Op == OlivePlanOps::Call)
@@ -216,10 +220,12 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 	}
 	else if (Op == OlivePlanOps::SpawnActor)
 	{
+		UE_LOG(LogOlivePlanResolver, Log, TEXT("    ResolveSpawnActorOp: target='%s'"), *Step.Target);
 		bResult = ResolveSimpleOp(Step, OliveNodeTypes::SpawnActor, OutResolved);
 		if (bResult)
 		{
 			OutResolved.Properties.Add(TEXT("actor_class"), Step.Target);
+			UE_LOG(LogOlivePlanResolver, Log, TEXT("    ResolveSpawnActorOp: actor_class='%s' resolved successfully"), *Step.Target);
 		}
 	}
 	else if (Op == OlivePlanOps::Cast)
@@ -291,6 +297,8 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 {
 	Out.NodeType = OliveNodeTypes::CallFunction;
 
+	UE_LOG(LogOlivePlanResolver, Verbose, TEXT("    ResolveCallOp: target='%s'"), *Step.Target);
+
 	if (Step.Target.IsEmpty())
 	{
 		Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
@@ -335,6 +343,11 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 			*ResolvedClassName, *ResolvedFunctionName,
 			Match.Confidence,
 			*FOliveFunctionResolver::MatchMethodToString(Match.MatchMethod));
+
+		UE_LOG(LogOlivePlanResolver, Log,
+			TEXT("    ResolveCallOp: '%s' -> function_name='%s', target_class='%s'"),
+			*Step.Target, *ResolvedFunctionName, *ResolvedClassName);
+
 		return true;
 	}
 
@@ -365,6 +378,11 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 				: TEXT("Check the function name and class name"));
 		Error.Alternatives = MoveTemp(Alternatives);
 		Errors.Add(MoveTemp(Error));
+
+		UE_LOG(LogOlivePlanResolver, Warning,
+			TEXT("    ResolveCallOp FAILED: function '%s' could not be resolved (target_class='%s')"),
+			*Step.Target, *Step.TargetClass);
+
 		return false;
 	}
 
@@ -404,6 +422,10 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 		TEXT("Step '%s': Accepted call '%s' without definitive match (will validate at creation)"),
 		*Step.StepId, *Step.Target);
 
+	UE_LOG(LogOlivePlanResolver, Log,
+		TEXT("    ResolveCallOp: '%s' -> function_name='%s', target_class='' (unresolved, accepted as-is)"),
+		*Step.Target, *Step.Target);
+
 	return true;
 }
 
@@ -419,6 +441,8 @@ bool FOliveBlueprintPlanResolver::ResolveGetVarOp(
 	TArray<FOliveIRBlueprintPlanError>& Errors)
 {
 	Out.NodeType = OliveNodeTypes::GetVariable;
+
+	UE_LOG(LogOlivePlanResolver, Verbose, TEXT("    ResolveGetVarOp: variable='%s'"), *Step.Target);
 
 	if (Step.Target.IsEmpty())
 	{
@@ -456,7 +480,19 @@ bool FOliveBlueprintPlanResolver::ResolveGetVarOp(
 			UE_LOG(LogOlivePlanResolver, Verbose,
 				TEXT("Step '%s': Variable '%s' not found on Blueprint '%s' (may be inherited or created by another step)"),
 				*Step.StepId, *Step.Target, *BP->GetName());
+
+			UE_LOG(LogOlivePlanResolver, Warning,
+				TEXT("    Variable '%s' not found on Blueprint '%s' or parents"),
+				*Step.Target, *BP->GetName());
 		}
+		else
+		{
+			UE_LOG(LogOlivePlanResolver, Verbose, TEXT("    Variable '%s' found on Blueprint (inherited)"), *Step.Target);
+		}
+	}
+	else if (BP)
+	{
+		UE_LOG(LogOlivePlanResolver, Verbose, TEXT("    Variable '%s' found on Blueprint"), *Step.Target);
 	}
 
 	return true;
@@ -474,6 +510,8 @@ bool FOliveBlueprintPlanResolver::ResolveSetVarOp(
 	TArray<FOliveIRBlueprintPlanError>& Errors)
 {
 	Out.NodeType = OliveNodeTypes::SetVariable;
+
+	UE_LOG(LogOlivePlanResolver, Verbose, TEXT("    ResolveSetVarOp: variable='%s'"), *Step.Target);
 
 	if (Step.Target.IsEmpty())
 	{
@@ -508,7 +546,19 @@ bool FOliveBlueprintPlanResolver::ResolveSetVarOp(
 			UE_LOG(LogOlivePlanResolver, Verbose,
 				TEXT("Step '%s': Variable '%s' not found on Blueprint '%s' (may be inherited or created by another step)"),
 				*Step.StepId, *Step.Target, *BP->GetName());
+
+			UE_LOG(LogOlivePlanResolver, Warning,
+				TEXT("    Variable '%s' not found on Blueprint '%s' or parents"),
+				*Step.Target, *BP->GetName());
 		}
+		else
+		{
+			UE_LOG(LogOlivePlanResolver, Verbose, TEXT("    Variable '%s' found on Blueprint (inherited)"), *Step.Target);
+		}
+	}
+	else if (BP)
+	{
+		UE_LOG(LogOlivePlanResolver, Verbose, TEXT("    Variable '%s' found on Blueprint"), *Step.Target);
 	}
 
 	return true;
@@ -527,6 +577,8 @@ bool FOliveBlueprintPlanResolver::ResolveEventOp(
 {
 	Out.NodeType = OliveNodeTypes::Event;
 
+	UE_LOG(LogOlivePlanResolver, Log, TEXT("    ResolveEventOp: target='%s'"), *Step.Target);
+
 	if (Step.Target.IsEmpty())
 	{
 		Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
@@ -535,6 +587,11 @@ bool FOliveBlueprintPlanResolver::ResolveEventOp(
 			FString::Printf(TEXT("/steps/%d/target"), Idx),
 			TEXT("'event' op requires a 'target' specifying the event name"),
 			TEXT("Set 'target' to the event name (e.g., \"BeginPlay\", \"Tick\", \"ActorBeginOverlap\")")));
+
+		UE_LOG(LogOlivePlanResolver, Warning,
+			TEXT("    ResolveEventOp FAILED: event '%s' not mapped. Parent class: '%s'"),
+			*Step.Target, BP ? *BP->ParentClass->GetName() : TEXT("null"));
+
 		return false;
 	}
 
