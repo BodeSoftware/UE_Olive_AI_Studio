@@ -294,6 +294,51 @@ FString FOlivePromptAssembler::GetCapabilityKnowledge(const FString& ProfileName
 	return Combined;
 }
 
+FString FOlivePromptAssembler::BuildSharedSystemPreamble(const FString& ProfileName) const
+{
+	if (CapabilityKnowledgePacks.Num() == 0)
+	{
+		UE_LOG(LogOliveAI, Warning, TEXT("BuildSharedSystemPreamble called before Initialize()"));
+		return TEXT("");
+	}
+
+	FString Preamble;
+
+	// Project context
+	const FString ProjectContext = GetProjectContext();
+	if (!ProjectContext.IsEmpty())
+	{
+		Preamble += TEXT("## Project\n");
+		Preamble += ProjectContext;
+		Preamble += TEXT("\n");
+	}
+
+	// Policy context
+	const FString PolicyContext = GetPolicyContext();
+	if (!PolicyContext.IsEmpty())
+	{
+		Preamble += TEXT("## Policies\n");
+		Preamble += PolicyContext;
+		Preamble += TEXT("\n");
+	}
+
+	// Capability knowledge — recipes, authoring rules
+	const FString CapabilityKnowledge = GetCapabilityKnowledge(ProfileName);
+	if (!CapabilityKnowledge.IsEmpty())
+	{
+		Preamble += CapabilityKnowledge;
+		Preamble += TEXT("\n");
+	}
+
+	return Preamble;
+}
+
+FString FOlivePromptAssembler::GetKnowledgePackById(const FString& PackId) const
+{
+	const FString* PackText = CapabilityKnowledgePacks.Find(PackId);
+	return PackText ? *PackText : TEXT("");
+}
+
 // ==========================================
 // Token Estimation
 // ==========================================
@@ -407,8 +452,10 @@ Project Name: {PROJECT_NAME}
 	}
 
 	// Profile -> capability pack mapping. Add packs here without changing assembly flow.
-	ProfileCapabilityPackIds.Add(TEXT("Auto"), { TEXT("blueprint_authoring") });
-	ProfileCapabilityPackIds.Add(TEXT("Blueprint"), { TEXT("blueprint_authoring") });
+	ProfileCapabilityPackIds.Add(TEXT("Auto"), { TEXT("blueprint_authoring"), TEXT("recipe_routing") });
+	ProfileCapabilityPackIds.Add(TEXT("Blueprint"), { TEXT("blueprint_authoring"), TEXT("recipe_routing") });
+	// NOTE: C++ profile intentionally omits recipe_routing — current recipes are Blueprint-only.
+	// Add it when C++ recipes exist.
 	ProfileCapabilityPackIds.Add(TEXT("C++"), {});
 
 	// Optional profile-specific prompts sourced from the profile manager.

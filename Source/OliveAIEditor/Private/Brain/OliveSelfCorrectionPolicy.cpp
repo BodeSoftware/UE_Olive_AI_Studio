@@ -220,7 +220,12 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 	}
 	else if (ErrorCode == TEXT("BP_REMOVE_NODE_FAILED"))
 	{
-		Guidance = TEXT("The node could not be removed. Use blueprint.read to check if the node exists and get its correct node_id.");
+		Guidance = TEXT("The node was not found in the specified graph. "
+			"IMPORTANT: node_ids (node_0, node_1, etc.) are scoped to the graph "
+			"where they were created. A node created by apply_plan_json in the 'Fire' "
+			"function graph does NOT exist in 'EventGraph'. "
+			"Use blueprint.read_event_graph or blueprint.read_function to find the "
+			"correct node_id in the target graph.");
 	}
 	else if (ErrorCode == TEXT("USER_DENIED"))
 	{
@@ -253,10 +258,18 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 	else if (ErrorCode == TEXT("GRAPH_DRIFT"))
 	{
 		Guidance = TEXT(
-			"The graph fingerprint did not match. Do NOT batch preview_plan_json and apply_plan_json "
-			"in the same response. Call blueprint.preview_plan_json FIRST, wait for the result, then "
-			"call blueprint.apply_plan_json with the exact fingerprint. Alternatively, omit the "
-			"preview_fingerprint parameter entirely — apply will proceed with inline validation.");
+			"The graph fingerprint did not match because other operations modified the Blueprint "
+			"between preview and apply. BEST PRACTICE: prefer calling apply_plan_json directly — "
+			"it validates inline. If you do use preview, call it in a separate turn BEFORE apply, "
+			"never in the same batch.");
+	}
+	else if (ErrorCode == TEXT("BP_CONNECT_PINS_FAILED"))
+	{
+		Guidance = TEXT("Pin connection failed. Common causes: "
+			"1) Node not found — node_ids are scoped per graph. "
+			"2) Pin format — use 'node_id.pin_name' (dot, NOT colon). "
+			"3) Pin name mismatch — use pin_manifests from apply_plan_json result. "
+			"4) Type mismatch — ensure compatible pin types.");
 	}
 	else
 	{

@@ -452,14 +452,13 @@ FOliveToolResult FOliveToolRegistry::ExecuteTool(const FString& Name, const TSha
 								ErrorData->SetNumberField(TEXT("threshold"), Threshold);
 								ErrorData->SetNumberField(TEXT("granular_graph_calls"), NextCount);
 								TArray<TSharedPtr<FJsonValue>> RecommendedTools;
-								RecommendedTools.Add(MakeShared<FJsonValueString>(TEXT("blueprint.preview_plan_json")));
 								RecommendedTools.Add(MakeShared<FJsonValueString>(TEXT("blueprint.apply_plan_json")));
 								ErrorData->SetArrayField(TEXT("recommended_tools"), RecommendedTools);
 
 								FOliveToolResult RouteError = FOliveToolResult::Error(
 									TEXT("ROUTE_PLAN_REQUIRED"),
 									TEXT("Plan-first routing required for multi-step graph edits."),
-									TEXT("Call blueprint.preview_plan_json, then blueprint.apply_plan_json."));
+									TEXT("Call blueprint.apply_plan_json directly (preview is optional — use it in a separate prior turn if needed)."));
 								RouteError.Data = ErrorData;
 								return RouteError;
 							}

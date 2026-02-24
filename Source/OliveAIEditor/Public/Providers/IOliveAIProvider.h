@@ -215,7 +215,15 @@ DECLARE_DELEGATE_OneParam(FOnOliveError, const FString& /* ErrorMessage */);
  * AI Provider Interface
  *
  * Abstract interface for AI provider clients.
- * Implementations: OpenRouter, Anthropic, OpenAI, Google, Ollama
+ * Implementations: ClaudeCode, OpenRouter, ZAI, Anthropic, OpenAI, Google, Ollama, OpenAICompatible
+ *
+ * IMPORTANT: If your provider builds its own system prompt instead of using
+ * ConversationManager::BuildSystemMessage(), you MUST call
+ * FOlivePromptAssembler::Get().BuildSharedSystemPreamble(ProfileName)
+ * and include its output in your system prompt. This ensures your provider
+ * gets recipe routing, knowledge packs, and other cross-cutting context
+ * that API providers receive automatically via AssembleSystemPromptInternal().
+ * See FOliveClaudeCodeProvider::BuildSystemPrompt() for reference.
  */
 class OLIVEAIEDITOR_API IOliveAIProvider
 {

@@ -1,0 +1,49 @@
+WORKFLOW:
+1. Create ALL asset structures FIRST (blueprint.create + add_component + add_variable for EVERY asset)
+2. Wire graph logic for Asset A (blueprint.apply_plan_json)
+3. Wire graph logic for Asset B (blueprint.apply_plan_json)
+4. Fix wiring errors for both (if needed)
+
+CRITICAL: Create ALL structures in one iteration before any graph logic.
+This ensures cross-references work (BP_Gun can reference BP_Bullet_C as a type).
+
+EXAMPLE (Gun + Bullet):
+
+Turn 1 — Create BOTH structures (batch all in one response):
+  blueprint.create → {path:"/Game/Blueprints/BP_Bullet", parent_class:"Actor"}
+  blueprint.add_component → {path:"/Game/Blueprints/BP_Bullet", class:"SphereComponent", name:"Collision", root:true}
+  blueprint.add_component → {path:"/Game/Blueprints/BP_Bullet", class:"ProjectileMovementComponent", name:"Movement"}
+  blueprint.add_variable → {path:"/Game/Blueprints/BP_Bullet", name:"BulletSpeed", type:"Float", default:"3000.0"}
+  blueprint.create → {path:"/Game/Blueprints/BP_Gun", parent_class:"Actor"}
+  blueprint.add_component → {path:"/Game/Blueprints/BP_Gun", class:"StaticMeshComponent", name:"GunMesh", root:true}
+  blueprint.add_component → {path:"/Game/Blueprints/BP_Gun", class:"SceneComponent", name:"MuzzlePoint"}
+  blueprint.add_variable → {path:"/Game/Blueprints/BP_Gun", name:"FireRate", type:"Float", default:"0.2"}
+
+Turn 2 — BP_Bullet EventGraph:
+  blueprint.apply_plan_json → {path:"/Game/Blueprints/BP_Bullet", graph:"EventGraph",
+    plan:{schema_version:"2.0", steps:[
+      {step_id:"bp", op:"event", target:"BeginPlay"},
+      {step_id:"life", op:"call", target:"SetLifeSpan", inputs:{InLifespan:"3.0"}, exec_after:"bp"}
+    ]}}
+
+Turn 3 — BP_Gun Fire function:
+  blueprint.add_function → {path:"/Game/Blueprints/BP_Gun", function_name:"Fire"}
+  blueprint.apply_plan_json → {path:"/Game/Blueprints/BP_Gun", graph:"Fire",
+    plan:{schema_version:"2.0", steps:[
+      {step_id:"muzzle", op:"call", target:"GetWorldTransform", target_class:"SceneComponent"},
+      {step_id:"spawn", op:"spawn_actor", target:"Actor",
+       inputs:{SpawnTransform:"@muzzle.auto"}}
+    ]}}
+
+ITERATION BUDGET:
+  With MaxIterations=10 and 2 assets:
+  - Turns 1-2: Both structures + first asset graph
+  - Turns 3-4: Second asset graph
+  - Turns 5-6: Fix wiring errors
+  - NEVER spend more than 5 turns on one asset when 2+ are needed
+
+GOTCHAS:
+- Blueprint class refs append _C: "BP_Bullet_C" not "BP_Bullet"
+- TSubclassOf: {category:"class", class_name:"Actor"} for class variable type
+- Function graphs: first impure step has NO exec_after (auto-chains from entry)
+- Node IDs are scoped per graph — don't mix between EventGraph and function graphs

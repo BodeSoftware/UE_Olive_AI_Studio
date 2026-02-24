@@ -12,6 +12,10 @@
 #include "Services/OliveToolParamHelpers.h"
 #include "Services/OliveGraphBatchExecutor.h"
 #include "Engine/Blueprint.h"
+#include "Misc/FileHelper.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+#include "Internationalization/Regex.h"
 
 #define LOCTEXT_NAMESPACE "OliveCrossSystemToolHandlers"
 
@@ -31,6 +35,10 @@ void FOliveCrossSystemToolHandlers::RegisterAllTools()
 	RegisterBatchTools();
 	RegisterSnapshotTools();
 	RegisterIndexTools();
+
+	// Recipe system
+	LoadRecipeLibrary();
+	RegisterRecipeTools();
 
 	UE_LOG(LogOliveCrossSystemTools, Log, TEXT("Registered %d Cross-System MCP tools"), RegisteredToolNames.Num());
 }
@@ -982,6 +990,271 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleGetRelevantContext(const T
 	Data->SetArrayField(TEXT("assets"), AssetsArray);
 	Data->SetArrayField(TEXT("suggested_bulk_read_paths"), PathsArray);
 
+	return FOliveToolResult::Success(Data);
+}
+
+// =============================================================================
+// Recipe System
+// =============================================================================
+
+void FOliveCrossSystemToolHandlers::LoadRecipeLibrary()
+{
+	const FString RecipesDir = FPaths::Combine(
+		FPaths::ProjectPluginsDir(),
+		TEXT("UE_Olive_AI_Studio/Content/SystemPrompts/Knowledge/recipes"));
+
+	if (!IFileManager::Get().DirectoryExists(*RecipesDir))
+	{
+		UE_LOG(LogOliveCrossSystemTools, Warning, TEXT("Recipe directory not found: %s"), *RecipesDir);
+		return;
+	}
+
+	// Load manifest
+	const FString ManifestPath = FPaths::Combine(RecipesDir, TEXT("_manifest.json"));
+	FString ManifestContent;
+	if (!FFileHelper::LoadFileToString(ManifestContent, *ManifestPath))
+	{
+		UE_LOG(LogOliveCrossSystemTools, Warning, TEXT("Recipe manifest not found: %s"), *ManifestPath);
+		return;
+	}
+
+	TSharedPtr<FJsonObject> ManifestJson;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ManifestContent);
+	if (!FJsonSerializer::Deserialize(Reader, ManifestJson) || !ManifestJson.IsValid())
+	{
+		UE_LOG(LogOliveCrossSystemTools, Error, TEXT("Failed to parse recipe manifest"));
+		return;
+	}
+
+	// NIT 3: Check format_version for forward compatibility
+	FString FormatVersion;
+	ManifestJson->TryGetStringField(TEXT("format_version"), FormatVersion);
+	if (FormatVersion.IsEmpty())
+	{
+		UE_LOG(LogOliveCrossSystemTools, Warning,
+			TEXT("Recipe manifest missing format_version — assuming 1.0"));
+		FormatVersion = TEXT("1.0");
+	}
+	else if (!FormatVersion.StartsWith(TEXT("1.")))
+	{
+		UE_LOG(LogOliveCrossSystemTools, Error,
+			TEXT("Recipe manifest format_version '%s' is not supported (expected 1.x). Skipping recipe loading."),
+			*FormatVersion);
+		return;
+	}
+
+	const TSharedPtr<FJsonObject>* CategoriesObj;
+	if (!ManifestJson->TryGetObjectField(TEXT("categories"), CategoriesObj))
+	{
+		UE_LOG(LogOliveCrossSystemTools, Warning, TEXT("Recipe manifest has no 'categories' field"));
+		return;
+	}
+
+	for (const auto& CategoryPair : (*CategoriesObj)->Values)
+	{
+		const FString& CategoryName = CategoryPair.Key;
+		RecipeCategories.Add(CategoryName);
+
+		const TSharedPtr<FJsonObject>* CategoryObj;
+		if (!CategoryPair.Value->TryGetObject(CategoryObj))
+		{
+			continue;
+		}
+
+		const TSharedPtr<FJsonObject>* RecipesObj;
+		if (!(*CategoryObj)->TryGetObjectField(TEXT("recipes"), RecipesObj))
+		{
+			continue;
+		}
+
+		for (const auto& RecipePair : (*RecipesObj)->Values)
+		{
+			const FString& RecipeName = RecipePair.Key;
+			const FString Key = FString::Printf(TEXT("%s/%s"), *CategoryName, *RecipeName);
+
+			const TSharedPtr<FJsonObject>* RecipeMetaObj;
+			if (RecipePair.Value->TryGetObject(RecipeMetaObj))
+			{
+				FString Description;
+				(*RecipeMetaObj)->TryGetStringField(TEXT("description"), Description);
+				RecipeDescriptions.Add(Key, Description);
+			}
+
+			const FString FilePath = FPaths::Combine(RecipesDir, CategoryName, RecipeName + TEXT(".txt"));
+			FString Content;
+			if (FFileHelper::LoadFileToString(Content, *FilePath))
+			{
+				RecipeLibrary.Add(Key, Content);
+				UE_LOG(LogOliveCrossSystemTools, Log, TEXT("Loaded recipe: %s (%d chars)"), *Key, Content.Len());
+			}
+			else
+			{
+				UE_LOG(LogOliveCrossSystemTools, Warning, TEXT("Recipe file not found: %s"), *FilePath);
+			}
+		}
+	}
+
+	UE_LOG(LogOliveCrossSystemTools, Log, TEXT("Recipe library loaded: %d recipes in %d categories"),
+		RecipeLibrary.Num(), RecipeCategories.Num());
+
+	// Validate tool references in recipe content against the registry.
+	// Catches stale tool names after renames/removals.
+	const FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
+	// Match only real MCP tool namespaces to avoid false positives from
+	// recipe pin refs (e.g. @get_hp.auto) and prose (e.g. "e.g.").
+	const FRegexPattern ToolRefPattern(
+		TEXT("\\b((?:blueprint|project|behaviortree|blackboard|pcg|cpp|olive)\\.[a-z_]+)\\b"));
+	for (const auto& Pair : RecipeLibrary)
+	{
+		FRegexMatcher Matcher(ToolRefPattern, Pair.Value);
+		while (Matcher.FindNext())
+		{
+			const FString ToolRef = Matcher.GetCaptureGroup(1);
+			if (!Registry.HasTool(ToolRef))
+			{
+				UE_LOG(LogOliveCrossSystemTools, Warning,
+					TEXT("Recipe '%s' references unregistered tool '%s'"),
+					*Pair.Key, *ToolRef);
+			}
+		}
+	}
+}
+
+void FOliveCrossSystemToolHandlers::RegisterRecipeTools()
+{
+	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
+
+	Registry.RegisterTool(
+		TEXT("olive.get_recipe"),
+		TEXT("Retrieve a worked example showing the exact tool-call sequence for a workflow. "
+			"Available categories: blueprint. "
+			"Call with category only to list recipes. Call with category + name for the full example. "
+			"Patterns: NEW blueprint -> get_recipe(blueprint, create) | "
+			"MODIFY existing -> get_recipe(blueprint, modify) | "
+			"FIX wiring -> get_recipe(blueprint, fix_wiring)"),
+		OliveCrossSystemSchemas::RecipeGetRecipe(),
+		FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleGetRecipe),
+		{TEXT("crosssystem"), TEXT("read")},
+		// Category is intentionally "crosssystem" — NOT "olive". Focus profiles filter
+		// by category, and "crosssystem" ensures visibility in Blueprint/Auto profiles
+		// without adding a new category to the profile filter config.
+		TEXT("crosssystem")
+	);
+	RegisteredToolNames.Add(TEXT("olive.get_recipe"));
+
+	UE_LOG(LogOliveCrossSystemTools, Log, TEXT("Registered recipe tool with %d recipes available"), RecipeLibrary.Num());
+}
+
+FOliveToolResult FOliveCrossSystemToolHandlers::HandleGetRecipe(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("RECIPE_INVALID_PARAMS"),
+			TEXT("Parameters required"),
+			TEXT("Call with {\"category\":\"blueprint\"} to list recipes, or {\"category\":\"blueprint\",\"name\":\"create\"} for content."));
+	}
+
+	FString Category, Name;
+	Params->TryGetStringField(TEXT("category"), Category);
+	Params->TryGetStringField(TEXT("name"), Name);
+
+	// No category — list all categories
+	if (Category.IsEmpty())
+	{
+		TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+		TArray<TSharedPtr<FJsonValue>> CatArray;
+		for (const FString& Cat : RecipeCategories)
+		{
+			int32 Count = 0;
+			for (const auto& Pair : RecipeLibrary)
+			{
+				if (Pair.Key.StartsWith(Cat + TEXT("/"))) Count++;
+			}
+			TSharedPtr<FJsonObject> CatObj = MakeShared<FJsonObject>();
+			CatObj->SetStringField(TEXT("name"), Cat);
+			CatObj->SetNumberField(TEXT("recipe_count"), Count);
+			CatArray.Add(MakeShared<FJsonValueObject>(CatObj));
+		}
+		Data->SetArrayField(TEXT("categories"), CatArray);
+		return FOliveToolResult::Success(Data);
+	}
+
+	// Validate category
+	if (!RecipeCategories.Contains(Category))
+	{
+		FString ValidCats;
+		for (const FString& Cat : RecipeCategories)
+		{
+			if (!ValidCats.IsEmpty()) ValidCats += TEXT(", ");
+			ValidCats += Cat;
+		}
+		return FOliveToolResult::Error(
+			TEXT("RECIPE_UNKNOWN_CATEGORY"),
+			FString::Printf(TEXT("Unknown category '%s'"), *Category),
+			FString::Printf(TEXT("Valid categories: %s"), *ValidCats));
+	}
+
+	// Category only — list recipes in category
+	if (Name.IsEmpty())
+	{
+		TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+		Data->SetStringField(TEXT("category"), Category);
+		TArray<TSharedPtr<FJsonValue>> RecipeArray;
+		for (const auto& Pair : RecipeDescriptions)
+		{
+			if (Pair.Key.StartsWith(Category + TEXT("/")))
+			{
+				FString RecipeName = Pair.Key.RightChop(Category.Len() + 1);
+				TSharedPtr<FJsonObject> RecipeObj = MakeShared<FJsonObject>();
+				RecipeObj->SetStringField(TEXT("name"), RecipeName);
+				RecipeObj->SetStringField(TEXT("description"), Pair.Value);
+				RecipeArray.Add(MakeShared<FJsonValueObject>(RecipeObj));
+			}
+		}
+		Data->SetArrayField(TEXT("recipes"), RecipeArray);
+		return FOliveToolResult::Success(Data);
+	}
+
+	// Handle comma-separated names for batch fetch
+	TArray<FString> Names;
+	Name.ParseIntoArray(Names, TEXT(","), true);
+
+	TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	TArray<TSharedPtr<FJsonValue>> ResultArray;
+
+	for (const FString& SingleName : Names)
+	{
+		FString TrimmedName = SingleName.TrimStartAndEnd();
+		FString Key = FString::Printf(TEXT("%s/%s"), *Category, *TrimmedName);
+
+		const FString* Content = RecipeLibrary.Find(Key);
+		if (!Content)
+		{
+			FString ValidRecipes;
+			for (const auto& Pair : RecipeLibrary)
+			{
+				if (Pair.Key.StartsWith(Category + TEXT("/")))
+				{
+					FString RName = Pair.Key.RightChop(Category.Len() + 1);
+					if (!ValidRecipes.IsEmpty()) ValidRecipes += TEXT(", ");
+					ValidRecipes += RName;
+				}
+			}
+			return FOliveToolResult::Error(
+				TEXT("RECIPE_NOT_FOUND"),
+				FString::Printf(TEXT("Recipe '%s' not found in category '%s'"), *TrimmedName, *Category),
+				FString::Printf(TEXT("Available recipes: %s"), *ValidRecipes));
+		}
+
+		TSharedPtr<FJsonObject> RecipeObj = MakeShared<FJsonObject>();
+		RecipeObj->SetStringField(TEXT("name"), TrimmedName);
+		RecipeObj->SetStringField(TEXT("content"), *Content);
+		ResultArray.Add(MakeShared<FJsonValueObject>(RecipeObj));
+	}
+
+	Data->SetStringField(TEXT("category"), Category);
+	Data->SetArrayField(TEXT("recipes"), ResultArray);
 	return FOliveToolResult::Success(Data);
 }
 

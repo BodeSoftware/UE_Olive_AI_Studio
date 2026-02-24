@@ -1009,14 +1009,27 @@ UEdGraphPin* FOliveGraphWriter::FindPin(UEdGraphNode* Node, const FString& PinNa
 bool FOliveGraphWriter::ParsePinReference(const FString& PinRef, FString& OutNodeId, FString& OutPinName)
 {
 	// Format: "node_id.pin_name"
-	int32 DotIndex;
-	if (PinRef.FindChar(TEXT('.'), DotIndex))
+	// Also accept "node_id:pin_name" (common AI mistake) with auto-correction
+	int32 SepIndex;
+	if (PinRef.FindChar(TEXT('.'), SepIndex))
 	{
-		OutNodeId = PinRef.Left(DotIndex);
-		OutPinName = PinRef.Mid(DotIndex + 1);
-
-		// Validate that both parts are non-empty
+		OutNodeId = PinRef.Left(SepIndex);
+		OutPinName = PinRef.Mid(SepIndex + 1);
 		return !OutNodeId.IsEmpty() && !OutPinName.IsEmpty();
+	}
+
+	// Fallback: accept colon as separator (AI frequently uses this format)
+	if (PinRef.FindChar(TEXT(':'), SepIndex))
+	{
+		OutNodeId = PinRef.Left(SepIndex);
+		OutPinName = PinRef.Mid(SepIndex + 1);
+		if (!OutNodeId.IsEmpty() && !OutPinName.IsEmpty())
+		{
+			UE_LOG(LogOliveGraphWriter, Warning,
+				TEXT("Auto-corrected pin reference '%s' (colon->dot). Use 'node_id.pin_name' format."),
+				*PinRef);
+			return true;
+		}
 	}
 
 	return false;

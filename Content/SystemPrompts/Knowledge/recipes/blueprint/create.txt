@@ -1,0 +1,24 @@
+WORKFLOW:
+1. blueprint.create → {path:"/Game/Blueprints/BP_Name", parent_class:"Actor"}
+2. blueprint.add_component → {path, class:"StaticMeshComponent", name:"MyMesh"}
+   blueprint.add_variable → {path, variable:{name:"Speed", type:{category:"float"}, default_value:"600.0"}}
+   (batch all components + variables in one turn)
+3. blueprint.apply_plan_json → {asset_path, graph_target:"EventGraph", plan_json:{...}}
+   (ALL graph logic in ONE call — never add_node one-at-a-time for 3+ nodes)
+
+EXAMPLE:
+{"asset_path":"/Game/Blueprints/BP_Bullet","graph_target":"EventGraph",
+ "plan_json":{"schema_version":"2.0","steps":[
+   {"step_id":"evt","op":"event","target":"BeginPlay"},
+   {"step_id":"get_xform","op":"call","target":"GetActorTransform"},
+   {"step_id":"set_speed","op":"call","target":"SetPhysicsLinearVelocity",
+    "inputs":{"NewVel":"@get_xform.~Forward","Target":"MeshComp"},
+    "exec_after":"evt"}
+]}}
+
+GOTCHAS:
+- Do NOT call blueprint.read before blueprint.create — the asset doesn't exist yet
+- Do NOT call preview_plan_json in the same turn as apply — call apply_plan_json directly (or preview in a prior turn)
+- SpawnActor uses SpawnTransform pin (Transform type), NOT Location/Rotation separately
+- Variable type for object refs: {category:"object", class_name:"BP_Gun_C"} — append _C
+- Data-provider steps (get_var, pure calls) MUST appear BEFORE steps that @ref them

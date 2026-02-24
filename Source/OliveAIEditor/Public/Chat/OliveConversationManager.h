@@ -399,6 +399,10 @@ private:
 	bool bTurnHasExplicitWriteIntent = false;
 	bool bTurnHasDangerIntent = false;
 
+	/** Zero-tool-call re-prompt counter for write-intent tasks */
+	int32 ZeroToolRepromptCount = 0;
+	static constexpr int32 MaxZeroToolReprompts = 2;
+
 	/** Stop the current tool loop after results are added to history */
 	bool bStopAfterToolResults = false;
 

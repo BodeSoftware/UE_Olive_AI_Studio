@@ -176,7 +176,8 @@ void FOliveToolPackManager::RegisterDefaultPacks()
 		TEXT("blueprint.read_components"),
 		TEXT("behaviortree.read"), TEXT("blackboard.read"),
 		TEXT("pcg.read_graph"),
-		TEXT("cpp.read_class"), TEXT("cpp.read_header")
+		TEXT("cpp.read_class"), TEXT("cpp.read_header"),
+		TEXT("olive.get_recipe")
 	};
 
 	PackDefinitions.FindOrAdd(EOliveToolPack::WritePackBasic) = {

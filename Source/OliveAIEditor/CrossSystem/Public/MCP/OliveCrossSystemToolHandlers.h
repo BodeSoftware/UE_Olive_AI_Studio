@@ -62,5 +62,19 @@ private:
 	FOliveToolResult HandleIndexStatus(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleGetRelevantContext(const TSharedPtr<FJsonObject>& Params);
 
+	// Recipe system
+	void RegisterRecipeTools();
+	void LoadRecipeLibrary();
+	FOliveToolResult HandleGetRecipe(const TSharedPtr<FJsonObject>& Params);
+
+	/** Loaded recipes: Key = "category/name", Value = file content */
+	TMap<FString, FString> RecipeLibrary;
+
+	/** Manifest data: Key = "category/name", Value = description */
+	TMap<FString, FString> RecipeDescriptions;
+
+	/** Categories discovered from manifest */
+	TArray<FString> RecipeCategories;
+
 	TArray<FString> RegisteredToolNames;
 };

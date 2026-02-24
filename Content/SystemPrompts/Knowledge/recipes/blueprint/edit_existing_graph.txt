@@ -1,0 +1,33 @@
+WORKFLOW:
+1. blueprint.read_event_graph → {path, graph_name:"EventGraph"} (see existing nodes + connections)
+2. For SMALL edits (1-2 nodes): blueprint.add_node + blueprint.connect_pins
+3. For LARGER edits: blueprint.apply_plan_json with mode:"merge" (preserves existing nodes)
+4. To REMOVE: blueprint.remove_node → {path, graph, node_id} (get node_id from read result)
+5. To REWIRE: blueprint.disconnect_pins then blueprint.connect_pins
+
+FUNCTION GRAPHS:
+- blueprint.read_function → {path, function_name:"Fire"} to read function graph
+- Function entry node is auto-created — do NOT add an event/entry step
+- First impure step: omit exec_after (auto-chains from entry node)
+- graph_target in apply_plan_json: use the function name, e.g. "Fire"
+
+EXAMPLE (add 2 nodes to existing EventGraph):
+{"path":"/Game/Blueprints/BP_Gun","graph":"EventGraph",
+ "type":"CallFunction","properties":{"function":"PrintString"}}
+Then: connect_pins with source_ref/target_ref using node_ids from the results
+
+EXAMPLE (function graph plan):
+{"asset_path":"/Game/Blueprints/BP_Gun","graph_target":"Fire",
+ "plan_json":{"schema_version":"2.0","steps":[
+   {"step_id":"get_muzzle","op":"call","target":"GetWorldTransform",
+    "inputs":{"Target":"MuzzlePoint"}},
+   {"step_id":"spawn","op":"spawn_actor","target":"/Game/Blueprints/BP_Bullet",
+    "inputs":{"SpawnTransform":"@get_muzzle.auto"}}
+]}}
+Note: spawn has NO exec_after — it auto-chains from function entry.
+
+GOTCHAS:
+- In function graphs, do NOT use exec_after for the first impure step (PLAN_INVALID_EXEC_AFTER)
+- In function graphs, do NOT add event/custom_event steps — entry is automatic
+- read_event_graph returns node_ids — use these for remove/disconnect, never guess
+- mode:"merge" keeps existing nodes; mode:"replace" clears the graph first

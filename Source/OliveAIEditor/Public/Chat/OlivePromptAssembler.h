@@ -77,6 +77,23 @@ public:
 	FString GetCapabilityKnowledge(const FString& ProfileName) const;
 
 	/**
+	 * Returns shared preamble text that ALL provider paths should include.
+	 * Contains project context, policy context, and capability knowledge packs
+	 * (recipe routing, blueprint authoring rules, etc.).
+	 *
+	 * Claude Code provider, future CLI providers, etc. call this to stay
+	 * in sync with the knowledge packs that API providers get automatically
+	 * via AssembleSystemPromptInternal().
+	 *
+	 * @param ProfileName Active focus profile name (e.g., "Blueprint", "Auto")
+	 * @return Assembled preamble text, or empty string if called before Initialize()
+	 */
+	FString BuildSharedSystemPreamble(const FString& ProfileName) const;
+
+	/** Get a single knowledge pack by ID (e.g. "recipe_routing", "blueprint_authoring") */
+	FString GetKnowledgePackById(const FString& PackId) const;
+
+	/**
 	 * Assemble a worker-specific prompt for the Brain Layer.
 	 * Loads domain template, substitutes variables, appends base rules.
 	 *

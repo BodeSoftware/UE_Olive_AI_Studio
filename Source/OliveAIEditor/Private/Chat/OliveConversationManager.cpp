@@ -85,6 +85,28 @@ bool DetectDangerIntent(const FString& UserMessage)
 	return MessageContainsAnyKeyword(UserMessage, DangerKeywords);
 }
 
+bool DetectMultiAssetIntent(const FString& UserMessage)
+{
+	static const TArray<FString> MultiAssetPatterns = {
+		TEXT(" and "), TEXT(" with "), TEXT("system"),
+		TEXT("both"), TEXT("each"), TEXT("multiple")
+	};
+
+	const FString Lower = UserMessage.ToLower();
+	if (!MessageContainsAnyKeyword(Lower,
+		{TEXT("create"), TEXT("make"), TEXT("build"), TEXT("implement")}))
+	{
+		return false;
+	}
+
+	for (const FString& Pattern : MultiAssetPatterns)
+	{
+		if (Lower.Contains(Pattern))
+			return true;
+	}
+	return false;
+}
+
 FOliveRequestOptions BuildRequestOptions()
 {
 	FOliveRequestOptions Options;
@@ -230,9 +252,24 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 	SelfCorrectionPolicy.Reset();
 	bTurnHasExplicitWriteIntent = DetectWriteIntent(Message);
 	bTurnHasDangerIntent = DetectDangerIntent(Message);
+
+	// Dynamic iteration budget for multi-asset tasks
+	if (bTurnHasExplicitWriteIntent && DetectMultiAssetIntent(Message))
+	{
+		MaxToolIterations = FMath::Max(MaxToolIterations, 20);
+		UE_LOG(LogOliveAI, Log,
+			TEXT("Multi-asset task detected. Increased MaxToolIterations to %d"),
+			MaxToolIterations);
+	}
+	else
+	{
+		MaxToolIterations = 10;
+	}
+
 	bStopAfterToolResults = false;
 	bHasPendingCorrections = false;
 	CorrectionRepromptCount = 0;
+	ZeroToolRepromptCount = 0;
 
 	// Begin a Brain run
 	if (Brain.IsValid())
@@ -463,6 +500,49 @@ void FOliveConversationManager::SendToProvider()
 			DistillResult.MessagesSummarized, DistillResult.ToolResultsTruncated, DistillResult.TokensSaved);
 	}
 
+	// Inject iteration budget awareness
+	if (CurrentToolIteration > 0)
+	{
+		const int32 RemainingIterations = MaxToolIterations - CurrentToolIteration;
+		FString BudgetNote;
+
+		if (RemainingIterations <= 3)
+		{
+			BudgetNote = FString::Printf(
+				TEXT("[ITERATION BUDGET: %d/%d used, only %d remaining. "
+					 "CRITICAL: Focus on completing the most important remaining work. "
+					 "If there are multiple assets to create, prioritize creating them "
+					 "over perfecting existing ones.]"),
+				CurrentToolIteration, MaxToolIterations, RemainingIterations);
+		}
+		else if (RemainingIterations <= 6)
+		{
+			BudgetNote = FString::Printf(
+				TEXT("[ITERATION BUDGET: %d/%d used, %d remaining. "
+					 "Plan remaining tool calls efficiently.]"),
+				CurrentToolIteration, MaxToolIterations, RemainingIterations);
+		}
+
+		if (!BudgetNote.IsEmpty())
+		{
+			FOliveChatMessage BudgetMessage;
+			BudgetMessage.Role = EOliveChatRole::System;
+			BudgetMessage.Content = BudgetNote;
+			BudgetMessage.Timestamp = FDateTime::UtcNow();
+
+			int32 InsertIndex = MessagesToSend.Num();
+			for (int32 i = MessagesToSend.Num() - 1; i >= 0; --i)
+			{
+				if (MessagesToSend[i].Role == EOliveChatRole::User)
+				{
+					InsertIndex = i;
+					break;
+				}
+			}
+			MessagesToSend.Insert(BudgetMessage, InsertIndex);
+		}
+	}
+
 	// Get available tools via Tool Pack Manager (if initialized) for reduced schema cost
 	TArray<FOliveToolDefinition> Tools;
 	if (FOliveToolPackManager::Get().IsInitialized())
@@ -574,7 +654,7 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 	// Add assistant message to history
 	FOliveChatMessage AssistantMessage;
 	AssistantMessage.Role = EOliveChatRole::Assistant;
-	AssistantMessage.Content = CurrentStreamingContent;
+	AssistantMessage.Content = !FullResponse.IsEmpty() ? FullResponse : CurrentStreamingContent;
 	const FString NormalizedFinishReason = Usage.FinishReason.ToLower();
 	const bool bResponseTruncated =
 		NormalizedFinishReason == TEXT("length") ||
@@ -595,6 +675,35 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 	}
 	else
 	{
+		// Detect zero-tool-call first response for write-intent tasks
+		if (CurrentToolIteration == 0
+			&& bTurnHasExplicitWriteIntent
+			&& ZeroToolRepromptCount < MaxZeroToolReprompts)
+		{
+			ZeroToolRepromptCount++;
+
+			FString ForceToolPrompt = FString::Printf(
+				TEXT("[SYSTEM: You responded with text but the user's request requires "
+					 "action. You MUST call tools to complete the task. Do not explain "
+					 "what you would do — actually do it by calling the appropriate tools. "
+					 "Re-prompt %d/%d.]"),
+				ZeroToolRepromptCount, MaxZeroToolReprompts);
+
+			FOliveChatMessage RepromptMessage;
+			RepromptMessage.Role = EOliveChatRole::User;
+			RepromptMessage.Content = ForceToolPrompt;
+			RepromptMessage.Timestamp = FDateTime::UtcNow();
+			AddMessage(RepromptMessage);
+
+			UE_LOG(LogOliveAI, Warning,
+				TEXT("AI responded text-only on first iteration with write intent. "
+					 "Re-prompting to force tool use (%d/%d)"),
+				ZeroToolRepromptCount, MaxZeroToolReprompts);
+
+			SendToProvider();
+			return;
+		}
+
 		// Check if AI responded text-only despite unresolved failures
 		if (bHasPendingCorrections && CorrectionRepromptCount < MaxCorrectionReprompts)
 		{

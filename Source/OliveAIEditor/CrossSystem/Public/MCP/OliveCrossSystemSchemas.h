@@ -64,4 +64,11 @@ namespace OliveCrossSystemSchemas
 
 	/** Schema for project.get_relevant_context: {query: string, max_assets?: int, kinds?: string[]} */
 	TSharedPtr<FJsonObject> ProjectGetRelevantContext();
+
+	// ============================================================================
+	// Recipe Operations
+	// ============================================================================
+
+	/** Schema for olive.get_recipe: {category?: string, name?: string} — both optional */
+	TSharedPtr<FJsonObject> RecipeGetRecipe();
 }

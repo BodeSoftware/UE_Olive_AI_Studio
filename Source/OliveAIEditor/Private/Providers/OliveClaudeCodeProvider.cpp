@@ -221,7 +221,15 @@ FString FOliveClaudeCodeProvider::GetClaudeCodeVersion()
 
 	FString VersionOutput;
 	int32 ReturnCode;
-	FPlatformProcess::ExecProcess(*ClaudePath, TEXT("--version"), &ReturnCode, &VersionOutput, nullptr);
+	if (ClaudePath.EndsWith(TEXT(".js")))
+	{
+		FString NodeArgs = FString::Printf(TEXT("\"%s\" --version"), *ClaudePath);
+		FPlatformProcess::ExecProcess(TEXT("node"), *NodeArgs, &ReturnCode, &VersionOutput, nullptr);
+	}
+	else
+	{
+		FPlatformProcess::ExecProcess(*ClaudePath, TEXT("--version"), &ReturnCode, &VersionOutput, nullptr);
+	}
 
 	if (ReturnCode == 0)
 	{
@@ -543,6 +551,8 @@ FString FOliveClaudeCodeProvider::BuildPrompt(const TArray<FOliveChatMessage>& M
 	// ConversationManager sends the complete MessageHistory on each call,
 	// including tool results from previous iterations of the agentic loop.
 	FString Prompt;
+	int32 UserMessageCount = 0;
+	int32 ToolResultCount = 0;
 	for (const FOliveChatMessage& Msg : Messages)
 	{
 		if (Msg.Role == EOliveChatRole::System)
@@ -551,19 +561,65 @@ FString FOliveClaudeCodeProvider::BuildPrompt(const TArray<FOliveChatMessage>& M
 		}
 		else if (Msg.Role == EOliveChatRole::User)
 		{
+			UserMessageCount++;
 			Prompt += FString::Printf(TEXT("[User]\n%s\n\n"), *Msg.Content);
 		}
 		else if (Msg.Role == EOliveChatRole::Assistant)
 		{
-			Prompt += FString::Printf(TEXT("[Assistant]\n%s\n\n"), *Msg.Content);
+			Prompt += TEXT("[Assistant]\n");
+			if (!Msg.Content.IsEmpty())
+			{
+				Prompt += Msg.Content;
+				Prompt += TEXT("\n");
+			}
+
+			// Reconstruct prior tool calls so follow-up iterations preserve the
+			// assistant's own action trace, matching API providers' behavior.
+			for (const FOliveStreamChunk& ToolCall : Msg.ToolCalls)
+			{
+				FString ArgsJson = TEXT("{}");
+				if (ToolCall.ToolArguments.IsValid())
+				{
+					TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ArgsJson);
+					if (!FJsonSerializer::Serialize(ToolCall.ToolArguments.ToSharedRef(), Writer))
+					{
+						ArgsJson = TEXT("{}");
+					}
+				}
+
+				const FString ToolCallId = ToolCall.ToolCallId.IsEmpty() ? TEXT("tc_history") : ToolCall.ToolCallId;
+				Prompt += FString::Printf(TEXT("<tool_call id=\"%s\">\n"), *ToolCallId);
+				Prompt += FString::Printf(TEXT("{\"name\":\"%s\",\"arguments\":%s}\n"), *ToolCall.ToolName, *ArgsJson);
+				Prompt += TEXT("</tool_call>\n");
+			}
+			Prompt += TEXT("\n");
 		}
 		else if (Msg.Role == EOliveChatRole::Tool)
 		{
+			ToolResultCount++;
 			Prompt += FString::Printf(
 				TEXT("[Tool Result: %s (id: %s)]\n%s\n\n"),
 				*Msg.ToolName, *Msg.ToolCallId, *Msg.Content);
 		}
 	}
+
+	// Force a concrete next action in the imperative stdin channel.
+	Prompt += TEXT("## Next Action Required\n");
+	if (UserMessageCount == 1 && ToolResultCount == 0)
+	{
+		Prompt += TEXT("- Act now by calling tools directly; do not stop with explanation-only text.\n");
+		Prompt += TEXT("- If the task is creating NEW Blueprints, start with blueprint.create (do NOT search first).\n");
+		Prompt += TEXT("- If the task is modifying EXISTING assets, start with project.search to find exact paths.\n");
+		Prompt += TEXT("- Batch only independent calls (e.g., create + add_component + add_variable).\n");
+		Prompt += TEXT("- Do NOT batch blueprint.preview_plan_json and blueprint.apply_plan_json in the same response.\n\n");
+	}
+	else
+	{
+		Prompt += TEXT("- Tool results are above. Continue execution with the next required tool calls.\n");
+		Prompt += TEXT("- Do not repeat identical project.search queries unless results changed.\n");
+		Prompt += TEXT("- If complete, provide a short summary with no tool calls.\n\n");
+	}
+
 	return Prompt;
 }
 
@@ -571,67 +627,68 @@ FString FOliveClaudeCodeProvider::BuildSystemPrompt(const FString& UserTask, con
 {
 	FString SystemPrompt;
 
-	// Design-focused identity
-	SystemPrompt += TEXT("You are an Unreal Engine 5.5 Blueprint specialist.\n");
-	SystemPrompt += TEXT("Think through the complete design before calling tools.\n\n");
+	// ==========================================
+	// Cherry-picked preamble — project context + policies + recipe routing ONLY.
+	// We intentionally skip blueprint_authoring because it was written for the
+	// API path (uses project.batch_write, "read before write" for creates, etc.)
+	// and directly conflicts with the CLI wrapper's instructions.
+	// ==========================================
+	const FOlivePromptAssembler& Assembler = FOlivePromptAssembler::Get();
 
-	// Plan JSON reference material — the AI needs this for constructing plans
-	SystemPrompt += TEXT("## Plan JSON Format (v2.0)\n");
-	SystemPrompt += TEXT("Use this format with blueprint.preview_plan_json and blueprint.apply_plan_json:\n");
-	SystemPrompt += TEXT("```json\n");
-	SystemPrompt += TEXT("{\"schema_version\":\"2.0\",\"steps\":[\n");
-	SystemPrompt += TEXT("  {\"step_id\":\"evt\",\"op\":\"event\",\"target\":\"BeginPlay\"},\n");
-	SystemPrompt += TEXT("  {\"step_id\":\"spawn\",\"op\":\"spawn_actor\",\"target\":\"Actor\",");
-	SystemPrompt += TEXT("\"inputs\":{\"Location\":\"@get_loc.auto\"},\"exec_after\":\"evt\"},\n");
-	SystemPrompt += TEXT("  {\"step_id\":\"print\",\"op\":\"call\",\"target\":\"PrintString\",");
-	SystemPrompt += TEXT("\"inputs\":{\"InString\":\"Done\"},\"exec_after\":\"spawn\"}\n");
-	SystemPrompt += TEXT("]}\n");
-	SystemPrompt += TEXT("```\n\n");
+	const FString ProjectContext = Assembler.GetProjectContext();
+	if (!ProjectContext.IsEmpty())
+	{
+		SystemPrompt += TEXT("## Project\n");
+		SystemPrompt += ProjectContext;
+		SystemPrompt += TEXT("\n\n");
+	}
 
-	// Available ops
-	SystemPrompt += TEXT("## Available Ops\n");
-	SystemPrompt += TEXT("event, custom_event, call, get_var, set_var, branch, sequence, cast, ");
-	SystemPrompt += TEXT("for_loop, for_each_loop, delay, is_valid, print_string, spawn_actor, ");
-	SystemPrompt += TEXT("make_struct, break_struct, return, comment\n\n");
+	const FString PolicyContext = Assembler.GetPolicyContext();
+	if (!PolicyContext.IsEmpty())
+	{
+		SystemPrompt += TEXT("## Policies\n");
+		SystemPrompt += PolicyContext;
+		SystemPrompt += TEXT("\n\n");
+	}
 
-	// Data wire syntax
-	SystemPrompt += TEXT("## Data Wires (@ref syntax)\n");
-	SystemPrompt += TEXT("- @step.auto — auto-match by type (use this ~80% of the time)\n");
-	SystemPrompt += TEXT("- @step.~hint — fuzzy match with hint (e.g. @get_loc.~Location)\n");
-	SystemPrompt += TEXT("- @step.PinName — smart name match\n");
-	SystemPrompt += TEXT("- Literal values (no @) set pin defaults: \"InString\":\"Hello\"\n\n");
+	// Fetch recipe_routing pack directly — skip blueprint_authoring
+	const FString RecipeRouting = Assembler.GetKnowledgePackById(TEXT("recipe_routing"));
+	if (!RecipeRouting.IsEmpty())
+	{
+		SystemPrompt += RecipeRouting;
+		SystemPrompt += TEXT("\n\n");
+	}
 
-	// Exec flow
-	SystemPrompt += TEXT("## Exec Flow\n");
-	SystemPrompt += TEXT("- exec_after: step whose exec output connects to this step's exec input\n");
-	SystemPrompt += TEXT("- exec_outputs: {\"True\":\"step_a\",\"False\":\"step_b\"} for Branch etc.\n\n");
+	// ==========================================
+	// Shared domain knowledge — loaded from disk so recipes/prompts stay in sync
+	// ==========================================
+	const FString CLIBlueprint = Assembler.GetKnowledgePackById(TEXT("cli_blueprint"));
+	if (!CLIBlueprint.IsEmpty())
+	{
+		SystemPrompt += CLIBlueprint;
+		SystemPrompt += TEXT("\n\n");
+	}
+	else
+	{
+		// Fallback: minimal inline instructions if file missing
+		UE_LOG(LogOliveClaudeCode, Warning,
+			TEXT("cli_blueprint knowledge pack not found. Using minimal fallback."));
+		SystemPrompt += TEXT("You are an Unreal Engine 5.5 Blueprint specialist.\n");
+		SystemPrompt += TEXT("Use blueprint.create, add_component, add_variable, apply_plan_json.\n\n");
+	}
 
-	// Function resolution
-	SystemPrompt += TEXT("## Function Resolution\n");
-	SystemPrompt += TEXT("For op:call, use natural names. The system resolves K2_ prefixes, aliases ");
-	SystemPrompt += TEXT("(Destroy->K2_DestroyActor, Print->PrintString), and fuzzy matching automatically.\n\n");
-
-	// Key rules
-	SystemPrompt += TEXT("## Rules\n");
-	SystemPrompt += TEXT("- Asset paths end with asset name: /Game/Blueprints/BP_Gun\n");
-	SystemPrompt += TEXT("- Use blueprint.apply_plan_json for graph logic (not individual add_node/connect_pins)\n");
-	SystemPrompt += TEXT("- Read before write on existing assets\n");
-	SystemPrompt += TEXT("- Variable types: Float, Boolean, Integer, Vector, Rotator, String\n");
-	SystemPrompt += TEXT("- Variable type format: prefer {\"category\":\"float\"}; shorthand \"Float\" is also accepted\n");
-	SystemPrompt += TEXT("- Component classes: StaticMeshComponent, SphereComponent, BoxComponent, ");
-	SystemPrompt += TEXT("CapsuleComponent, ArrowComponent, ProjectileMovementComponent\n");
-	SystemPrompt += TEXT("- WORKFLOW: Always call blueprint.preview_plan_json first. Pass the returned preview_fingerprint to blueprint.apply_plan_json.\n");
-	SystemPrompt += TEXT("- STEP ORDER: In plan JSON, data-provider steps (get_var, GetPlayerController, pure function calls) MUST appear BEFORE any step that references them via @ref. The validator resolves in forward-pass order.\n");
-	SystemPrompt += TEXT("- TARGET ASSET: The 'path' parameter must match the Blueprint that owns the component or graph being modified. If you added a component to BP_Gun, modify it on BP_Gun, not on another Blueprint.\n\n");
-
-	// Serialize tool definitions from the filtered tools array
+	// ==========================================
+	// Tool schemas (CLI-specific: inline since no native tool calling)
+	// ==========================================
 	if (Tools.Num() > 0)
 	{
 		SystemPrompt += FOliveCLIToolSchemaSerializer::Serialize(Tools, /*bCompact=*/true);
 		SystemPrompt += TEXT("\n");
 	}
 
-	// Tool call format instructions
+	// ==========================================
+	// Tool call format instructions (CLI-specific)
+	// ==========================================
 	SystemPrompt += FOliveCLIToolCallParser::GetFormatInstructions();
 
 	return SystemPrompt;
