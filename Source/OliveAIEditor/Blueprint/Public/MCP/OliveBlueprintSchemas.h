@@ -107,6 +107,14 @@ namespace OliveBlueprintSchemas
 	 */
 	TSharedPtr<FJsonObject> BlueprintListOverridableFunctions();
 
+	/**
+	 * Schema for blueprint.get_node_pins
+	 * Get the pin manifest for a specific node in a Blueprint graph.
+	 * Useful for re-inspecting pins after property changes or ReconstructNode.
+	 * Params: {path: string, graph: string, node_id: string}
+	 */
+	TSharedPtr<FJsonObject> BlueprintGetNodePins();
+
 	// ============================================================================
 	// Asset Writer Tool Schemas
 	// ============================================================================
@@ -321,6 +329,31 @@ namespace OliveBlueprintSchemas
 	 * Params: {asset_path: string, graph_target?: string, mode?: string, plan_json: object, preview_fingerprint?: string}
 	 */
 	TSharedPtr<FJsonObject> BlueprintApplyPlanJson();
+
+	// ============================================================================
+	// Template Tool Schemas
+	// ============================================================================
+
+	/**
+	 * Schema for blueprint.create_from_template
+	 * Create a Blueprint from a factory template
+	 * Params: {template_id: string, asset_path: string, parameters?: object, preset?: string}
+	 */
+	TSharedPtr<FJsonObject> BlueprintCreateFromTemplate();
+
+	/**
+	 * Schema for blueprint.get_template
+	 * View a template's full content
+	 * Params: {template_id: string, pattern?: string}
+	 */
+	TSharedPtr<FJsonObject> BlueprintGetTemplate();
+
+	/**
+	 * Schema for blueprint.list_templates
+	 * List available templates
+	 * Params: {type?: string}
+	 */
+	TSharedPtr<FJsonObject> BlueprintListTemplates();
 
 	// ============================================================================
 	// AnimBP Writer Tool Schemas

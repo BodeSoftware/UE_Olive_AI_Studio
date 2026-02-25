@@ -111,6 +111,15 @@ struct OLIVEAIEDITOR_API FOlivePlanExecutionContext
     /** Count of failed pin default sets */
     int32 FailedDefaultCount = 0;
 
+    /** Step IDs that reuse pre-existing event nodes (do NOT remove on rollback) */
+    TSet<FString> ReusedStepIds;
+
+    /** Function names resolved in this plan (for stale error detection) */
+    TSet<FString> ResolvedFunctionNames;
+
+    /** Class names resolved in this plan (for stale error detection) */
+    TSet<FString> ResolvedClassNames;
+
     /** Auto-conversion notes logged when PinConnector inserts conversion nodes */
     TArray<FOliveConversionNote> ConversionNotes;
 

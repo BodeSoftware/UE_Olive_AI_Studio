@@ -215,7 +215,8 @@ private:
 		UBlueprint* BP,
 		int32 Idx,
 		FOliveResolvedStep& Out,
-		TArray<FOliveIRBlueprintPlanError>& Errors);
+		TArray<FOliveIRBlueprintPlanError>& Errors,
+		TArray<FString>& Warnings);
 
 	/** Resolve an "event" op -- native event override node */
 	static bool ResolveEventOp(

@@ -20,6 +20,7 @@
 #include "Utility/OlivePCGAvailability.h"
 #include "MCP/OliveCppToolHandlers.h"
 #include "MCP/OliveCrossSystemToolHandlers.h"
+#include "Template/OliveTemplateSystem.h"
 #include "OliveMCPPromptTemplates.h"
 #include "Chat/OliveEditorChatSession.h"
 #include "UI/SOliveAIChatPanel.h"
@@ -84,6 +85,9 @@ void FOliveAIEditorModule::ShutdownModule()
 
 	// Shutdown BT node catalog
 	FOliveBTNodeCatalog::Get().Shutdown();
+
+	// Shutdown template system
+	FOliveTemplateSystem::Get().Shutdown();
 
 	// Unregister Blueprint tools
 	FOliveBlueprintToolHandlers::Get().UnregisterAllTools();
@@ -235,6 +239,9 @@ void FOliveAIEditorModule::OnPostEngineInit()
 
 	// Register Cross-System validation rules
 	FOliveValidationEngine::Get().RegisterCrossSystemRules();
+
+	// Initialize template system (scans Content/Templates/ for JSON templates)
+	FOliveTemplateSystem::Get().Initialize();
 
 	// Initialize focus profiles after tool registration so validation has complete category/tool coverage.
 	FOliveFocusProfileManager::Get().Initialize();

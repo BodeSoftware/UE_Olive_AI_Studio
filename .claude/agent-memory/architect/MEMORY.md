@@ -53,52 +53,14 @@
 - **New files**: `OlivePlanExecutor.h/cpp`, `OlivePinManifest.h/cpp`, `OliveFunctionResolver.h/cpp`, `OliveGraphLayoutEngine.h/cpp` (all under `Blueprint/Public|Private/Plan/`)
 - **NOT a singleton**: `FOlivePlanExecutor` is instantiated per execution, not a singleton. It holds no persistent state.
 
-### Phase B Coder Task: FOlivePlanExecutor - Feb 2026
-- `plans/phase-b-task-planexecutor.md` -- Complete coder task for OlivePlanExecutor.h/cpp
-- **Critical decision: Direct pin connection, NOT GraphWriter.ConnectPins()**. The executor uses `FOlivePinConnector::Get().Connect(SourcePin, TargetPin)` directly with `UEdGraphPin*` from `Node->FindPin()`. This bypasses GraphWriter's node ID cache entirely, which is necessary because reused event nodes are not in the cache.
-- **GraphWriter.FindNodeById fallback** does NOT match by UObject name. It only checks: (1) cache, (2) GUID, (3) `node_X` sequential index. So using `GetName()` as a node ID would fail for ConnectPins. This is why we bypass GraphWriter for wiring.
-- **Event reuse node IDs**: For reused events, use `ExistingNode->NodeGuid.ToString()` as the node ID stored in StepToNodeMap (for result reporting only, not used for wiring).
-- **SetPinDefault is also direct**: Uses `Graph->GetSchema()->TrySetDefaultValue(*Pin, DefaultValue)` on the `UEdGraphPin*`, not GraphWriter.SetPinDefault().
-- **Phase 6 layout inlined**: Basic BFS column/row layout is implemented directly in `PhaseAutoLayout()`. The full `FOliveGraphLayoutEngine` class (Phase D) can enhance this later.
-- **FOliveBatchExecutionScope** must be active when the executor runs (suppresses inner transactions from PinConnector). The caller's write pipeline lambda creates this scope.
-
-### Phase A Coder Tasks Produced - Feb 2026
-- `plans/phase-a-task-pinmanifest.md` -- Complete coder task for OlivePinManifest.h/cpp
-- `plans/phase-a-task-functionresolver.md` -- Complete coder task for OliveFunctionResolver.h/cpp
-- **Alias map verification**: All 120+ entries verified against UE 5.5 engine source. Notable corrections:
-  - `K2_GetRelativeLocation`/`K2_GetRelativeRotation` do NOT exist as UFUNCTIONs (getters are inline accessors). Removed from aliases.
-  - `GetObjectClass` does not exist on KismetSystemLibrary. Removed.
-  - `Power` maps to `MultiplyMultiply_FloatFloat` (not `Pow` which doesn't exist).
-  - `K2_ClearAllTimersForObject` is on FTimerManager (not BlueprintCallable). Removed.
-- **Pin type mapping**: PinManifest replicates the `MapPinCategory` table from OlivePinSerializer (lines 287-334 of OlivePinSerializer.cpp) to avoid coupling. Also adds container type detection (IsArray/IsSet/IsMap) and struct subcategory specialization (Vector/Rotator/Transform/Color/LinearColor).
-- **UE 5.5 API verified**: `UEdGraphSchema_K2::TypeToText(const FEdGraphPinType&)` exists at line 1016 of EdGraphSchema_K2.h. Returns FText.
-
-### Phase C Coder Task: Integration - Feb 2026
-- `plans/phase-c-task-integration.md` -- Complete coder task for wiring Phase A+B into existing codebase
-- **Execution order**: C1 (FunctionResolver into PlanResolver) -> C3 (BatchScope into PlanExecutor) -> C2 (PlanExecutor into ApplyPlanJson) -> C5 (PreviewPlanJson v2.0) -> C4 (Worker prompt)
-- **C1 key decision**: FOliveFunctionResolver replaces direct catalog search in `ResolveCallOp`. On resolver failure without explicit TargetClass, still accepts the call (factory validates at creation time). With explicit TargetClass, failure is an error.
-- **C2 key decision**: Version-gating via `bIsV2Plan = (Plan.SchemaVersion == TEXT("2.0"))`. v1.0 path is verbatim copy of original. v2.0 path creates `FOlivePlanExecutor` inside the executor lambda. Both paths are in the same function.
-- **C2 ResultData propagation**: FOliveWriteResult::ExecutionError may not have a 4th-param overload for ResultData. Coder must check and use 2-step construction if needed: `ErrorResult.ResultData = ResultData`.
-- **C3 key decision**: `FOliveBatchExecutionScope` wraps phases 3-5 inside the executor's `Execute()` method. This makes the executor self-contained. The outer caller's BatchScope (in the apply lambda) also exists, and nesting is safe.
-- **C5 key decision**: v2.0 preview skips lowering entirely. Returns `resolved_steps` array with `resolved_function` and `resolved_class` per step so AI can verify resolution.
-- **Pin manifests NOT serialized in result**: Phase C uses a `self_correction_hint` string instead of serialized manifest JSON. The AI is told to use `blueprint.read` for actual pin names. Full manifest serialization deferred to a follow-up.
-
-### Self-Correction Fix Plan - Feb 2026
-- `plans/self-correction-fix-tasks.md` -- 7 fixes across 3 phases for self-correction system
-- **Root cause**: CLI prompt via `-p` arg exceeds Win32 32KB cmd-line limit after 3+ agentic iterations. Process crashes, crash classified as Terminal (no retry), and even when corrections reach AI, nothing forces retry.
-- **Fix 1 (stdin pipe)**: `FPlatformProcess::CreatePipe(R, W, bWritePipeLocal=true)` for stdin. Pass ReadEnd to CreateProc's PipeReadChild param. Use `uint8*` WritePipe overload (FString overload auto-appends `\n`). Close write end after writing to signal EOF.
-- **Fix 2 (crash classification)**: Match `"process exited with code"` as Transient in ClassifyError Tier 2.
-- **Fix 6 (correction directive)**: Injected as User role message (not System) for cross-provider compatibility. Appended in ContinueAfterToolResults before SendToProvider.
-- **Fix 7 (block premature completion)**: Max 2 re-prompts. `EOliveRunOutcome::PartialSuccess` already exists in the enum. bHasPendingCorrections cleared when a batch has 0 failures.
-- **`EOliveRunOutcome` enum**: Completed, PartialSuccess, Failed, Cancelled -- defined in OliveBrainState.h line 36.
-
-### Blueprint Class Resolution Fix - Feb 2026
-- `plans/fix-blueprint-class-resolution-design.md` -- 4 tasks fixing class resolution + error messages
-- **FOliveClassResolver**: New shared static utility class at `Blueprint/Public/OliveClassResolver.h`. NOT a singleton -- all static methods. Provides `Resolve()` with 6-step chain: direct lookup -> prefix (A/U) -> _C suffix -> native paths -> Blueprint path -> asset registry search.
-- **LRU cache**: 256 entries max, TWeakObjectPtr-based (detects GC'd classes as stale). NOT thread-safe (game thread only).
-- **Three callers rewired**: `FOliveNodeFactory::FindClass()`, `FOliveBlueprintWriter::FindParentClass()`, `FOliveFunctionResolver::FindClassByName()` all delegate to `FOliveClassResolver::Resolve()`.
-- **Asset registry search for short BP names**: The critical fix. `TryAssetRegistrySearch()` tries common paths first (`/Game/Blueprints/X`, `/Game/X`) then falls back to full `GetAssets()` with `UBlueprint` class filter + name match.
-- **Self-correction improvements**: `PLAN_INVALID_REF_FORMAT` message now explains @ref must reference step_ids, not components. `BP_CONNECT_PINS_FAILED` now mandates `blueprint.read` before retry. `BP_ADD_NODE_FAILED` now has class-specific guidance.
+### Critical Fix Plan (Rollback/Resolver/Loop) - Feb 2026
+- `plans/critical_fix_implementation.md` -- 6 tasks (T1-T6) for 3 cascading fixes
+- **Fix 1 (Plan Rollback)**: Post-pipeline cleanup in tool handler. After `ExecuteWithOptionalConfirmation`, if compile failed AND step_to_node_map exists, call `RollbackPlanNodes()` to remove created nodes. Uses separate FScopedTransaction. Reused event nodes (tracked via `ReusedStepIds`) are NOT removed. `Writer.ClearNodeCache()` after removals (RemoveFromCache is private).
+- **Fix 1 key insight**: Pipeline transaction commits in Stage 4, compile errors detected in Stage 6 set bSuccess=false but transaction already committed. Rollback MUST happen post-pipeline, not inside the executor.
+- **Replace mode**: `Mode` parsed at line 6431 but NEVER captured into v2.0 lambda. T2 adds capture + pre-cleanup (remove non-event/non-entry nodes before executing plan).
+- **Fix 2 (Component-Aware Resolver)**: Insert SCS component class scan between parent hierarchy and common libraries in `GetSearchOrder`. New `ComponentClassSearch` enum value on `FOliveFunctionMatch::EMatchMethod`. BroadSearch gets `UBlueprint*` param for relevance scoring: component-on-BP=90, library=70, unrelated gameplay=40. Threshold=60 rejects low-confidence broad matches.
+- **Fix 3 (Stale Loop Detection)**: Add `ResolvedFunctionNames`/`ResolvedClassNames` to context, flow through result to ResultData. SelfCorrectionPolicy cross-references compile error text against plan names. If no compile error mentions any plan class/function, classify as stale -- skip loop detector, inject "STALE COMPILE ERROR" guidance recommending mode:"replace".
+- **Implementation lanes**: Lane A: T1->T2->T5->T6. Lane B: T3->T4. ~8.5 hours total.
 
 ### CLI Provider Universal Fixes - Feb 2026
 - `plans/cli-provider-implementation-plan.md` -- Detailed implementation plan for resolver/executor/CLI fixes
@@ -150,14 +112,50 @@
 - **Implementation order**: 2.4 (bIsRequired) -> 2.1 (Phase 1.5) -> 2.2 (validator) -> 2.3 (Phase 5.5)
 - **No tool handler changes needed**: AutoFixCount and PreCompileIssues flow through existing PlanResult.Warnings array -> ResultData warnings JSON -> tool result.
 
+### Phase 4 Template System - Feb 2026
+- `plans/phase4_template_implementation.md` -- 6-task implementation plan
+- **FOliveTemplateSystem**: Singleton at `Blueprint/Public/Template/OliveTemplateSystem.h`. Scans `Content/Templates/` recursively for JSON files. Builds auto-generated catalog block. Provides `ApplyTemplate()` for factory templates.
+- **File loading pattern**: Uses `IPlatformFile::IterateDirectoryRecursively()`, same as recipe loading in CrossSystemToolHandlers. Plugin dir resolved via `FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("UE_Olive_AI_Studio/Content/Templates"))`.
+- **Template tools always registered**: `RegisterTemplateTools()` called unconditionally in `RegisterAllTools()`. Handlers return errors if no templates loaded. Avoids startup ordering issues.
+- **Catalog injection**: Dynamic, in `GetCapabilityKnowledge()` -- appends catalog block for Auto/Blueprint profiles. NOT injected during LoadPromptTemplates to avoid startup ordering dependency.
+- **Startup position**: `FOliveTemplateSystem::Get().Initialize()` inserted after CrossSystem tools, before FocusProfileManager.
+- **ApplyTemplate execution**: All operations (create BP, add vars, add dispatchers, create functions, execute plans) happen inside a single write pipeline executor lambda. Uses `FOliveBlueprintWriter::Get()` directly, NOT tool handler re-entry.
+- **No Build.cs changes**: Blueprint sub-module already has recursive include paths that pick up `Blueprint/Public/Template/` and `Blueprint/Private/Template/`.
+- **New error codes**: `TEMPLATE_NOT_FOUND`, `TEMPLATE_NOT_FACTORY`, `TEMPLATE_APPLY_CREATE_FAILED`, `TEMPLATE_APPLY_PLAN_FAILED`
+- **New files**: `OliveTemplateSystem.h/cpp` (under `Blueprint/Public|Private/Template/`), `Content/Templates/factory/stat_component.json`, `Content/Templates/reference/component_patterns.json`
+
+### Priority 0: Universal Node Manipulation - Feb 2026
+- `plans/priority0_universal_node.md` -- 5 tasks: validator fix, error classification, capability routing, universal add_node, get_node_pins
+- **Universal add_node fallback**: When type is NOT in `NodeCreators` map, `FindK2NodeClass()` searches for UK2Node subclass via: FindFirstObject -> K2Node_/UK2Node_ prefix -> strip U prefix -> StaticLoadClass across 6 engine packages.
+- **Properties set BEFORE AllocateDefaultPins**: Many K2Nodes use UPROPERTY values during pin allocation (e.g., K2Node_ComponentBoundEvent reads DelegatePropertyName). Set props first, AllocateDefaultPins second, ReconstructNode as safety net.
+- **SetNodePropertiesViaReflection**: Mirrors OliveGraphWriter.cpp lines 352-390 pattern. Type dispatch: Bool/Int/Float/Double/Str/Name/Text/Object, with generic ImportText_Direct fallback for FKey, enums, structs.
+- **Property feedback deferred**: OutSetProperties/OutSkippedProperties tracked in CreateNodeByClass but NOT yet threaded to tool result (would require FOliveBlueprintWriteResult API change). Pin manifest provides indirect feedback.
+- **EOliveErrorCategory**: New enum {FixableMistake, UnsupportedFeature, Ambiguous}. Only USER_DENIED is Category B. BP_ADD_NODE_FAILED is Category C (retry once, then escalate). Everything else is Category A.
+- **Validator string-literal fix**: CheckComponentFunctionTargets now accepts non-@ref strings that match SCS component variable names (case-sensitive exact match).
+- **get_node_pins tool**: Read-only wrapper around anonymous-namespace `BuildPinManifest()`. Tagged `{blueprint, read}`. Returns pin manifest + node_class + node_title.
+- **node_routing knowledge pack**: New `Content/SystemPrompts/Knowledge/node_routing.txt` added to Auto/Blueprint profiles.
+- **New error code**: `NODE_NOT_FOUND` (get_node_pins when node_id not in cache).
+- **PlanExecutor unchanged**: Plan resolver maps ops to curated OliveNodeTypes, so universal fallback only activates via direct add_node tool calls.
+- **CallParentFunction gap found**: Declared in OliveNodeTypes namespace but never registered in InitializeNodeCreators. Universal fallback would handle it, but a curated creator would be better (follow-up).
+
+### Priority 1+2: Component Variable Fixes - Feb 2026
+- `plans/priority1_2_component_fixes.md` -- 6 tasks fixing remaining gaps after master plan Phase 1+2
+- **KEY FINDING: Most master plan Phase 1 and Phase 2 changes were already implemented.** BlueprintHasVariable already has SCS check, lenient fallback already removed, Phase 1.5/5.5 already exist, bIsRequired already added, validator already softened.
+- **Remaining gaps (6 tasks)**: ReadVariables omits SCS components (T1), resolver warn-but-allow for missing vars (T2), dead code in NodeFactory (T3), Phase 1.5 ignores string-literal Target (T4), set_var error message polish (T5), recipe update (T6).
+- **T1 key decision**: Set `Var.DefinedIn = TEXT("component")` and `Var.bBlueprintReadWrite = false` on `FOliveIRVariable`. No struct changes needed.
+- **FOliveIRVariable struct location**: `Source/OliveAIRuntime/Public/IR/CommonIR.h` line 458. Field is `DefinedIn` (not `Source`). Type info uses `FOliveIRType.ClassName` (not `TypeName`).
+- **FOliveIRType struct location**: `Source/OliveAIRuntime/Public/IR/OliveIRTypes.h` line 49. Object types use `Category = EOliveIRTypeCategory::Object` + `ClassName`.
+- **All 6 tasks are independent** -- can run fully in parallel with 2-3 coders.
+
 ## File Structure
-- Tool handlers: `Source/OliveAIEditor/Blueprint/Private/MCP/OliveBlueprintToolHandlers.cpp` (very large file, 3000+ lines)
+- Tool handlers: `Source/OliveAIEditor/Blueprint/Private/MCP/OliveBlueprintToolHandlers.cpp` (very large file, 5000+ lines)
 - Schemas: `Source/OliveAIEditor/Blueprint/Private/MCP/OliveBlueprintSchemas.cpp`
 - Pipeline: `Source/OliveAIEditor/Blueprint/Private/Pipeline/OliveWritePipeline.cpp`
 - Node catalog: `Source/OliveAIEditor/Blueprint/Private/Catalog/OliveNodeCatalog.cpp`
 - IR structs: `Source/OliveAIRuntime/Public/IR/CommonIR.h` (FOliveIRGraph, FOliveIRNode, FOliveIRMessage, etc.)
-- Plan executor: `Source/OliveAIEditor/Blueprint/Public/Plan/OlivePlanExecutor.h` (new)
-- Pin manifest: `Source/OliveAIEditor/Blueprint/Public/Plan/OlivePinManifest.h` (new)
-- Function resolver: `Source/OliveAIEditor/Blueprint/Public/Plan/OliveFunctionResolver.h` (new)
-- Layout engine: `Source/OliveAIEditor/Blueprint/Public/Plan/OliveGraphLayoutEngine.h` (new)
-- Class resolver: `Source/OliveAIEditor/Blueprint/Public/OliveClassResolver.h` (new)
+- Plan executor: `Source/OliveAIEditor/Blueprint/Public/Plan/OlivePlanExecutor.h`
+- Pin manifest: `Source/OliveAIEditor/Blueprint/Public/Plan/OlivePinManifest.h`
+- Function resolver: `Source/OliveAIEditor/Blueprint/Public/Plan/OliveFunctionResolver.h`
+- Layout engine: `Source/OliveAIEditor/Blueprint/Public/Plan/OliveGraphLayoutEngine.h`
+- Class resolver: `Source/OliveAIEditor/Blueprint/Public/OliveClassResolver.h`
+- Template system: `Source/OliveAIEditor/Blueprint/Public/Template/OliveTemplateSystem.h`

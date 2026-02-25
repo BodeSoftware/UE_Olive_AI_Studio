@@ -1,0 +1,207 @@
+{
+    "template_id": "stat_component",
+    "template_type": "factory",
+    "display_name": "Stat Component",
+
+    "catalog_description": "Generic numeric resource with current/max values, drain/restore functions, optional regen, and threshold events.",
+    "catalog_examples": "Health, Stamina, Mana, Shield, Hunger, Oxygen",
+
+    "parameters": {
+        "stat_name": {
+            "type": "string",
+            "default": "Health",
+            "description": "Name of the stat (used for variable and event naming)"
+        },
+        "max_value": {
+            "type": "float",
+            "default": "100.0",
+            "description": "Maximum stat value"
+        },
+        "start_full": {
+            "type": "bool",
+            "default": "true",
+            "description": "Start at max value (true) or zero (false)"
+        },
+        "enable_regen": {
+            "type": "bool",
+            "default": "false",
+            "description": "Auto-regenerate over time"
+        },
+        "regen_rate": {
+            "type": "float",
+            "default": "5.0",
+            "description": "Points per second when regen is enabled"
+        },
+        "depletion_event": {
+            "type": "string",
+            "default": "OnDepleted",
+            "description": "Event dispatcher name when stat reaches zero"
+        }
+    },
+
+    "presets": {
+        "Health": {
+            "stat_name": "Health",
+            "max_value": "100",
+            "depletion_event": "OnDeath"
+        },
+        "Stamina": {
+            "stat_name": "Stamina",
+            "max_value": "100",
+            "enable_regen": "true",
+            "regen_rate": "10",
+            "depletion_event": "OnExhausted"
+        },
+        "Mana": {
+            "stat_name": "Mana",
+            "max_value": "200",
+            "enable_regen": "true",
+            "regen_rate": "3",
+            "depletion_event": "OnManaEmpty"
+        }
+    },
+
+    "blueprint": {
+        "type": "ActorComponent",
+        "parent_class": "ActorComponent",
+
+        "variables": [
+            {
+                "name": "Current${stat_name}",
+                "type": "Float",
+                "default": "${start_full} ? ${max_value} : 0",
+                "category": "${stat_name}"
+            },
+            {
+                "name": "Max${stat_name}",
+                "type": "Float",
+                "default": "${max_value}",
+                "category": "${stat_name}"
+            }
+        ],
+
+        "event_dispatchers": [
+            {
+                "name": "On${stat_name}Changed",
+                "params": [
+                    { "name": "NewValue", "type": "Float" },
+                    { "name": "Delta", "type": "Float" }
+                ]
+            },
+            {
+                "name": "${depletion_event}",
+                "params": []
+            }
+        ],
+
+        "functions": [
+            {
+                "name": "Apply${stat_name}Change",
+                "description": "Change stat by delta (negative = drain, positive = restore). Clamps to [0, max]. Fires change and depletion events.",
+                "inputs": [
+                    { "name": "Delta", "type": "Float" }
+                ],
+                "outputs": [
+                    { "name": "NewValue", "type": "Float" }
+                ],
+                "plan": {
+                    "schema_version": "2.0",
+                    "steps": [
+                        {
+                            "step_id": "get_current",
+                            "op": "get_var",
+                            "target": "Current${stat_name}"
+                        },
+                        {
+                            "step_id": "get_delta",
+                            "op": "get_var",
+                            "target": "Delta"
+                        },
+                        {
+                            "step_id": "add",
+                            "op": "call",
+                            "target": "Add_FloatFloat",
+                            "inputs": {
+                                "A": "@get_current.auto",
+                                "B": "@get_delta.auto"
+                            }
+                        },
+                        {
+                            "step_id": "clamp",
+                            "op": "call",
+                            "target": "FClamp",
+                            "inputs": {
+                                "Value": "@add.auto",
+                                "Min": "0.0",
+                                "Max": "${max_value}"
+                            },
+                            "exec_after": "add"
+                        },
+                        {
+                            "step_id": "set_current",
+                            "op": "set_var",
+                            "target": "Current${stat_name}",
+                            "inputs": {
+                                "value": "@clamp.auto"
+                            },
+                            "exec_after": "clamp"
+                        },
+                        {
+                            "step_id": "calc_real_delta",
+                            "op": "call",
+                            "target": "Subtract_FloatFloat",
+                            "inputs": {
+                                "A": "@clamp.auto",
+                                "B": "@get_current.auto"
+                            }
+                        },
+                        {
+                            "step_id": "fire_changed",
+                            "op": "call",
+                            "target": "On${stat_name}Changed",
+                            "inputs": {
+                                "NewValue": "@clamp.auto",
+                                "Delta": "@calc_real_delta.auto"
+                            },
+                            "exec_after": "set_current"
+                        },
+                        {
+                            "step_id": "check_depleted",
+                            "op": "call",
+                            "target": "LessEqual_FloatFloat",
+                            "inputs": {
+                                "A": "@clamp.auto",
+                                "B": "0.0"
+                            }
+                        },
+                        {
+                            "step_id": "branch",
+                            "op": "branch",
+                            "inputs": {
+                                "Condition": "@check_depleted.auto"
+                            },
+                            "exec_after": "fire_changed",
+                            "exec_outputs": {
+                                "True": "fire_depleted"
+                            }
+                        },
+                        {
+                            "step_id": "fire_depleted",
+                            "op": "call",
+                            "target": "${depletion_event}"
+                        },
+                        {
+                            "step_id": "set_return",
+                            "op": "set_var",
+                            "target": "NewValue",
+                            "inputs": {
+                                "value": "@clamp.auto"
+                            },
+                            "exec_after": "branch"
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+}

@@ -307,7 +307,7 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 	}
 	else if (Op == OlivePlanOps::SetVar)
 	{
-		bResult = ResolveSetVarOp(Step, Blueprint, StepIndex, OutResolved, OutErrors);
+		bResult = ResolveSetVarOp(Step, Blueprint, StepIndex, OutResolved, OutErrors, OutWarnings);
 	}
 	else if (Op == OlivePlanOps::Event)
 	{
@@ -624,14 +624,37 @@ bool FOliveBlueprintPlanResolver::ResolveGetVarOp(
 
 		if (!bFoundInParent)
 		{
-			// Not found on this BP or parents — warn but allow (may be created by another step or inherited from native)
-			UE_LOG(LogOlivePlanResolver, Verbose,
-				TEXT("Step '%s': Variable '%s' not found on Blueprint '%s' (may be inherited or created by another step)"),
-				*Step.StepId, *Step.Target, *BP->GetName());
+			// Check native C++ properties on the generated class
+			// (catches variables inherited from native parents, e.g., AActor::bHidden)
+			bool bFoundOnGeneratedClass = false;
+			if (BP->GeneratedClass)
+			{
+				FProperty* Prop = BP->GeneratedClass->FindPropertyByName(FName(*Step.Target));
+				bFoundOnGeneratedClass = (Prop != nullptr);
+			}
 
-			UE_LOG(LogOlivePlanResolver, Warning,
-				TEXT("    Variable '%s' not found on Blueprint '%s' or parents"),
-				*Step.Target, *BP->GetName());
+			if (bFoundOnGeneratedClass)
+			{
+				UE_LOG(LogOlivePlanResolver, Verbose,
+					TEXT("Step '%s': Variable '%s' found on generated class (native property)"),
+					*Step.StepId, *Step.Target);
+			}
+			else
+			{
+				// Variable not found anywhere. Emit a warning (not error) because
+				// another step in the plan may create it, or the generated class
+				// may not be fully compiled yet. The node factory will still attempt
+				// creation via SetSelfMember which may succeed at compile time.
+				Warnings.Add(FString::Printf(
+					TEXT("Step '%s': Variable '%s' not found on Blueprint '%s'. "
+						 "If this is a typo, the node will fail at compile. "
+						 "Components use their variable name from the Components panel."),
+					*Step.StepId, *Step.Target, *BP->GetName()));
+
+				UE_LOG(LogOlivePlanResolver, Warning,
+					TEXT("Step '%s': Variable '%s' not found on Blueprint '%s' or parents or generated class"),
+					*Step.StepId, *Step.Target, *BP->GetName());
+			}
 		}
 		else
 		{
@@ -655,7 +678,8 @@ bool FOliveBlueprintPlanResolver::ResolveSetVarOp(
 	UBlueprint* BP,
 	int32 Idx,
 	FOliveResolvedStep& Out,
-	TArray<FOliveIRBlueprintPlanError>& Errors)
+	TArray<FOliveIRBlueprintPlanError>& Errors,
+	TArray<FString>& Warnings)
 {
 	Out.NodeType = OliveNodeTypes::SetVariable;
 
@@ -733,20 +757,25 @@ bool FOliveBlueprintPlanResolver::ResolveSetVarOp(
 				if (!MatchedComponentClass.IsEmpty())
 				{
 					// This is a component, not a variable -- reject with actionable guidance
+					// Build a clean step_id suggestion from the component name
+					FString CleanName = Step.Target;
+					CleanName = CleanName.ToLower();
+
 					Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
 						TEXT("COMPONENT_NOT_VARIABLE"),
 						Step.StepId,
 						FString::Printf(TEXT("/steps/%d/target"), Idx),
 						FString::Printf(
-							TEXT("'%s' is a component (class: %s). Components are read-only references — "
-								 "use get_var to read them, but you cannot set_var on a component. "
-								 "To modify component properties, use: "
-								 "{\"op\":\"call\", \"target\":\"SetWorldTransform\"/"
-								 "\"SetRelativeLocation\"/etc., "
-								 "\"inputs\":{\"Target\":\"@<get_var_step>.auto\"}}"),
-							*Step.Target, *MatchedComponentClass),
+							TEXT("'%s' is a component (class: %s). Components are read-only references "
+								 "and cannot be assigned with set_var. To READ this component, use get_var. "
+								 "To MODIFY a property on it, first get_var, then call the setter: "
+								 "{\"step_id\":\"get_%s\", \"op\":\"get_var\", \"target\":\"%s\"}, "
+								 "then {\"op\":\"call\", \"target\":\"SetRelativeLocation\", "
+								 "\"inputs\":{\"Target\":\"@get_%s.auto\", \"NewLocation\":\"...\"}}"),
+							*Step.Target, *MatchedComponentClass,
+							*CleanName, *Step.Target, *CleanName),
 						TEXT("Use get_var to read the component reference, then call "
-						 "setter functions with Target wired to the get_var output.")));
+							 "setter functions with Target wired to the get_var output.")));
 
 					UE_LOG(LogOlivePlanResolver, Warning,
 						TEXT("Step '%s': '%s' is a component (%s), not a variable — rejected with guidance"),
@@ -756,14 +785,36 @@ bool FOliveBlueprintPlanResolver::ResolveSetVarOp(
 				}
 			}
 
-			// Not a component either — warn but allow (may be created by another step or inherited from native)
-			UE_LOG(LogOlivePlanResolver, Verbose,
-				TEXT("Step '%s': Variable '%s' not found on Blueprint '%s' (may be inherited or created by another step)"),
-				*Step.StepId, *Step.Target, *BP->GetName());
+			// Not a component either -- check native C++ properties on the generated class
+			bool bFoundOnGeneratedClass = false;
+			if (BP->GeneratedClass)
+			{
+				FProperty* Prop = BP->GeneratedClass->FindPropertyByName(FName(*Step.Target));
+				bFoundOnGeneratedClass = (Prop != nullptr);
+			}
 
-			UE_LOG(LogOlivePlanResolver, Warning,
-				TEXT("    Variable '%s' not found on Blueprint '%s' or parents"),
-				*Step.Target, *BP->GetName());
+			if (bFoundOnGeneratedClass)
+			{
+				UE_LOG(LogOlivePlanResolver, Verbose,
+					TEXT("Step '%s': Variable '%s' found on generated class (native property)"),
+					*Step.StepId, *Step.Target);
+			}
+			else
+			{
+				// Variable not found anywhere. Emit a warning (not error) because
+				// another step in the plan may create it, or the generated class
+				// may not be fully compiled yet. The node factory will still attempt
+				// creation via SetSelfMember which may succeed at compile time.
+				Warnings.Add(FString::Printf(
+					TEXT("Step '%s': Variable '%s' not found on Blueprint '%s'. "
+						 "If this is a typo, the node will fail at compile. "
+						 "Components use their variable name from the Components panel."),
+					*Step.StepId, *Step.Target, *BP->GetName()));
+
+				UE_LOG(LogOlivePlanResolver, Warning,
+					TEXT("Step '%s': Variable '%s' not found on Blueprint '%s' or parents or generated class"),
+					*Step.StepId, *Step.Target, *BP->GetName());
+			}
 		}
 		else
 		{

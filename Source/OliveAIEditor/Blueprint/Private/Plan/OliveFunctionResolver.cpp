@@ -24,6 +24,11 @@
 #include "Components/PrimitiveComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/ActorComponent.h"
+
+// SCS includes (for component class search)
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
 
 // Iterator for broad search
 #include "UObject/UObjectIterator.h"
@@ -60,7 +65,15 @@ FOliveFunctionMatch FOliveFunctionResolver::Resolve(
             FOliveFunctionMatch Match;
             Match.Function = Found;
             Match.OwningClass = Class;
-            Match.MatchMethod = FOliveFunctionMatch::EMatchMethod::ExactName;
+            // Distinguish component class matches from regular exact matches
+            if (Class->IsChildOf(UActorComponent::StaticClass()))
+            {
+                Match.MatchMethod = FOliveFunctionMatch::EMatchMethod::ComponentClassSearch;
+            }
+            else
+            {
+                Match.MatchMethod = FOliveFunctionMatch::EMatchMethod::ExactName;
+            }
             Match.Confidence = 100;
             Match.DisplayName = Found->GetDisplayNameText().ToString();
             return Match;
@@ -81,8 +94,17 @@ FOliveFunctionMatch FOliveFunctionResolver::Resolve(
             FOliveFunctionMatch Match;
             Match.Function = Found;
             Match.OwningClass = Class;
-            Match.MatchMethod = FOliveFunctionMatch::EMatchMethod::K2Prefix;
-            Match.Confidence = 95;
+            // Distinguish component class matches from regular K2 prefix matches
+            if (Class->IsChildOf(UActorComponent::StaticClass()))
+            {
+                Match.MatchMethod = FOliveFunctionMatch::EMatchMethod::ComponentClassSearch;
+                Match.Confidence = 95;
+            }
+            else
+            {
+                Match.MatchMethod = FOliveFunctionMatch::EMatchMethod::K2Prefix;
+                Match.Confidence = 95;
+            }
             Match.DisplayName = Found->GetDisplayNameText().ToString();
             return Match;
         }
@@ -116,12 +138,33 @@ FOliveFunctionMatch FOliveFunctionResolver::Resolve(
         }
     }
 
-    // STRATEGY 5: Broad search across all function libraries
+    // STRATEGY 5: Broad search across all function libraries and gameplay classes
+    // Uses relevance-aware scoring: function libraries get 70, components on this
+    // Blueprint get 90, unrelated gameplay classes get 40. Only accepts matches
+    // at confidence >= 60 to prevent irrelevant class matching (e.g., SetSpeed
+    // matching WindDirectionalSourceComponent on a bullet Blueprint).
     {
-        TArray<FOliveFunctionMatch> BroadResults = BroadSearch(FunctionName, 1);
+        TArray<FOliveFunctionMatch> BroadResults = BroadSearch(FunctionName, 5, Blueprint);
         if (BroadResults.Num() > 0)
         {
-            return BroadResults[0];
+            const FOliveFunctionMatch& Best = BroadResults[0];
+
+            // Minimum acceptance threshold: reject low-confidence broad matches
+            // so they fall through to the failure path with suggestions instead
+            static constexpr int32 BroadSearchAcceptanceThreshold = 60;
+            if (Best.Confidence >= BroadSearchAcceptanceThreshold)
+            {
+                return Best;
+            }
+
+            // Below threshold: log rejection and fall through to failure path.
+            // GetCandidates will still surface the low-confidence match as a suggestion.
+            UE_LOG(LogOliveFunctionResolver, Warning,
+                TEXT("BroadSearch found '%s' on %s but confidence %d < threshold %d. Rejecting."),
+                *FunctionName,
+                Best.OwningClass ? *Best.OwningClass->GetName() : TEXT("?"),
+                Best.Confidence,
+                BroadSearchAcceptanceThreshold);
         }
     }
 
@@ -165,6 +208,23 @@ TArray<UClass*> FOliveFunctionResolver::GetSearchOrder(
                 Added.Add(Current);
             }
             Current = Current->GetSuperClass();
+        }
+    }
+
+    // 2.5: Component classes on this Blueprint's SCS
+    // This ensures functions like SetSpeed are found on the Blueprint's own
+    // ProjectileMovementComponent before falling through to BroadSearch
+    // where they might match an irrelevant class.
+    if (Blueprint && Blueprint->SimpleConstructionScript)
+    {
+        TArray<USCS_Node*> AllSCSNodes = Blueprint->SimpleConstructionScript->GetAllNodes();
+        for (USCS_Node* SCSNode : AllSCSNodes)
+        {
+            if (SCSNode && SCSNode->ComponentClass && !Added.Contains(SCSNode->ComponentClass))
+            {
+                Result.Add(SCSNode->ComponentClass);
+                Added.Add(SCSNode->ComponentClass);
+            }
         }
     }
 
@@ -412,7 +472,8 @@ FOliveFunctionMatch FOliveFunctionResolver::TryCatalogMatch(const FString& Funct
 
 TArray<FOliveFunctionMatch> FOliveFunctionResolver::BroadSearch(
     const FString& FunctionName,
-    int32 MaxResults)
+    int32 MaxResults,
+    UBlueprint* Blueprint)
 {
     TArray<FOliveFunctionMatch> Results;
     FName FuncFName(*FunctionName);
@@ -449,18 +510,50 @@ TArray<FOliveFunctionMatch> FOliveFunctionResolver::BroadSearch(
 
         if (Found && Found->HasAnyFunctionFlags(FUNC_BlueprintCallable))
         {
+            // Relevance-aware confidence scoring:
+            //   Function library (designed for general use):    70
+            //   Gameplay class present on this Blueprint's SCS: 90
+            //   Gameplay class NOT on this Blueprint (or no BP): 40
+            //   Fallback:                                        40
+            int32 Confidence = 40;
+
+            if (bIsFunctionLibrary)
+            {
+                Confidence = 70;
+            }
+            else if (bIsGameplayClass)
+            {
+                // Check if this class matches a component on the Blueprint's SCS
+                bool bIsOnBlueprint = false;
+                if (Blueprint && Blueprint->SimpleConstructionScript)
+                {
+                    for (USCS_Node* SCSNode : Blueprint->SimpleConstructionScript->GetAllNodes())
+                    {
+                        if (SCSNode && SCSNode->ComponentClass &&
+                            Class->IsChildOf(SCSNode->ComponentClass))
+                        {
+                            bIsOnBlueprint = true;
+                            break;
+                        }
+                    }
+                }
+                Confidence = bIsOnBlueprint ? 90 : 40;
+            }
+
             FOliveFunctionMatch Match;
             Match.Function = Found;
             Match.OwningClass = Class;
             Match.MatchMethod = FOliveFunctionMatch::EMatchMethod::BroadClassSearch;
-            Match.Confidence = bIsFunctionLibrary ? 50 : 55;
+            Match.Confidence = Confidence;
             Match.DisplayName = Found->GetDisplayNameText().ToString();
 
             Results.Add(Match);
 
             UE_LOG(LogOliveFunctionResolver, Log,
-                TEXT("Broad search found '%s' on %s (confidence=%d)"),
-                *FunctionName, *Class->GetName(), Match.Confidence);
+                TEXT("Broad search found '%s' on %s (confidence=%d, library=%d, onBP=%d)"),
+                *FunctionName, *Class->GetName(), Match.Confidence,
+                bIsFunctionLibrary ? 1 : 0,
+                (bIsGameplayClass && Confidence == 90) ? 1 : 0);
 
             if (Results.Num() >= MaxResults)
             {
@@ -532,7 +625,7 @@ TArray<FOliveFunctionMatch> FOliveFunctionResolver::GetCandidates(
     if (Candidates.Num() < MaxResults)
     {
         TArray<FOliveFunctionMatch> BroadResults = BroadSearch(
-            FunctionName, MaxResults - Candidates.Num());
+            FunctionName, MaxResults - Candidates.Num(), nullptr);
         Candidates.Append(BroadResults);
     }
 
@@ -565,6 +658,7 @@ FString FOliveFunctionResolver::MatchMethodToString(FOliveFunctionMatch::EMatchM
         case FOliveFunctionMatch::EMatchMethod::CatalogFuzzy:       return TEXT("catalog_fuzzy");
         case FOliveFunctionMatch::EMatchMethod::BroadClassSearch:   return TEXT("broad_class_search");
         case FOliveFunctionMatch::EMatchMethod::ParentClassSearch:  return TEXT("parent_class_search");
+        case FOliveFunctionMatch::EMatchMethod::ComponentClassSearch: return TEXT("component_class_search");
         default:                                                     return TEXT("unknown");
     }
 }

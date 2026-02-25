@@ -41,6 +41,17 @@ struct OLIVEAIEDITOR_API FOliveCorrectionDecision
 };
 
 /**
+ * Error classification for self-correction routing.
+ * Determines whether an error is worth retrying.
+ */
+enum class EOliveErrorCategory : uint8
+{
+	FixableMistake,       // Category A: retry with guidance
+	UnsupportedFeature,   // Category B: do NOT retry, suggest alternative
+	Ambiguous             // Category C: retry once, then escalate
+};
+
+/**
  * Self-Correction Policy
  *
  * Evaluates tool results and compile outcomes to decide whether to
@@ -78,9 +89,18 @@ public:
 private:
 	/**
 	 * Check if the result contains a compile failure.
+	 * Also detects stale errors (compile errors NOT caused by the current plan).
+	 *
+	 * @param ResultJson      The tool result JSON string
+	 * @param OutErrors       Extracted compile error text
+	 * @param OutAssetPath    Blueprint asset path from the result
+	 * @param OutHasStaleErrors  Set to true if compile errors do NOT reference any class/function
+	 *                           from the current plan's resolved steps (meaning errors are stale,
+	 *                           caused by pre-existing issues or previous operations).
+	 *                           Only set to true when plan metadata is available; defaults to false.
 	 * @return true if compile_result.success == false
 	 */
-	bool HasCompileFailure(const FString& ResultJson, FString& OutErrors, FString& OutAssetPath) const;
+	bool HasCompileFailure(const FString& ResultJson, FString& OutErrors, FString& OutAssetPath, bool& OutHasStaleErrors) const;
 
 	/**
 	 * Check if the result is a tool execution failure.
@@ -108,6 +128,19 @@ private:
 		int32 AttemptNum,
 		int32 MaxAttempts
 	) const;
+
+	/**
+	 * Classify an error code into a correction category.
+	 * Determines whether the error is worth retrying (Category A),
+	 * represents an unsupported feature (Category B), or is ambiguous (Category C).
+	 *
+	 * @param ErrorCode The tool error code (e.g., "NODE_TYPE_UNKNOWN", "BP_ADD_NODE_FAILED")
+	 * @param ErrorMessage The full error message (for secondary pattern matching)
+	 * @return Category determining retry behavior
+	 */
+	static EOliveErrorCategory ClassifyErrorCode(
+		const FString& ErrorCode,
+		const FString& ErrorMessage);
 
 	/**
 	 * Build a stable hash of plan content from tool call arguments.

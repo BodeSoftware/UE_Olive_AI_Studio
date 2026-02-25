@@ -25,6 +25,8 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "K2Node_Event.h"
 #include "K2Node_CustomEvent.h"
+#include "K2Node_FunctionEntry.h"
+#include "K2Node_FunctionResult.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
@@ -38,6 +40,7 @@
 #include "Services/OliveBatchExecutionScope.h"
 #include "IR/OliveIRSchema.h"
 #include "IR/BlueprintPlanIR.h"
+#include "Template/OliveTemplateSystem.h"
 
 DEFINE_LOG_CATEGORY(LogOliveBPTools);
 
@@ -444,6 +447,9 @@ void FOliveBlueprintToolHandlers::RegisterAllTools()
 		}
 	}
 
+	// Template tools (always registered; handlers check template availability)
+	RegisterTemplateTools();
+
 	UE_LOG(LogOliveBPTools, Log, TEXT("Registered %d Blueprint MCP tools"), RegisteredToolNames.Num());
 }
 
@@ -547,7 +553,18 @@ void FOliveBlueprintToolHandlers::RegisterReaderTools()
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.list_overridable_functions"));
 
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered %d reader tools"), 7);
+	// blueprint.get_node_pins
+	Registry.RegisterTool(
+		TEXT("blueprint.get_node_pins"),
+		TEXT("Get pin manifest for a specific node in a Blueprint graph"),
+		OliveBlueprintSchemas::BlueprintGetNodePins(),
+		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintGetNodePins),
+		{TEXT("blueprint"), TEXT("read")},
+		TEXT("blueprint")
+	);
+	RegisteredToolNames.Add(TEXT("blueprint.get_node_pins"));
+
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered %d reader tools"), 8);
 }
 
 // ============================================================================
@@ -1472,6 +1489,106 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintListOverridableFunc
 
 	ResultData->SetArrayField(TEXT("functions"), FunctionsArray);
 	ResultData->SetNumberField(TEXT("count"), Functions.Num());
+	if (!ResolveInfo.RedirectedFrom.IsEmpty())
+	{
+		ResultData->SetStringField(TEXT("redirected_from"), ResolveInfo.RedirectedFrom);
+	}
+
+	return FOliveToolResult::Success(ResultData);
+}
+
+FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintGetNodePins(const TSharedPtr<FJsonObject>& Params)
+{
+	// Validate parameters
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a valid parameters object")
+		);
+	}
+
+	// Parse required parameters
+	FString AssetPath;
+	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'path'"),
+			TEXT("Provide the Blueprint asset path")
+		);
+	}
+
+	FString GraphName;
+	if (!Params->TryGetStringField(TEXT("graph"), GraphName) || GraphName.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'graph'"),
+			TEXT("Provide the graph name (e.g., 'EventGraph' or function name)")
+		);
+	}
+
+	FString NodeId;
+	if (!Params->TryGetStringField(TEXT("node_id"), NodeId) || NodeId.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'node_id'"),
+			TEXT("Provide the node ID (e.g., 'node_0')")
+		);
+	}
+
+	// Resolve asset path
+	FOliveAssetResolveInfo ResolveInfo = FOliveAssetResolver::Get().ResolveByPath(AssetPath);
+	if (!ResolveInfo.IsSuccess())
+	{
+		return FOliveToolResult::Error(
+			TEXT("ASSET_NOT_FOUND"),
+			FString::Printf(TEXT("Failed to resolve asset at path '%s'"), *AssetPath),
+			TEXT("Verify the asset path is correct and the asset exists")
+		);
+	}
+	const FString ResolvedPath = ResolveInfo.ResolvedPath;
+
+	// Load Blueprint
+	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *ResolvedPath);
+	if (!Blueprint)
+	{
+		return FOliveToolResult::Error(
+			TEXT("ASSET_NOT_FOUND"),
+			FString::Printf(TEXT("Blueprint not found at path '%s'"), *ResolvedPath),
+			TEXT("Verify the asset path is correct")
+		);
+	}
+
+	// Find the node via GraphWriter cache
+	FOliveGraphWriter& GraphWriter = FOliveGraphWriter::Get();
+	UEdGraphNode* Node = GraphWriter.GetCachedNode(ResolvedPath, NodeId);
+	if (!Node)
+	{
+		return FOliveToolResult::Error(
+			TEXT("NODE_NOT_FOUND"),
+			FString::Printf(TEXT("Node '%s' not found in graph '%s'. "
+				"Node IDs are assigned when nodes are created via add_node or apply_plan_json "
+				"and are scoped to the graph."), *NodeId, *GraphName),
+			TEXT("Use blueprint.read with mode:'full' to see all nodes in the graph")
+		);
+	}
+
+	// Build pin manifest using existing anonymous namespace helper
+	TSharedPtr<FJsonObject> PinsData = BuildPinManifest(Node);
+
+	// Build result
+	TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
+	ResultData->SetStringField(TEXT("asset_path"), ResolvedPath);
+	ResultData->SetStringField(TEXT("graph"), GraphName);
+	ResultData->SetStringField(TEXT("node_id"), NodeId);
+	ResultData->SetStringField(TEXT("node_class"), Node->GetClass()->GetName());
+	ResultData->SetObjectField(TEXT("pins"), PinsData);
+	ResultData->SetStringField(TEXT("node_title"), Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
+
 	if (!ResolveInfo.RedirectedFrom.IsEmpty())
 	{
 		ResultData->SetStringField(TEXT("redirected_from"), ResolveInfo.RedirectedFrom);
@@ -5973,6 +6090,69 @@ FString BuildPlanFailureMessage(const FString& Prefix, const TArray<FOliveIRBlue
 		*Prefix, Errors.Num(), *StepLabel, *First.ErrorCode, *First.Message);
 }
 
+/**
+ * Remove nodes created by a failed plan execution, restoring the graph to
+ * its pre-plan state. Reused event nodes (identified by ReusedStepIds) are
+ * NOT removed. This runs as a separate FScopedTransaction so it appears as
+ * "Olive AI: Rollback failed plan" in the undo history.
+ *
+ * @param Blueprint      The Blueprint containing the graph
+ * @param Graph          The graph from which nodes are removed
+ * @param StepToNodeMap  JSON object mapping StepId -> NodeId
+ * @param ReusedStepIds  Step IDs that reused pre-existing event nodes (skip these)
+ * @param AssetPath      Asset path for GraphWriter cache operations
+ * @return Number of nodes removed
+ */
+int32 RollbackPlanNodes(
+	UBlueprint* Blueprint,
+	UEdGraph* Graph,
+	const FJsonObject& StepToNodeMap,
+	const TSet<FString>& ReusedStepIds,
+	const FString& AssetPath)
+{
+	if (!Blueprint || !Graph)
+	{
+		return 0;
+	}
+
+	FScopedTransaction Transaction(
+		NSLOCTEXT("OliveBPTools", "RollbackPlan", "Olive AI: Rollback failed plan"));
+	Blueprint->Modify();
+
+	FOliveGraphWriter& Writer = FOliveGraphWriter::Get();
+	int32 RemovedCount = 0;
+
+	for (const auto& Pair : StepToNodeMap.Values)
+	{
+		const FString& StepId = Pair.Key;
+		if (ReusedStepIds.Contains(StepId))
+		{
+			continue; // Do not remove pre-existing event nodes
+		}
+
+		const FString NodeId = Pair.Value->AsString();
+		UEdGraphNode* Node = Writer.GetCachedNode(AssetPath, NodeId);
+		if (Node && Graph->Nodes.Contains(Node))
+		{
+			Node->BreakAllNodeLinks();
+			Graph->RemoveNode(Node);
+			RemovedCount++;
+		}
+	}
+
+	// Clear GraphWriter cache for this Blueprint (node IDs are now invalid)
+	if (RemovedCount > 0)
+	{
+		Writer.ClearNodeCache(AssetPath);
+		FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+		UE_LOG(LogOliveBPTools, Log,
+			TEXT("Rolled back %d nodes from failed plan on '%s'"),
+			RemovedCount, *Blueprint->GetName());
+	}
+
+	return RemovedCount;
+}
+
 } // namespace
 
 FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(const TSharedPtr<FJsonObject>& Params)
@@ -6534,6 +6714,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 			[CapturedResolvedSteps = MoveTemp(CapturedResolvedSteps),
 			 CapturedPlan = MoveTemp(CapturedPlan),
 			 CapturedResolverNotes = MoveTemp(CapturedResolverNotes),
+			 CapturedMode = Mode,
 			 AssetPath, GraphTarget]
 			(const FOliveWriteRequest& InRequest, UObject* TargetAsset) -> FOliveWriteResult
 			{
@@ -6562,6 +6743,35 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 						TEXT("EventGraph must already exist; other names are created as function graphs."));
 				}
 
+				// Replace mode: clear graph of non-entry nodes before plan execution
+				if (CapturedMode == TEXT("replace") && ExecutionGraph)
+				{
+					TArray<UEdGraphNode*> NodesToRemove;
+					for (UEdGraphNode* Node : ExecutionGraph->Nodes)
+					{
+						if (!Node) continue;
+						// Keep event nodes and function entry/result nodes
+						if (Node->IsA<UK2Node_Event>()) continue;
+						if (Node->IsA<UK2Node_CustomEvent>()) continue;
+						if (Node->IsA<UK2Node_FunctionEntry>()) continue;
+						if (Node->IsA<UK2Node_FunctionResult>()) continue;
+						NodesToRemove.Add(Node);
+					}
+
+					for (UEdGraphNode* Node : NodesToRemove)
+					{
+						Node->BreakAllNodeLinks();
+						ExecutionGraph->RemoveNode(Node);
+					}
+
+					// Clear cache since we removed nodes
+					FOliveGraphWriter::Get().ClearNodeCache(AssetPath);
+
+					UE_LOG(LogOliveBPTools, Log,
+						TEXT("Replace mode: cleared %d non-entry nodes from graph '%s'"),
+						NodesToRemove.Num(), *GraphTarget);
+				}
+
 				// Execute the multi-phase plan
 				FOlivePlanExecutor PlanExecutor;
 				FOliveIRBlueprintPlanResult PlanResult = PlanExecutor.Execute(
@@ -6580,6 +6790,40 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 				ResultData->SetObjectField(TEXT("step_to_node_map"), MapObj);
 				ResultData->SetNumberField(TEXT("applied_ops_count"), PlanResult.AppliedOpsCount);
 				ResultData->SetStringField(TEXT("schema_version"), TEXT("2.0"));
+
+				// Serialize reused step IDs (for rollback: these event nodes survive cleanup)
+				if (PlanResult.ReusedStepIds.Num() > 0)
+				{
+					TArray<TSharedPtr<FJsonValue>> ReusedArr;
+					ReusedArr.Reserve(PlanResult.ReusedStepIds.Num());
+					for (const FString& Id : PlanResult.ReusedStepIds)
+					{
+						ReusedArr.Add(MakeShared<FJsonValueString>(Id));
+					}
+					ResultData->SetArrayField(TEXT("reused_step_ids"), ReusedArr);
+				}
+
+				// Serialize plan ownership metadata (for stale error detection)
+				if (PlanResult.PlanClassNames.Num() > 0)
+				{
+					TArray<TSharedPtr<FJsonValue>> ClassArr;
+					ClassArr.Reserve(PlanResult.PlanClassNames.Num());
+					for (const FString& CN : PlanResult.PlanClassNames)
+					{
+						ClassArr.Add(MakeShared<FJsonValueString>(CN));
+					}
+					ResultData->SetArrayField(TEXT("plan_class_names"), ClassArr);
+				}
+				if (PlanResult.PlanFunctionNames.Num() > 0)
+				{
+					TArray<TSharedPtr<FJsonValue>> FuncArr;
+					FuncArr.Reserve(PlanResult.PlanFunctionNames.Num());
+					for (const FString& FN : PlanResult.PlanFunctionNames)
+					{
+						FuncArr.Add(MakeShared<FJsonValueString>(FN));
+					}
+					ResultData->SetArrayField(TEXT("plan_function_names"), FuncArr);
+				}
 
 				// Serialize wiring errors (for AI self-correction)
 				if (PlanResult.Errors.Num() > 0)
@@ -6911,13 +7155,39 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 			{
 				ToolResult.Data->SetObjectField(TEXT("pin_manifests"), *PinManifests);
 			}
+
+			// Forward plan ownership metadata (for stale error detection by self-correction)
+			const TArray<TSharedPtr<FJsonValue>>* PlanClassNames = nullptr;
+			if (PipelineResult.ResultData->TryGetArrayField(TEXT("plan_class_names"), PlanClassNames))
+			{
+				ToolResult.Data->SetArrayField(TEXT("plan_class_names"), *PlanClassNames);
+			}
+			const TArray<TSharedPtr<FJsonValue>>* PlanFuncNames = nullptr;
+			if (PipelineResult.ResultData->TryGetArrayField(TEXT("plan_function_names"), PlanFuncNames))
+			{
+				ToolResult.Data->SetArrayField(TEXT("plan_function_names"), *PlanFuncNames);
+			}
 		}
 	}
 	else if (!PipelineResult.bSuccess && PipelineResult.ResultData.IsValid())
 	{
-		// On failure, still forward wiring_errors, warnings, and pin_manifests if present (v2.0)
+		// On failure, still forward key fields if present (v2.0)
 		if (bIsV2Plan && ToolResult.Data.IsValid())
 		{
+			// Forward step_to_node_map so rollback can find the nodes
+			const TSharedPtr<FJsonObject>* FailStepMapObj = nullptr;
+			if (PipelineResult.ResultData->TryGetObjectField(TEXT("step_to_node_map"), FailStepMapObj))
+			{
+				ToolResult.Data->SetObjectField(TEXT("step_to_node_map"), *FailStepMapObj);
+			}
+
+			// Forward reused_step_ids so rollback knows which nodes to skip
+			const TArray<TSharedPtr<FJsonValue>>* FailReusedArr = nullptr;
+			if (PipelineResult.ResultData->TryGetArrayField(TEXT("reused_step_ids"), FailReusedArr))
+			{
+				ToolResult.Data->SetArrayField(TEXT("reused_step_ids"), *FailReusedArr);
+			}
+
 			const TArray<TSharedPtr<FJsonValue>>* WiringErrors = nullptr;
 			if (PipelineResult.ResultData->TryGetArrayField(TEXT("wiring_errors"), WiringErrors))
 			{
@@ -6935,6 +7205,74 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 			{
 				ToolResult.Data->SetObjectField(TEXT("pin_manifests"), *PinManifests);
 			}
+
+			// Forward plan ownership metadata (for stale error detection by self-correction)
+			const TArray<TSharedPtr<FJsonValue>>* FailPlanClassNames = nullptr;
+			if (PipelineResult.ResultData->TryGetArrayField(TEXT("plan_class_names"), FailPlanClassNames))
+			{
+				ToolResult.Data->SetArrayField(TEXT("plan_class_names"), *FailPlanClassNames);
+			}
+			const TArray<TSharedPtr<FJsonValue>>* FailPlanFuncNames = nullptr;
+			if (PipelineResult.ResultData->TryGetArrayField(TEXT("plan_function_names"), FailPlanFuncNames))
+			{
+				ToolResult.Data->SetArrayField(TEXT("plan_function_names"), *FailPlanFuncNames);
+			}
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// 12. Post-pipeline rollback on compile failure
+	// ------------------------------------------------------------------
+	// If the pipeline reports compile errors, the nodes created by this plan
+	// are now zombie nodes (transaction already committed in Stage 4).
+	// Remove them so the AI can retry with a clean graph.
+	if (bIsV2Plan && !PipelineResult.bSuccess && PipelineResult.ResultData.IsValid())
+	{
+		bool bCompileSuccess = true;
+		const TSharedPtr<FJsonObject>* CompileResultObj = nullptr;
+		if (PipelineResult.ResultData->TryGetObjectField(TEXT("compile_result"), CompileResultObj)
+			&& CompileResultObj && (*CompileResultObj).IsValid())
+		{
+			(*CompileResultObj)->TryGetBoolField(TEXT("success"), bCompileSuccess);
+		}
+
+		const TSharedPtr<FJsonObject>* StepMapObj = nullptr;
+		const bool bHasStepMap = PipelineResult.ResultData->TryGetObjectField(
+			TEXT("step_to_node_map"), StepMapObj) && StepMapObj && (*StepMapObj).IsValid();
+
+		if (!bCompileSuccess && bHasStepMap)
+		{
+			// Re-find the graph (may have been created inside the pipeline transaction)
+			UEdGraph* RollbackGraph = FindGraphByName(Blueprint, GraphTarget);
+			if (RollbackGraph)
+			{
+				// Build the set of reused step IDs from result data
+				TSet<FString> ReusedIds;
+				const TArray<TSharedPtr<FJsonValue>>* ReusedArr = nullptr;
+				if (PipelineResult.ResultData->TryGetArrayField(TEXT("reused_step_ids"), ReusedArr)
+					&& ReusedArr)
+				{
+					for (const TSharedPtr<FJsonValue>& Val : *ReusedArr)
+					{
+						if (Val.IsValid())
+						{
+							ReusedIds.Add(Val->AsString());
+						}
+					}
+				}
+
+				const int32 RemovedCount = RollbackPlanNodes(
+					Blueprint, RollbackGraph, **StepMapObj, ReusedIds, AssetPath);
+
+				if (RemovedCount > 0 && ToolResult.Data.IsValid())
+				{
+					ToolResult.Data->SetNumberField(TEXT("rolled_back_nodes"), RemovedCount);
+					ToolResult.Data->SetStringField(TEXT("rollback_message"),
+						FString::Printf(TEXT("Rolled back %d nodes from failed plan. "
+							"The graph has been restored to its pre-plan state. "
+							"Fix the plan and resubmit."), RemovedCount));
+				}
+			}
 		}
 	}
 
@@ -6944,5 +7282,183 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 		*Plan.SchemaVersion);
 
 	return ToolResult;
+}
+
+// ============================================================
+// Template Tools
+// ============================================================
+
+void FOliveBlueprintToolHandlers::RegisterTemplateTools()
+{
+	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
+
+	Registry.RegisterTool(
+		TEXT("blueprint.create_from_template"),
+		TEXT("Create a complete Blueprint from a factory template. "
+			"Templates provide parameterized, pre-wired Blueprints for common patterns "
+			"(health, projectile, trigger, door, spawner). "
+			"Use blueprint.list_templates or the catalog in context to discover available templates."),
+		OliveBlueprintSchemas::BlueprintCreateFromTemplate(),
+		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintCreateFromTemplate),
+		{TEXT("blueprint"), TEXT("write"), TEXT("template")},
+		TEXT("blueprint")
+	);
+	RegisteredToolNames.Add(TEXT("blueprint.create_from_template"));
+
+	Registry.RegisterTool(
+		TEXT("blueprint.get_template"),
+		TEXT("View a template's full content (parameter schema, presets, plan patterns). "
+			"Use this to read patterns as reference before writing your own plan."),
+		OliveBlueprintSchemas::BlueprintGetTemplate(),
+		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintGetTemplate),
+		{TEXT("blueprint"), TEXT("read"), TEXT("template")},
+		TEXT("blueprint")
+	);
+	RegisteredToolNames.Add(TEXT("blueprint.get_template"));
+
+	Registry.RegisterTool(
+		TEXT("blueprint.list_templates"),
+		TEXT("List available templates with descriptions and examples."),
+		OliveBlueprintSchemas::BlueprintListTemplates(),
+		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintListTemplates),
+		{TEXT("blueprint"), TEXT("read"), TEXT("template")},
+		TEXT("blueprint")
+	);
+	RegisteredToolNames.Add(TEXT("blueprint.list_templates"));
+
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered template tools (create_from_template, get_template, list_templates)"));
+}
+
+FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintListTemplates(const TSharedPtr<FJsonObject>& Params)
+{
+	FString TypeFilter;
+	if (Params.IsValid())
+	{
+		Params->TryGetStringField(TEXT("type"), TypeFilter);
+	}
+
+	const auto& AllTemplates = FOliveTemplateSystem::Get().GetAllTemplates();
+
+	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
+	TArray<TSharedPtr<FJsonValue>> TemplatesArray;
+
+	for (const auto& Pair : AllTemplates)
+	{
+		const FOliveTemplateInfo& Info = Pair.Value;
+
+		if (!TypeFilter.IsEmpty() && Info.TemplateType != TypeFilter)
+		{
+			continue;
+		}
+
+		TSharedPtr<FJsonObject> Entry = MakeShared<FJsonObject>();
+		Entry->SetStringField(TEXT("template_id"), Info.TemplateId);
+		Entry->SetStringField(TEXT("type"), Info.TemplateType);
+		Entry->SetStringField(TEXT("display_name"), Info.DisplayName);
+		Entry->SetStringField(TEXT("description"), Info.CatalogDescription);
+		if (!Info.CatalogExamples.IsEmpty())
+		{
+			Entry->SetStringField(TEXT("examples"), Info.CatalogExamples);
+		}
+		TemplatesArray.Add(MakeShared<FJsonValueObject>(Entry));
+	}
+
+	ResultData->SetArrayField(TEXT("templates"), TemplatesArray);
+	ResultData->SetNumberField(TEXT("count"), TemplatesArray.Num());
+
+	return FOliveToolResult::Success(ResultData);
+}
+
+FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintGetTemplate(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide 'template_id'")
+		);
+	}
+
+	FString TemplateId;
+	if (!Params->TryGetStringField(TEXT("template_id"), TemplateId) || TemplateId.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'template_id' is missing"),
+			TEXT("Provide template_id")
+		);
+	}
+
+	FString PatternName;
+	Params->TryGetStringField(TEXT("pattern"), PatternName);
+
+	FString Content = FOliveTemplateSystem::Get().GetTemplateContent(TemplateId, PatternName);
+	if (Content.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("TEMPLATE_NOT_FOUND"),
+			FString::Printf(TEXT("Template '%s' not found"), *TemplateId),
+			TEXT("Use blueprint.list_templates to see available templates")
+		);
+	}
+
+	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
+	ResultData->SetStringField(TEXT("template_id"), TemplateId);
+	ResultData->SetStringField(TEXT("content"), Content);
+
+	return FOliveToolResult::Success(ResultData);
+}
+
+FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreateFromTemplate(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide 'template_id' and 'asset_path'")
+		);
+	}
+
+	FString TemplateId;
+	if (!Params->TryGetStringField(TEXT("template_id"), TemplateId) || TemplateId.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'template_id' is missing"),
+			TEXT("Provide template_id")
+		);
+	}
+
+	FString AssetPath;
+	if (!Params->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'asset_path' is missing"),
+			TEXT("Provide asset_path (e.g., /Game/Blueprints/BP_Health)")
+		);
+	}
+
+	FString PresetName;
+	Params->TryGetStringField(TEXT("preset"), PresetName);
+
+	// Extract parameters object
+	TMap<FString, FString> UserParams;
+	const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
+	if (Params->TryGetObjectField(TEXT("parameters"), ParamsObj) && ParamsObj && (*ParamsObj).IsValid())
+	{
+		for (const auto& KV : (*ParamsObj)->Values)
+		{
+			FString Value;
+			if (KV.Value->TryGetString(Value))
+			{
+				UserParams.Add(KV.Key, Value);
+			}
+		}
+	}
+
+	return FOliveTemplateSystem::Get().ApplyTemplate(TemplateId, UserParams, PresetName, AssetPath);
 }
 

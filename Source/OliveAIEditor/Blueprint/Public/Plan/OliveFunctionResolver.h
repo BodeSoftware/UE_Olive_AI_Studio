@@ -32,6 +32,7 @@ struct OLIVEAIEDITOR_API FOliveFunctionMatch
         CatalogFuzzy,        // Fuzzy match in node catalog (score >= threshold)
         BroadClassSearch,    // Found by iterating all Blueprint Function Libraries
         ParentClassSearch,   // Found on the Blueprint's parent class hierarchy
+        ComponentClassSearch,// Found on a component class on this Blueprint's SCS
     };
 
     EMatchMethod MatchMethod = EMatchMethod::ExactName;
@@ -130,10 +131,21 @@ private:
     static FOliveFunctionMatch TryCatalogMatch(
         const FString& FunctionName);
 
-    /** Strategy 5: Broad search across all loaded UBlueprintFunctionLibrary subclasses */
+    /**
+     * Strategy 5: Broad search across all loaded UBlueprintFunctionLibrary subclasses
+     * and gameplay classes. Assigns relevance-aware confidence scores based on
+     * whether the matched class is a function library, a component present on
+     * the Blueprint's SCS, or an unrelated gameplay class.
+     *
+     * @param FunctionName  The function name to search for
+     * @param MaxResults    Maximum number of matches to return
+     * @param Blueprint     Optional Blueprint for SCS-based relevance scoring
+     * @return Array of matches sorted by confidence descending
+     */
     static TArray<FOliveFunctionMatch> BroadSearch(
         const FString& FunctionName,
-        int32 MaxResults);
+        int32 MaxResults,
+        UBlueprint* Blueprint = nullptr);
 
     // ====================================================================
     // Alias Map

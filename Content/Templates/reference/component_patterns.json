@@ -1,0 +1,73 @@
+{
+    "template_id": "component_patterns",
+    "template_type": "reference",
+    "display_name": "Component Interaction Patterns",
+
+    "catalog_description": "Common component interaction patterns: collision response via OnComponentHit, overlap detection via OnComponentBeginOverlap, and component variable access with correct Target wiring.",
+    "catalog_examples": "",
+
+    "tags": "component delegate event overlap hit collision target wire variable access bound",
+
+    "patterns": [
+        {
+            "name": "OnComponentHit",
+            "description": "Respond to a component's OnComponentHit event. Uses UK2Node_ComponentBoundEvent which binds directly to a component's multicast delegate in the event graph. This is how the editor creates component events when you drag from a component in the Components panel.",
+            "notes": "Component events require blueprint.add_node with UK2Node_ComponentBoundEvent, not plan JSON event op. The ComponentPropertyName must match the variable name of the component in the Blueprint's component hierarchy (e.g., 'CollisionComp' if that is the component variable name). DelegatePropertyName must match the multicast delegate name on the component class (e.g., 'OnComponentHit' from UPrimitiveComponent).",
+            "steps": [
+                {
+                    "note": "Component bound events cannot be created via plan JSON ops. Use blueprint.add_node directly.",
+                    "tool": "blueprint.add_node",
+                    "class_name": "K2Node_ComponentBoundEvent",
+                    "properties": {
+                        "ComponentPropertyName": "CollisionComp",
+                        "DelegatePropertyName": "OnComponentHit"
+                    }
+                },
+                {
+                    "note": "After the event node is placed, use plan JSON to wire the response logic from its exec pin. The event node exposes output pins: HitComponent (UPrimitiveComponent), OtherActor (AActor), OtherComp (UPrimitiveComponent), NormalImpulse (FVector), Hit (FHitResult)."
+                }
+            ]
+        },
+        {
+            "name": "OnComponentBeginOverlap",
+            "description": "Detect when another actor overlaps a component's trigger volume. Uses UK2Node_ComponentBoundEvent bound to the OnComponentBeginOverlap delegate. The component must have bGenerateOverlapEvents set to true.",
+            "notes": "Component events require blueprint.add_node with UK2Node_ComponentBoundEvent, not plan JSON event op. The component (e.g., a BoxCollision or SphereCollision) must have Generate Overlap Events enabled. DelegatePropertyName is 'OnComponentBeginOverlap' from UPrimitiveComponent.",
+            "steps": [
+                {
+                    "note": "Component bound events cannot be created via plan JSON ops. Use blueprint.add_node directly.",
+                    "tool": "blueprint.add_node",
+                    "class_name": "K2Node_ComponentBoundEvent",
+                    "properties": {
+                        "ComponentPropertyName": "TriggerVolume",
+                        "DelegatePropertyName": "OnComponentBeginOverlap"
+                    }
+                },
+                {
+                    "note": "After the event node is placed, wire response logic from its exec pin. The event node exposes output pins: OverlappedComponent (UPrimitiveComponent), OtherActor (AActor), OtherComp (UPrimitiveComponent), OtherBodyIndex (int), bFromSweep (bool), SweepResult (FHitResult)."
+                }
+            ]
+        },
+        {
+            "name": "ComponentVariableAccess",
+            "description": "Get a component reference from a Blueprint variable and call a function on it, wiring the Target pin correctly. This is the standard pattern for interacting with components added via the Components panel.",
+            "notes": "Always use get_var to retrieve the component reference, then wire it to the Target input of the function call. The plan executor auto-wires Target when there is exactly one matching component, but explicit wiring via get_var is more reliable and works when multiple components of the same type exist. The component variable name matches the component's name in the Components panel.",
+            "steps": [
+                {
+                    "step_id": "get_comp",
+                    "op": "get_var",
+                    "target": "MySceneComponent"
+                },
+                {
+                    "step_id": "set_location",
+                    "op": "call",
+                    "target": "K2_SetRelativeLocation",
+                    "inputs": {
+                        "Target": "@get_comp.auto",
+                        "NewLocation": "@some_vector_source.auto"
+                    },
+                    "exec_after": "get_comp"
+                }
+            ]
+        }
+    ]
+}

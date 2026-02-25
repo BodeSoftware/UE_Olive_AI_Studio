@@ -95,13 +95,40 @@ void FOlivePlanValidator::CheckComponentFunctionTargets(
 
 		const FOliveIRBlueprintPlanStep& PlanStep = Context.Plan.Steps[*PlanIndexPtr];
 
-		// Check for Target input with a @ref (meaning AI provided a component reference)
+		// Check for Target input -- either a @ref or a string-literal component name
 		const FString* TargetValue = PlanStep.Inputs.Find(TEXT("Target"));
-		const bool bHasTargetWired = TargetValue && TargetValue->StartsWith(TEXT("@"));
+		bool bHasTargetWired = false;
+
+		if (TargetValue && !TargetValue->IsEmpty())
+		{
+			if (TargetValue->StartsWith(TEXT("@")))
+			{
+				// @ref syntax -- AI provided an explicit component reference
+				bHasTargetWired = true;
+			}
+			else if (Context.Blueprint->SimpleConstructionScript)
+			{
+				// String literal -- check if it matches an SCS component variable name.
+				// This handles the case where the AI passes the component name directly
+				// (e.g., "StaticMeshComp") instead of a @ref. Phase 4 data wiring treats
+				// non-@ref strings as pin defaults, which won't wire a component reference,
+				// BUT this is still the AI's expressed intent to target a component.
+				// Phase 1.5 auto-wire will handle the actual wiring if exactly one match exists.
+				const FString TargetStr = *TargetValue;
+				for (USCS_Node* SCSNode : Context.Blueprint->SimpleConstructionScript->GetAllNodes())
+				{
+					if (SCSNode && SCSNode->GetVariableName().ToString() == TargetStr)
+					{
+						bHasTargetWired = true;
+						break;
+					}
+				}
+			}
+		}
 
 		if (bHasTargetWired)
 		{
-			continue; // AI correctly wired a component target
+			continue; // AI correctly targeted a component
 		}
 
 		// Count matching SCS components to determine if Phase 1.5 can auto-fix

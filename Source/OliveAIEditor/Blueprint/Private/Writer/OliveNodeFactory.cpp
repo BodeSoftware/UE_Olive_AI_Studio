@@ -37,6 +37,9 @@
 #include "Kismet/KismetArrayLibrary.h"
 #include "GameFramework/Actor.h"
 
+// Universal node creation includes
+#include "UObject/UObjectGlobals.h"  // For StaticLoadClass
+
 DEFINE_LOG_CATEGORY_STATIC(LogOliveNodeFactory, Log, All);
 
 // ============================================================================
@@ -91,9 +94,18 @@ UEdGraphNode* FOliveNodeFactory::CreateNode(
 		return nullptr;
 	}
 
-	// Call the appropriate creator
-	const FNodeCreator& Creator = NodeCreators[NodeType];
-	UEdGraphNode* NewNode = Creator(Blueprint, Graph, Properties);
+	// Call the appropriate creator (curated types) or universal fallback
+	UEdGraphNode* NewNode = nullptr;
+	if (const FNodeCreator* Creator = NodeCreators.Find(NodeType))
+	{
+		NewNode = (*Creator)(Blueprint, Graph, Properties);
+	}
+	else
+	{
+		// Universal fallback: type passed ValidateNodeType, so it's a valid K2Node class.
+		// Position is NOT set here -- the existing SetNodePosition below handles it uniformly.
+		NewNode = CreateNodeByClass(Blueprint, Graph, NodeType, Properties);
+	}
 
 	if (!NewNode)
 	{
@@ -140,13 +152,25 @@ bool FOliveNodeFactory::ValidateNodeType(const FString& NodeType, const TMap<FSt
 {
 	UE_LOG(LogOliveNodeFactory, Verbose, TEXT("ValidateNodeType: type='%s', properties=%d"), *NodeType, Properties.Num());
 
-	// Step 1: Check if the node type exists in the creator map at all
+	// Step 1: Check if the node type exists in the curated creator map
 	if (!NodeCreators.Contains(NodeType))
 	{
+		// Step 1b: Universal fallback -- try resolving as a UK2Node subclass name
+		UClass* NodeClass = FindK2NodeClass(NodeType);
+		if (NodeClass)
+		{
+			UE_LOG(LogOliveNodeFactory, Log,
+				TEXT("ValidateNodeType: '%s' not in curated map, but resolved as UK2Node subclass %s"),
+				*NodeType, *NodeClass->GetName());
+			return true; // Valid as a universal node class
+		}
+
 		// Cast away const for LastError -- ValidateNodeType is logically a query
 		// but LastError is a diagnostic side-channel, consistent with existing pattern
 		const_cast<FOliveNodeFactory*>(this)->LastError = FString::Printf(
-			TEXT("Unknown node type: '%s'. Use blueprint.node_catalog_search to find available node types."),
+			TEXT("Unknown node type: '%s'. Not found as a curated type or UK2Node subclass. "
+				 "Use blueprint.search_nodes to find available node types, or pass the exact "
+				 "UK2Node class name (e.g., 'K2Node_ComponentBoundEvent')."),
 			*NodeType);
 		return false;
 	}
@@ -250,21 +274,10 @@ UK2Node* FOliveNodeFactory::CreateVariableGetNode(
 		return nullptr;
 	}
 
-	// Find the property in the Blueprint
 	FName VarName(**VarNamePtr);
-	FProperty* Property = nullptr;
 
-	// Check Blueprint variables
-	for (const FBPVariableDescription& Var : Blueprint->NewVariables)
-	{
-		if (Var.VarName == VarName)
-		{
-			// Variable found - property will be resolved from the generated class
-			break;
-		}
-	}
-
-	// Create the node
+	// Create the node -- variable resolution happens at AllocateDefaultPins/compile
+	// time via SetSelfMember, not at creation time.
 	UK2Node_VariableGet* GetNode = NewObject<UK2Node_VariableGet>(Graph);
 	GetNode->VariableReference.SetSelfMember(VarName);
 	GetNode->AllocateDefaultPins();
@@ -738,6 +751,282 @@ UK2Node* FOliveNodeFactory::CreateInputKeyNode(
 	Graph->AddNode(InputKeyNode, /*bFromUI=*/false, /*bSelectNewNode=*/false);
 
 	return InputKeyNode;
+}
+
+// ============================================================================
+// Universal Node Creation
+// ============================================================================
+
+UClass* FOliveNodeFactory::FindK2NodeClass(const FString& ClassName) const
+{
+	// Strategy 1: Direct FindFirstObject (handles fully-qualified and short names)
+	UClass* Found = FindFirstObject<UClass>(*ClassName, EFindFirstObjectOptions::NativeFirst);
+	if (Found && Found->IsChildOf(UK2Node::StaticClass()))
+	{
+		return Found;
+	}
+
+	// Strategy 2: Try with "K2Node_" and "UK2Node_" prefix variants
+	// The AI might pass "ComponentBoundEvent" without the K2Node_ prefix
+	if (!ClassName.StartsWith(TEXT("K2Node_")) && !ClassName.StartsWith(TEXT("UK2Node_")))
+	{
+		// Try K2Node_X
+		FString Prefixed = TEXT("K2Node_") + ClassName;
+		Found = FindFirstObject<UClass>(*Prefixed, EFindFirstObjectOptions::NativeFirst);
+		if (Found && Found->IsChildOf(UK2Node::StaticClass()))
+		{
+			return Found;
+		}
+		// Try UK2Node_X
+		Prefixed = TEXT("UK2Node_") + ClassName;
+		Found = FindFirstObject<UClass>(*Prefixed, EFindFirstObjectOptions::NativeFirst);
+		if (Found && Found->IsChildOf(UK2Node::StaticClass()))
+		{
+			return Found;
+		}
+	}
+
+	// Strategy 3: Strip "U" prefix if present (AI might pass "UK2Node_Timeline")
+	if (ClassName.StartsWith(TEXT("U")))
+	{
+		FString Stripped = ClassName.Mid(1);
+		Found = FindFirstObject<UClass>(*Stripped, EFindFirstObjectOptions::NativeFirst);
+		if (Found && Found->IsChildOf(UK2Node::StaticClass()))
+		{
+			return Found;
+		}
+	}
+
+	// Strategy 4: Try common engine packages explicitly via StaticLoadClass.
+	// K2Nodes live in multiple modules. FindFirstObject searches loaded modules,
+	// but some may not be loaded yet. StaticLoadClass forces loading.
+	static const TCHAR* PackagePaths[] = {
+		TEXT("/Script/BlueprintGraph"),
+		TEXT("/Script/UnrealEd"),
+		TEXT("/Script/AnimGraph"),
+		TEXT("/Script/GameplayAbilitiesEditor"),
+		TEXT("/Script/EnhancedInput"),
+		TEXT("/Script/AIModule"),
+	};
+
+	// Build the class name to search for (strip U prefix for StaticLoadClass)
+	FString SearchName = ClassName;
+	if (SearchName.StartsWith(TEXT("U")))
+	{
+		SearchName = SearchName.Mid(1);
+	}
+
+	for (const TCHAR* Package : PackagePaths)
+	{
+		FString FullPath = FString::Printf(TEXT("%s.%s"), Package, *SearchName);
+		Found = StaticLoadClass(UK2Node::StaticClass(), nullptr, *FullPath, nullptr, LOAD_Quiet);
+		if (Found)
+		{
+			return Found;
+		}
+	}
+
+	return nullptr;
+}
+
+int32 FOliveNodeFactory::SetNodePropertiesViaReflection(
+	UEdGraphNode* Node,
+	const TMap<FString, FString>& Properties,
+	TArray<FString>& OutSetProperties,
+	TMap<FString, FString>& OutSkippedProperties)
+{
+	int32 SetCount = 0;
+
+	for (const auto& Pair : Properties)
+	{
+		const FString& PropName = Pair.Key;
+		const FString& PropValue = Pair.Value;
+
+		FProperty* Property = Node->GetClass()->FindPropertyByName(FName(*PropName));
+		if (!Property)
+		{
+			OutSkippedProperties.Add(PropName, TEXT("Property not found on node class"));
+			UE_LOG(LogOliveNodeFactory, Warning,
+				TEXT("SetNodePropertiesViaReflection: Property '%s' not found on %s"),
+				*PropName, *Node->GetClass()->GetName());
+			continue;
+		}
+
+		// Note: We do NOT block on CPF_Edit -- many K2Node properties are set
+		// programmatically and don't have CPF_Edit. ImportText will work regardless.
+		if (!Property->HasAnyPropertyFlags(CPF_Edit | CPF_BlueprintVisible | CPF_Config))
+		{
+			UE_LOG(LogOliveNodeFactory, Verbose,
+				TEXT("SetNodePropertiesViaReflection: Property '%s' is not CPF_Edit, "
+					 "attempting ImportText anyway"), *PropName);
+		}
+
+		void* ValuePtr = Property->ContainerPtrToValuePtr<void>(Node);
+
+		// Type-specific fast paths (same pattern as OliveGraphWriter::SetNodeProperty)
+		bool bSet = false;
+		if (FBoolProperty* BoolProp = CastField<FBoolProperty>(Property))
+		{
+			BoolProp->SetPropertyValue(ValuePtr, PropValue.ToBool());
+			bSet = true;
+		}
+		else if (FIntProperty* IntProp = CastField<FIntProperty>(Property))
+		{
+			IntProp->SetPropertyValue(ValuePtr, FCString::Atoi(*PropValue));
+			bSet = true;
+		}
+		else if (FFloatProperty* FloatProp = CastField<FFloatProperty>(Property))
+		{
+			FloatProp->SetPropertyValue(ValuePtr, FCString::Atof(*PropValue));
+			bSet = true;
+		}
+		else if (FDoubleProperty* DoubleProp = CastField<FDoubleProperty>(Property))
+		{
+			DoubleProp->SetPropertyValue(ValuePtr, FCString::Atod(*PropValue));
+			bSet = true;
+		}
+		else if (FStrProperty* StrProp = CastField<FStrProperty>(Property))
+		{
+			StrProp->SetPropertyValue(ValuePtr, PropValue);
+			bSet = true;
+		}
+		else if (FNameProperty* NameProp = CastField<FNameProperty>(Property))
+		{
+			NameProp->SetPropertyValue(ValuePtr, FName(*PropValue));
+			bSet = true;
+		}
+		else if (FTextProperty* TextProp = CastField<FTextProperty>(Property))
+		{
+			TextProp->SetPropertyValue(ValuePtr, FText::FromString(PropValue));
+			bSet = true;
+		}
+		else if (FObjectPropertyBase* ObjProp = CastField<FObjectPropertyBase>(Property))
+		{
+			// Try to load the object from a path
+			UObject* Obj = StaticLoadObject(ObjProp->PropertyClass, nullptr, *PropValue);
+			if (Obj)
+			{
+				ObjProp->SetObjectPropertyValue(ValuePtr, Obj);
+				bSet = true;
+			}
+			else
+			{
+				// Try FindFirstObject for already-loaded objects
+				Obj = FindFirstObject<UObject>(*PropValue, EFindFirstObjectOptions::NativeFirst);
+				if (Obj && Obj->IsA(ObjProp->PropertyClass))
+				{
+					ObjProp->SetObjectPropertyValue(ValuePtr, Obj);
+					bSet = true;
+				}
+				else
+				{
+					OutSkippedProperties.Add(PropName,
+						FString::Printf(TEXT("Could not resolve object '%s' for property type '%s'"),
+							*PropValue, *ObjProp->PropertyClass->GetName()));
+					continue;
+				}
+			}
+		}
+		else
+		{
+			// Generic text import -- handles FKey, enums, structs, etc.
+			const TCHAR* ImportResult = Property->ImportText_Direct(*PropValue, ValuePtr, Node, PPF_None);
+			bSet = (ImportResult != nullptr);
+			if (!bSet)
+			{
+				OutSkippedProperties.Add(PropName,
+					FString::Printf(TEXT("ImportText failed for value '%s'"), *PropValue));
+				continue;
+			}
+		}
+
+		if (bSet)
+		{
+			OutSetProperties.Add(PropName);
+			SetCount++;
+			UE_LOG(LogOliveNodeFactory, Verbose,
+				TEXT("SetNodePropertiesViaReflection: Set '%s' = '%s'"),
+				*PropName, *PropValue);
+		}
+	}
+
+	return SetCount;
+}
+
+UEdGraphNode* FOliveNodeFactory::CreateNodeByClass(
+	UBlueprint* Blueprint,
+	UEdGraph* Graph,
+	const FString& ClassName,
+	const TMap<FString, FString>& Properties)
+{
+	LastError.Empty();
+
+	// Validate inputs
+	if (!Blueprint || !Graph)
+	{
+		LastError = TEXT("Blueprint or Graph is null");
+		return nullptr;
+	}
+
+	// Find the K2Node class
+	UClass* NodeClass = FindK2NodeClass(ClassName);
+	if (!NodeClass)
+	{
+		LastError = FString::Printf(
+			TEXT("Could not find UK2Node subclass '%s'. "
+				 "Ensure the class name is correct (e.g., 'K2Node_ComponentBoundEvent', "
+				 "'K2Node_Timeline'). The class must be a subclass of UK2Node."),
+			*ClassName);
+		return nullptr;
+	}
+
+	UE_LOG(LogOliveNodeFactory, Log,
+		TEXT("CreateNodeByClass: Resolved '%s' -> %s (module: %s)"),
+		*ClassName, *NodeClass->GetName(), *NodeClass->GetOuterUPackage()->GetName());
+
+	// Create the node
+	UEdGraphNode* NewNode = NewObject<UEdGraphNode>(Graph, NodeClass);
+	if (!NewNode)
+	{
+		LastError = FString::Printf(
+			TEXT("NewObject failed for class '%s'"), *NodeClass->GetName());
+		return nullptr;
+	}
+
+	// Set properties BEFORE AllocateDefaultPins.
+	// Many K2Node subclasses generate pins based on property values
+	// (e.g., K2Node_ComponentBoundEvent needs DelegatePropertyName set
+	// before pin allocation to know which delegate signature to expose).
+	TArray<FString> SetProps;
+	TMap<FString, FString> SkippedProps;
+	const int32 PropsSet = SetNodePropertiesViaReflection(
+		NewNode, Properties, SetProps, SkippedProps);
+
+	UE_LOG(LogOliveNodeFactory, Log,
+		TEXT("CreateNodeByClass: Set %d/%d properties on %s"),
+		PropsSet, Properties.Num(), *NodeClass->GetName());
+
+	// Create GUID for the node
+	NewNode->CreateNewGuid();
+
+	// Allocate pins based on current property state
+	NewNode->AllocateDefaultPins();
+
+	// Add to graph BEFORE ReconstructNode -- some nodes need graph context
+	Graph->AddNode(NewNode, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+
+	// Reconstruct to finalize pin layout.
+	// This is mandatory defense-in-depth -- many K2Nodes only produce correct
+	// pins after reconstruction (which may read properties, resolve references, etc.).
+	NewNode->ReconstructNode();
+
+	UE_LOG(LogOliveNodeFactory, Log,
+		TEXT("CreateNodeByClass: Successfully created %s with %d pins, "
+			 "%d properties set, %d skipped"),
+		*NodeClass->GetName(),
+		NewNode->Pins.Num(), PropsSet, SkippedProps.Num());
+
+	return NewNode;
 }
 
 // ============================================================================

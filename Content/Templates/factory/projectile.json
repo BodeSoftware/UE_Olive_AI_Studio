@@ -1,0 +1,374 @@
+{
+    "template_id": "projectile",
+    "template_type": "factory",
+    "display_name": "Projectile",
+
+    "catalog_description": "Actor with collision, mesh, and ProjectileMovementComponent. Configurable speed, gravity, lifespan, homing, and hit/bounce events.",
+    "catalog_examples": "Bullet, Rocket, Arrow, Grenade, Fireball, Cannonball",
+
+    "parameters": {
+        "projectile_name": {
+            "type": "string",
+            "default": "Projectile",
+            "description": "Name prefix for variables and events"
+        },
+        "speed": {
+            "type": "float",
+            "default": "3000.0",
+            "description": "Initial speed in cm/s"
+        },
+        "max_speed": {
+            "type": "float",
+            "default": "3000.0",
+            "description": "Maximum speed in cm/s"
+        },
+        "gravity_scale": {
+            "type": "float",
+            "default": "0.0",
+            "description": "Gravity multiplier (0 = no gravity, 1 = normal)"
+        },
+        "lifespan": {
+            "type": "float",
+            "default": "3.0",
+            "description": "Seconds before auto-destroy (0 = never)"
+        },
+        "damage": {
+            "type": "float",
+            "default": "20.0",
+            "description": "Base damage dealt on hit"
+        },
+        "enable_homing": {
+            "type": "bool",
+            "default": "false",
+            "description": "Enable homing toward a target"
+        },
+        "homing_strength": {
+            "type": "float",
+            "default": "500.0",
+            "description": "Homing acceleration magnitude when homing is enabled"
+        },
+        "should_bounce": {
+            "type": "bool",
+            "default": "false",
+            "description": "Bounce off surfaces instead of destroying on hit"
+        },
+        "max_bounces": {
+            "type": "int",
+            "default": "3",
+            "description": "Maximum number of bounces before destroying (when bounce enabled)"
+        },
+        "collision_radius": {
+            "type": "float",
+            "default": "10.0",
+            "description": "Radius of the collision sphere in cm"
+        },
+        "destroy_on_hit": {
+            "type": "bool",
+            "default": "true",
+            "description": "Destroy the projectile when it hits something"
+        }
+    },
+
+    "presets": {
+        "Bullet": {
+            "projectile_name": "Bullet",
+            "speed": "5000",
+            "max_speed": "5000",
+            "gravity_scale": "0",
+            "lifespan": "2",
+            "damage": "25",
+            "destroy_on_hit": "true"
+        },
+        "Rocket": {
+            "projectile_name": "Rocket",
+            "speed": "2000",
+            "max_speed": "2000",
+            "gravity_scale": "0.05",
+            "lifespan": "5",
+            "damage": "100",
+            "destroy_on_hit": "true"
+        },
+        "Grenade": {
+            "projectile_name": "Grenade",
+            "speed": "1500",
+            "max_speed": "1500",
+            "gravity_scale": "1.0",
+            "lifespan": "4",
+            "damage": "75",
+            "should_bounce": "true",
+            "max_bounces": "5",
+            "destroy_on_hit": "false"
+        },
+        "Arrow": {
+            "projectile_name": "Arrow",
+            "speed": "4000",
+            "max_speed": "4000",
+            "gravity_scale": "0.3",
+            "lifespan": "6",
+            "damage": "40",
+            "destroy_on_hit": "true"
+        },
+        "HomingMissile": {
+            "projectile_name": "Missile",
+            "speed": "1800",
+            "max_speed": "3000",
+            "gravity_scale": "0",
+            "lifespan": "8",
+            "damage": "80",
+            "enable_homing": "true",
+            "homing_strength": "800",
+            "destroy_on_hit": "true"
+        },
+        "Fireball": {
+            "projectile_name": "Fireball",
+            "speed": "2500",
+            "max_speed": "2500",
+            "gravity_scale": "0.1",
+            "lifespan": "4",
+            "damage": "50",
+            "collision_radius": "20",
+            "destroy_on_hit": "true"
+        }
+    },
+
+    "blueprint": {
+        "type": "Actor",
+        "parent_class": "Actor",
+
+        "components": [
+            {
+                "class": "SphereComponent",
+                "name": "CollisionSphere",
+                "is_root": true,
+                "properties": {
+                    "SphereRadius": "${collision_radius}",
+                    "CollisionProfileName": "BlockAllDynamic"
+                }
+            },
+            {
+                "class": "StaticMeshComponent",
+                "name": "${projectile_name}Mesh",
+                "parent": "CollisionSphere",
+                "properties": {
+                    "CollisionProfileName": "NoCollision"
+                }
+            },
+            {
+                "class": "ProjectileMovementComponent",
+                "name": "ProjectileMovement",
+                "properties": {
+                    "InitialSpeed": "${speed}",
+                    "MaxSpeed": "${max_speed}",
+                    "ProjectileGravityScale": "${gravity_scale}",
+                    "bShouldBounce": "${should_bounce}",
+                    "bIsHomingProjectile": "${enable_homing}",
+                    "HomingAccelerationMagnitude": "${homing_strength}"
+                }
+            }
+        ],
+
+        "variables": [
+            {
+                "name": "${projectile_name}Damage",
+                "type": "Float",
+                "default": "${damage}",
+                "category": "${projectile_name}"
+            },
+            {
+                "name": "BounceCount",
+                "type": "Integer",
+                "default": "0",
+                "category": "${projectile_name}"
+            },
+            {
+                "name": "Max${projectile_name}Bounces",
+                "type": "Integer",
+                "default": "${max_bounces}",
+                "category": "${projectile_name}"
+            }
+        ],
+
+        "event_dispatchers": [
+            {
+                "name": "On${projectile_name}Hit",
+                "params": [
+                    { "name": "HitResult", "type": "HitResult" },
+                    { "name": "HitActor", "type": "Actor" }
+                ]
+            },
+            {
+                "name": "On${projectile_name}Destroyed",
+                "params": []
+            }
+        ],
+
+        "functions": [
+            {
+                "name": "ApplyHitDamage",
+                "description": "Apply damage to the hit actor. Called internally when the projectile hits something.",
+                "inputs": [
+                    { "name": "HitActor", "type": "Actor" },
+                    { "name": "HitResult", "type": "HitResult" }
+                ],
+                "outputs": [
+                    { "name": "DamageApplied", "type": "Float" }
+                ],
+                "plan": {
+                    "schema_version": "2.0",
+                    "steps": [
+                        {
+                            "step_id": "get_actor",
+                            "op": "get_var",
+                            "target": "HitActor"
+                        },
+                        {
+                            "step_id": "check_valid",
+                            "op": "is_valid",
+                            "inputs": {
+                                "Object": "@get_actor.auto"
+                            }
+                        },
+                        {
+                            "step_id": "branch_valid",
+                            "op": "branch",
+                            "inputs": {
+                                "Condition": "@check_valid.auto"
+                            },
+                            "exec_outputs": {
+                                "True": "apply_dmg"
+                            }
+                        },
+                        {
+                            "step_id": "get_damage",
+                            "op": "get_var",
+                            "target": "${projectile_name}Damage"
+                        },
+                        {
+                            "step_id": "get_hit",
+                            "op": "get_var",
+                            "target": "HitResult"
+                        },
+                        {
+                            "step_id": "get_instigator",
+                            "op": "call",
+                            "target": "GetInstigator"
+                        },
+                        {
+                            "step_id": "apply_dmg",
+                            "op": "call",
+                            "target": "ApplyPointDamage",
+                            "inputs": {
+                                "DamagedActor": "@get_actor.auto",
+                                "BaseDamage": "@get_damage.auto",
+                                "HitInfo": "@get_hit.auto",
+                                "EventInstigator": "@get_instigator.auto"
+                            }
+                        },
+                        {
+                            "step_id": "set_return",
+                            "op": "set_var",
+                            "target": "DamageApplied",
+                            "inputs": {
+                                "value": "@get_damage.auto"
+                            },
+                            "exec_after": "apply_dmg"
+                        }
+                    ]
+                }
+            }
+        ],
+
+        "event_graphs": [
+            {
+                "name": "BeginPlay_Setup",
+                "description": "Initialize lifespan on BeginPlay",
+                "plan": {
+                    "schema_version": "2.0",
+                    "steps": [
+                        {
+                            "step_id": "begin_play",
+                            "op": "event",
+                            "target": "BeginPlay"
+                        },
+                        {
+                            "step_id": "set_lifespan",
+                            "op": "call",
+                            "target": "SetLifeSpan",
+                            "inputs": {
+                                "InLifespan": "${lifespan}"
+                            },
+                            "exec_after": "begin_play"
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "OnHit_Handler",
+                "description": "Handle collision hits — check bounce count, destroy or increment bounce counter",
+                "plan": {
+                    "schema_version": "2.0",
+                    "steps": [
+                        {
+                            "step_id": "on_hit",
+                            "op": "custom_event",
+                            "target": "OnComponentHit_Handler"
+                        },
+                        {
+                            "step_id": "get_bounce_count",
+                            "op": "get_var",
+                            "target": "BounceCount"
+                        },
+                        {
+                            "step_id": "get_max_bounces",
+                            "op": "get_var",
+                            "target": "Max${projectile_name}Bounces"
+                        },
+                        {
+                            "step_id": "check_exceeded",
+                            "op": "call",
+                            "target": "GreaterEqual_IntInt",
+                            "inputs": {
+                                "A": "@get_bounce_count.auto",
+                                "B": "@get_max_bounces.auto"
+                            }
+                        },
+                        {
+                            "step_id": "branch_destroy",
+                            "op": "branch",
+                            "inputs": {
+                                "Condition": "@check_exceeded.auto"
+                            },
+                            "exec_after": "on_hit",
+                            "exec_outputs": {
+                                "True": "destroy_self",
+                                "False": "set_bounce_count"
+                            }
+                        },
+                        {
+                            "step_id": "destroy_self",
+                            "op": "call",
+                            "target": "DestroyActor"
+                        },
+                        {
+                            "step_id": "increment_bounce",
+                            "op": "call",
+                            "target": "Add_IntInt",
+                            "inputs": {
+                                "A": "@get_bounce_count.auto",
+                                "B": "1"
+                            }
+                        },
+                        {
+                            "step_id": "set_bounce_count",
+                            "op": "set_var",
+                            "target": "BounceCount",
+                            "inputs": {
+                                "value": "@increment_bounce.auto"
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+}

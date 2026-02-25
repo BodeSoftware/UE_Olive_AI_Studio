@@ -322,6 +322,15 @@ struct OLIVEAIRUNTIME_API FOliveIRBlueprintPlanResult
 	 */
 	TMap<FString, TSharedPtr<FJsonObject>> PinManifestJsons;
 
+	/** Step IDs that reused pre-existing event nodes (not created by this plan) */
+	TSet<FString> ReusedStepIds;
+
+	/** Class names from this plan's resolved steps (for stale error detection) */
+	TSet<FString> PlanClassNames;
+
+	/** Function names from this plan's resolved steps (for stale error detection) */
+	TSet<FString> PlanFunctionNames;
+
 	/** Structured errors encountered during plan execution */
 	UPROPERTY()
 	TArray<FOliveIRBlueprintPlanError> Errors;

@@ -12,6 +12,7 @@
 #include "Engine/Blueprint.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
+#include "Template/OliveTemplateSystem.h"
 
 FOlivePromptAssembler& FOlivePromptAssembler::Get()
 {
@@ -304,6 +305,20 @@ FString FOlivePromptAssembler::GetCapabilityKnowledge(const FString& ProfileName
 		Combined += *PackText;
 	}
 
+	// Append template catalog for Blueprint-relevant profiles
+	if (NormalizedProfile == TEXT("Auto") || NormalizedProfile == TEXT("Blueprint"))
+	{
+		if (FOliveTemplateSystem::Get().HasTemplates())
+		{
+			const FString& Catalog = FOliveTemplateSystem::Get().GetCatalogBlock();
+			if (!Catalog.IsEmpty())
+			{
+				if (!Combined.IsEmpty()) { Combined += TEXT("\n\n"); }
+				Combined += Catalog;
+			}
+		}
+	}
+
 	return Combined;
 }
 
@@ -526,8 +541,8 @@ Project Name: {PROJECT_NAME}
 	}
 
 	// Profile -> capability pack mapping. Add packs here without changing assembly flow.
-	ProfileCapabilityPackIds.Add(TEXT("Auto"), { TEXT("blueprint_authoring"), TEXT("recipe_routing") });
-	ProfileCapabilityPackIds.Add(TEXT("Blueprint"), { TEXT("blueprint_authoring"), TEXT("recipe_routing") });
+	ProfileCapabilityPackIds.Add(TEXT("Auto"), { TEXT("blueprint_authoring"), TEXT("recipe_routing"), TEXT("node_routing") });
+	ProfileCapabilityPackIds.Add(TEXT("Blueprint"), { TEXT("blueprint_authoring"), TEXT("recipe_routing"), TEXT("node_routing") });
 	// NOTE: C++ profile intentionally omits recipe_routing — current recipes are Blueprint-only.
 	// Add it when C++ recipes exist.
 	ProfileCapabilityPackIds.Add(TEXT("C++"), {});

@@ -70,8 +70,31 @@ FOliveCorrectionDecision FOliveSelfCorrectionPolicy::Evaluate(
 
 	// Check for compile failure
 	FString CompileErrors, AssetPath;
-	if (HasCompileFailure(ResultJson, CompileErrors, AssetPath))
+	bool bHasStaleErrors = false;
+	if (HasCompileFailure(ResultJson, CompileErrors, AssetPath, bHasStaleErrors))
 	{
+		// Stale error: compile error is NOT caused by this plan's steps.
+		// Do NOT count toward loop detector -- the AI did nothing wrong this turn.
+		if (bHasStaleErrors)
+		{
+			Decision.Action = EOliveCorrectionAction::FeedBackErrors;
+			Decision.EnrichedMessage = FString::Printf(
+				TEXT("[STALE COMPILE ERROR] The compile error is NOT caused by your current plan. "
+					 "It comes from leftover nodes in the graph from a previous operation.\n"
+					 "Errors:\n%s\n"
+					 "RECOMMENDED: Resubmit your plan with mode: \"replace\" to clear the graph "
+					 "before creating new nodes. Alternatively, use blueprint.read to find the "
+					 "offending nodes and remove them with blueprint.remove_node."),
+				*CompileErrors);
+			Decision.AttemptNumber = 1; // Do not count this toward attempts
+			Decision.MaxAttempts = Policy.MaxRetriesPerError;
+
+			UE_LOG(LogOliveAI, Log,
+				TEXT("SelfCorrection: Stale compile error on '%s' -- not counting toward loop detector"),
+				*AssetPath);
+			return Decision;
+		}
+
 		// Build error signature and record attempt (per-signature tracking)
 		const FString Signature = FOliveLoopDetector::BuildCompileErrorSignature(AssetPath, CompileErrors);
 		LoopDetector.RecordAttempt(Signature, FString::Printf(TEXT("compile_retry_%d"), LoopDetector.GetAttemptCount(Signature)));
@@ -102,6 +125,25 @@ FOliveCorrectionDecision FOliveSelfCorrectionPolicy::Evaluate(
 	FString ErrorCode, ErrorMessage;
 	if (HasToolFailure(ResultJson, ErrorCode, ErrorMessage))
 	{
+		// Classify error before deciding retry behavior
+		const EOliveErrorCategory Category = ClassifyErrorCode(ErrorCode, ErrorMessage);
+
+		// Category B: Unsupported Feature -- do NOT retry, suggest alternative.
+		// Skip loop detector recording entirely -- there is nothing to retry.
+		if (Category == EOliveErrorCategory::UnsupportedFeature)
+		{
+			Decision.Action = EOliveCorrectionAction::FeedBackErrors;
+			Decision.EnrichedMessage = BuildToolErrorMessage(
+				ToolName, ErrorCode, ErrorMessage, 1, 1);
+			Decision.EnrichedMessage += TEXT("\n\n[UNSUPPORTED] This error indicates a feature "
+				"limitation, not a fixable mistake. Do NOT retry the same operation. "
+				"Choose a fundamentally different approach or ask the user for guidance.");
+
+			UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Category B (Unsupported) for '%s' error '%s'. "
+				"Returning guidance without retry encouragement."), *ToolName, *ErrorCode);
+			return Decision;
+		}
+
 		// Build error signature and record attempt (per-signature tracking)
 		const FString Signature = FOliveLoopDetector::BuildToolErrorSignature(ToolName, ErrorCode, AssetContext);
 		LoopDetector.RecordAttempt(Signature, FString::Printf(TEXT("tool_retry_%d"), LoopDetector.GetAttemptCount(Signature)));
@@ -119,7 +161,22 @@ FOliveCorrectionDecision FOliveSelfCorrectionPolicy::Evaluate(
 			return Decision;
 		}
 
-		// Feed back errors for retry
+		// Category C: Ambiguous -- allow 1 retry, then escalate
+		if (Category == EOliveErrorCategory::Ambiguous && SignatureAttempts > 1)
+		{
+			Decision.Action = EOliveCorrectionAction::FeedBackErrors;
+			Decision.EnrichedMessage = BuildToolErrorMessage(
+				ToolName, ErrorCode, ErrorMessage, SignatureAttempts, Policy.MaxRetriesPerError);
+			Decision.EnrichedMessage += TEXT("\n\n[ESCALATION] This error may indicate a fundamental "
+				"limitation rather than a fixable mistake. If the same approach keeps failing, "
+				"try add_node with the exact UK2Node class name, or ask the user.");
+
+			UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Category C escalation for '%s' error '%s', "
+				"attempt %d."), *ToolName, *ErrorCode, SignatureAttempts);
+			return Decision;
+		}
+
+		// Category A (and first attempt of Category C): standard retry
 		Decision.Action = EOliveCorrectionAction::FeedBackErrors;
 		Decision.EnrichedMessage = BuildToolErrorMessage(ToolName, ErrorCode, ErrorMessage, SignatureAttempts, Policy.MaxRetriesPerError);
 		UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Tool failure '%s' error '%s', attempt %d/%d"),
@@ -138,8 +195,10 @@ void FOliveSelfCorrectionPolicy::Reset()
 	PreviousPlanHashes.Empty();
 }
 
-bool FOliveSelfCorrectionPolicy::HasCompileFailure(const FString& ResultJson, FString& OutErrors, FString& OutAssetPath) const
+bool FOliveSelfCorrectionPolicy::HasCompileFailure(const FString& ResultJson, FString& OutErrors, FString& OutAssetPath, bool& OutHasStaleErrors) const
 {
+	OutHasStaleErrors = false;
+
 	TSharedPtr<FJsonObject> JsonObj;
 	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ResultJson);
 	if (!FJsonSerializer::Deserialize(Reader, JsonObj) || !JsonObj.IsValid())
@@ -214,7 +273,123 @@ bool FOliveSelfCorrectionPolicy::HasCompileFailure(const FString& ResultJson, FS
 		}
 	}
 
-	UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Extracted compile failure — asset='%s', errors:\n%s"), *OutAssetPath, *OutErrors);
+	// ------------------------------------------------------------------
+	// Stale error detection: cross-reference compile errors against
+	// plan_class_names / plan_function_names from the result data.
+	// If the plan has metadata but NO compile error mentions any of the
+	// plan's classes or functions, the errors are stale (caused by
+	// pre-existing issues or previous operations, not this plan).
+	// ------------------------------------------------------------------
+
+	// Determine the effective data object to search for plan metadata.
+	// plan_class_names / plan_function_names are set on ToolResult.Data,
+	// which is nested under "data" in the serialized JSON (via ToJson).
+	// Also check top level for non-nested formats (e.g. direct results).
+	TArray<FString> PlanClasses;
+	TArray<FString> PlanFunctions;
+
+	// Helper lambda to extract plan metadata arrays from a JSON object
+	auto ExtractPlanMetadata = [&PlanClasses, &PlanFunctions](const TSharedPtr<FJsonObject>& Obj)
+	{
+		if (!Obj.IsValid())
+		{
+			return;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* ClassArr = nullptr;
+		if (Obj->TryGetArrayField(TEXT("plan_class_names"), ClassArr) && ClassArr)
+		{
+			for (const auto& Val : *ClassArr)
+			{
+				FString ClassName = Val->AsString();
+				if (!ClassName.IsEmpty())
+				{
+					PlanClasses.Add(MoveTemp(ClassName));
+				}
+			}
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* FuncArr = nullptr;
+		if (Obj->TryGetArrayField(TEXT("plan_function_names"), FuncArr) && FuncArr)
+		{
+			for (const auto& Val : *FuncArr)
+			{
+				FString FuncName = Val->AsString();
+				if (!FuncName.IsEmpty())
+				{
+					PlanFunctions.Add(MoveTemp(FuncName));
+				}
+			}
+		}
+	};
+
+	// Try "data" object first (standard ToolResult->ToJson nesting)
+	ExtractPlanMetadata(DataObj);
+
+	// If not found in data, try top level (legacy or direct format)
+	if (PlanClasses.Num() == 0 && PlanFunctions.Num() == 0)
+	{
+		ExtractPlanMetadata(JsonObj);
+	}
+
+	// Only classify as stale if we HAVE plan metadata to compare against.
+	// If plan metadata is missing (old-style result without T5 fields),
+	// default to OutHasStaleErrors = false (current behavior preserved).
+	if (PlanClasses.Num() > 0 || PlanFunctions.Num() > 0)
+	{
+		bool bAnyErrorMatchesPlan = false;
+		TArray<FString> ErrorLines;
+		OutErrors.ParseIntoArrayLines(ErrorLines);
+
+		for (const FString& Line : ErrorLines)
+		{
+			if (Line.IsEmpty())
+			{
+				continue;
+			}
+
+			for (const FString& ClassName : PlanClasses)
+			{
+				if (Line.Contains(ClassName))
+				{
+					bAnyErrorMatchesPlan = true;
+					break;
+				}
+			}
+			if (bAnyErrorMatchesPlan)
+			{
+				break;
+			}
+
+			for (const FString& FuncName : PlanFunctions)
+			{
+				if (Line.Contains(FuncName))
+				{
+					bAnyErrorMatchesPlan = true;
+					break;
+				}
+			}
+			if (bAnyErrorMatchesPlan)
+			{
+				break;
+			}
+		}
+
+		OutHasStaleErrors = !bAnyErrorMatchesPlan;
+
+		if (OutHasStaleErrors)
+		{
+			UE_LOG(LogOliveAI, Log,
+				TEXT("SelfCorrection: Compile errors on '%s' classified as STALE -- "
+					 "no error line references plan classes [%s] or functions [%s]"),
+				*OutAssetPath,
+				*FString::Join(PlanClasses, TEXT(", ")),
+				*FString::Join(PlanFunctions, TEXT(", ")));
+		}
+	}
+
+	UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Extracted compile failure -- asset='%s', stale=%s, errors:\n%s"),
+		*OutAssetPath, OutHasStaleErrors ? TEXT("true") : TEXT("false"), *OutErrors);
 	return true;
 }
 
@@ -331,7 +506,11 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 		}
 		else
 		{
-			Guidance = TEXT("The node type was not found. Use blueprint.search_nodes to find the correct node type identifier, then retry.");
+			Guidance = TEXT("The node type was not recognized as a curated type. "
+				"You can also pass the exact UK2Node class name as the type "
+				"(e.g., 'K2Node_ComponentBoundEvent', 'K2Node_Timeline', 'K2Node_Select'). "
+				"Use blueprint.search_nodes to find available node types. "
+				"After creation, use blueprint.get_node_pins to discover the actual pin names.");
 		}
 	}
 	else if (ErrorCode == TEXT("FUNCTION_NOT_FOUND"))
@@ -378,6 +557,15 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 	else if (ErrorCode == TEXT("PLAN_DUPLICATE_STEP_ID"))
 	{
 		Guidance = TEXT("Two or more steps share the same step_id. Each step_id must be unique within the plan. Rename the duplicate step_ids.");
+	}
+	else if (ErrorCode == TEXT("PLAN_RESOLVE_FAILED") && ErrorMessage.Contains(TEXT("event")))
+	{
+		Guidance = TEXT("The plan failed to resolve an event operation. "
+			"If you need a component delegate event (e.g., OnComponentHit, OnComponentBeginOverlap), "
+			"plan JSON does not support component_bound_event. Use add_node instead:\n"
+			"  blueprint.add_node type:\"K2Node_ComponentBoundEvent\" "
+			"properties:{\"DelegatePropertyName\":\"OnComponentHit\",\"ComponentPropertyName\":\"CollisionComp\"}\n"
+			"Then wire with blueprint.connect_pins.");
 	}
 	else if (ErrorCode == TEXT("PLAN_RESOLVE_FAILED") || ErrorCode == TEXT("PLAN_LOWER_FAILED") || ErrorCode == TEXT("PLAN_EXECUTION_FAILED"))
 	{
@@ -478,6 +666,52 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 	}
 
 	return Result;
+}
+
+EOliveErrorCategory FOliveSelfCorrectionPolicy::ClassifyErrorCode(
+	const FString& ErrorCode,
+	const FString& ErrorMessage)
+{
+	// ============================================================
+	// Category B: Unsupported Feature -- do NOT retry
+	// ============================================================
+
+	// These represent features that genuinely cannot be done with current tools.
+	// Retrying will never help; the AI needs to choose a different approach.
+	if (ErrorCode == TEXT("USER_DENIED")
+		|| ErrorCode == TEXT("TEMPLATE_NOT_FOUND")
+		|| ErrorCode == TEXT("TEMPLATE_NOT_FACTORY"))
+	{
+		return EOliveErrorCategory::UnsupportedFeature;
+	}
+
+	// ============================================================
+	// Category C: Ambiguous -- retry once, then escalate
+	// ============================================================
+
+	// These might be fixable with a different approach, but might also
+	// indicate a fundamental limitation. One retry with diagnostics.
+	if (ErrorCode == TEXT("BP_ADD_NODE_FAILED"))
+	{
+		// Could be a typo in class name (fixable) or a genuinely unsupported
+		// node type (unsupported). One retry with class lookup guidance.
+		return EOliveErrorCategory::Ambiguous;
+	}
+	if (ErrorCode == TEXT("PLAN_EXECUTION_FAILED"))
+	{
+		return EOliveErrorCategory::Ambiguous;
+	}
+
+	// ============================================================
+	// Category A: Fixable Mistake -- standard retry (default)
+	// ============================================================
+
+	// Everything else is treated as a fixable mistake:
+	// VALIDATION_MISSING_PARAM, ASSET_NOT_FOUND, NODE_TYPE_UNKNOWN,
+	// FUNCTION_NOT_FOUND, DUPLICATE_NATIVE_EVENT, DATA_PIN_NOT_FOUND,
+	// EXEC_PIN_NOT_FOUND, BP_CONNECT_PINS_FAILED, PLAN_RESOLVE_FAILED,
+	// COMPILE_FAILED, COMPONENT_FUNCTION_ON_ACTOR, etc.
+	return EOliveErrorCategory::FixableMistake;
 }
 
 FString FOliveSelfCorrectionPolicy::BuildPlanHash(

@@ -435,6 +435,30 @@ namespace OliveBlueprintSchemas
 		return Schema;
 	}
 
+	TSharedPtr<FJsonObject> BlueprintGetNodePins()
+	{
+		TSharedPtr<FJsonObject> Properties = MakeProperties();
+
+		Properties->SetObjectField(TEXT("path"),
+			StringProp(TEXT("Blueprint asset path")));
+
+		Properties->SetObjectField(TEXT("graph"),
+			StringProp(TEXT("Graph name (e.g., 'EventGraph' or function name)")));
+
+		Properties->SetObjectField(TEXT("node_id"),
+			StringProp(TEXT("Node ID to inspect (e.g., 'node_0')")));
+
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		Schema->SetStringField(TEXT("description"),
+			TEXT("Get the pin manifest for a specific node. Returns all pin names, "
+				 "types, directions, defaults, and connection state. Useful after "
+				 "blueprint.set_node_property changes pins via ReconstructNode."));
+		Schema->SetObjectField(TEXT("properties"), Properties);
+		AddRequired(Schema, {TEXT("path"), TEXT("graph"), TEXT("node_id")});
+
+		return Schema;
+	}
+
 	// ============================================================================
 	// Asset Writer Tool Schemas
 	// ============================================================================
@@ -1069,6 +1093,76 @@ namespace OliveBlueprintSchemas
 			TEXT("Apply an intent-level Blueprint plan atomically. Supports schema_version \"1.0\" (lowerer path: maps ops to concrete nodes) and \"2.0\" (plan executor: creates nodes first, introspects real pin names via pin manifests, then wires using ground-truth names). v2.0 supports @step.auto (type-based auto-match) and @step.~hint (fuzzy prefix) data wire syntax so you never need to guess pin names. preview_fingerprint is optional — if omitted, apply proceeds with inline validation. Result includes wiring_errors and pin_manifests for self-correction. Compiles once at the end."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("asset_path"), TEXT("plan_json")});
+
+		return Schema;
+	}
+
+	// ============================================================================
+	// Template Tool Schemas
+	// ============================================================================
+
+	TSharedPtr<FJsonObject> BlueprintCreateFromTemplate()
+	{
+		TSharedPtr<FJsonObject> Properties = MakeProperties();
+
+		Properties->SetObjectField(TEXT("template_id"),
+			StringProp(TEXT("ID of the factory template to instantiate")));
+
+		Properties->SetObjectField(TEXT("asset_path"),
+			StringProp(TEXT("Where to create the Blueprint (e.g., /Game/Blueprints/BP_Health)")));
+
+		// parameters — optional object with string additionalProperties
+		TSharedPtr<FJsonObject> ParamsProp = MakeSchema(TEXT("object"));
+		ParamsProp->SetStringField(TEXT("description"), TEXT("Parameter overrides as key-value pairs"));
+		TSharedPtr<FJsonObject> AdditionalProps = MakeSchema(TEXT("string"));
+		ParamsProp->SetObjectField(TEXT("additionalProperties"), AdditionalProps);
+		Properties->SetObjectField(TEXT("parameters"), ParamsProp);
+
+		Properties->SetObjectField(TEXT("preset"),
+			StringProp(TEXT("Named preset to use as base (e.g., 'Health', 'Stamina')")));
+
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		Schema->SetStringField(TEXT("description"),
+			TEXT("Create a complete Blueprint from a factory template. "
+				 "Templates provide parameterized, pre-wired Blueprints for common patterns "
+				 "(health, projectile, trigger, door, spawner)."));
+		Schema->SetObjectField(TEXT("properties"), Properties);
+		AddRequired(Schema, {TEXT("template_id"), TEXT("asset_path")});
+
+		return Schema;
+	}
+
+	TSharedPtr<FJsonObject> BlueprintGetTemplate()
+	{
+		TSharedPtr<FJsonObject> Properties = MakeProperties();
+
+		Properties->SetObjectField(TEXT("template_id"),
+			StringProp(TEXT("ID of the template to view (factory or reference)")));
+
+		Properties->SetObjectField(TEXT("pattern"),
+			StringProp(TEXT("Specific pattern name within a reference template")));
+
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		Schema->SetStringField(TEXT("description"),
+			TEXT("View a template's full content (parameter schema, presets, plan patterns). "
+				 "Use this to read patterns as reference before writing your own plan."));
+		Schema->SetObjectField(TEXT("properties"), Properties);
+		AddRequired(Schema, {TEXT("template_id")});
+
+		return Schema;
+	}
+
+	TSharedPtr<FJsonObject> BlueprintListTemplates()
+	{
+		TSharedPtr<FJsonObject> Properties = MakeProperties();
+
+		Properties->SetObjectField(TEXT("type"),
+			EnumProp(TEXT("Filter by template type"), {TEXT("factory"), TEXT("reference")}));
+
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		Schema->SetStringField(TEXT("description"),
+			TEXT("List available templates with descriptions and examples."));
+		Schema->SetObjectField(TEXT("properties"), Properties);
 
 		return Schema;
 	}

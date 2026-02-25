@@ -75,6 +75,31 @@
   - Token budget in GetActiveContext naturally handles large BPs
   - Includes: `Engine/Blueprint.h`, `Engine/SimpleConstructionScript.h`, `Engine/SCS_Node.h`
 
+## Priority 0 Task 4: Universal add_node (Implemented)
+- `CreateNodeByClass()` public method on FOliveNodeFactory: resolves any UK2Node subclass, sets properties via reflection BEFORE AllocateDefaultPins, then ReconstructNode
+- `FindK2NodeClass()` const private: multi-strategy lookup (FindFirstObject -> K2Node_/UK2Node_ prefix -> U-strip -> StaticLoadClass across 6 engine packages)
+- `SetNodePropertiesViaReflection()` private: type-specific fast paths (bool/int/float/double/string/name/text/object) + ImportText_Direct fallback
+- `ValidateNodeType()` now falls back to FindK2NodeClass when type not in NodeCreators map
+- `CreateNode()` uses `NodeCreators.Find()` instead of `NodeCreators[]`; else-branch calls CreateNodeByClass
+- Curated NodeCreators always checked FIRST; universal fallback only for types NOT in the map
+- Position set uniformly by existing SetNodePosition in CreateNode -- NOT in CreateNodeByClass
+- Node factory: `Source/OliveAIEditor/Blueprint/Public/Writer/OliveNodeFactory.h` / `Private/Writer/OliveNodeFactory.cpp`
+
+## Phase 4: Template System (In Progress)
+- `OliveTemplateSystem.h` at `Blueprint/Public/Template/` and `OliveTemplateSystem.cpp` at `Blueprint/Private/Template/`
+- Singleton with `Get()`, standard static-local pattern
+- Log category: `LogOliveTemplates`
+- `FOliveTemplateInfo` struct: TemplateId, TemplateType, DisplayName, CatalogDescription, CatalogExamples, Tags, FilePath, FullJson
+- GetTemplatesDirectory(): `FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("UE_Olive_AI_Studio/Content/Templates"))`
+- ScanDirectory uses `IPlatformFile::IterateDirectoryRecursively()` with lambda visitor `(const TCHAR*, bool) -> bool`
+- LoadTemplateFile: required fields = template_id, template_type, catalog_description
+- RebuildCatalog: groups by factory/reference, builds `[AVAILABLE BLUEPRINT TEMPLATES]` block
+- SubstituteParameters: `${key}` token replacement with warning for unresolved tokens
+- EvaluateConditionals: bool ternary `"true ? val : val"` / `"false ? val : val"` pattern
+- MergeParameters: defaults -> preset (by name, case-insensitive) -> user overrides
+- ApplyTemplate and GetTemplateContent: STUBS for Task 4
+- Task 1 complete; remaining: Task 2 (JSON files), Task 3 (tool handlers), Task 4 (executor), Task 5 (prompt injection), Task 6 (startup integration)
+
 ## Phase 2 Task 6 (Large-Graph Read Mode)
 - Constants: `OLIVE_LARGE_GRAPH_THRESHOLD = 500`, `OLIVE_GRAPH_PAGE_SIZE = 100` in OliveGraphReader.h
 - `ReadGraphSummary()`: builds NodeIdMap, counts connections, but leaves Nodes array empty

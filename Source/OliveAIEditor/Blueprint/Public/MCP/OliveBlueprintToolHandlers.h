@@ -84,6 +84,7 @@ private:
 	FOliveToolResult HandleBlueprintReadComponents(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlueprintReadHierarchy(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlueprintListOverridableFunctions(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandleBlueprintGetNodePins(const TSharedPtr<FJsonObject>& Params);
 
 	// ============================================================================
 	// Asset Writer Tool Handlers
@@ -131,6 +132,15 @@ private:
 	void RegisterPlanTools();
 	FOliveToolResult HandleBlueprintPreviewPlanJson(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlueprintApplyPlanJson(const TSharedPtr<FJsonObject>& Params);
+
+	// ============================================================================
+	// Template Tool Handlers
+	// ============================================================================
+
+	void RegisterTemplateTools();
+	FOliveToolResult HandleBlueprintCreateFromTemplate(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandleBlueprintGetTemplate(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandleBlueprintListTemplates(const TSharedPtr<FJsonObject>& Params);
 
 	// ============================================================================
 	// Graph Writer Tool Handlers

@@ -148,6 +148,24 @@ public:
 	bool ValidateNodeType(const FString& NodeType, const TMap<FString, FString>& Properties) const;
 
 	/**
+	 * Create a node by resolving the type string as a UK2Node subclass name.
+	 * This is the universal fallback -- used when the type is not in the curated
+	 * NodeCreators map. Properties are set via reflection BEFORE AllocateDefaultPins
+	 * (critical for nodes whose pins depend on property values).
+	 *
+	 * @param Blueprint The Blueprint containing the graph
+	 * @param Graph The graph to add the node to
+	 * @param ClassName The UK2Node subclass name (e.g., "K2Node_ComponentBoundEvent")
+	 * @param Properties UPROPERTY field name -> string value pairs to set via reflection
+	 * @return The created node, or nullptr (with LastError set)
+	 */
+	UEdGraphNode* CreateNodeByClass(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		const FString& ClassName,
+		const TMap<FString, FString>& Properties);
+
+	/**
 	 * Get the last error message from a failed operation
 	 * @return Error message string
 	 */
@@ -348,6 +366,36 @@ private:
 		UBlueprint* Blueprint,
 		UEdGraph* Graph,
 		const FString& MacroName);
+
+	// ============================================================================
+	// Universal Node Creation Helpers
+	// ============================================================================
+
+	/**
+	 * Resolve a UK2Node subclass by name. Searches across multiple engine module packages.
+	 * Multi-strategy lookup: FindFirstObject -> prefix variants -> U-prefix strip -> StaticLoadClass.
+	 * @param ClassName Short class name (e.g., "K2Node_ComponentBoundEvent") or prefixed name
+	 * @return The UClass if found and is a subclass of UK2Node, nullptr otherwise
+	 */
+	UClass* FindK2NodeClass(const FString& ClassName) const;
+
+	/**
+	 * Set UPROPERTY fields on a node via reflection.
+	 * Uses the same type-dispatch pattern as OliveGraphWriter::SetNodeProperty.
+	 * Type-specific fast paths for bool, int, float, double, string, name, text, object.
+	 * Generic ImportText_Direct fallback for enums, structs, FKey, etc.
+	 *
+	 * @param Node The node to set properties on
+	 * @param Properties Key-value pairs (UPROPERTY name -> string value)
+	 * @param OutSetProperties Names of properties that were successfully set
+	 * @param OutSkippedProperties Names of properties that could not be set (with reason)
+	 * @return Number of properties successfully set
+	 */
+	int32 SetNodePropertiesViaReflection(
+		UEdGraphNode* Node,
+		const TMap<FString, FString>& Properties,
+		TArray<FString>& OutSetProperties,
+		TMap<FString, FString>& OutSkippedProperties);
 
 	// ============================================================================
 	// Helper Methods

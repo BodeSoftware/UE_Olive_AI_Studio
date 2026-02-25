@@ -1,0 +1,43 @@
+## Graph Node Paths
+
+When adding logic to Blueprints, choose the right tool based on what you need:
+
+### Path 1: Plan JSON (preferred for 3+ nodes)
+Use `blueprint.apply_plan_json` with schema_version "2.0" for standard logic:
+- Supported ops: event, custom_event, call, get_var, set_var, branch, sequence,
+  cast, for_loop, for_each_loop, while_loop, do_once, flip_flop, gate, delay,
+  is_valid, print_string, spawn_actor, make_struct, break_struct, return, comment
+- Automatic pin resolution, exec wiring, and data wiring
+- Use this for 90% of Blueprint graph work
+
+### Path 2: add_node (for specialized/exotic nodes)
+Use `blueprint.add_node` when you need a node type NOT covered by plan JSON ops:
+- Component Bound Events (K2Node_ComponentBoundEvent)
+- Timeline nodes (K2Node_Timeline)
+- Select nodes (K2Node_Select)
+- Switch on Enum/String/Int (K2Node_SwitchEnum, K2Node_SwitchString, etc.)
+- Enhanced Input Action nodes
+- Animation nodes (in AnimBP graphs)
+- Any UK2Node subclass by exact class name
+
+How add_node works:
+1. Pass `type` as either a curated name (CallFunction, Branch, etc.) OR the exact
+   UK2Node class name (e.g., "K2Node_ComponentBoundEvent", "K2Node_Timeline")
+2. Pass `properties` as key-value pairs matching the node's UPROPERTY fields
+3. The tool returns the node's pin manifest showing all actual pin names
+4. Follow up with `blueprint.connect_pins` and `blueprint.set_pin_default` for wiring
+5. Use `blueprint.get_node_pins` to re-inspect pins after property changes
+
+### Path 3: add_node + get_node_pins (reconstruct workflow)
+For nodes whose pins change based on properties:
+1. `blueprint.add_node` with initial properties -> get pin manifest
+2. `blueprint.set_node_property` to change a key property -> pins may change
+3. `blueprint.get_node_pins` to re-discover pins after reconstruction
+4. Wire the updated pins with `blueprint.connect_pins`
+
+### Error Recovery: When plan JSON fails
+If `apply_plan_json` fails for a specific node type (e.g., component bound events),
+fall back to `add_node` with the exact UK2Node class name. Example:
+- Plan JSON has no `component_bound_event` op
+- Use: add_node type:"K2Node_ComponentBoundEvent" properties:{"DelegatePropertyName":"OnComponentHit","ComponentPropertyName":"CollisionComp"}
+- Then wire with connect_pins

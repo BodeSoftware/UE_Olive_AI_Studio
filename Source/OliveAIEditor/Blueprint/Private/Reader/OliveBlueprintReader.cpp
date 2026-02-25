@@ -9,6 +9,8 @@
 
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraphSchema_K2.h"
@@ -134,6 +136,35 @@ TArray<FOliveIRVariable> FOliveBlueprintReader::ReadVariables(const UBlueprint* 
 	{
 		FOliveIRVariable Var = ConvertVariableToIR(VarDesc, TEXT("self"));
 		Variables.Add(MoveTemp(Var));
+	}
+
+	// Include SCS component variables.
+	// Every component in the SimpleConstructionScript IS a variable on the
+	// generated class. UK2Node_VariableGet with SetSelfMember("ComponentName")
+	// works identically to dragging the component from the Components panel.
+	if (Blueprint->SimpleConstructionScript)
+	{
+		TArray<USCS_Node*> AllNodes = Blueprint->SimpleConstructionScript->GetAllNodes();
+		for (USCS_Node* SCSNode : AllNodes)
+		{
+			if (!SCSNode || !SCSNode->ComponentClass)
+			{
+				continue;
+			}
+
+			FOliveIRVariable Var;
+			Var.Name = SCSNode->GetVariableName().ToString();
+			Var.DefinedIn = TEXT("component"); // Distinguishes from "self" (user vars)
+			// Type info: use the component class name
+			Var.Type.Category = EOliveIRTypeCategory::Object;
+			Var.Type.ClassName = SCSNode->ComponentClass->GetName();
+			// Components are always BP-visible and always read-only references
+			Var.bBlueprintVisible = true;
+			Var.bBlueprintReadWrite = false; // Read-only -- you cannot set_var on a component
+			Var.bEditAnywhere = false;
+
+			Variables.Add(MoveTemp(Var));
+		}
 	}
 
 	// Optionally include inherited variables from parent Blueprint

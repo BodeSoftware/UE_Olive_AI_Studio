@@ -105,6 +105,19 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::Execute(
     Context.AssetPath = AssetPath;
     Context.GraphName = GraphName;
 
+    // Collect resolved class/function names for stale error detection (T5)
+    for (const FOliveResolvedStep& Step : ResolvedSteps)
+    {
+        if (const FString* FN = Step.Properties.Find(TEXT("function_name")))
+        {
+            Context.ResolvedFunctionNames.Add(*FN);
+        }
+        if (const FString* TC = Step.Properties.Find(TEXT("target_class")))
+        {
+            Context.ResolvedClassNames.Add(*TC);
+        }
+    }
+
     // Phase 1: Create all nodes + build pin manifests (FAIL-FAST)
     UE_LOG(LogOlivePlanExecutor, Log, TEXT("Phase 1: Create Nodes"));
     const bool bNodesCreated = PhaseCreateNodes(Plan, ResolvedSteps, Context);
@@ -345,6 +358,7 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
                         *EventName, *StepId);
 
                     ReusedStepIds.Add(StepId);
+                    Context.ReusedStepIds.Add(StepId);
                     continue; // Skip to next step
                 }
             }
@@ -510,15 +524,90 @@ void FOlivePlanExecutor::PhaseAutoWireComponentTargets(
             continue;
         }
 
-        // Check if AI already provided a Target input as @ref
+        // Check if AI already provided a Target input
+        bool bHandled = false;
         if (i < Plan.Steps.Num())
         {
             const FOliveIRBlueprintPlanStep& PlanStep = Plan.Steps[i];
             const FString* TargetValue = PlanStep.Inputs.Find(TEXT("Target"));
-            if (TargetValue && TargetValue->StartsWith(TEXT("@")))
+            if (TargetValue && !TargetValue->IsEmpty())
             {
-                continue; // AI provided a target reference -- don't override
+                if (TargetValue->StartsWith(TEXT("@")))
+                {
+                    continue; // @ref syntax -- Phase 4 data wiring handles this
+                }
+
+                // String literal -- check if it matches an SCS component variable.
+                // If so, wire to THAT specific component instead of auto-detecting.
+                // Phase 4 (data wiring) treats non-@ref strings as pin defaults,
+                // which is wrong for an object reference pin. We handle it here.
+                for (USCS_Node* SCSNode : BP->SimpleConstructionScript->GetAllNodes())
+                {
+                    if (SCSNode && SCSNode->GetVariableName().ToString() == *TargetValue)
+                    {
+                        // AI specified a component by name. Wire to it directly.
+                        UEdGraphNode* CreatedNode = Context.GetNodePtr(Resolved.StepId);
+                        if (CreatedNode)
+                        {
+                            UEdGraphPin* SelfPin = CreatedNode->FindPin(UEdGraphSchema_K2::PN_Self);
+                            if (SelfPin && SelfPin->LinkedTo.Num() == 0)
+                            {
+                                FName CompVarName = SCSNode->GetVariableName();
+                                UK2Node_VariableGet* GetNode = NewObject<UK2Node_VariableGet>(Context.Graph);
+                                GetNode->VariableReference.SetSelfMember(CompVarName);
+                                Context.Graph->AddNode(GetNode, /*bUserAction=*/false, /*bSelectNewNode=*/false);
+                                GetNode->AllocateDefaultPins();
+
+                                // Find the first non-exec output pin on the getter (the component reference)
+                                UEdGraphPin* GetOutputPin = nullptr;
+                                for (UEdGraphPin* Pin : GetNode->Pins)
+                                {
+                                    if (Pin && Pin->Direction == EGPD_Output &&
+                                        Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+                                    {
+                                        GetOutputPin = Pin;
+                                        break;
+                                    }
+                                }
+
+                                if (GetOutputPin)
+                                {
+                                    const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+                                    if (Schema->TryCreateConnection(GetOutputPin, SelfPin))
+                                    {
+                                        Context.SuccessfulConnectionCount++;
+                                        Context.AutoFixCount++;
+                                        Context.Warnings.Add(FString::Printf(
+                                            TEXT("Step '%s': Wired Target <- component '%s' (from string-literal input)"),
+                                            *Resolved.StepId, *CompVarName.ToString()));
+                                        UE_LOG(LogOlivePlanExecutor, Log,
+                                            TEXT("Phase 1.5: Wired '%s' Target <- component '%s' (string-literal)"),
+                                            *Resolved.StepId, *CompVarName.ToString());
+                                    }
+                                    else
+                                    {
+                                        // Connection failed -- remove orphan getter node
+                                        Context.Graph->RemoveNode(GetNode);
+                                    }
+                                }
+                                else
+                                {
+                                    // No output pin -- remove orphan getter node
+                                    Context.Graph->RemoveNode(GetNode);
+                                }
+                            }
+                        }
+                        bHandled = true; // Component matched -- skip the auto-detect path below
+                        break;
+                    }
+                }
+                // If string literal but not a component name, fall through to auto-detect
             }
+        }
+
+        if (bHandled)
+        {
+            continue;
         }
 
         // Get the created node
@@ -2012,6 +2101,9 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::AssembleResult(
 
     Result.bSuccess = bAllNodesCreated;
     Result.StepToNodeMap = Context.StepToNodeMap;
+    Result.ReusedStepIds = Context.ReusedStepIds;
+    Result.PlanClassNames = Context.ResolvedClassNames;
+    Result.PlanFunctionNames = Context.ResolvedFunctionNames;
     Result.AppliedOpsCount = Context.CreatedNodeCount + Context.SuccessfulConnectionCount + Context.SuccessfulDefaultCount;
     Result.Errors = Context.WiringErrors;
     Result.Warnings = Context.Warnings;
