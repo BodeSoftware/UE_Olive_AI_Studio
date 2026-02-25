@@ -693,6 +693,10 @@ bool FOliveBlueprintPlanResolver::ResolveSetVarOp(
 		{
 			// Check if the name matches a component in the SCS.
 			// This catches a common AI mistake: using set_var for a component name.
+			// NOTE: We keep this SCS walk even though BlueprintHasVariable() now also
+			// checks SCS components. We need the component CLASS NAME for the error
+			// message, which BlueprintHasVariable() doesn't return. If we later refactor
+			// BlueprintHasVariable to return component class info, this can be simplified.
 			if (BP->SimpleConstructionScript)
 			{
 				FString MatchedComponentClass;
@@ -741,10 +745,8 @@ bool FOliveBlueprintPlanResolver::ResolveSetVarOp(
 								 "\"SetRelativeLocation\"/etc., "
 								 "\"inputs\":{\"Target\":\"@<get_var_step>.auto\"}}"),
 							*Step.Target, *MatchedComponentClass),
-						FString::Printf(
-							TEXT("Replace this set_var step with a call to GetComponentByClass "
-								 "with ComponentClass:\"%s\""),
-							*MatchedComponentClass)));
+						TEXT("Use get_var to read the component reference, then call "
+						 "setter functions with Target wired to the get_var output.")));
 
 					UE_LOG(LogOlivePlanResolver, Warning,
 						TEXT("Step '%s': '%s' is a component (%s), not a variable — rejected with guidance"),

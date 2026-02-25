@@ -27,7 +27,9 @@
 - Uses `Node->FindPin()` + `Schema->TrySetDefaultValue()` directly for defaults
 - Uses `FOliveGraphWriter::Get().AddNode()` for node creation (gets UEdGraphNode* via `GetCachedNode`)
 - Event reuse: `FBlueprintEditorUtils::FindOverrideForFunction()` for native events, `UK2Node_CustomEvent::CustomFunctionName` iteration for custom events
-- Phase 1 (nodes) = FAIL-FAST, Phases 3/4/5 (wiring) = CONTINUE-ON-FAILURE, Phase 6 (layout) = ALWAYS SUCCEEDS
+- Phase 1 (nodes) = FAIL-FAST, Phase 1.5 (auto-wire component targets) = CONTINUE-ON-FAILURE, Phases 3/4/5 (wiring) = CONTINUE-ON-FAILURE, Phase 6 (layout) = ALWAYS SUCCEEDS
+- Phase 1.5 uses `UEdGraphSchema_K2::TryCreateConnection()` directly (NOT FOlivePinConnector) -- runs OUTSIDE BatchScope
+- Context fields added for Phase 1.5/5.5: `AutoFixCount`, `PreCompileIssues`, `NodeIdToStepId`, `Plan*`, `FindStepIdForNode()`
 - Pin manifests built via `FOlivePinManifest::Build()` after each node creation for ground-truth pin names
 - `@step.auto` = type-based auto-match, `@step.~hint` = fuzzy prefix, `@step.pinName` = standard smart resolution
 
@@ -52,6 +54,26 @@
 ## UE 5.5 API Quirks
 - **Float/Double PinType**: In UE 5.5, `PC_Float` and `PC_Double` must NOT be used as `PinCategory`. Instead use `PinCategory = PC_Real` with `PinSubCategory = PC_Float` (or `PC_Double`). Using `PC_Float` directly as category causes "Can't parse default value" compile warnings because the engine can't resolve an FProperty from a bare `PC_Float` category.
 - Source: `EdGraphSchema_K2.cpp` lines 3503-3512 (ConvertPropertyToPinType sets PC_Real+subcategory for both FFloatProperty and FDoubleProperty)
+
+## Phase 3: Error Recovery, Loop Prevention & Context Injection (Completed)
+- **Task 1 (3.3)**: Updated stale guidance strings in `BuildToolErrorMessage()`:
+  - PLAN_RESOLVE_FAILED: "get_var for a component" -> "set_var on a component"
+  - PLAN_VALIDATION_FAILED: mentions auto-wiring for single components instead of GetComponentByClass
+- **Task 2 (3.2)**: Progressive error disclosure in `BuildToolErrorMessage()`:
+  - Attempt 1: short header (code only) + guidance
+  - Attempt 2: full header (code + message) + guidance
+  - Attempt 3+: full header + guidance + ESCALATION block
+- **Task 3 (3.1)**: Plan content deduplication:
+  - `FOliveLoopDetector::HashString()` moved from private to public
+  - `FOliveSelfCorrectionPolicy::Evaluate()` got new `ToolCallArgs` param (optional, default nullptr)
+  - `BuildPlanHash()` hashes tool+asset_path+graph_name+condensed_plan_JSON
+  - `PreviousPlanHashes` TMap tracks submission counts; >1 = FeedBackErrors, >=3 = StopWorker
+  - `OliveConversationManager.cpp` passes `ActiveToolCallArgs[ToolCallId]` to Evaluate
+- **Task 4 (3.4)**: Blueprint context injection in prompts:
+  - `BuildBlueprintContextBlock()` on FOlivePromptAssembler: loads BP, iterates SCS nodes + NewVariables
+  - Called from `GetActiveContext()` when `AssetInfo->bIsBlueprint`
+  - Token budget in GetActiveContext naturally handles large BPs
+  - Includes: `Engine/Blueprint.h`, `Engine/SimpleConstructionScript.h`, `Engine/SCS_Node.h`
 
 ## Phase 2 Task 6 (Large-Graph Read Mode)
 - Constants: `OLIVE_LARGE_GRAPH_THRESHOLD = 500`, `OLIVE_GRAPH_PAGE_SIZE = 100` in OliveGraphReader.h

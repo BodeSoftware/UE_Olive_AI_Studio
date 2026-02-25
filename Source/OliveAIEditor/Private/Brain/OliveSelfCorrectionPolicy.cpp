@@ -4,6 +4,7 @@
 #include "Brain/OliveRetryPolicy.h"
 #include "OliveAIEditorModule.h"
 #include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 #include "Dom/JsonObject.h"
 
 FOliveSelfCorrectionPolicy::FOliveSelfCorrectionPolicy()
@@ -15,9 +16,57 @@ FOliveCorrectionDecision FOliveSelfCorrectionPolicy::Evaluate(
 	const FString& ResultJson,
 	FOliveLoopDetector& LoopDetector,
 	const FOliveRetryPolicy& Policy,
-	const FString& AssetContext)
+	const FString& AssetContext,
+	const TSharedPtr<FJsonObject>& ToolCallArgs)
 {
 	FOliveCorrectionDecision Decision;
+
+	// Plan deduplication: detect when AI submits identical plans
+	if ((ToolName == TEXT("blueprint.apply_plan_json") || ToolName == TEXT("blueprint.preview_plan_json"))
+		&& ToolCallArgs.IsValid())
+	{
+		const FString PlanHash = BuildPlanHash(ToolName, ToolCallArgs);
+
+		if (!PlanHash.IsEmpty())
+		{
+			int32& SubmitCount = PreviousPlanHashes.FindOrAdd(PlanHash, 0);
+			SubmitCount++;
+
+			if (SubmitCount > 1)
+			{
+				// Extract error info from this attempt's result for context
+				FString ErrorCode, ErrorMessage;
+				HasToolFailure(ResultJson, ErrorCode, ErrorMessage);
+
+				Decision.Action = EOliveCorrectionAction::FeedBackErrors;
+				Decision.EnrichedMessage = FString::Printf(
+					TEXT("[IDENTICAL PLAN - Seen %d time(s)] Your plan is identical to a "
+						 "previous submission that failed. Previous error: %s %s\n\n"
+						 "You MUST change the failing step's approach. Specifically:\n"
+						 "- If a function wasn't found, use blueprint.search_nodes first\n"
+						 "- If pin connection failed, use @step.auto instead of exact names\n"
+						 "- If component Target was missing, add a get_var step and wire it\n"
+						 "- Consider using olive.get_recipe for the correct pattern\n"
+						 "Do NOT resubmit the same plan."),
+					SubmitCount, *ErrorCode, *ErrorMessage);
+
+				UE_LOG(LogOliveAI, Warning,
+					TEXT("SelfCorrection: Identical plan hash=%s, submission #%d"),
+					*PlanHash, SubmitCount);
+
+				// Escalate to stop after 3 identical submissions
+				if (SubmitCount >= 3)
+				{
+					Decision.Action = EOliveCorrectionAction::StopWorker;
+					Decision.LoopReport = FString::Printf(
+						TEXT("Stopped: identical plan submitted %d times without changes."),
+						SubmitCount);
+				}
+
+				return Decision;
+			}
+		}
+	}
 
 	// Check for compile failure
 	FString CompileErrors, AssetPath;
@@ -86,7 +135,7 @@ FOliveCorrectionDecision FOliveSelfCorrectionPolicy::Evaluate(
 
 void FOliveSelfCorrectionPolicy::Reset()
 {
-	// Per-signature counting is owned by FOliveLoopDetector; nothing to reset here
+	PreviousPlanHashes.Empty();
 }
 
 bool FOliveSelfCorrectionPolicy::HasCompileFailure(const FString& ResultJson, FString& OutErrors, FString& OutAssetPath) const
@@ -333,8 +382,10 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 	else if (ErrorCode == TEXT("PLAN_RESOLVE_FAILED") || ErrorCode == TEXT("PLAN_LOWER_FAILED") || ErrorCode == TEXT("PLAN_EXECUTION_FAILED"))
 	{
 		Guidance = TEXT("The plan failed during resolution or execution. Check the error details for which step failed. "
-			"If a step used the wrong pattern (e.g., get_var for a component, or an invented function name), "
-			"call olive.get_recipe with a query describing what you need (e.g., 'component reference' or 'spawn actor') "
+			"Common mistakes: set_var on a component (use get_var to read, then call setter), "
+			"invented function names (search with blueprint.search_nodes first), "
+			"wrong pin names (use @step.auto instead of guessing). "
+			"Call olive.get_recipe with a query describing what you need (e.g., 'component reference' or 'spawn actor') "
 			"to get the correct pattern. Fix the failing step and resubmit the corrected plan.");
 	}
 	else if (ErrorCode == TEXT("GRAPH_DRIFT"))
@@ -370,9 +421,10 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 	}
 	else if (ErrorCode == TEXT("COMPONENT_NOT_VARIABLE"))
 	{
-		Guidance = TEXT("You tried to use get_var on a component name. Components are NOT variables. "
-			"The error message contains the exact correct pattern using GetComponentByClass. "
-			"Replace the get_var step with the call pattern shown in the error message.");
+		Guidance = TEXT("You tried to use set_var on a component. Components are read-only and "
+			"cannot be assigned with set_var. To READ a component, use get_var (this works). "
+			"To MODIFY a component property, use get_var to get the reference, then call "
+			"the setter function with Target wired to the get_var output.");
 	}
 	else if (ErrorCode == TEXT("COMPILE_FAILED"))
 	{
@@ -383,7 +435,9 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 	else if (ErrorCode == TEXT("PLAN_VALIDATION_FAILED"))
 	{
 		Guidance = TEXT("The plan has structural issues detected before execution. Read the error details carefully. "
-			"COMPONENT_FUNCTION_ON_ACTOR: add a GetComponentByClass step and wire its output to Target. "
+			"COMPONENT_FUNCTION_ON_ACTOR: if only one matching component exists, "
+			"the executor will auto-wire it (no action needed). If multiple components "
+			"match, add a get_var step for the specific component and wire its output to Target. "
 			"EXEC_WIRING_CONFLICT: remove exec_after and restructure using exec_outputs on the branch node. "
 			"Fix the plan and resubmit.");
 	}
@@ -392,5 +446,74 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 		Guidance = TEXT("Analyze the error and try a different approach. If the parameters were wrong, read the asset first to verify its current state.");
 	}
 
-	return Header + TEXT("\nFIX GUIDANCE: ") + Guidance;
+	// Progressive error disclosure based on attempt number
+	FString Result;
+
+	if (AttemptNum == 1)
+	{
+		// First attempt: header (error code only) + guidance.
+		// Omit raw error message to avoid overwhelming context.
+		FString ShortHeader = FString::Printf(
+			TEXT("[TOOL FAILED - Attempt %d/%d] Tool '%s' error: %s"),
+			AttemptNum, MaxAttempts, *ToolName, *ErrorCode);
+		Result = ShortHeader + TEXT("\nFIX GUIDANCE: ") + Guidance;
+	}
+	else if (AttemptNum == 2)
+	{
+		// Second attempt: full header (with error message) + guidance.
+		Result = Header + TEXT("\nFIX GUIDANCE: ") + Guidance;
+	}
+	else
+	{
+		// Third+ attempt: full header + guidance + escalation directive.
+		Result = Header + TEXT("\nFIX GUIDANCE: ") + Guidance;
+		Result += FString::Printf(
+			TEXT("\n\n[ESCALATION - Attempt %d/%d] Previous approaches have not worked. "
+				 "You MUST try a fundamentally different strategy:\n"
+				 "- Use olive.get_recipe to find the correct pattern for this task\n"
+				 "- Use @step.auto for ALL data wires instead of explicit pin names\n"
+				 "- Simplify the plan by breaking it into smaller operations\n"
+				 "- Read the Blueprint state with blueprint.read before retrying"),
+			AttemptNum, MaxAttempts);
+	}
+
+	return Result;
+}
+
+FString FOliveSelfCorrectionPolicy::BuildPlanHash(
+	const FString& ToolName,
+	const TSharedPtr<FJsonObject>& ToolCallArgs) const
+{
+	if (!ToolCallArgs.IsValid())
+	{
+		return FString();
+	}
+
+	// Extract identifying fields
+	FString AssetPath;
+	ToolCallArgs->TryGetStringField(TEXT("asset_path"), AssetPath);
+
+	FString GraphName;
+	ToolCallArgs->TryGetStringField(TEXT("graph_name"), GraphName);
+
+	// Extract and serialize the plan object
+	const TSharedPtr<FJsonObject>* PlanObj = nullptr;
+	FString PlanString;
+	if (ToolCallArgs->TryGetObjectField(TEXT("plan"), PlanObj) && PlanObj && (*PlanObj).IsValid())
+	{
+		auto Writer = TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&PlanString);
+		FJsonSerializer::Serialize((*PlanObj).ToSharedRef(), Writer);
+		Writer->Close();
+	}
+
+	if (PlanString.IsEmpty())
+	{
+		return FString();
+	}
+
+	// Composite key: tool + asset + graph + plan content
+	const FString Composite = FString::Printf(TEXT("%s|%s|%s|%s"),
+		*ToolName, *AssetPath, *GraphName, *PlanString);
+
+	return FOliveLoopDetector::HashString(Composite);
 }

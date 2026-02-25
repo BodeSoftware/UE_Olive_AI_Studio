@@ -94,6 +94,16 @@ public:
 	FString GetKnowledgePackById(const FString& PackId) const;
 
 	/**
+	 * Build a compact context block for a Blueprint asset showing its
+	 * components and variables. Returns empty string if asset is not
+	 * a Blueprint or cannot be loaded.
+	 *
+	 * @param AssetPath Package path to the Blueprint asset
+	 * @return Indented context block, or empty string
+	 */
+	FString BuildBlueprintContextBlock(const FString& AssetPath) const;
+
+	/**
 	 * Assemble a worker-specific prompt for the Brain Layer.
 	 * Loads domain template, substitutes variables, appends base rules.
 	 *

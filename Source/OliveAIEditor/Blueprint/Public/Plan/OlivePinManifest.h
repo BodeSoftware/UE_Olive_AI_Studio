@@ -53,6 +53,11 @@ struct OLIVEAIEDITOR_API FOlivePinManifestEntry
     /** Whether this pin is currently connected */
     bool bIsConnected = false;
 
+    /** Whether this pin is required for the node to function correctly.
+     *  true for: exec input on non-event impure nodes, self/Target on non-static member functions.
+     *  Surfaced in tool results so the AI knows which pins must be wired. */
+    bool bIsRequired = false;
+
     /** IR type category for type-compatibility matching */
     EOliveIRTypeCategory IRTypeCategory = EOliveIRTypeCategory::Unknown;
 };

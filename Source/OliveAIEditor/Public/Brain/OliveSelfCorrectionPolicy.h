@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Dom/JsonObject.h"
 
 // Forward declarations
 class FOliveLoopDetector;
@@ -58,6 +59,8 @@ public:
 	 * @param ResultJson The JSON string of the tool result
 	 * @param LoopDetector The loop detector to check for loops
 	 * @param Policy The retry policy configuration
+	 * @param AssetContext Asset path context for per-asset signature tracking
+	 * @param ToolCallArgs Original tool call arguments (used for plan dedup)
 	 * @return Decision with action and enriched message
 	 */
 	FOliveCorrectionDecision Evaluate(
@@ -65,7 +68,8 @@ public:
 		const FString& ResultJson,
 		FOliveLoopDetector& LoopDetector,
 		const FOliveRetryPolicy& Policy,
-		const FString& AssetContext = TEXT("")
+		const FString& AssetContext = TEXT(""),
+		const TSharedPtr<FJsonObject>& ToolCallArgs = nullptr
 	);
 
 	/** Reset state for a new run */
@@ -104,5 +108,14 @@ private:
 		int32 AttemptNum,
 		int32 MaxAttempts
 	) const;
+
+	/**
+	 * Build a stable hash of plan content from tool call arguments.
+	 * Returns empty string if args don't contain a plan object.
+	 */
+	FString BuildPlanHash(const FString& ToolName, const TSharedPtr<FJsonObject>& ToolCallArgs) const;
+
+	/** Map of plan content hash -> submission count. Reset per turn. */
+	TMap<FString, int32> PreviousPlanHashes;
 
 };

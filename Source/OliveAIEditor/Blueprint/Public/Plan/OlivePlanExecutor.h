@@ -114,6 +114,18 @@ struct OLIVEAIEDITOR_API FOlivePlanExecutionContext
     /** Auto-conversion notes logged when PinConnector inserts conversion nodes */
     TArray<FOliveConversionNote> ConversionNotes;
 
+    /** Pre-compile validation issues (Phase 5.5) -- things that couldn't be auto-fixed */
+    TArray<FString> PreCompileIssues;
+
+    /** Count of issues auto-fixed by executor (Phase 1.5 + Phase 5.5) */
+    int32 AutoFixCount = 0;
+
+    /** Reverse map: NodeId -> StepId (built from StepToNodeMap during Execute) */
+    TMap<FString, FString> NodeIdToStepId;
+
+    /** Pointer to plan for Phase 5.5 exec recovery lookups. NOT owned. */
+    const FOliveIRBlueprintPlan* Plan = nullptr;
+
     /** Get manifest for a step, or nullptr if step was not created */
     const FOlivePinManifest* GetManifest(const FString& StepId) const;
 
@@ -122,6 +134,10 @@ struct OLIVEAIEDITOR_API FOlivePlanExecutionContext
 
     /** Get the node ID for a step, or empty string */
     FString GetNodeId(const FString& StepId) const;
+
+    /** Reverse lookup: get step ID for a given UEdGraphNode*, or empty string.
+     *  Iterates StepToNodePtr (small map, typically <50 entries). */
+    FString FindStepIdForNode(const UEdGraphNode* Node) const;
 };
 
 /**
@@ -157,11 +173,13 @@ struct OLIVEAIEDITOR_API FOliveSmartWireResult
  * Replaces the lowerer (FOliveBlueprintPlanLowerer) for schema_version "2.0" plans.
  *
  * Execution phases:
- *   Phase 1: Create all nodes + build pin manifests (FAIL-FAST)
- *   Phase 3: Wire exec connections using manifest (CONTINUE-ON-FAILURE)
- *   Phase 4: Wire data connections using manifest (CONTINUE-ON-FAILURE)
- *   Phase 5: Set pin defaults using manifest (CONTINUE-ON-FAILURE)
- *   Phase 6: Auto-layout using exec flow topology (ALWAYS SUCCEEDS)
+ *   Phase 1:   Create all nodes + build pin manifests (FAIL-FAST)
+ *   Phase 1.5: Auto-wire component function Target pins (CONTINUE-ON-FAILURE)
+ *   Phase 3:   Wire exec connections using manifest (CONTINUE-ON-FAILURE)
+ *   Phase 4:   Wire data connections using manifest (CONTINUE-ON-FAILURE)
+ *   Phase 5:   Set pin defaults using manifest (CONTINUE-ON-FAILURE)
+ *   Phase 5.5: Pre-compile validation with auto-fix (CONTINUE-ON-FAILURE)
+ *   Phase 6:   Auto-layout using exec flow topology (ALWAYS SUCCEEDS)
  *
  * (Phase 2 is merged into Phase 1.)
  *
@@ -208,6 +226,24 @@ private:
         const TArray<FOliveResolvedStep>& ResolvedSteps,
         FOlivePlanExecutionContext& Context);
 
+    /**
+     * Phase 1.5: Auto-wire component function Target pins.
+     * For each CallFunction node targeting a component-class function:
+     * if the Target/Self pin is unwired AND the Blueprint has exactly one
+     * SCS component of the required class, inject a UK2Node_VariableGet
+     * for that component and wire its output to the Self pin.
+     *
+     * Skips if: Blueprint is itself a component, AI already provided Target
+     * input as @ref, Target pin is already connected, or multiple/zero
+     * matching components exist.
+     *
+     * CONTINUE-ON-FAILURE per step; failure for one step does not block others.
+     */
+    void PhaseAutoWireComponentTargets(
+        const FOliveIRBlueprintPlan& Plan,
+        const TArray<FOliveResolvedStep>& ResolvedSteps,
+        FOlivePlanExecutionContext& Context);
+
     /** Phase 3: Wire exec connections. CONTINUE-ON-FAILURE. */
     void PhaseWireExec(
         const FOliveIRBlueprintPlan& Plan,
@@ -221,6 +257,24 @@ private:
     /** Phase 5: Set pin default values. CONTINUE-ON-FAILURE. */
     void PhaseSetDefaults(
         const FOliveIRBlueprintPlan& Plan,
+        FOlivePlanExecutionContext& Context);
+
+    /**
+     * Phase 5.5: Pre-compile validation with auto-fix.
+     * Runs after all wiring phases, before auto-layout.
+     *
+     * Check 1: Orphaned impure nodes (exec input not wired).
+     *   Auto-fix: If the orphan's plan step has exec_after set and the source
+     *   step's primary exec output is unwired, reconnect them. This recovers
+     *   from pin-name-drift failures in Phase 3.
+     *
+     * Check 2: Unwired Self/Target on component function calls.
+     *   Reports as PreCompileIssue only (Phase 1.5 should have caught these).
+     *   This is defense-in-depth.
+     *
+     * CONTINUE-ON-FAILURE. Never blocks execution.
+     */
+    void PhasePreCompileValidation(
         FOlivePlanExecutionContext& Context);
 
     /** Phase 6: Auto-layout based on exec flow topology. ALWAYS SUCCEEDS. */

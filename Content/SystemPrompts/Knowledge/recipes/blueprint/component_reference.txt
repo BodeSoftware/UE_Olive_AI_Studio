@@ -1,17 +1,21 @@
-TAGS: component reference target getcomponentbyclass scene muzzle arrow transform access
+TAGS: component reference target getcomponentbyclass scene muzzle arrow transform access variable get_var
 ---
-To reference a named component in plan JSON, use get_var with the component name:
+Components added in the Components panel ARE variables on the Blueprint.
+Use get_var to get a reference, then call functions with Target wired to it:
+
   {"step_id":"get_muzzle", "op":"get_var", "target":"MuzzlePoint"}
-  {"step_id":"get_tf", "op":"call", "target":"GetWorldTransform",
+  {"step_id":"get_tf",     "op":"call",    "target":"GetWorldTransform",
    "inputs":{"Target":"@get_muzzle.auto"}}
 
-Components added via add_component ARE variables — get_var works directly.
-You CANNOT use set_var on components (they are read-only references).
+To modify a component property:
+  {"step_id":"get_mesh",   "op":"get_var", "target":"GunMesh"}
+  {"step_id":"set_vis",    "op":"call",    "target":"SetVisibility",
+   "inputs":{"Target":"@get_mesh.auto", "bNewVisibility":"true"}}
 
-Alternative: use GetComponentByClass when you need a component by type rather than name:
-  {"step_id":"get_comp", "op":"call", "target":"GetComponentByClass",
-   "inputs":{"ComponentClass":"ArrowComponent"}}
-Do NOT invent functions like "GetMuzzlePoint" — use get_var or GetComponentByClass.
-Common component classes: StaticMeshComponent, ArrowComponent, BoxComponent,
-SphereComponent, CapsuleComponent, AudioComponent, ParticleSystemComponent,
-SkeletalMeshComponent, ProjectileMovementComponent, SceneComponent.
+RULES:
+- get_var works for BOTH Blueprint variables AND components.
+- set_var does NOT work for components (they are read-only references).
+- Always wire Target on component functions to the get_var output.
+- GetComponentByClass also works but get_var is simpler when you know the name.
+- Common component classes: StaticMeshComponent, ArrowComponent, BoxComponent,
+  SphereComponent, CapsuleComponent, AudioComponent, SkeletalMeshComponent.

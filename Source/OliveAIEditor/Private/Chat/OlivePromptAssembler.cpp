@@ -9,6 +9,9 @@
 #include "Misc/Paths.h"
 #include "HAL/PlatformFileManager.h"
 #include "Interfaces/IPluginManager.h"
+#include "Engine/Blueprint.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
 
 FOlivePromptAssembler& FOlivePromptAssembler::Get()
 {
@@ -213,6 +216,16 @@ FString FOlivePromptAssembler::GetActiveContext(const TArray<FString>& AssetPath
 				AssetLine += FString::Join(AssetInfo->Interfaces, TEXT(", "));
 				AssetLine += TEXT("\n");
 			}
+
+			// Add Blueprint component/variable context
+			if (AssetInfo->bIsBlueprint)
+			{
+				FString BPContext = BuildBlueprintContextBlock(Path);
+				if (!BPContext.IsEmpty())
+				{
+					AssetLine += BPContext;
+				}
+			}
 		}
 		else
 		{
@@ -337,6 +350,67 @@ FString FOlivePromptAssembler::GetKnowledgePackById(const FString& PackId) const
 {
 	const FString* PackText = CapabilityKnowledgePacks.Find(PackId);
 	return PackText ? *PackText : TEXT("");
+}
+
+FString FOlivePromptAssembler::BuildBlueprintContextBlock(const FString& AssetPath) const
+{
+	// Load the Blueprint asset. Use FindObject first (may already be loaded),
+	// fall back to LoadObject. Suppress loading in PIE or during save.
+	UBlueprint* Blueprint = FindObject<UBlueprint>(nullptr, *AssetPath);
+	if (!Blueprint)
+	{
+		// Try loading with the full object path
+		FString FullPath = AssetPath;
+		if (!FullPath.EndsWith(TEXT(".") + FPaths::GetBaseFilename(AssetPath)))
+		{
+			FullPath = AssetPath + TEXT(".") + FPaths::GetBaseFilename(AssetPath);
+		}
+		Blueprint = LoadObject<UBlueprint>(nullptr, *FullPath);
+	}
+
+	if (!Blueprint)
+	{
+		return FString();
+	}
+
+	FString Block;
+
+	// Components
+	if (Blueprint->SimpleConstructionScript)
+	{
+		TArray<USCS_Node*> AllNodes = Blueprint->SimpleConstructionScript->GetAllNodes();
+		if (AllNodes.Num() > 0)
+		{
+			Block += TEXT("  Components:\n");
+			for (USCS_Node* SCSNode : AllNodes)
+			{
+				if (!SCSNode) continue;
+				FString ClassName = SCSNode->ComponentClass
+					? SCSNode->ComponentClass->GetName() : TEXT("Unknown");
+				Block += FString::Printf(TEXT("    - %s (%s)\n"),
+					*SCSNode->GetVariableName().ToString(), *ClassName);
+			}
+		}
+	}
+
+	// Variables
+	if (Blueprint->NewVariables.Num() > 0)
+	{
+		Block += TEXT("  Variables:\n");
+		for (const FBPVariableDescription& Var : Blueprint->NewVariables)
+		{
+			FString TypeStr = Var.VarType.PinCategory.ToString();
+			// Add subcategory for object/struct types
+			if (UObject* SubCatObj = Var.VarType.PinSubCategoryObject.Get())
+			{
+				TypeStr = SubCatObj->GetName();
+			}
+			Block += FString::Printf(TEXT("    - %s (%s)\n"),
+				*Var.VarName.ToString(), *TypeStr);
+		}
+	}
+
+	return Block;
 }
 
 // ==========================================

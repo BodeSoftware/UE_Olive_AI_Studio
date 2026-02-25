@@ -4,6 +4,8 @@
 #include "Plan/OliveBlueprintPlanResolver.h"
 #include "Engine/Blueprint.h"
 #include "Components/ActorComponent.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
 
 DEFINE_LOG_CATEGORY(LogOlivePlanValidator);
 
@@ -102,12 +104,64 @@ void FOlivePlanValidator::CheckComponentFunctionTargets(
 			continue; // AI correctly wired a component target
 		}
 
-		// ERROR: Component function on Actor BP without Target wire
+		// Count matching SCS components to determine if Phase 1.5 can auto-fix
+		int32 MatchCount = 0;
+		FString MatchedComponentName;
+		if (Context.Blueprint->SimpleConstructionScript)
+		{
+			for (USCS_Node* SCSNode : Context.Blueprint->SimpleConstructionScript->GetAllNodes())
+			{
+				if (SCSNode && SCSNode->ComponentClass &&
+					SCSNode->ComponentClass->IsChildOf(Resolved.ResolvedOwningClass))
+				{
+					MatchCount++;
+					if (MatchCount == 1)
+					{
+						MatchedComponentName = SCSNode->GetVariableName().ToString();
+					}
+				}
+			}
+		}
+
 		const FString* FunctionName = Resolved.Properties.Find(TEXT("function_name"));
 		const FString* ClassName = Resolved.Properties.Find(TEXT("target_class"));
-
 		const FString FuncDisplay = FunctionName ? *FunctionName : Resolved.StepId;
 		const FString ClassDisplay = ClassName ? *ClassName : TEXT("ActorComponent");
+
+		if (MatchCount == 1)
+		{
+			// Exactly one match -- Phase 1.5 will auto-wire. Downgrade to warning.
+			Result.Warnings.Add(FString::Printf(
+				TEXT("Step '%s': Component function '%s' (%s) has no Target wire. "
+					 "Will be auto-wired to component '%s'."),
+				*Resolved.StepId, *FuncDisplay, *ClassDisplay, *MatchedComponentName));
+
+			UE_LOG(LogOlivePlanValidator, Log,
+				TEXT("Phase 0: Step '%s' missing Target -- will auto-wire to '%s' (1 match)"),
+				*Resolved.StepId, *MatchedComponentName);
+			continue; // Skip error emission -- Phase 1.5 will handle it
+		}
+
+		// MatchCount == 0 or > 1: can't auto-fix -- emit error
+		FString SuggestionText;
+		if (MatchCount == 0)
+		{
+			SuggestionText = FString::Printf(
+				TEXT("No components of type '%s' found in the Blueprint's Components panel. "
+					 "Add a get_var step for the component, or use GetComponentByClass:\n"
+					 "  {\"step_id\":\"get_comp\", \"op\":\"call\", \"target\":\"GetComponentByClass\", "
+					 "\"inputs\":{\"ComponentClass\":\"%s\"}}\n"
+					 "  Then on step '%s': \"inputs\":{\"Target\":\"@get_comp.auto\"}"),
+				*ClassDisplay, *ClassDisplay, *Resolved.StepId);
+		}
+		else
+		{
+			SuggestionText = FString::Printf(
+				TEXT("%d components of type '%s' found. Ambiguous -- wire Target explicitly:\n"
+					 "  {\"step_id\":\"get_comp\", \"op\":\"get_var\", \"target\":\"<component_name>\"}\n"
+					 "  Then on step '%s': \"inputs\":{\"Target\":\"@get_comp.auto\"}"),
+				MatchCount, *ClassDisplay, *Resolved.StepId);
+		}
 
 		Result.Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
 			TEXT("COMPONENT_FUNCTION_ON_ACTOR"),
@@ -118,16 +172,11 @@ void FOlivePlanValidator::CheckComponentFunctionTargets(
 					 "inherits from Actor. Without a Target pin wired to a component "
 					 "reference, this will target Self (the Actor), causing a compile error."),
 				*FuncDisplay, *ClassDisplay),
-			FString::Printf(
-				TEXT("Add a GetComponentByClass step first, then wire its output to Target:\n"
-					 "  {\"step_id\":\"get_comp\", \"op\":\"call\", \"target\":\"GetComponentByClass\", "
-					 "\"inputs\":{\"ComponentClass\":\"%s\"}}\n"
-					 "  Then on step '%s': \"inputs\":{\"Target\":\"@get_comp.auto\"}"),
-				*ClassDisplay, *Resolved.StepId)));
+			SuggestionText));
 
 		UE_LOG(LogOlivePlanValidator, Warning,
-			TEXT("Phase 0: Step '%s' calls component function '%s' (%s) on Actor BP without Target wire"),
-			*Resolved.StepId, *FuncDisplay, *ClassDisplay);
+			TEXT("Phase 0: Step '%s' calls component function '%s' (%s) on Actor BP without Target wire (%d matches)"),
+			*Resolved.StepId, *FuncDisplay, *ClassDisplay, MatchCount);
 	}
 }
 

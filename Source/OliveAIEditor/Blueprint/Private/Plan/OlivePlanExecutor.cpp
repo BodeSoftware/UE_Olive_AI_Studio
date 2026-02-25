@@ -29,7 +29,12 @@
 #include "K2Node_Event.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_FunctionEntry.h"
+#include "K2Node_VariableGet.h"
+#include "K2Node_CallFunction.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
+#include "Components/ActorComponent.h"
 #include "Services/OliveBatchExecutionScope.h"
 
 // JSON
@@ -57,6 +62,22 @@ FString FOlivePlanExecutionContext::GetNodeId(const FString& StepId) const
 {
     const FString* Found = StepToNodeMap.Find(StepId);
     return Found ? *Found : FString();
+}
+
+FString FOlivePlanExecutionContext::FindStepIdForNode(const UEdGraphNode* Node) const
+{
+    if (!Node)
+    {
+        return FString();
+    }
+    for (const auto& Pair : StepToNodePtr)
+    {
+        if (Pair.Value == Node)
+        {
+            return Pair.Key;
+        }
+    }
+    return FString();
 }
 
 // ============================================================================
@@ -104,7 +125,33 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::Execute(
     UE_LOG(LogOlivePlanExecutor, Log,
         TEXT("Phase 1 complete: %d nodes created"), Context.CreatedNodeCount);
 
-    // Phases 3-5: Wiring + defaults.
+    // Initialize reverse map and plan pointer for Phase 5.5
+    for (const auto& Pair : Context.StepToNodeMap)
+    {
+        Context.NodeIdToStepId.Add(Pair.Value, Pair.Key);
+    }
+    Context.Plan = &Plan;
+
+    // Phase 1.5: Auto-wire component function targets (CONTINUE-ON-FAILURE)
+    UE_LOG(LogOlivePlanExecutor, Log, TEXT("Phase 1.5: Auto-Wire Component Targets"));
+    PhaseAutoWireComponentTargets(Plan, ResolvedSteps, Context);
+
+    if (Context.AutoFixCount > 0)
+    {
+        UE_LOG(LogOlivePlanExecutor, Log,
+            TEXT("Phase 1.5 complete: %d component targets auto-wired"),
+            Context.AutoFixCount);
+    }
+    else
+    {
+        UE_LOG(LogOlivePlanExecutor, Log,
+            TEXT("Phase 1.5 complete: no auto-wiring needed"));
+    }
+
+    // Capture Phase 1.5 fix count for Phase 5.5 delta logging
+    const int32 Phase15Fixes = Context.AutoFixCount;
+
+    // Phases 3-5.5: Wiring + defaults + pre-compile validation.
     // Wrap in FOliveBatchExecutionScope to suppress nested transactions from
     // FOlivePinConnector::Connect(). The caller's write pipeline owns the
     // outer transaction; inner transactions would create undo noise.
@@ -141,7 +188,22 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::Execute(
         UE_LOG(LogOlivePlanExecutor, Log,
             TEXT("Phase 5 complete: %d defaults set, %d failed"),
             Context.SuccessfulDefaultCount, Context.FailedDefaultCount);
+
+        // Phase 5.5: Pre-compile validation with auto-fix (CONTINUE-ON-FAILURE)
+        UE_LOG(LogOlivePlanExecutor, Log, TEXT("Phase 5.5: Pre-Compile Validation"));
+        PhasePreCompileValidation(Context);
+
+        const int32 Phase55Fixes = Context.AutoFixCount - Phase15Fixes;
+        UE_LOG(LogOlivePlanExecutor, Log,
+            TEXT("Phase 5.5 complete: %d auto-fixes, %d unfixable issues"),
+            Phase55Fixes, Context.PreCompileIssues.Num());
     } // BatchScope destructor restores previous batch state
+
+    // Forward pre-compile issues to warnings so they appear in the tool result
+    for (const FString& Issue : Context.PreCompileIssues)
+    {
+        Context.Warnings.Add(Issue);
+    }
 
     // Phase 6: Auto-layout (ALWAYS SUCCEEDS)
     UE_LOG(LogOlivePlanExecutor, Log, TEXT("Phase 6: Auto-Layout"));
@@ -414,6 +476,150 @@ UEdGraphNode* FOlivePlanExecutor::FindExistingEventNode(
     }
 
     return nullptr;
+}
+
+// ============================================================================
+// Phase 1.5: Auto-Wire Component Targets
+// ============================================================================
+
+void FOlivePlanExecutor::PhaseAutoWireComponentTargets(
+    const FOliveIRBlueprintPlan& Plan,
+    const TArray<FOliveResolvedStep>& ResolvedSteps,
+    FOlivePlanExecutionContext& Context)
+{
+    UBlueprint* BP = Context.Blueprint;
+    if (!BP || !BP->SimpleConstructionScript)
+    {
+        return;
+    }
+
+    // Skip if Blueprint itself is a component (self IS the component)
+    if (BP->ParentClass && BP->ParentClass->IsChildOf(UActorComponent::StaticClass()))
+    {
+        return;
+    }
+
+    for (int32 i = 0; i < ResolvedSteps.Num(); ++i)
+    {
+        const FOliveResolvedStep& Resolved = ResolvedSteps[i];
+
+        // Only care about call ops with a resolved owning class that is a component
+        if (!Resolved.ResolvedOwningClass ||
+            !Resolved.ResolvedOwningClass->IsChildOf(UActorComponent::StaticClass()))
+        {
+            continue;
+        }
+
+        // Check if AI already provided a Target input as @ref
+        if (i < Plan.Steps.Num())
+        {
+            const FOliveIRBlueprintPlanStep& PlanStep = Plan.Steps[i];
+            const FString* TargetValue = PlanStep.Inputs.Find(TEXT("Target"));
+            if (TargetValue && TargetValue->StartsWith(TEXT("@")))
+            {
+                continue; // AI provided a target reference -- don't override
+            }
+        }
+
+        // Get the created node
+        UEdGraphNode* CreatedNode = Context.GetNodePtr(Resolved.StepId);
+        if (!CreatedNode)
+        {
+            continue;
+        }
+
+        // Find the self/Target pin
+        UEdGraphPin* SelfPin = CreatedNode->FindPin(UEdGraphSchema_K2::PN_Self);
+        if (!SelfPin || SelfPin->LinkedTo.Num() > 0)
+        {
+            continue; // Already wired or no self pin
+        }
+
+        // Find matching SCS components
+        UClass* RequiredClass = Resolved.ResolvedOwningClass;
+        TArray<USCS_Node*> MatchingNodes;
+        for (USCS_Node* SCSNode : BP->SimpleConstructionScript->GetAllNodes())
+        {
+            if (SCSNode && SCSNode->ComponentClass &&
+                SCSNode->ComponentClass->IsChildOf(RequiredClass))
+            {
+                MatchingNodes.Add(SCSNode);
+            }
+        }
+
+        if (MatchingNodes.Num() == 0)
+        {
+            // No matching components -- Phase 5.5 or compile will catch this
+            continue;
+        }
+
+        if (MatchingNodes.Num() > 1)
+        {
+            Context.Warnings.Add(FString::Printf(
+                TEXT("Step '%s': %d components match type '%s'. "
+                     "Wire Target explicitly to disambiguate."),
+                *Resolved.StepId, MatchingNodes.Num(),
+                *RequiredClass->GetName()));
+            continue;
+        }
+
+        // Exactly one match -- inject a VariableGet node and wire it
+        USCS_Node* MatchedSCS = MatchingNodes[0];
+        FName ComponentVarName = MatchedSCS->GetVariableName();
+
+        UK2Node_VariableGet* GetNode = NewObject<UK2Node_VariableGet>(Context.Graph);
+        GetNode->VariableReference.SetSelfMember(ComponentVarName);
+        Context.Graph->AddNode(GetNode, /*bUserAction=*/false, /*bSelectNewNode=*/false);
+        GetNode->AllocateDefaultPins();
+
+        // Find the first non-exec output pin on the getter (the component reference)
+        UEdGraphPin* GetOutputPin = nullptr;
+        for (UEdGraphPin* Pin : GetNode->Pins)
+        {
+            if (Pin && Pin->Direction == EGPD_Output &&
+                Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+            {
+                GetOutputPin = Pin;
+                break;
+            }
+        }
+
+        if (!GetOutputPin)
+        {
+            Context.Warnings.Add(FString::Printf(
+                TEXT("Step '%s': Auto-wire failed -- VariableGet for '%s' has no output pin"),
+                *Resolved.StepId, *ComponentVarName.ToString()));
+            // Remove the orphan getter node we just created
+            Context.Graph->RemoveNode(GetNode);
+            continue;
+        }
+
+        // Wire the getter output to the self pin
+        const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+        if (Schema->TryCreateConnection(GetOutputPin, SelfPin))
+        {
+            Context.SuccessfulConnectionCount++;
+            Context.AutoFixCount++;
+
+            Context.Warnings.Add(FString::Printf(
+                TEXT("Step '%s': Auto-wired Target <- component '%s' (%s)"),
+                *Resolved.StepId, *ComponentVarName.ToString(),
+                *RequiredClass->GetName()));
+
+            UE_LOG(LogOlivePlanExecutor, Log,
+                TEXT("Phase 1.5: Auto-wired '%s' Target <- component '%s' (%s)"),
+                *Resolved.StepId, *ComponentVarName.ToString(),
+                *RequiredClass->GetName());
+        }
+        else
+        {
+            Context.Warnings.Add(FString::Printf(
+                TEXT("Step '%s': Auto-wire Target failed for component '%s'"),
+                *Resolved.StepId, *ComponentVarName.ToString()));
+            // Remove the orphan getter node
+            Context.Graph->RemoveNode(GetNode);
+        }
+    }
 }
 
 // ============================================================================
@@ -1565,6 +1771,196 @@ void FOlivePlanExecutor::PhaseSetDefaults(
 }
 
 // ============================================================================
+// Phase 5.5: Pre-Compile Validation with Auto-Fix
+// ============================================================================
+
+void FOlivePlanExecutor::PhasePreCompileValidation(
+    FOlivePlanExecutionContext& Context)
+{
+    if (!Context.Graph || !Context.Plan)
+    {
+        return;
+    }
+
+    const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+
+    for (UEdGraphNode* Node : Context.Graph->Nodes)
+    {
+        if (!Node)
+        {
+            continue;
+        }
+
+        UK2Node* K2Node = Cast<UK2Node>(Node);
+        if (!K2Node)
+        {
+            continue;
+        }
+
+        // ================================================================
+        // Check 1: Orphaned impure nodes -- has exec input, none wired
+        // ================================================================
+        bool bHasExecInput = false;
+        bool bExecInputWired = false;
+
+        for (UEdGraphPin* Pin : Node->Pins)
+        {
+            if (!Pin || Pin->bHidden)
+            {
+                continue;
+            }
+            if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec &&
+                Pin->Direction == EGPD_Input)
+            {
+                bHasExecInput = true;
+                if (Pin->LinkedTo.Num() > 0)
+                {
+                    bExecInputWired = true;
+                }
+            }
+        }
+
+        if (bHasExecInput && !bExecInputWired &&
+            !K2Node->IsA<UK2Node_Event>() &&
+            !K2Node->IsA<UK2Node_CustomEvent>())
+        {
+            // This node has an exec input that is not wired.
+            // Attempt auto-fix: if this node was created by a plan step that
+            // has exec_after set, and the source step's exec output is unwired,
+            // reconnect them. This catches cases where Phase 3 failed due to
+            // pin name drift but the plan intent is clear.
+            bool bAutoFixed = false;
+
+            const FString StepId = Context.FindStepIdForNode(Node);
+            if (!StepId.IsEmpty())
+            {
+                // Find the plan step
+                for (const FOliveIRBlueprintPlanStep& Step : Context.Plan->Steps)
+                {
+                    if (Step.StepId != StepId || Step.ExecAfter.IsEmpty())
+                    {
+                        continue;
+                    }
+
+                    // Find the source node
+                    UEdGraphNode* SourceNode = Context.GetNodePtr(Step.ExecAfter);
+                    if (!SourceNode)
+                    {
+                        break;
+                    }
+
+                    // Find the first unwired exec output on the source node
+                    UEdGraphPin* SourceExecOut = nullptr;
+                    for (UEdGraphPin* Pin : SourceNode->Pins)
+                    {
+                        if (Pin && !Pin->bHidden &&
+                            Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec &&
+                            Pin->Direction == EGPD_Output &&
+                            Pin->LinkedTo.Num() == 0)
+                        {
+                            SourceExecOut = Pin;
+                            break; // Take first unwired exec output
+                        }
+                    }
+
+                    if (!SourceExecOut)
+                    {
+                        break; // Source has no unwired exec output
+                    }
+
+                    // Find this node's exec input pin
+                    UEdGraphPin* TargetExecIn = Node->FindPin(UEdGraphSchema_K2::PN_Execute);
+                    if (!TargetExecIn)
+                    {
+                        // Fallback: find any unwired exec input pin
+                        for (UEdGraphPin* Pin : Node->Pins)
+                        {
+                            if (Pin && !Pin->bHidden &&
+                                Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec &&
+                                Pin->Direction == EGPD_Input &&
+                                Pin->LinkedTo.Num() == 0)
+                            {
+                                TargetExecIn = Pin;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (TargetExecIn && Schema->TryCreateConnection(SourceExecOut, TargetExecIn))
+                    {
+                        bAutoFixed = true;
+                        Context.AutoFixCount++;
+                        Context.SuccessfulConnectionCount++;
+
+                        Context.Warnings.Add(FString::Printf(
+                            TEXT("Phase 5.5: Auto-fixed orphaned exec on step '%s' "
+                                 "<- '%s' (exec_after recovery)"),
+                            *StepId, *Step.ExecAfter));
+
+                        UE_LOG(LogOlivePlanExecutor, Log,
+                            TEXT("Phase 5.5: Auto-fixed orphaned exec on '%s' <- '%s'"),
+                            *StepId, *Step.ExecAfter);
+                    }
+
+                    break; // Found the matching step, stop searching
+                }
+            }
+
+            if (!bAutoFixed)
+            {
+                FString NodeDesc = FString::Printf(TEXT("%s (%s)"),
+                    *Node->GetNodeTitle(ENodeTitleType::ListView).ToString(),
+                    *StepId);
+                Context.PreCompileIssues.Add(FString::Printf(
+                    TEXT("ORPHAN_NODE: '%s' has exec pins but is not connected "
+                         "to any execution chain. It will never execute."),
+                    *NodeDesc));
+
+                UE_LOG(LogOlivePlanExecutor, Warning,
+                    TEXT("Phase 5.5: Orphaned node '%s' could not be auto-fixed"),
+                    *NodeDesc);
+            }
+        }
+
+        // ================================================================
+        // Check 2: Unwired Self/Target on component function calls
+        // (Defense-in-depth for Phase 1.5 misses)
+        // ================================================================
+        UK2Node_CallFunction* CallFunc = Cast<UK2Node_CallFunction>(K2Node);
+        if (CallFunc)
+        {
+            UFunction* Func = CallFunc->GetTargetFunction();
+            if (Func && !Func->HasAnyFunctionFlags(FUNC_Static))
+            {
+                UEdGraphPin* SelfPin = CallFunc->FindPin(UEdGraphSchema_K2::PN_Self);
+                if (SelfPin && !SelfPin->bHidden &&
+                    SelfPin->LinkedTo.Num() == 0 &&
+                    SelfPin->DefaultObject == nullptr)
+                {
+                    UClass* FuncClass = Func->GetOwnerClass();
+                    if (FuncClass &&
+                        FuncClass->IsChildOf(UActorComponent::StaticClass()))
+                    {
+                        const FString StepId2 = Context.FindStepIdForNode(Node);
+                        FString NodeDesc = FString::Printf(TEXT("%s (step: %s)"),
+                            *Node->GetNodeTitle(ENodeTitleType::ListView).ToString(),
+                            StepId2.IsEmpty() ? TEXT("unknown") : *StepId2);
+                        Context.PreCompileIssues.Add(FString::Printf(
+                            TEXT("UNWIRED_TARGET: '%s' calls component function '%s' "
+                                 "but Target pin is not wired. Will cause compile error."),
+                            *NodeDesc, *Func->GetName()));
+
+                        UE_LOG(LogOlivePlanExecutor, Warning,
+                            TEXT("Phase 5.5: Unwired component Target on '%s' (function '%s')"),
+                            *NodeDesc, *Func->GetName());
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ============================================================================
 // Phase 6: Auto-Layout (ALWAYS SUCCEEDS)
 // ============================================================================
 
@@ -1653,6 +2049,14 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::AssembleResult(
             TEXT("Partial success: %d nodes created, %d connections failed, %d defaults failed. "
                  "See wiring_errors and pin_manifests for repair instructions."),
             Context.CreatedNodeCount, Context.FailedConnectionCount, Context.FailedDefaultCount));
+    }
+
+    // Auto-fix count for transparency
+    if (Context.AutoFixCount > 0)
+    {
+        Result.Warnings.Add(FString::Printf(
+            TEXT("Executor auto-fixed %d issue(s) (component target wiring, orphaned exec recovery)."),
+            Context.AutoFixCount));
     }
 
     return Result;

@@ -92,6 +92,9 @@ public:
 	 */
 	FString BuildLoopReport() const;
 
+	/** Simple CRC32-based string hash. Returns 8-char hex string. */
+	static FString HashString(const FString& Input);
+
 private:
 	/** Map of error signature -> list of attempted fixes */
 	TMap<FString, TArray<FString>> AttemptHistory;
@@ -110,7 +113,4 @@ private:
 
 	/** Get suggestions based on error code pattern */
 	static TArray<FString> GetSuggestionsForError(const FString& ErrorSignature);
-
-	/** Simple string hash for error messages */
-	static FString HashString(const FString& Input);
 };

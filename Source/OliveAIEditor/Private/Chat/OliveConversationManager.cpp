@@ -698,6 +698,12 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 			RepromptMessage.Timestamp = FDateTime::UtcNow();
 			AddMessage(RepromptMessage);
 
+			// Log what the AI actually said so we can debug text-only responses
+			UE_LOG(LogOliveAI, Warning,
+				TEXT("AI text-only response (first %d chars): %.500s"),
+				FMath::Min(500, AssistantMessage.Content.Len()),
+				*AssistantMessage.Content.Left(500));
+
 			UE_LOG(LogOliveAI, Warning,
 				TEXT("AI responded text-only on iteration %d with write intent. "
 					 "Re-prompting to force tool use (%d/%d)"),
@@ -723,6 +729,11 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 			RepromptMessage.Content = RepromptText;
 			RepromptMessage.Timestamp = FDateTime::UtcNow();
 			AddMessage(RepromptMessage);
+
+			UE_LOG(LogOliveAI, Warning,
+				TEXT("AI text-only with pending corrections (first %d chars): %.500s"),
+				FMath::Min(500, AssistantMessage.Content.Len()),
+				*AssistantMessage.Content.Left(500));
 
 			UE_LOG(LogOliveAI, Warning,
 				TEXT("AI responded text-only with unresolved corrections. Re-prompting (%d/%d)"),
@@ -1105,8 +1116,15 @@ void FOliveConversationManager::HandleToolResult(
 			}
 		}
 
+		// Look up tool call arguments for plan dedup
+		TSharedPtr<FJsonObject> ToolCallArgsForEval;
+		if (const TSharedPtr<FJsonObject>* FoundArgs = ActiveToolCallArgs.Find(ToolCallId))
+		{
+			ToolCallArgsForEval = *FoundArgs;
+		}
+
 		FOliveCorrectionDecision Decision = SelfCorrectionPolicy.Evaluate(
-			ToolName, ResultContent, LoopDetector, RetryPolicy, AssetContext);
+			ToolName, ResultContent, LoopDetector, RetryPolicy, AssetContext, ToolCallArgsForEval);
 
 		switch (Decision.Action)
 		{

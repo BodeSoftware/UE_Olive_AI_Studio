@@ -129,6 +129,27 @@
 - **Component guard**: New error code `COMPONENT_NOT_VARIABLE` in ResolveGetVarOp/ResolveSetVarOp. SCS traversal uses same pattern as `FOliveComponentWriter::FindSCSNode()`. Includes: `Engine/SimpleConstructionScript.h`, `Engine/SCS_Node.h`.
 - **Orphan cleanup**: `CleanupCreatedNodes` lambda in `PhaseCreateNodes`. Must skip reused event nodes (tracked via `ReusedStepIds` set). `Graph->RemoveNode()` inside transaction scope is defense-in-depth.
 
+### Phase 3 Error Recovery (Master Plan v2) - Feb 2026
+- `plans/phase3-error-recovery-design.md` -- Design for Changes 3.1-3.4
+- **Change 3.1 (plan dedup) key decision**: Pass ToolCallArgs INTO `Evaluate()` as new parameter instead of accessing HistoryStore. Avoids cross-module coupling. Hash = CRC32 of tool+asset_path+graph_name+condensed_plan_JSON.
+- **Change 3.1 requires**: `FOliveLoopDetector::HashString()` moved from private to public. `FOliveSelfCorrectionPolicy` gains `PreviousPlanHashes` TMap and `BuildPlanHash()` helper.
+- **Change 3.2 (progressive disclosure)**: Attempt 1 = code-only header + guidance. Attempt 2 = full header + guidance. Attempt 3+ = full + escalation.
+- **Change 3.3 (stale strings)**: `PLAN_RESOLVE_FAILED` now says "set_var on a component" (was "get_var for a component"). `PLAN_VALIDATION_FAILED` now mentions auto-wiring.
+- **Change 3.4 (BP context)**: `BuildBlueprintContextBlock()` on FOlivePromptAssembler. Called from GetActiveContext() for bIsBlueprint assets. Adds component/variable lists. ~25-38 tokens per typical BP. Requires `Blueprint.h`, `SimpleConstructionScript.h`, `SCS_Node.h` includes in OlivePromptAssembler.cpp.
+- **No FindLatest() needed**: Master plan suggested it but design avoids HistoryStore access entirely.
+- **No GetHistoryStore() accessor needed**: SelfCorrectionPolicy gets plan JSON via Evaluate parameter.
+
+### Phase 2 Auto-Wiring (Master Plan v2) - Feb 2026
+- `plans/phase2-auto-wiring-design.md` -- Detailed design for Changes 2.1-2.4
+- **Phase 1.5 (auto-wire component targets)**: New phase after PhaseCreateNodes. Injects UK2Node_VariableGet + TryCreateConnection for exactly-1-match SCS components. Runs OUTSIDE BatchScope (uses Schema->TryCreateConnection directly, not PinConnector).
+- **Phase 5.5 (pre-compile validation + auto-fix)**: New phase between SetDefaults and AutoLayout. Runs INSIDE BatchScope. Recovers orphaned impure nodes via exec_after plan intent. Defense-in-depth for unwired component Targets.
+- **New context fields**: AutoFixCount (int32), PreCompileIssues (TArray<FString>), NodeIdToStepId (TMap<FString,FString>), Plan (const FOliveIRBlueprintPlan*), FindStepIdForNode(UEdGraphNode*) method.
+- **Master plan discrepancies resolved**: `Context.GetCreatedNode()` -> use existing `GetNodePtr()` + Cast. `Context.GetNodeId(Node)` -> new `FindStepIdForNode()` (reverse lookup via StepToNodePtr iteration). `Context.Plan` -> added as raw pointer (set in Execute, valid during execution only).
+- **Validator softening**: CheckComponentFunctionTargets downgrades to warning when exactly 1 SCS component matches. Error when 0 or >1 matches. Needs `SimpleConstructionScript.h` and `SCS_Node.h` includes in OlivePlanValidator.cpp.
+- **bIsRequired**: New bool on FOlivePinManifestEntry. True for: exec input on non-event nodes, Self pin on non-static CallFunction. Populated in Build(), serialized as `"required": true` in ToJson(). Needs K2Node.h, K2Node_Event.h, K2Node_CustomEvent.h includes in OlivePinManifest.cpp.
+- **Implementation order**: 2.4 (bIsRequired) -> 2.1 (Phase 1.5) -> 2.2 (validator) -> 2.3 (Phase 5.5)
+- **No tool handler changes needed**: AutoFixCount and PreCompileIssues flow through existing PlanResult.Warnings array -> ResultData warnings JSON -> tool result.
+
 ## File Structure
 - Tool handlers: `Source/OliveAIEditor/Blueprint/Private/MCP/OliveBlueprintToolHandlers.cpp` (very large file, 3000+ lines)
 - Schemas: `Source/OliveAIEditor/Blueprint/Private/MCP/OliveBlueprintSchemas.cpp`
