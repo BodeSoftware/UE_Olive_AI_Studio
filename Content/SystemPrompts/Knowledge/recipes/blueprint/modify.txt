@@ -1,25 +1,13 @@
-WORKFLOW:
-1. project.search → {query:"BP_ThirdPersonCharacter"} (find EXACT asset path — never guess)
-2. blueprint.read → {path:"/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter", mode:"summary"}
-3. blueprint.read_event_graph → {path} (understand current graph before changing it)
+TAGS: modify existing blueprint read write search edit
+---
+MODIFY existing Blueprint:
+1. project.search -> find exact asset path (never guess paths)
+2. blueprint.read -> {path, mode:"summary"} to understand structure
+3. blueprint.read_event_graph -> see current nodes before changing
 4. add_variable / add_component as needed (batch in one turn)
-5. blueprint.apply_plan_json → {asset_path, mode:"merge", plan_json:{...}}
-   mode:"merge" preserves existing nodes. mode:"replace" clears graph first.
+5. blueprint.apply_plan_json -> {mode:"merge"} preserves existing nodes
 
-EXAMPLE:
-{"asset_path":"/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter",
- "graph_target":"EventGraph","mode":"merge",
- "plan_json":{"schema_version":"2.0","steps":[
-   {"step_id":"evt","op":"event","target":"BeginPlay"},
-   {"step_id":"get_hp","op":"get_var","target":"Health"},
-   {"step_id":"check","op":"branch","inputs":{"Condition":"@get_hp.auto"},
-    "exec_after":"evt",
-    "exec_outputs":{"True":"heal","False":"die"}}
-]}}
-
-GOTCHAS:
-- ALWAYS search for the path first — paths vary by project (/Game/ThirdPerson/Blueprints/ not /Game/Blueprints/)
-- Read the graph BEFORE writing — you need to know what events/nodes already exist
-- If add_variable fails, do NOT reference that variable in subsequent plan_json calls
-- Use mode:"merge" unless user explicitly wants to replace all existing logic
-- The plan can reference existing event nodes — the executor reuses them instead of creating duplicates
+Always search for the path first -- paths vary by project.
+Read the graph BEFORE writing -- know what events/nodes exist.
+Use mode:"merge" unless user explicitly wants to replace all logic.
+The plan can reference existing event nodes -- the executor reuses them.

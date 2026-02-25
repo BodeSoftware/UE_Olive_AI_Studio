@@ -98,10 +98,31 @@ bool FOliveSelfCorrectionPolicy::HasCompileFailure(const FString& ResultJson, FS
 		return false;
 	}
 
-	const TSharedPtr<FJsonObject>* CompileResult;
-	if (!JsonObj->TryGetObjectField(TEXT("compile_result"), CompileResult))
+	// Look for compile_result -- it may be at top level OR nested inside "data"
+	// (FOliveToolResult::ToJson nests pipeline ResultData inside "data")
+	const TSharedPtr<FJsonObject>* CompileResult = nullptr;
+	TSharedPtr<FJsonObject> DataObj;
+
+	if (JsonObj->TryGetObjectField(TEXT("compile_result"), CompileResult))
 	{
-		return false;
+		// Found at top level (direct compile tool result or legacy format)
+	}
+	else
+	{
+		// Try inside "data" (standard write pipeline result format)
+		const TSharedPtr<FJsonObject>* DataPtr = nullptr;
+		if (JsonObj->TryGetObjectField(TEXT("data"), DataPtr) && DataPtr && (*DataPtr).IsValid())
+		{
+			DataObj = *DataPtr;
+			if (!DataObj->TryGetObjectField(TEXT("compile_result"), CompileResult))
+			{
+				return false;
+			}
+		}
+		else
+		{
+			return false;
+		}
 	}
 
 	bool bSuccess = true;
@@ -129,11 +150,19 @@ bool FOliveSelfCorrectionPolicy::HasCompileFailure(const FString& ResultJson, FS
 		}
 	}
 
-	// Extract asset path
+	// Extract asset path -- check top level first, then inside "data"
 	JsonObj->TryGetStringField(TEXT("asset_path"), OutAssetPath);
 	if (OutAssetPath.IsEmpty())
 	{
 		JsonObj->TryGetStringField(TEXT("blueprint_path"), OutAssetPath);
+	}
+	if (OutAssetPath.IsEmpty() && DataObj.IsValid())
+	{
+		DataObj->TryGetStringField(TEXT("asset_path"), OutAssetPath);
+		if (OutAssetPath.IsEmpty())
+		{
+			DataObj->TryGetStringField(TEXT("blueprint_path"), OutAssetPath);
+		}
 	}
 
 	UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Extracted compile failure — asset='%s', errors:\n%s"), *OutAssetPath, *OutErrors);
@@ -165,6 +194,39 @@ bool FOliveSelfCorrectionPolicy::HasToolFailure(const FString& ResultJson, FStri
 			OutErrorCode = TEXT("UNKNOWN");
 			OutErrorMessage = TEXT("Tool execution failed");
 		}
+
+		// Enrich with step-level diagnostics when available (plan failures).
+		const TSharedPtr<FJsonObject>* DataObj = nullptr;
+		if (JsonObj->TryGetObjectField(TEXT("data"), DataObj) && DataObj && (*DataObj).IsValid())
+		{
+			const TArray<TSharedPtr<FJsonValue>>* StepErrors = nullptr;
+			if ((*DataObj)->TryGetArrayField(TEXT("step_errors"), StepErrors) && StepErrors && StepErrors->Num() > 0)
+			{
+				TSharedPtr<FJsonObject> FirstStepError = (*StepErrors)[0]->AsObject();
+				if (FirstStepError.IsValid())
+				{
+					FString StepId;
+					FString StepCode;
+					FString StepMessage;
+					FirstStepError->TryGetStringField(TEXT("step_id"), StepId);
+					FirstStepError->TryGetStringField(TEXT("error_code"), StepCode);
+					FirstStepError->TryGetStringField(TEXT("message"), StepMessage);
+
+					if (!StepCode.IsEmpty() && OutErrorCode == TEXT("PLAN_RESOLVE_FAILED"))
+					{
+						OutErrorCode = StepCode;
+					}
+
+					if (!StepMessage.IsEmpty())
+					{
+						OutErrorMessage += StepId.IsEmpty()
+							? FString::Printf(TEXT(" | First step error: %s"), *StepMessage)
+							: FString::Printf(TEXT(" | First step error (%s): %s"), *StepId, *StepMessage);
+					}
+				}
+			}
+		}
+
 		UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Extracted tool failure — code='%s', message='%s'"), *OutErrorCode, *OutErrorMessage);
 		return true;
 	}
@@ -180,8 +242,10 @@ FString FOliveSelfCorrectionPolicy::BuildCompileErrorMessage(
 {
 	return FString::Printf(
 		TEXT("[COMPILE FAILED - Attempt %d/%d] The Blueprint failed to compile after executing '%s'. Errors:\n%s\n"
-			 "Please analyze the errors and fix the issue. You may re-call the write tool with corrections. "
-			 "Focus on the FIRST error — later errors are often caused by the first one."),
+			 "REQUIRED ACTION: Do NOT declare success. Fix the compile error before finishing.\n"
+			 "1. Call blueprint.read on the affected graph with include_pins:true to see the current node/pin state.\n"
+			 "2. Focus on the FIRST error — later errors are often caused by the first one.\n"
+			 "3. Use connect_pins or set_pin_default to fix the issue, then compile again."),
 		AttemptNum, MaxAttempts, *ToolName, *Errors);
 }
 
@@ -268,7 +332,10 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 	}
 	else if (ErrorCode == TEXT("PLAN_RESOLVE_FAILED") || ErrorCode == TEXT("PLAN_LOWER_FAILED") || ErrorCode == TEXT("PLAN_EXECUTION_FAILED"))
 	{
-		Guidance = TEXT("The plan failed during resolution or execution. Check the error details for which step failed, fix that step, and resubmit the corrected plan.");
+		Guidance = TEXT("The plan failed during resolution or execution. Check the error details for which step failed. "
+			"If a step used the wrong pattern (e.g., get_var for a component, or an invented function name), "
+			"call olive.get_recipe with a query describing what you need (e.g., 'component reference' or 'spawn actor') "
+			"to get the correct pattern. Fix the failing step and resubmit the corrected plan.");
 	}
 	else if (ErrorCode == TEXT("GRAPH_DRIFT"))
 	{
@@ -300,6 +367,25 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 			"NOT K2Node IDs from blueprint.read (e.g. 'K2Node_Event_1'). "
 			"If adding to an existing graph, create a new event/custom_event step in your plan "
 			"as the entry point — don't reference existing graph nodes in exec_after.");
+	}
+	else if (ErrorCode == TEXT("COMPONENT_NOT_VARIABLE"))
+	{
+		Guidance = TEXT("You tried to use get_var on a component name. Components are NOT variables. "
+			"The error message contains the exact correct pattern using GetComponentByClass. "
+			"Replace the get_var step with the call pattern shown in the error message.");
+	}
+	else if (ErrorCode == TEXT("COMPILE_FAILED"))
+	{
+		Guidance = TEXT("The Blueprint compiled with errors after this operation. "
+			"Call blueprint.read on the affected graph with include_pins:true to see node/pin state. "
+			"Focus on the FIRST compile error. Use connect_pins or set_pin_default to fix it, then compile again.");
+	}
+	else if (ErrorCode == TEXT("PLAN_VALIDATION_FAILED"))
+	{
+		Guidance = TEXT("The plan has structural issues detected before execution. Read the error details carefully. "
+			"COMPONENT_FUNCTION_ON_ACTOR: add a GetComponentByClass step and wire its output to Target. "
+			"EXEC_WIRING_CONFLICT: remove exec_after and restructure using exec_outputs on the branch node. "
+			"Fix the plan and resubmit.");
 	}
 	else
 	{

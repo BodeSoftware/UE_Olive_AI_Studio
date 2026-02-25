@@ -69,6 +69,6 @@ namespace OliveCrossSystemSchemas
 	// Recipe Operations
 	// ============================================================================
 
-	/** Schema for olive.get_recipe: {category?: string, name?: string} — both optional */
+	/** Schema for olive.get_recipe: {query: string} -- free-text keyword search */
 	TSharedPtr<FJsonObject> RecipeGetRecipe();
 }

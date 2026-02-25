@@ -675,17 +675,20 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 	}
 	else
 	{
-		// Detect zero-tool-call first response for write-intent tasks
-		if (CurrentToolIteration == 0
-			&& bTurnHasExplicitWriteIntent
+		// Detect text-only response when the task requires tool calls.
+		// This fires on ANY iteration (not just the first) because the AI
+		// can stop prematurely after e.g. blueprint.create without adding
+		// components, variables, or graph logic.
+		if (bTurnHasExplicitWriteIntent
 			&& ZeroToolRepromptCount < MaxZeroToolReprompts)
 		{
 			ZeroToolRepromptCount++;
 
 			FString ForceToolPrompt = FString::Printf(
-				TEXT("[SYSTEM: You responded with text but the user's request requires "
-					 "action. You MUST call tools to complete the task. Do not explain "
-					 "what you would do — actually do it by calling the appropriate tools. "
+				TEXT("[SYSTEM: You responded with text but the task is NOT complete. "
+					 "You MUST continue calling tools. The task requires creating "
+					 "components, variables, and wiring graph logic — not just creating "
+					 "empty Blueprints. Output <tool_call> blocks now. "
 					 "Re-prompt %d/%d.]"),
 				ZeroToolRepromptCount, MaxZeroToolReprompts);
 
@@ -696,9 +699,9 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 			AddMessage(RepromptMessage);
 
 			UE_LOG(LogOliveAI, Warning,
-				TEXT("AI responded text-only on first iteration with write intent. "
+				TEXT("AI responded text-only on iteration %d with write intent. "
 					 "Re-prompting to force tool use (%d/%d)"),
-				ZeroToolRepromptCount, MaxZeroToolReprompts);
+				CurrentToolIteration, ZeroToolRepromptCount, MaxZeroToolReprompts);
 
 			SendToProvider();
 			return;

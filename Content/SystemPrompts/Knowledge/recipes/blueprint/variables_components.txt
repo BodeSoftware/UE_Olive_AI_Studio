@@ -1,30 +1,13 @@
-WORKFLOW:
-1. blueprint.add_variable → {path, variable:{name, type, default_value, flags}}
-2. blueprint.add_component → {path, class, name, parent}
-3. blueprint.modify_component → {path, name, properties:{...}}
-   (batch all in one turn — components first if variables reference them)
+TAGS: variable component add type property category
+---
+Add variables and components:
+  blueprint.add_variable -> {path, variable:{name, type, default_value, flags}}
+  blueprint.add_component -> {path, class, name, parent}
+  blueprint.modify_component -> {path, name, properties:{...}}
+Batch all in one turn. Create components first if variables reference them.
 
-VARIABLE TYPES:
-Basic:     {"category":"float"} or shorthand "Float"
-Bool:      {"category":"bool"} or "Boolean"
-Int:       {"category":"int"} or "Integer"
-String:    {"category":"string"} or "String"
-Vector:    {"category":"struct","struct_name":"Vector"} or "Vector"
-Rotator:   {"category":"struct","struct_name":"Rotator"} or "Rotator"
-Transform: {"category":"struct","struct_name":"Transform"} or "Transform"
-Object:    {"category":"object","class_name":"Actor"}
-BP Object: {"category":"object","class_name":"BP_Gun_C"}  ← append _C for Blueprint classes
-Class Ref: {"category":"class","class_name":"Actor"}       ← for TSubclassOf<>
-Array:     {"category":"array","value_type":{"category":"float"}}
-Enum:      {"category":"byte","enum_name":"ECollisionChannel"}
-
-EXAMPLE:
-{"path":"/Game/Blueprints/BP_Gun","variable":{
-  "name":"EquippedBy","type":{"category":"object","class_name":"Character"},
-  "default_value":"","flags":["BlueprintReadWrite","EditAnywhere"]}}
-
-GOTCHAS:
-- Object refs use class_name NOT sub_category or asset path
-- Blueprint class refs MUST append _C: "BP_Gun_C" not "BP_Gun" or "/Game/Blueprints/BP_Gun"
-- Component property values are UE format: Vectors use "(X=1,Y=2,Z=3)" NOT JSON objects
-- SceneComponent is valid — use as hierarchy root when grouping child components
+Variable type shorthand works for basics: "Float", "Boolean", "Integer", "String", "Vector", "Rotator", "Transform".
+For complex types see the object_variable_type recipe.
+Component property values use UE format: Vectors "(X=1,Y=2,Z=3)" not JSON.
+Object refs use class_name, not sub_category or asset paths.
+Blueprint class refs MUST append _C: "BP_Gun_C" not "BP_Gun".

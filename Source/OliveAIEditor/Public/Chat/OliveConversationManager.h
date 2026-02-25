@@ -399,9 +399,11 @@ private:
 	bool bTurnHasExplicitWriteIntent = false;
 	bool bTurnHasDangerIntent = false;
 
-	/** Zero-tool-call re-prompt counter for write-intent tasks */
+	/** Zero-tool-call re-prompt counter for write-intent tasks.
+	 * Fires on ANY iteration where the AI responds text-only, not just the first.
+	 * Budget of 3 allows recovery from premature stops across the agentic loop. */
 	int32 ZeroToolRepromptCount = 0;
-	static constexpr int32 MaxZeroToolReprompts = 2;
+	static constexpr int32 MaxZeroToolReprompts = 3;
 
 	/** Stop the current tool loop after results are added to history */
 	bool bStopAfterToolResults = false;

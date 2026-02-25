@@ -1,0 +1,9 @@
+TAGS: spawn actor transform location rotation make_transform
+---
+SpawnActor node uses a single SpawnTransform pin (Transform type).
+To build the transform, add a make_struct step:
+  {step_id:"tf", op:"make_struct", target:"Transform", inputs:{Location:"@loc.auto"}}
+  {step_id:"spawn", op:"spawn_actor", inputs:{SpawnTransform:"@tf.auto"}}
+If you pass Location/Rotation directly, the executor auto-expands them via ExpandPlanInputs.
+Do not use separate Location/Rotation pins on SpawnActor -- they do not exist.
+The target field on spawn_actor is the class to spawn (e.g. "/Game/Blueprints/BP_Bullet").

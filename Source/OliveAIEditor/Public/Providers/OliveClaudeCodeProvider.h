@@ -3,58 +3,41 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "IOliveAIProvider.h"
-#include "HAL/PlatformProcess.h"
-#include "HAL/Runnable.h"
-#include "Providers/OliveCLIToolCallParser.h"
+#include "Providers/OliveCLIProviderBase.h"
 
 /**
  * Claude Code CLI Provider
  *
- * Implements IOliveAIProvider by spawning the Claude Code CLI process.
- * This allows users to use their Claude Max subscription instead of API keys.
+ * Implements the Claude Code CLI as an AI provider by inheriting from
+ * FOliveCLIProviderBase and overriding the provider-specific hooks.
+ * All universal process management (stdin/stdout pipes, prompt building,
+ * tool call parsing) lives in the base class.
  *
- * Communication flow:
- * 1. Spawn 'claude' process with --print flag (non-interactive JSON mode)
- * 2. Send user messages via stdin as JSON
- * 3. Read streamed responses from stdout
- * 4. Parse JSON responses and emit chunks
+ * Claude-specific responsibilities:
+ * - Executable path discovery (npm global install, .cmd resolution, etc.)
+ * - CLI argument construction (--print, --output-format stream-json, etc.)
+ * - Stream-json output format parsing (ParseOutputLine)
+ * - Version detection and installation checks
  *
  * Requirements:
- * - Claude Code CLI installed and in PATH
+ * - Claude Code CLI installed and in PATH (or npm global install)
  * - User authenticated with Claude Max or API key
  */
-class OLIVEAIEDITOR_API FOliveClaudeCodeProvider : public IOliveAIProvider
+class OLIVEAIEDITOR_API FOliveClaudeCodeProvider : public FOliveCLIProviderBase
 {
 public:
 	FOliveClaudeCodeProvider();
-	virtual ~FOliveClaudeCodeProvider();
 
 	// ==========================================
-	// IOliveAIProvider Interface
+	// IOliveAIProvider Interface (Claude-specific overrides)
 	// ==========================================
 
 	virtual FString GetProviderName() const override { return TEXT("Claude Code CLI"); }
 	virtual TArray<FString> GetAvailableModels() const override;
 	virtual FString GetRecommendedModel() const override;
 
-	virtual void Configure(const FOliveProviderConfig& Config) override;
 	virtual bool ValidateConfig(FString& OutError) const override;
-	virtual const FOliveProviderConfig& GetConfig() const override { return CurrentConfig; }
-
-	virtual void SendMessage(
-		const TArray<FOliveChatMessage>& Messages,
-		const TArray<FOliveToolDefinition>& Tools,
-		FOnOliveStreamChunk OnChunk,
-		FOnOliveToolCall OnToolCall,
-		FOnOliveComplete OnComplete,
-		FOnOliveError OnError,
-		const FOliveRequestOptions& Options = FOliveRequestOptions()
-	) override;
-
-	virtual void CancelRequest() override;
-	virtual bool IsBusy() const override { return bIsBusy; }
-	virtual FString GetLastError() const override { return LastError; }
+	virtual void Configure(const FOliveProviderConfig& Config) override;
 	virtual void ValidateConnection(TFunction<void(bool bSuccess, const FString& Message)> Callback) const override;
 
 	// ==========================================
@@ -67,123 +50,46 @@ public:
 	static bool IsClaudeCodeInstalled();
 
 	/**
-	 * Get the path to the claude executable
+	 * Get the path to the claude executable.
+	 * Searches npm global install, .cmd resolution, common install paths.
 	 */
 	static FString GetClaudeExecutablePath();
 
 	/**
-	 * Get Claude Code version
+	 * Get Claude Code version string by running claude --version.
 	 */
 	static FString GetClaudeCodeVersion();
 
-private:
-	/**
-	 * Spawn the claude process
-	 */
-	bool SpawnClaudeProcess();
-
-	/**
-	 * Kill any running claude process
-	 */
-	void KillClaudeProcess();
-
-	/**
-	 * Send input to the claude process
-	 */
-	bool SendToProcess(const FString& Input);
-
-	/**
-	 * Read output from the claude process
-	 */
-	void ReadProcessOutput();
-
-	/**
-	 * Parse a line of JSON output from claude
-	 */
-	void ParseOutputLine(const FString& Line);
-
-	/**
-	 * Called when the claude process completes. Parses tool calls from
-	 * accumulated response text and emits them via OnToolCall before
-	 * completing. Bridges CLI output to ConversationManager's agentic loop.
-	 *
-	 * @param ReturnCode Process exit code
-	 */
-	void HandleResponseComplete(int32 ReturnCode);
-
-	/**
-	 * Build the prompt/message to send to claude
-	 */
-	FString BuildPrompt(const TArray<FOliveChatMessage>& Messages, const TArray<FOliveToolDefinition>& Tools) const;
-
-	/**
-	 * Build domain-specific system prompt using the prompt assembler.
-	 * Must be called on the game thread (accesses UObject settings).
-	 * @param UserTask The user's task description (passed to template as TaskDescription)
-	 */
-	FString BuildSystemPrompt(const FString& UserTask, const TArray<FOliveToolDefinition>& Tools) const;
-
+protected:
 	// ==========================================
-	// Process Management
+	// FOliveCLIProviderBase Virtual Hooks
 	// ==========================================
 
-	/** Process handle */
-	FProcHandle ProcessHandle;
+	/** Returns the Claude Code CLI executable path */
+	virtual FString GetExecutablePath() const override;
 
-	/** Stdin pipe for writing to process */
-	void* StdinWritePipe = nullptr;
+	/**
+	 * Builds Claude-specific CLI arguments:
+	 * --print --output-format stream-json --verbose --dangerously-skip-permissions
+	 * --max-turns 1 --strict-mcp-config <system-prompt-arg>
+	 */
+	virtual FString GetCLIArguments(const FString& SystemPromptArg) const override;
 
-	/** Stdout pipe for reading from process */
-	void* StdoutReadPipe = nullptr;
+	/**
+	 * Parses Claude's stream-json output format.
+	 * Handles: "assistant" (content text), "result" (completion),
+	 * "tool_use"/"tool_call" (unexpected internal calls), "message_stop", "error".
+	 */
+	virtual void ParseOutputLine(const FString& Line) override;
 
-	/** Reader thread handle */
-	FRunnableThread* ReaderThread = nullptr;
-
-	/** Flag to stop reader thread */
-	FThreadSafeBool bStopReading;
-
-	// ==========================================
-	// State
-	// ==========================================
-
-	FOliveProviderConfig CurrentConfig;
-	FString LastError;
-	FThreadSafeBool bIsBusy;
-
-	/** Accumulated response text */
-	FString AccumulatedResponse;
-
-	/** Current callbacks */
-	FOnOliveStreamChunk CurrentOnChunk;
-	FOnOliveToolCall CurrentOnToolCall;
-	FOnOliveComplete CurrentOnComplete;
-	FOnOliveError CurrentOnError;
-
-	/** Lock for callback access */
-	FCriticalSection CallbackLock;
-
-	/** Working directory for claude (plugin directory) */
-	FString WorkingDirectory;
+	/** Returns "Claude" for error messages */
+	virtual FString GetCLIName() const override { return TEXT("Claude"); }
 };
 
 /**
- * Reader thread for claude process stdout
+ * Reader thread for claude process stdout.
+ *
+ * @deprecated Use FOliveCLIReaderRunnable from OliveCLIProviderBase.h instead.
+ * This typedef is retained for source compatibility with any external references.
  */
-class FOliveClaudeReaderRunnable : public FRunnable
-{
-public:
-	FOliveClaudeReaderRunnable(
-		void* InReadPipe,
-		FThreadSafeBool& InStopFlag,
-		TFunction<void(const FString&)> InOnLine
-	);
-
-	virtual bool Init() override { return true; }
-	virtual uint32 Run() override;
-	virtual void Stop() override;
-
-private:
-	void* ReadPipe;
-	FThreadSafeBool& bStop;
-	TFunction<void(const FString&)> OnLine;
-};
+using FOliveClaudeReaderRunnable = FOliveCLIReaderRunnable;

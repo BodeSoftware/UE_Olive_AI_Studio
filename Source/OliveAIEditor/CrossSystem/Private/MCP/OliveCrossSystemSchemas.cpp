@@ -303,13 +303,11 @@ namespace OliveCrossSystemSchemas
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
 		TSharedPtr<FJsonObject> Props = MakeProperties();
 
-		Props->SetObjectField(TEXT("category"),
-			OliveBlueprintSchemas::StringProp(TEXT("Recipe category (e.g. 'blueprint'). Omit to list categories.")));
-		Props->SetObjectField(TEXT("name"),
-			OliveBlueprintSchemas::StringProp(TEXT("Recipe name (e.g. 'create', 'modify'). Omit to list recipes in category. Comma-separated for batch.")));
+		Props->SetObjectField(TEXT("query"),
+			OliveBlueprintSchemas::StringProp(TEXT("Free-text search query (e.g. 'spawn actor transform', 'variable type object class', 'function graph entry')")));
 
 		Schema->SetObjectField(TEXT("properties"), Props);
-		// No required fields — both params are optional
+		AddRequired(Schema, { TEXT("query") });
 		return Schema;
 	}
 }

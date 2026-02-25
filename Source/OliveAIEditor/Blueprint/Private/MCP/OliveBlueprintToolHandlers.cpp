@@ -31,6 +31,7 @@
 #include "Plan/OliveBlueprintPlanResolver.h"
 #include "Plan/OliveBlueprintPlanLowerer.h"
 #include "Plan/OlivePlanExecutor.h"
+#include "Plan/OlivePlanValidator.h"
 #include "Plan/OlivePinManifest.h"
 #include "Plan/OliveFunctionResolver.h"
 #include "Services/OliveGraphBatchExecutor.h"
@@ -974,6 +975,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRead(const TSharedP
 	// Validate parameters
 	if (!Params.IsValid())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintRead: Params object is null"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_PARAMS"),
 			TEXT("Parameters object is null"),
@@ -985,6 +987,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRead(const TSharedP
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintRead: Missing required param 'path'"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'path' is missing or empty"),
@@ -999,6 +1002,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRead(const TSharedP
 	// Validate mode
 	if (Mode != TEXT("summary") && Mode != TEXT("full"))
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintRead: Invalid mode '%s' for path='%s'"), *Mode, *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_VALUE"),
 			FString::Printf(TEXT("Invalid mode '%s'. Must be 'summary' or 'full'"), *Mode),
@@ -1010,6 +1014,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRead(const TSharedP
 	FOliveAssetResolveInfo ResolveInfo = FOliveAssetResolver::Get().ResolveByPath(AssetPath);
 	if (!ResolveInfo.IsSuccess())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintRead: Asset not found at path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Failed to resolve asset at path '%s'"), *AssetPath),
@@ -1057,6 +1062,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadFunction(const 
 	// Validate parameters
 	if (!Params.IsValid())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadFunction: Params object is null"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_PARAMS"),
 			TEXT("Parameters object is null"),
@@ -1068,6 +1074,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadFunction(const 
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadFunction: Missing required param 'path'"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'path' is missing or empty"),
@@ -1079,6 +1086,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadFunction(const 
 	FString FunctionName;
 	if (!Params->TryGetStringField(TEXT("function_name"), FunctionName) || FunctionName.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadFunction: Missing required param 'function_name' for path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'function_name' is missing or empty"),
@@ -1090,6 +1098,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadFunction(const 
 	FOliveAssetResolveInfo ResolveInfo = FOliveAssetResolver::Get().ResolveByPath(AssetPath);
 	if (!ResolveInfo.IsSuccess())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadFunction: Asset not found at path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Failed to resolve asset at path '%s'"), *AssetPath),
@@ -1103,6 +1112,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadFunction(const 
 	UBlueprint* Blueprint = Reader.LoadBlueprint(ResolvedPath);
 	if (!Blueprint)
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadFunction: Failed to load Blueprint at path='%s'"), *ResolvedPath);
 		return FOliveToolResult::Error(
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Failed to load Blueprint at path '%s'"), *ResolvedPath),
@@ -1140,6 +1150,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadEventGraph(cons
 	// Validate parameters
 	if (!Params.IsValid())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadEventGraph: Params object is null"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_PARAMS"),
 			TEXT("Parameters object is null"),
@@ -1151,6 +1162,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadEventGraph(cons
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadEventGraph: Missing required param 'path'"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'path' is missing or empty"),
@@ -1166,6 +1178,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadEventGraph(cons
 	FOliveAssetResolveInfo ResolveInfo = FOliveAssetResolver::Get().ResolveByPath(AssetPath);
 	if (!ResolveInfo.IsSuccess())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadEventGraph: Asset not found at path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Failed to resolve asset at path '%s'"), *AssetPath),
@@ -1179,6 +1192,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadEventGraph(cons
 	UBlueprint* Blueprint = Reader.LoadBlueprint(ResolvedPath);
 	if (!Blueprint)
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadEventGraph: Failed to load Blueprint at path='%s'"), *ResolvedPath);
 		return FOliveToolResult::Error(
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Failed to load Blueprint at path '%s'"), *ResolvedPath),
@@ -1205,6 +1219,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadEventGraph(cons
 
 	if (!TargetGraph)
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadEventGraph: Graph '%s' not found in Blueprint '%s'"), *GraphName, *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("GRAPH_NOT_FOUND"),
 			FString::Printf(TEXT("Event graph '%s' not found in Blueprint '%s'"), *GraphName, *AssetPath),
@@ -1222,6 +1237,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadVariables(const
 	// Validate parameters
 	if (!Params.IsValid())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadVariables: Params object is null"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_PARAMS"),
 			TEXT("Parameters object is null"),
@@ -1233,6 +1249,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadVariables(const
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadVariables: Missing required param 'path'"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'path' is missing or empty"),
@@ -1472,6 +1489,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 	// Validate parameters
 	if (!Params.IsValid())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintCreate: Params object is null"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_PARAMS"),
 			TEXT("Parameters object is null"),
@@ -1483,6 +1501,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintCreate: Missing required param 'path'"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'path' is missing or empty"),
@@ -1633,6 +1652,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintSetParentClass(cons
 	// Validate parameters
 	if (!Params.IsValid())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintSetParentClass: Params object is null"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_PARAMS"),
 			TEXT("Parameters object is null"),
@@ -1644,6 +1664,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintSetParentClass(cons
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintSetParentClass: Missing required param 'path'"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'path' is missing or empty"),
@@ -1655,6 +1676,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintSetParentClass(cons
 	FString NewParent;
 	if (!Params->TryGetStringField(TEXT("new_parent"), NewParent) || NewParent.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintSetParentClass: Missing required param 'new_parent' for path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'new_parent' is missing or empty"),
@@ -1666,6 +1688,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintSetParentClass(cons
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
 	if (!Blueprint)
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintSetParentClass: Blueprint not found at path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
@@ -1917,6 +1940,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCompile(const TShar
 	// Validate parameters
 	if (!Params.IsValid())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintCompile: Params object is null"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_PARAMS"),
 			TEXT("Parameters object is null"),
@@ -1928,6 +1952,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCompile(const TShar
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintCompile: Missing required param 'path'"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'path' is missing or empty"),
@@ -1939,6 +1964,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCompile(const TShar
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
 	if (!Blueprint)
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintCompile: Blueprint not found at path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
@@ -1962,6 +1988,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintDelete(const TShare
 	// Validate parameters
 	if (!Params.IsValid())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintDelete: Params object is null"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_PARAMS"),
 			TEXT("Parameters object is null"),
@@ -1973,6 +2000,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintDelete(const TShare
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintDelete: Missing required param 'path'"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'path' is missing or empty"),
@@ -1984,6 +2012,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintDelete(const TShare
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
 	if (!Blueprint)
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintDelete: Blueprint not found at path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
@@ -2045,6 +2074,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 	// Validate parameters
 	if (!Params.IsValid())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddVariable: Params object is null"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_PARAMS"),
 			TEXT("Parameters object is null"),
@@ -2056,6 +2086,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddVariable: Missing required param 'path'"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'path' is missing or empty"),
@@ -2101,6 +2132,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 		}
 		else
 		{
+			UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddVariable: Missing required param 'variable' for path='%s'"), *AssetPath);
 			return FOliveToolResult::Error(
 				TEXT("VALIDATION_MISSING_PARAM"),
 				TEXT("Required parameter 'variable' is missing or invalid"),
@@ -2115,6 +2147,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 	// Validate variable has required fields
 	if (Variable.Name.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddVariable: Variable 'name' field is empty for path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_FIELD"),
 			TEXT("Variable 'name' field is required"),
@@ -2124,6 +2157,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 
 	if (Variable.Type.Category == EOliveIRTypeCategory::Unknown)
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddVariable: Variable 'type' is Unknown for variable='%s' path='%s'"), *Variable.Name, *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_FIELD"),
 			TEXT("Variable 'type' field is required and must be valid"),
@@ -2135,6 +2169,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
 	if (!Blueprint)
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddVariable: Blueprint not found at path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
@@ -2196,6 +2231,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveVariable(cons
 	// Validate parameters
 	if (!Params.IsValid())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintRemoveVariable: Params object is null"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_PARAMS"),
 			TEXT("Parameters object is null"),
@@ -2207,6 +2243,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveVariable(cons
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintRemoveVariable: Missing required param 'path'"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'path' is missing or empty"),
@@ -2218,6 +2255,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveVariable(cons
 	FString VariableName;
 	if (!Params->TryGetStringField(TEXT("name"), VariableName) || VariableName.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintRemoveVariable: Missing required param 'name' for path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'name' is missing or empty"),
@@ -2229,6 +2267,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveVariable(cons
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
 	if (!Blueprint)
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintRemoveVariable: Blueprint not found at path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
@@ -2457,6 +2496,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddComponent(const 
 	// Validate parameters
 	if (!Params.IsValid())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddComponent: Params object is null"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_PARAMS"),
 			TEXT("Parameters object is null"),
@@ -2468,6 +2508,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddComponent(const 
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddComponent: Missing required param 'path'"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'path' is missing or empty"),
@@ -2934,6 +2975,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddFunction(const T
 	// Validate parameters
 	if (!Params.IsValid())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddFunction: Params object is null"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_PARAMS"),
 			TEXT("Parameters object is null"),
@@ -2945,6 +2987,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddFunction(const T
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddFunction: Missing required param 'path'"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'path' is missing or empty"),
@@ -2956,6 +2999,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddFunction(const T
 	const TSharedPtr<FJsonObject>* SignatureJsonPtr;
 	if (!Params->TryGetObjectField(TEXT("signature"), SignatureJsonPtr) || !SignatureJsonPtr->IsValid())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddFunction: Missing required param 'signature' for path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'signature' is missing or invalid"),
@@ -2969,6 +3013,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddFunction(const T
 	// Validate signature has required fields
 	if (Signature.Name.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddFunction: Function 'name' field is empty for path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_FIELD"),
 			TEXT("Function 'name' field is required"),
@@ -2980,6 +3025,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddFunction(const T
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
 	if (!Blueprint)
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddFunction: Blueprint not found at path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
@@ -3038,6 +3084,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveFunction(cons
 	// Validate parameters
 	if (!Params.IsValid())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintRemoveFunction: Params object is null"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_PARAMS"),
 			TEXT("Parameters object is null"),
@@ -3049,6 +3096,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveFunction(cons
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintRemoveFunction: Missing required param 'path'"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'path' is missing or empty"),
@@ -3060,6 +3108,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveFunction(cons
 	FString FunctionName;
 	if (!Params->TryGetStringField(TEXT("name"), FunctionName) || FunctionName.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintRemoveFunction: Missing required param 'name' for path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'name' is missing or empty"),
@@ -3071,6 +3120,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveFunction(cons
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
 	if (!Blueprint)
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintRemoveFunction: Blueprint not found at path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
@@ -3357,6 +3407,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintOverrideFunction(co
 	// Validate parameters
 	if (!Params.IsValid())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintOverrideFunction: Params object is null"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_PARAMS"),
 			TEXT("Parameters object is null"),
@@ -3368,6 +3419,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintOverrideFunction(co
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintOverrideFunction: Missing required param 'path'"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'path' is missing or empty"),
@@ -3379,6 +3431,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintOverrideFunction(co
 	FString FunctionName;
 	if (!Params->TryGetStringField(TEXT("function_name"), FunctionName) || FunctionName.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintOverrideFunction: Missing required param 'function_name' for path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'function_name' is missing or empty"),
@@ -3390,6 +3443,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintOverrideFunction(co
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
 	if (!Blueprint)
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintOverrideFunction: Blueprint not found at path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
@@ -3570,6 +3624,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddNode(const TShar
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("path"), AssetPath))
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddNode: Missing required param 'path'"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Missing required parameter 'path'"),
@@ -3580,6 +3635,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddNode(const TShar
 	FString GraphName;
 	if (!Params->TryGetStringField(TEXT("graph"), GraphName))
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddNode: Missing required param 'graph' for path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Missing required parameter 'graph'"),
@@ -3590,6 +3646,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddNode(const TShar
 	FString NodeType;
 	if (!Params->TryGetStringField(TEXT("type"), NodeType))
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddNode: Missing required param 'type' for path='%s' graph='%s'"), *AssetPath, *GraphName);
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Missing required parameter 'type'"),
@@ -3901,6 +3958,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintConnectPins(const T
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("path"), AssetPath))
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintConnectPins: Missing required param 'path'"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Missing required parameter 'path'"),
@@ -3911,6 +3969,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintConnectPins(const T
 	FString GraphName;
 	if (!Params->TryGetStringField(TEXT("graph"), GraphName))
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintConnectPins: Missing required param 'graph' for path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Missing required parameter 'graph'"),
@@ -4020,6 +4079,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintConnectPins(const T
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
 	if (!Blueprint)
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintConnectPins: Blueprint not found at path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
@@ -5855,6 +5915,64 @@ TArray<TSharedPtr<FJsonValue>> SerializePlanErrors(const TArray<FOliveIRBlueprin
 	return Result;
 }
 
+/**
+ * Serialize step-level plan errors into a compact shape optimized for AI repair loops.
+ *
+ * @param Errors Structured plan errors
+ * @return JSON array with step_id/error_code/message/suggestion/location
+ */
+TArray<TSharedPtr<FJsonValue>> SerializePlanStepErrors(const TArray<FOliveIRBlueprintPlanError>& Errors)
+{
+	TArray<TSharedPtr<FJsonValue>> Result;
+	for (const FOliveIRBlueprintPlanError& Err : Errors)
+	{
+		TSharedPtr<FJsonObject> StepErr = MakeShared<FJsonObject>();
+		if (!Err.StepId.IsEmpty())
+		{
+			StepErr->SetStringField(TEXT("step_id"), Err.StepId);
+		}
+		if (!Err.ErrorCode.IsEmpty())
+		{
+			StepErr->SetStringField(TEXT("error_code"), Err.ErrorCode);
+		}
+		StepErr->SetStringField(TEXT("message"), Err.Message);
+		if (!Err.Suggestion.IsEmpty())
+		{
+			StepErr->SetStringField(TEXT("suggestion"), Err.Suggestion);
+		}
+		if (!Err.LocationPointer.IsEmpty())
+		{
+			StepErr->SetStringField(TEXT("location"), Err.LocationPointer);
+		}
+		Result.Add(MakeShared<FJsonValueObject>(StepErr));
+	}
+	return Result;
+}
+
+/**
+ * Build a human-readable summary that includes the first failing step.
+ *
+ * @param Prefix Failure prefix (e.g. "Plan resolution failed")
+ * @param Errors Structured errors
+ * @return Summary string
+ */
+FString BuildPlanFailureMessage(const FString& Prefix, const TArray<FOliveIRBlueprintPlanError>& Errors)
+{
+	if (Errors.Num() <= 0)
+	{
+		return Prefix;
+	}
+
+	const FOliveIRBlueprintPlanError& First = Errors[0];
+	const FString StepLabel = First.StepId.IsEmpty()
+		? TEXT("plan")
+		: FString::Printf(TEXT("step '%s'"), *First.StepId);
+
+	return FString::Printf(
+		TEXT("%s with %d error(s). First failure (%s): [%s] %s"),
+		*Prefix, Errors.Num(), *StepLabel, *First.ErrorCode, *First.Message);
+}
+
 } // namespace
 
 FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(const TSharedPtr<FJsonObject>& Params)
@@ -5864,6 +5982,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 	// ------------------------------------------------------------------
 	if (!Params.IsValid())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintPreviewPlanJson: Params object is null"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_PARAMS"),
 			TEXT("Parameters object is null"),
@@ -5873,6 +5992,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintPreviewPlanJson: Missing required param 'asset_path'"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'asset_path' is missing or empty"),
@@ -5882,6 +6002,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 	const TSharedPtr<FJsonObject>* PlanJsonPtr = nullptr;
 	if (!Params->TryGetObjectField(TEXT("plan_json"), PlanJsonPtr) || !PlanJsonPtr || !(*PlanJsonPtr).IsValid())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintPreviewPlanJson: Missing required param 'plan_json' for path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'plan_json' is missing or not an object"),
@@ -5936,6 +6057,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 	UBlueprint* Blueprint = BPReader.LoadBlueprint(AssetPath);
 	if (!Blueprint)
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintPreviewPlanJson: Failed to load Blueprint at path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Failed to load Blueprint at path '%s'"), *AssetPath),
@@ -5981,12 +6103,47 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 		TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
 		ErrorData->SetStringField(TEXT("phase"), TEXT("resolve"));
 		ErrorData->SetArrayField(TEXT("errors"), SerializePlanErrors(ResolveResult.Errors));
+		ErrorData->SetArrayField(TEXT("step_errors"), SerializePlanStepErrors(ResolveResult.Errors));
+		if (ResolveResult.Errors.Num() > 0)
+		{
+			const FOliveIRBlueprintPlanError& First = ResolveResult.Errors[0];
+			if (!First.StepId.IsEmpty())
+			{
+				ErrorData->SetStringField(TEXT("first_error_step_id"), First.StepId);
+			}
+			if (!First.ErrorCode.IsEmpty())
+			{
+				ErrorData->SetStringField(TEXT("first_error_code"), First.ErrorCode);
+			}
+			ErrorData->SetStringField(TEXT("first_error_message"), First.Message);
+		}
 		FOliveToolResult Result = FOliveToolResult::Error(
 			TEXT("PLAN_RESOLVE_FAILED"),
-			FString::Printf(TEXT("Plan resolution failed with %d error(s)"), ResolveResult.Errors.Num()),
+			BuildPlanFailureMessage(TEXT("Plan resolution failed"), ResolveResult.Errors),
 			ResolveResult.Errors.Num() > 0 ? ResolveResult.Errors[0].Suggestion : TEXT(""));
 		Result.Data = ErrorData;
 		return Result;
+	}
+
+	// ------------------------------------------------------------------
+	// 7b. Phase 0: Structural plan validation
+	// ------------------------------------------------------------------
+	{
+		FOlivePlanValidationResult Phase0Result = FOlivePlanValidator::Validate(
+			Plan, ResolveResult.ResolvedSteps, Blueprint);
+
+		if (!Phase0Result.bSuccess)
+		{
+			TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
+			ErrorData->SetStringField(TEXT("phase"), TEXT("phase0_validation"));
+			ErrorData->SetArrayField(TEXT("errors"), SerializePlanErrors(Phase0Result.Errors));
+			FOliveToolResult Result = FOliveToolResult::Error(
+				TEXT("PLAN_VALIDATION_FAILED"),
+				FString::Printf(TEXT("Plan validation failed with %d error(s)"), Phase0Result.Errors.Num()),
+				Phase0Result.Errors.Num() > 0 ? Phase0Result.Errors[0].Suggestion : TEXT(""));
+			Result.Data = ErrorData;
+			return Result;
+		}
 	}
 
 	// ------------------------------------------------------------------
@@ -6098,6 +6255,18 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 		ResultData->SetArrayField(TEXT("warnings"), Warnings);
 	}
 
+	// Serialize resolver notes for transparency (e.g., synthetic MakeTransform steps)
+	if (ResolveResult.GlobalNotes.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> NotesArray;
+		NotesArray.Reserve(ResolveResult.GlobalNotes.Num());
+		for (const FOliveResolverNote& Note : ResolveResult.GlobalNotes)
+		{
+			NotesArray.Add(MakeShared<FJsonValueObject>(Note.ToJson()));
+		}
+		ResultData->SetArrayField(TEXT("resolver_notes"), NotesArray);
+	}
+
 	UE_LOG(LogOliveBPTools, Log,
 		TEXT("Plan preview for '%s' graph '%s': %d steps, schema=%s, fingerprint=%s, new_graph=%s"),
 		*AssetPath, *GraphTarget, Plan.Steps.Num(), *Plan.SchemaVersion, *Fingerprint,
@@ -6113,6 +6282,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 	// ------------------------------------------------------------------
 	if (!Params.IsValid())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintApplyPlanJson: Params object is null"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_PARAMS"),
 			TEXT("Parameters object is null"),
@@ -6122,6 +6292,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintApplyPlanJson: Missing required param 'asset_path'"));
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'asset_path' is missing or empty"),
@@ -6131,6 +6302,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 	const TSharedPtr<FJsonObject>* PlanJsonPtr = nullptr;
 	if (!Params->TryGetObjectField(TEXT("plan_json"), PlanJsonPtr) || !PlanJsonPtr || !(*PlanJsonPtr).IsValid())
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintApplyPlanJson: Missing required param 'plan_json' for path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'plan_json' is missing or not an object"),
@@ -6188,6 +6360,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 	UBlueprint* Blueprint = BPReader.LoadBlueprint(AssetPath);
 	if (!Blueprint)
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintApplyPlanJson: Failed to load Blueprint at path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Failed to load Blueprint at path '%s'"), *AssetPath),
@@ -6211,6 +6384,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 	const bool bGraphMissing = (TargetGraph == nullptr);
 	if (bGraphMissing && GraphTarget == TEXT("EventGraph"))
 	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintApplyPlanJson: EventGraph not found in Blueprint '%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("GRAPH_NOT_FOUND"),
 			FString::Printf(TEXT("EventGraph not found in Blueprint '%s'"), *AssetPath),
@@ -6258,12 +6432,47 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 		TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
 		ErrorData->SetStringField(TEXT("phase"), TEXT("resolve"));
 		ErrorData->SetArrayField(TEXT("errors"), SerializePlanErrors(ResolveResult.Errors));
+		ErrorData->SetArrayField(TEXT("step_errors"), SerializePlanStepErrors(ResolveResult.Errors));
+		if (ResolveResult.Errors.Num() > 0)
+		{
+			const FOliveIRBlueprintPlanError& First = ResolveResult.Errors[0];
+			if (!First.StepId.IsEmpty())
+			{
+				ErrorData->SetStringField(TEXT("first_error_step_id"), First.StepId);
+			}
+			if (!First.ErrorCode.IsEmpty())
+			{
+				ErrorData->SetStringField(TEXT("first_error_code"), First.ErrorCode);
+			}
+			ErrorData->SetStringField(TEXT("first_error_message"), First.Message);
+		}
 		FOliveToolResult Result = FOliveToolResult::Error(
 			TEXT("PLAN_RESOLVE_FAILED"),
-			FString::Printf(TEXT("Plan resolution failed with %d error(s)"), ResolveResult.Errors.Num()),
+			BuildPlanFailureMessage(TEXT("Plan resolution failed"), ResolveResult.Errors),
 			ResolveResult.Errors.Num() > 0 ? ResolveResult.Errors[0].Suggestion : TEXT(""));
 		Result.Data = ErrorData;
 		return Result;
+	}
+
+	// ------------------------------------------------------------------
+	// 8b. Phase 0: Structural plan validation (before execution)
+	// ------------------------------------------------------------------
+	{
+		FOlivePlanValidationResult Phase0Result = FOlivePlanValidator::Validate(
+			Plan, ResolveResult.ResolvedSteps, Blueprint);
+
+		if (!Phase0Result.bSuccess)
+		{
+			TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
+			ErrorData->SetStringField(TEXT("phase"), TEXT("phase0_validation"));
+			ErrorData->SetArrayField(TEXT("errors"), SerializePlanErrors(Phase0Result.Errors));
+			FOliveToolResult Result = FOliveToolResult::Error(
+				TEXT("PLAN_VALIDATION_FAILED"),
+				FString::Printf(TEXT("Plan validation failed with %d error(s)"), Phase0Result.Errors.Num()),
+				Phase0Result.Errors.Num() > 0 ? Phase0Result.Errors[0].Suggestion : TEXT(""));
+			Result.Data = ErrorData;
+			return Result;
+		}
 	}
 
 	// v1.0 path: lower to batch ops (v2.0 skips this entirely)
@@ -6314,14 +6523,17 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 		// v2.0 PATH: FOlivePlanExecutor with pin introspection
 		// ============================================================
 
-		// Capture resolved steps and plan by value for the lambda.
+		// Capture resolved steps, plan, and resolver notes by value for the lambda.
 		// ResolvedSteps is small (one struct per step). Plan is also small.
+		// GlobalNotes carry transparency data from ExpandPlanInputs.
 		TArray<FOliveResolvedStep> CapturedResolvedSteps = ResolveResult.ResolvedSteps;
 		FOliveIRBlueprintPlan CapturedPlan = Plan;
+		TArray<FOliveResolverNote> CapturedResolverNotes = ResolveResult.GlobalNotes;
 
 		Executor.BindLambda(
 			[CapturedResolvedSteps = MoveTemp(CapturedResolvedSteps),
 			 CapturedPlan = MoveTemp(CapturedPlan),
+			 CapturedResolverNotes = MoveTemp(CapturedResolverNotes),
 			 AssetPath, GraphTarget]
 			(const FOliveWriteRequest& InRequest, UObject* TargetAsset) -> FOliveWriteResult
 			{
@@ -6404,6 +6616,35 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 					ResultData->SetObjectField(TEXT("pin_manifests"), ManifestsObj);
 				}
 
+				// Serialize resolver notes for transparency (e.g., synthetic MakeTransform steps).
+				// These tell the AI what the resolver did silently so it can adjust its mental model.
+				if (CapturedResolverNotes.Num() > 0)
+				{
+					TArray<TSharedPtr<FJsonValue>> NotesArray;
+					NotesArray.Reserve(CapturedResolverNotes.Num());
+					for (const FOliveResolverNote& Note : CapturedResolverNotes)
+					{
+						NotesArray.Add(MakeShared<FJsonValueObject>(Note.ToJson()));
+					}
+					ResultData->SetArrayField(TEXT("resolver_notes"), NotesArray);
+				}
+
+				// Serialize conversion notes for transparency (e.g., Vector->Transform auto-conversion).
+				// These tell the AI what type coercions the wiring phase inserted silently.
+				if (PlanResult.ConversionNotesJson.Num() > 0)
+				{
+					TArray<TSharedPtr<FJsonValue>> ConvNotesArray;
+					ConvNotesArray.Reserve(PlanResult.ConversionNotesJson.Num());
+					for (const TSharedPtr<FJsonObject>& NoteJson : PlanResult.ConversionNotesJson)
+					{
+						if (NoteJson.IsValid())
+						{
+							ConvNotesArray.Add(MakeShared<FJsonValueObject>(NoteJson));
+						}
+					}
+					ResultData->SetArrayField(TEXT("conversion_notes"), ConvNotesArray);
+				}
+
 				// Self-correction hint when wiring partially failed
 				const bool bHasWiringErrors =
 					(PlanResult.Errors.Num() > 0) &&
@@ -6429,27 +6670,47 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 					return ErrorResult;
 				}
 
-				FOliveWriteResult SuccessResult = FOliveWriteResult::Success(ResultData);
-
-				// Surface partial wiring failures loudly so the AI knows it must fix them
+				// Partial success: some wiring failed but all nodes were created.
+				// Return Success so the write pipeline commits the transaction
+				// (nodes persist in the graph). The AI uses wiring_errors +
+				// step_to_node_map to fix failed connections with connect_pins.
 				if (PlanResult.bPartial)
 				{
 					const int32 TotalFailures = PlanResult.ConnectionsFailed + PlanResult.DefaultsFailed;
 					FString PartialMessage = FString::Printf(
-						TEXT("PARTIAL: %d nodes created but %d connections FAILED. "
-							 "See wiring_errors and pin_manifests. You MUST fix these with connect_pins."),
+						TEXT("%d nodes created, %d connections succeeded, %d connections FAILED. "
+							 "Nodes are committed. Use wiring_errors and step_to_node_map to fix "
+							 "failed connections with connect_pins/set_pin_default."),
 						PlanResult.StepToNodeMap.Num(),
+						PlanResult.ConnectionsSucceeded,
 						TotalFailures);
+
 					ResultData->SetStringField(TEXT("message"), PartialMessage);
-					ResultData->SetStringField(TEXT("status"), TEXT("partial"));
+					ResultData->SetStringField(TEXT("status"), TEXT("partial_success"));
+					ResultData->SetBoolField(TEXT("success"), true);
+					// Deliberately NOT setting error_code -- partial success is not an error
+
+					FOliveWriteResult PartialResult = FOliveWriteResult::Success(ResultData);
+
+					// Provide created node IDs for the pipeline's verification stage
+					TArray<FString> CreatedNodeIds;
+					CreatedNodeIds.Reserve(PlanResult.StepToNodeMap.Num());
+					for (const auto& Pair : PlanResult.StepToNodeMap)
+					{
+						CreatedNodeIds.Add(Pair.Value);
+					}
+					PartialResult.CreatedNodeIds = MoveTemp(CreatedNodeIds);
+
+					return PartialResult;
 				}
-				else
-				{
-					ResultData->SetStringField(TEXT("message"),
-						FString::Printf(TEXT("Plan applied successfully: %d nodes created, %d connections wired"),
-							PlanResult.StepToNodeMap.Num(),
-							PlanResult.ConnectionsSucceeded));
-				}
+
+				// Full success path (no partial failures)
+				ResultData->SetStringField(TEXT("message"),
+					FString::Printf(TEXT("Plan applied successfully: %d nodes created, %d connections wired"),
+						PlanResult.StepToNodeMap.Num(),
+						PlanResult.ConnectionsSucceeded));
+
+				FOliveWriteResult SuccessResult = FOliveWriteResult::Success(ResultData);
 
 				// Collect created node IDs for the pipeline's verification stage
 				TArray<FString> CreatedNodeIds;

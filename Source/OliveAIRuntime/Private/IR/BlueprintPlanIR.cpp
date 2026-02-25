@@ -21,7 +21,8 @@ namespace OlivePlanOps
 			Call, GetVar, SetVar, Branch, Sequence, Cast,
 			Event, CustomEvent, ForLoop, ForEachLoop, Delay,
 			IsValid, PrintString, SpawnActor, MakeStruct,
-			BreakStruct, Return, Comment
+			BreakStruct, Return, Comment,
+			WhileLoop, DoOnce, FlipFlop, Gate
 		};
 		return Ops;
 	}
@@ -342,6 +343,20 @@ TSharedPtr<FJsonObject> FOliveIRBlueprintPlanResult::ToJson() const
 			ManifestsObj->SetObjectField(Pair.Key, Pair.Value);
 		}
 		Json->SetObjectField(TEXT("pin_manifests"), ManifestsObj);
+	}
+
+	if (ConversionNotesJson.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> NotesArr;
+		NotesArr.Reserve(ConversionNotesJson.Num());
+		for (const TSharedPtr<FJsonObject>& NoteJson : ConversionNotesJson)
+		{
+			if (NoteJson.IsValid())
+			{
+				NotesArr.Add(MakeShared<FJsonValueObject>(NoteJson));
+			}
+		}
+		Json->SetArrayField(TEXT("conversion_notes"), NotesArr);
 	}
 
 	return Json;

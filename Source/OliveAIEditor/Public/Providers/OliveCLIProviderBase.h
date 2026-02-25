@@ -1,0 +1,255 @@
+// Copyright Bode Software. All Rights Reserved.
+
+/**
+ * OliveCLIProviderBase.h
+ *
+ * Abstract base class for CLI-based AI provider implementations.
+ * Encapsulates all universal process management, stdin/stdout pipe communication,
+ * prompt formatting, and response parsing that is shared across CLI providers
+ * (Claude Code, Codex CLI, Gemini CLI, etc.).
+ *
+ * Subclasses override a small set of virtual hooks to customize:
+ *   - GetExecutablePath()   : which CLI binary to run
+ *   - GetCLIArguments()     : provider-specific flags
+ *   - ParseOutputLine()     : provider-specific stdout format parsing
+ *
+ * Communication flow (common to all CLI providers):
+ * 1. Build conversation prompt + system prompt on game thread
+ * 2. Spawn CLI process on background thread with --print-like non-interactive mode
+ * 3. Deliver prompt via stdin pipe, close stdin to signal EOF
+ * 4. Read stdout line-by-line, dispatch ParseOutputLine() on game thread
+ * 5. On process exit, parse tool calls from accumulated text via FOliveCLIToolCallParser
+ * 6. Emit tool calls and completion to ConversationManager callbacks
+ */
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "IOliveAIProvider.h"
+#include "HAL/PlatformProcess.h"
+#include "HAL/Runnable.h"
+#include "Providers/OliveCLIToolCallParser.h"
+
+/**
+ * Reader thread for CLI process stdout.
+ *
+ * Reads from the stdout pipe in a loop, splitting on newlines and
+ * dispatching complete lines via the OnLine callback. Used by
+ * FOliveCLIProviderBase for asynchronous stdout reading.
+ *
+ * Note: In the current implementation, SendMessage uses an inline read loop
+ * rather than this runnable. The runnable is retained for threaded reading
+ * and future providers that may prefer that approach.
+ */
+class OLIVEAIEDITOR_API FOliveCLIReaderRunnable : public FRunnable
+{
+public:
+	FOliveCLIReaderRunnable(
+		void* InReadPipe,
+		FThreadSafeBool& InStopFlag,
+		TFunction<void(const FString&)> InOnLine
+	);
+
+	virtual bool Init() override { return true; }
+	virtual uint32 Run() override;
+	virtual void Stop() override;
+
+private:
+	void* ReadPipe;
+	FThreadSafeBool& bStop;
+	TFunction<void(const FString&)> OnLine;
+};
+
+/**
+ * Abstract base class for CLI-based AI providers.
+ *
+ * Provides the complete IOliveAIProvider implementation for providers that
+ * communicate by spawning a CLI process, writing to stdin, and reading from stdout.
+ * Subclasses only need to implement a handful of virtual hooks to customize
+ * executable path, CLI arguments, and output format parsing.
+ *
+ * Thread safety:
+ * - SendMessage() stores callbacks under CallbackLock, then spawns a background task.
+ * - The background task reads stdout and dispatches ParseOutputLine() to the game thread.
+ * - HandleResponseComplete() runs on the game thread under CallbackLock.
+ * - CancelRequest() and KillProcess() can be called from any thread.
+ */
+class OLIVEAIEDITOR_API FOliveCLIProviderBase : public IOliveAIProvider
+{
+public:
+	virtual ~FOliveCLIProviderBase();
+
+	// ==========================================
+	// IOliveAIProvider Interface (implemented in base)
+	// ==========================================
+
+	virtual void SendMessage(
+		const TArray<FOliveChatMessage>& Messages,
+		const TArray<FOliveToolDefinition>& Tools,
+		FOnOliveStreamChunk OnChunk,
+		FOnOliveToolCall OnToolCall,
+		FOnOliveComplete OnComplete,
+		FOnOliveError OnError,
+		const FOliveRequestOptions& Options = FOliveRequestOptions()
+	) override;
+
+	virtual void CancelRequest() override;
+	virtual bool IsBusy() const override { return bIsBusy; }
+	virtual FString GetLastError() const override { return LastError; }
+	virtual const FOliveProviderConfig& GetConfig() const override { return CurrentConfig; }
+	virtual void Configure(const FOliveProviderConfig& Config) override;
+
+protected:
+	// ==========================================
+	// Virtual hooks for subclasses
+	// ==========================================
+
+	/**
+	 * Get the path to the CLI executable.
+	 * Called on a background thread during process spawn.
+	 * @return Full path to the executable, or empty string if not found
+	 */
+	virtual FString GetExecutablePath() const = 0;
+
+	/**
+	 * Build CLI arguments (flags) for the process.
+	 * Called on a background thread during process spawn.
+	 * @param SystemPromptArg The already-escaped --append-system-prompt argument fragment,
+	 *        or empty string if no system prompt. Subclass should incorporate this into flags.
+	 * @return The full argument string for the CLI process
+	 */
+	virtual FString GetCLIArguments(const FString& SystemPromptArg) const = 0;
+
+	/**
+	 * Parse a single line of stdout output.
+	 * Called on the game thread under CallbackLock.
+	 * Default implementation: no-op. Override for provider-specific format parsing
+	 * (e.g., Claude's stream-json format).
+	 * @param Line A single trimmed, non-empty line from stdout
+	 */
+	virtual void ParseOutputLine(const FString& Line);
+
+	/**
+	 * Get the working directory for the CLI process.
+	 * Default: returns the stored WorkingDirectory member.
+	 * @return Absolute path to use as the process working directory
+	 */
+	virtual FString GetWorkingDirectory() const;
+
+	/**
+	 * Whether the executable requires Node.js to run (i.e., ends in .js).
+	 * Default: checks if GetExecutablePath() ends with ".js".
+	 * @return True if the executable should be launched via "node <path>"
+	 */
+	virtual bool RequiresNodeRunner() const;
+
+	/**
+	 * Get the name of the CLI for error messages and logging.
+	 * Default: returns "CLI". Subclasses should return e.g., "Claude".
+	 * @return Human-readable CLI name for log messages
+	 */
+	virtual FString GetCLIName() const;
+
+	// ==========================================
+	// Shared infrastructure (protected, usable by subclasses)
+	// ==========================================
+
+	/**
+	 * Build the conversation prompt from message history.
+	 * Formats [User], [Assistant], [Tool Result] blocks and appends
+	 * a "## Next Action Required" directive for the CLI's stdin channel.
+	 *
+	 * @param Messages The conversation history
+	 * @param Tools Available tool definitions (currently unused in prompt body)
+	 * @return Formatted prompt string for stdin delivery
+	 */
+	FString BuildConversationPrompt(const TArray<FOliveChatMessage>& Messages, const TArray<FOliveToolDefinition>& Tools) const;
+
+	/**
+	 * Build the domain-specific system prompt using the prompt assembler.
+	 * Must be called on the game thread (accesses UObject settings via FOlivePromptAssembler).
+	 * Includes project context, policies, recipe routing, CLI blueprint knowledge,
+	 * tool schemas, and tool call format instructions.
+	 *
+	 * @param UserTask The user's task description (used for context)
+	 * @param Tools Available tool definitions to serialize as schemas
+	 * @return Assembled system prompt string
+	 */
+	FString BuildCLISystemPrompt(const FString& UserTask, const TArray<FOliveToolDefinition>& Tools) const;
+
+	/**
+	 * Handle process completion. Parses tool calls from accumulated response text
+	 * via FOliveCLIToolCallParser and emits them through OnToolCall before signaling
+	 * completion. Called on the game thread under CallbackLock.
+	 *
+	 * @param ReturnCode The process exit code
+	 */
+	void HandleResponseComplete(int32 ReturnCode);
+
+	/**
+	 * Kill the running CLI process and clean up all resources.
+	 * Safe to call from any thread. Waits for reader thread completion,
+	 * terminates the process, and closes all pipes.
+	 */
+	void KillProcess();
+
+	/**
+	 * Send text input to the running process via stdin pipe.
+	 * @param Input Text to write (newline is appended automatically)
+	 * @return True if write succeeded
+	 */
+	bool SendToProcess(const FString& Input);
+
+	// ==========================================
+	// Process Management State
+	// ==========================================
+
+	/** Process handle for the running CLI */
+	FProcHandle ProcessHandle;
+
+	/** Stdin pipe for writing to the process */
+	void* StdinWritePipe = nullptr;
+
+	/** Stdout pipe for reading from the process */
+	void* StdoutReadPipe = nullptr;
+
+	/** Reader thread handle (for threaded reading mode) */
+	FRunnableThread* ReaderThread = nullptr;
+
+	/** Flag to stop the reader thread / inline read loop */
+	FThreadSafeBool bStopReading;
+
+	// ==========================================
+	// State
+	// ==========================================
+
+	/** Current provider configuration */
+	FOliveProviderConfig CurrentConfig;
+
+	/** Last error message */
+	FString LastError;
+
+	/** Whether a request is currently in progress */
+	FThreadSafeBool bIsBusy;
+
+	/** Accumulated response text from stdout */
+	FString AccumulatedResponse;
+
+	/** Current stream chunk callback */
+	FOnOliveStreamChunk CurrentOnChunk;
+
+	/** Current tool call callback */
+	FOnOliveToolCall CurrentOnToolCall;
+
+	/** Current completion callback */
+	FOnOliveComplete CurrentOnComplete;
+
+	/** Current error callback */
+	FOnOliveError CurrentOnError;
+
+	/** Lock protecting callback access and AccumulatedResponse */
+	FCriticalSection CallbackLock;
+
+	/** Working directory for the CLI process */
+	FString WorkingDirectory;
+};

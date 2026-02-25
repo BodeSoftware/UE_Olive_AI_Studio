@@ -14,6 +14,8 @@
 #include "Catalog/OliveNodeCatalog.h"
 #include "Plan/OliveFunctionResolver.h"
 #include "Engine/Blueprint.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
 #include "Misc/SecureHash.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonWriter.h"
@@ -41,11 +43,25 @@ namespace
 			return false;
 		}
 
+		// Check explicit Blueprint variables
 		for (const FBPVariableDescription& Var : Blueprint->NewVariables)
 		{
 			if (Var.VarName.ToString() == VariableName)
 			{
 				return true;
+			}
+		}
+
+		// Check SCS component variables (components ARE variables on the generated class)
+		if (Blueprint->SimpleConstructionScript)
+		{
+			TArray<USCS_Node*> AllNodes = Blueprint->SimpleConstructionScript->GetAllNodes();
+			for (USCS_Node* Node : AllNodes)
+			{
+				if (Node && Node->GetVariableName().ToString() == VariableName)
+				{
+					return true;
+				}
 			}
 		}
 
@@ -111,14 +127,27 @@ FOlivePlanResolveResult FOliveBlueprintPlanResolver::Resolve(
 		return Result;
 	}
 
-	UE_LOG(LogOlivePlanResolver, Log, TEXT("Resolving plan with %d steps for Blueprint '%s'"),
-		Plan.Steps.Num(), *Blueprint->GetName());
+	// ------------------------------------------------------------------
+	// Pre-processing: Expand high-level inputs (e.g., SpawnActor Location/Rotation
+	// -> synthesized MakeTransform step). This mutates the plan, potentially
+	// inserting synthetic steps, so we work on a mutable copy.
+	// ------------------------------------------------------------------
+	FOliveIRBlueprintPlan MutablePlan = Plan;
+	TArray<FOliveResolverNote> ExpansionNotes;
+	ExpandPlanInputs(MutablePlan, ExpansionNotes);
+	Result.GlobalNotes = MoveTemp(ExpansionNotes);
+
+	UE_LOG(LogOlivePlanResolver, Log, TEXT("Resolving plan with %d steps for Blueprint '%s'%s"),
+		MutablePlan.Steps.Num(), *Blueprint->GetName(),
+		Result.GlobalNotes.Num() > 0
+			? *FString::Printf(TEXT(" (%d input expansions applied)"), Result.GlobalNotes.Num())
+			: TEXT(""));
 
 	bool bAllSucceeded = true;
 
-	for (int32 i = 0; i < Plan.Steps.Num(); ++i)
+	for (int32 i = 0; i < MutablePlan.Steps.Num(); ++i)
 	{
-		const FOliveIRBlueprintPlanStep& Step = Plan.Steps[i];
+		const FOliveIRBlueprintPlanStep& Step = MutablePlan.Steps[i];
 		FOliveResolvedStep Resolved;
 
 		if (ResolveStep(Step, Blueprint, i, Resolved, Result.Errors, Result.Warnings))
@@ -137,11 +166,113 @@ FOlivePlanResolveResult FOliveBlueprintPlanResolver::Resolve(
 	UE_LOG(LogOlivePlanResolver, Log, TEXT("Plan resolution %s: %d/%d steps resolved, %d errors, %d warnings"),
 		Result.bSuccess ? TEXT("succeeded") : TEXT("failed"),
 		Result.ResolvedSteps.Num(),
-		Plan.Steps.Num(),
+		MutablePlan.Steps.Num(),
 		Result.Errors.Num(),
 		Result.Warnings.Num());
 
 	return Result;
+}
+
+// ============================================================================
+// ExpandPlanInputs — Pre-process plan to expand high-level inputs
+// ============================================================================
+
+bool FOliveBlueprintPlanResolver::ExpandPlanInputs(
+	FOliveIRBlueprintPlan& Plan,
+	TArray<FOliveResolverNote>& OutNotes)
+{
+	bool bExpanded = false;
+
+	for (int32 i = 0; i < Plan.Steps.Num(); ++i)
+	{
+		FOliveIRBlueprintPlanStep& Step = Plan.Steps[i];
+
+		if (Step.Op != OlivePlanOps::SpawnActor)
+		{
+			continue;
+		}
+
+		// Check for Location or Rotation in inputs
+		const bool bHasLocation = Step.Inputs.Contains(TEXT("Location"));
+		const bool bHasRotation = Step.Inputs.Contains(TEXT("Rotation"));
+
+		if (!bHasLocation && !bHasRotation)
+		{
+			continue; // No expansion needed
+		}
+
+		// Explicit SpawnTransform takes priority -- do not double-expand.
+		// If the AI also specified Location/Rotation alongside SpawnTransform,
+		// the Location/Rotation are left as-is (they will fail at wiring time
+		// with a clear "no pin named Location" error, which is correct behavior).
+		if (Step.Inputs.Contains(TEXT("SpawnTransform")))
+		{
+			UE_LOG(LogOlivePlanResolver, Verbose,
+				TEXT("ExpandPlanInputs: step '%s' has explicit SpawnTransform, skipping Location/Rotation expansion"),
+				*Step.StepId);
+			continue;
+		}
+
+		// Synthesize a MakeTransform step with a _synth_ prefix to avoid
+		// collision with human-authored step IDs.
+		const FString SyntheticStepId = FString::Printf(TEXT("_synth_maketf_%s"), *Step.StepId);
+
+		FOliveIRBlueprintPlanStep MakeTransformStep;
+		MakeTransformStep.StepId = SyntheticStepId;
+		MakeTransformStep.Op = OlivePlanOps::MakeStruct;
+		MakeTransformStep.Target = TEXT("Transform");
+
+		// Build a human-readable description of what was transferred
+		FString OriginalInputDesc;
+
+		// Transfer Location input to the MakeTransform step
+		if (bHasLocation)
+		{
+			const FString LocationValue = Step.Inputs[TEXT("Location")];
+			MakeTransformStep.Inputs.Add(TEXT("Location"), LocationValue);
+			Step.Inputs.Remove(TEXT("Location"));
+			OriginalInputDesc += FString::Printf(TEXT("Location=%s"), *LocationValue);
+		}
+
+		// Transfer Rotation input to the MakeTransform step
+		if (bHasRotation)
+		{
+			const FString RotationValue = Step.Inputs[TEXT("Rotation")];
+			MakeTransformStep.Inputs.Add(TEXT("Rotation"), RotationValue);
+			Step.Inputs.Remove(TEXT("Rotation"));
+			if (!OriginalInputDesc.IsEmpty())
+			{
+				OriginalInputDesc += TEXT(", ");
+			}
+			OriginalInputDesc += FString::Printf(TEXT("Rotation=%s"), *RotationValue);
+		}
+
+		// Wire MakeTransform output -> SpawnActor.SpawnTransform using @step.auto syntax
+		Step.Inputs.Add(TEXT("SpawnTransform"),
+			FString::Printf(TEXT("@%s.auto"), *SyntheticStepId));
+
+		// Insert the synthetic step BEFORE the spawn step so it is created first
+		Plan.Steps.Insert(MakeTransformStep, i);
+		++i; // Skip the inserted step in the iteration
+
+		bExpanded = true;
+
+		// Record resolver note for transparency
+		FOliveResolverNote Note;
+		Note.Field = TEXT("inputs");
+		Note.OriginalValue = OriginalInputDesc;
+		Note.ResolvedValue = FString::Printf(
+			TEXT("Synthesized MakeTransform step '%s' -> SpawnTransform"), *SyntheticStepId);
+		Note.Reason = TEXT("SpawnActor requires a Transform pin, not separate Location/Rotation. "
+			"Synthesized a MakeTransform node to bridge the gap.");
+		OutNotes.Add(MoveTemp(Note));
+
+		UE_LOG(LogOlivePlanResolver, Log,
+			TEXT("ExpandPlanInputs: Expanded SpawnActor step '%s' -- synthesized MakeTransform step '%s' (inputs: %s)"),
+			*Step.StepId, *SyntheticStepId, *OriginalInputDesc);
+	}
+
+	return bExpanded;
 }
 
 // ============================================================================
@@ -172,7 +303,7 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 	}
 	else if (Op == OlivePlanOps::GetVar)
 	{
-		bResult = ResolveGetVarOp(Step, Blueprint, StepIndex, OutResolved, OutErrors);
+		bResult = ResolveGetVarOp(Step, Blueprint, StepIndex, OutResolved, OutErrors, OutWarnings);
 	}
 	else if (Op == OlivePlanOps::SetVar)
 	{
@@ -205,6 +336,22 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 	else if (Op == OlivePlanOps::ForEachLoop)
 	{
 		bResult = ResolveSimpleOp(Step, OliveNodeTypes::ForEachLoop, OutResolved);
+	}
+	else if (Op == OlivePlanOps::WhileLoop)
+	{
+		bResult = ResolveSimpleOp(Step, OliveNodeTypes::WhileLoop, OutResolved);
+	}
+	else if (Op == OlivePlanOps::DoOnce)
+	{
+		bResult = ResolveSimpleOp(Step, OliveNodeTypes::DoOnce, OutResolved);
+	}
+	else if (Op == OlivePlanOps::FlipFlop)
+	{
+		bResult = ResolveSimpleOp(Step, OliveNodeTypes::FlipFlop, OutResolved);
+	}
+	else if (Op == OlivePlanOps::Gate)
+	{
+		bResult = ResolveSimpleOp(Step, OliveNodeTypes::Gate, OutResolved);
 	}
 	else if (Op == OlivePlanOps::Delay)
 	{
@@ -269,7 +416,7 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 			Step.StepId,
 			FString::Printf(TEXT("/steps/%d/op"), StepIndex),
 			FString::Printf(TEXT("Unknown operation '%s'"), *Op),
-			TEXT("Use one of the recognized ops: call, get_var, set_var, branch, sequence, event, custom_event, for_loop, for_each_loop, delay, is_valid, print_string, spawn_actor, cast, make_struct, break_struct, return, comment"));
+			TEXT("Use one of the recognized ops: call, get_var, set_var, branch, sequence, event, custom_event, for_loop, for_each_loop, while_loop, do_once, flip_flop, gate, delay, is_valid, print_string, spawn_actor, cast, make_struct, break_struct, return, comment"));
 		OutErrors.Add(MoveTemp(Error));
 		return false;
 	}
@@ -325,6 +472,7 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 		{
 			Out.Properties.Add(TEXT("target_class"), ResolvedClassName);
 		}
+		Out.ResolvedOwningClass = Match.OwningClass;
 
 		// Emit a warning if the resolution was not exact (so the AI learns the correct name)
 		if (Match.Confidence < 90)
@@ -438,7 +586,8 @@ bool FOliveBlueprintPlanResolver::ResolveGetVarOp(
 	UBlueprint* BP,
 	int32 Idx,
 	FOliveResolvedStep& Out,
-	TArray<FOliveIRBlueprintPlanError>& Errors)
+	TArray<FOliveIRBlueprintPlanError>& Errors,
+	TArray<FString>& Warnings)
 {
 	Out.NodeType = OliveNodeTypes::GetVariable;
 
@@ -475,8 +624,7 @@ bool FOliveBlueprintPlanResolver::ResolveGetVarOp(
 
 		if (!bFoundInParent)
 		{
-			// Not an error — variable might be created by an earlier step in the plan,
-			// or might be a native property not in NewVariables
+			// Not found on this BP or parents — warn but allow (may be created by another step or inherited from native)
 			UE_LOG(LogOlivePlanResolver, Verbose,
 				TEXT("Step '%s': Variable '%s' not found on Blueprint '%s' (may be inherited or created by another step)"),
 				*Step.StepId, *Step.Target, *BP->GetName());
@@ -543,6 +691,70 @@ bool FOliveBlueprintPlanResolver::ResolveSetVarOp(
 
 		if (!bFoundInParent)
 		{
+			// Check if the name matches a component in the SCS.
+			// This catches a common AI mistake: using set_var for a component name.
+			if (BP->SimpleConstructionScript)
+			{
+				FString MatchedComponentClass;
+				TArray<USCS_Node*> NodesToSearch;
+				for (USCS_Node* RootNode : BP->SimpleConstructionScript->GetRootNodes())
+				{
+					NodesToSearch.Add(RootNode);
+				}
+				while (NodesToSearch.Num() > 0)
+				{
+					USCS_Node* Current = NodesToSearch.Pop();
+					if (!Current) continue;
+					if (Current->GetVariableName().ToString() == Step.Target)
+					{
+						// Found a component with this name
+						if (Current->ComponentClass)
+						{
+							FString ClassName = Current->ComponentClass->GetName();
+							// Strip the U prefix for display (UArrowComponent -> ArrowComponent)
+							if (ClassName.StartsWith(TEXT("U")))
+							{
+								ClassName = ClassName.Mid(1);
+							}
+							MatchedComponentClass = ClassName;
+						}
+						break;
+					}
+					for (USCS_Node* Child : Current->GetChildNodes())
+					{
+						NodesToSearch.Add(Child);
+					}
+				}
+
+				if (!MatchedComponentClass.IsEmpty())
+				{
+					// This is a component, not a variable -- reject with actionable guidance
+					Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+						TEXT("COMPONENT_NOT_VARIABLE"),
+						Step.StepId,
+						FString::Printf(TEXT("/steps/%d/target"), Idx),
+						FString::Printf(
+							TEXT("'%s' is a component (class: %s). Components are read-only references — "
+								 "use get_var to read them, but you cannot set_var on a component. "
+								 "To modify component properties, use: "
+								 "{\"op\":\"call\", \"target\":\"SetWorldTransform\"/"
+								 "\"SetRelativeLocation\"/etc., "
+								 "\"inputs\":{\"Target\":\"@<get_var_step>.auto\"}}"),
+							*Step.Target, *MatchedComponentClass),
+						FString::Printf(
+							TEXT("Replace this set_var step with a call to GetComponentByClass "
+								 "with ComponentClass:\"%s\""),
+							*MatchedComponentClass)));
+
+					UE_LOG(LogOlivePlanResolver, Warning,
+						TEXT("Step '%s': '%s' is a component (%s), not a variable — rejected with guidance"),
+						*Step.StepId, *Step.Target, *MatchedComponentClass);
+
+					return false;
+				}
+			}
+
+			// Not a component either — warn but allow (may be created by another step or inherited from native)
 			UE_LOG(LogOlivePlanResolver, Verbose,
 				TEXT("Step '%s': Variable '%s' not found on Blueprint '%s' (may be inherited or created by another step)"),
 				*Step.StepId, *Step.Target, *BP->GetName());

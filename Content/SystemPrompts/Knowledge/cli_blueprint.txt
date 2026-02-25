@@ -22,14 +22,14 @@ MULTI-ASSET (2+ Blueprints needed, e.g. "gun and bullet"):
 ```json
 {"schema_version":"2.0","steps":[
   {"step_id":"evt","op":"event","target":"BeginPlay"},
-  {"step_id":"get_xform","op":"call","target":"GetActorTransform"},
-  {"step_id":"spawn","op":"spawn_actor","target":"Actor","inputs":{"SpawnTransform":"@get_xform.auto"},"exec_after":"evt"},
+  {"step_id":"tf","op":"make_struct","target":"Transform","inputs":{"Location":"0,0,100"}},
+  {"step_id":"spawn","op":"spawn_actor","target":"Actor","inputs":{"SpawnTransform":"@tf.auto"},"exec_after":"evt"},
   {"step_id":"print","op":"call","target":"PrintString","inputs":{"InString":"Done"},"exec_after":"spawn"}
 ]}
 ```
 
 ## Ops
-event, custom_event, call, get_var, set_var, branch, sequence, cast, for_loop, for_each_loop, delay, is_valid, print_string, spawn_actor, make_struct, break_struct, return, comment
+event, custom_event, call, get_var, set_var, branch, sequence, cast, for_loop, for_each_loop, while_loop, do_once, flip_flop, gate, delay, is_valid, print_string, spawn_actor, make_struct, break_struct, return, comment
 
 ## Wires
 Data: @step.auto (type-match, use ~80%), @step.~hint (fuzzy), @step.PinName (exact)
@@ -39,7 +39,6 @@ Exec: exec_after:"step_id" (chains then→execute), exec_outputs:{"True":"a","Fa
 ## Function Graphs vs EventGraph
 - EventGraph: use op:"event" with target:"BeginPlay"/"Tick"/etc. as entry points
 - Function graphs (blueprint.add_function): the entry node is auto-created.
-  The first impure step auto-chains from the entry node — do NOT give it an exec_after.
   Subsequent impure steps MUST have exec_after pointing to the previous impure step.
   Pure steps (get_var, pure function calls) need no exec wiring.
 
@@ -48,22 +47,20 @@ Use natural names for op:call. Resolves K2_ prefixes and aliases automatically.
 Examples: Destroy→K2_DestroyActor, Print→PrintString, GetWorldTransform→K2_GetComponentToWorld
 
 ## Variable Types
-Basic: {"category":"float"}, {"category":"bool"}, {"category":"int"}, {"category":"string"}
-Shorthand also works: "Float", "Boolean", "Integer", "String", "Vector", "Rotator", "Transform"
-Object ref: {"category":"object","class_name":"Actor"} (use UE class name, not asset path)
-Blueprint ref: {"category":"object","class_name":"BP_Gun_C"} (append _C for Blueprint classes)
-Class ref: {"category":"class","class_name":"Actor"} (for TSubclassOf)
+Shorthand works for basics: "Float", "Boolean", "Integer", "String", "Vector", "Rotator", "Transform"
+Object ref: {"category":"object","class_name":"Actor"} (use UE class name)
+Blueprint ref: {"category":"object","class_name":"BP_Gun_C"} (append _C)
+Class ref (TSubclassOf): {"category":"class","class_name":"Actor"}
 Array: {"category":"array","value_type":{"category":"float"}}
 Enum: {"category":"byte","enum_name":"ECollisionChannel"}
 
 ## Rules
+- Complete the FULL task in one run — don't stop after creating assets. Create structures, wire graphs, compile, and verify. Never say "here's what you'd need to do" — DO it.
+- If a tool returns compile errors, fix them before declaring done.
+- Self-correct on errors. If an operation fails, analyze the error and fix it — don't skip it.
 - Asset paths MUST end with asset name: /Game/Blueprints/BP_Gun (NOT /Game/Blueprints/)
 - For EXISTING assets, use project.search to find exact paths. For NEW assets, choose the path directly.
 - Use apply_plan_json for 3+ nodes. For 1-2 nodes, add_node + connect_pins is fine.
-- preview_plan_json is optional. Prefer calling apply_plan_json directly.
 - STEP ORDER: data-provider steps (get_var, pure calls) BEFORE steps that reference them via @ref.
 - If add_variable fails, do NOT reference that variable in subsequent plan_json calls.
-- SpawnActor uses SpawnTransform (Transform type), NOT separate Location/Rotation pins.
-- Pin references use DOT separator: node_id.pin_name (NOT colon).
-- Node IDs are scoped per graph — a node from "Fire" function does NOT exist in "EventGraph".
 - Component classes: StaticMeshComponent, SphereComponent, BoxComponent, CapsuleComponent, ArrowComponent, ProjectileMovementComponent, SceneComponent, AudioComponent

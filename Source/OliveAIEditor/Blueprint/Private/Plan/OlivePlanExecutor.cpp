@@ -180,6 +180,38 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
         PlanStepLookup.Add(Step.StepId, &Step);
     }
 
+    // Track which steps reuse pre-existing event nodes (must NOT be removed on cleanup)
+    TSet<FString> ReusedStepIds;
+
+    // Cleanup lambda: removes all nodes created so far if Phase 1 aborts mid-way.
+    // This prevents orphan nodes from surviving in the graph when a retry creates
+    // a fresh set.  Runs inside the write pipeline's FScopedTransaction as
+    // defense-in-depth: if the transaction rollback works, these removals are also
+    // rolled back (harmless); if it doesn't, the explicit cleanup catches orphans.
+    auto CleanupCreatedNodes = [&Context, &ReusedStepIds]()
+    {
+        UE_LOG(LogOlivePlanExecutor, Log,
+            TEXT("Phase 1 cleanup: removing %d orphan nodes from graph (skipping %d reused)"),
+            Context.StepToNodePtr.Num() - ReusedStepIds.Num(),
+            ReusedStepIds.Num());
+
+        for (const auto& Pair : Context.StepToNodePtr)
+        {
+            if (ReusedStepIds.Contains(Pair.Key))
+            {
+                continue; // Do not remove pre-existing event nodes
+            }
+            if (Pair.Value && Context.Graph)
+            {
+                Context.Graph->RemoveNode(Pair.Value);
+            }
+        }
+        Context.StepToNodeMap.Empty();
+        Context.StepToNodePtr.Empty();
+        Context.StepManifests.Empty();
+        Context.CreatedNodeCount = 0;
+    };
+
     for (int32 i = 0; i < ResolvedSteps.Num(); ++i)
     {
         const FOliveResolvedStep& Resolved = ResolvedSteps[i];
@@ -250,6 +282,7 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
                         bIsCustomEventOp ? TEXT("custom event") : TEXT("event"),
                         *EventName, *StepId);
 
+                    ReusedStepIds.Add(StepId);
                     continue; // Skip to next step
                 }
             }
@@ -289,6 +322,7 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
                     *StepId, *NodeType, *ErrorMsg),
                 TEXT("Check the step's op, target, and properties")));
 
+            CleanupCreatedNodes();
             return false;
         }
 
@@ -310,6 +344,7 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
                 TEXT("Node created but not retrievable from cache"),
                 TEXT("Internal error -- retry the plan")));
 
+            CleanupCreatedNodes();
             return false;
         }
 
@@ -397,35 +432,49 @@ void FOlivePlanExecutor::PhaseWireExec(
         // ----------------------------------------------------------------
         if (!Step.ExecAfter.IsEmpty())
         {
-            UE_LOG(LogOlivePlanExecutor, Log,
-                TEXT("  Exec wire: '%s' -> '%s' (exec_after)"),
-                *Step.ExecAfter, *Step.StepId);
-
-            FOliveSmartWireResult Result = WireExecConnection(
-                Step.ExecAfter,     // source step
-                FString(),          // empty hint = primary exec output
-                Step.StepId,        // target step
-                Context);
-
-            if (Result.bSuccess)
+            // Self-loop guard: skip if exec_after references the same step
+            if (Step.ExecAfter == Step.StepId)
             {
-                UE_LOG(LogOlivePlanExecutor, Log, TEXT("    -> OK"));
-                Context.SuccessfulConnectionCount++;
+                UE_LOG(LogOlivePlanExecutor, Warning,
+                    TEXT("  Skipping self-loop on step '%s' (exec_after references self)"),
+                    *Step.StepId);
+                Context.Warnings.Add(FString::Printf(
+                    TEXT("Step '%s': exec_after references itself (self-loop skipped)"),
+                    *Step.StepId));
+                // Do not attempt wiring, do not increment FailedConnectionCount
             }
             else
             {
-                UE_LOG(LogOlivePlanExecutor, Warning,
-                    TEXT("    -> FAILED: %s"), *Result.ErrorMessage);
-                Context.FailedConnectionCount++;
-                Context.WiringErrors.Add(FOliveIRBlueprintPlanError::MakeStepError(
-                    TEXT("EXEC_PIN_NOT_FOUND"),
-                    Step.StepId,
-                    TEXT("/steps/exec_after"),
-                    Result.ErrorMessage,
-                    Result.Suggestions.Num() > 0
-                        ? FString::Printf(TEXT("Available exec pins: %s"),
-                            *FString::Join(Result.Suggestions, TEXT(", ")))
-                        : TEXT("")));
+                UE_LOG(LogOlivePlanExecutor, Log,
+                    TEXT("  Exec wire: '%s' -> '%s' (exec_after)"),
+                    *Step.ExecAfter, *Step.StepId);
+
+                FOliveSmartWireResult Result = WireExecConnection(
+                    Step.ExecAfter,     // source step
+                    FString(),          // empty hint = primary exec output
+                    Step.StepId,        // target step
+                    Context);
+
+                if (Result.bSuccess)
+                {
+                    UE_LOG(LogOlivePlanExecutor, Log, TEXT("    -> OK"));
+                    Context.SuccessfulConnectionCount++;
+                }
+                else
+                {
+                    UE_LOG(LogOlivePlanExecutor, Warning,
+                        TEXT("    -> FAILED: %s"), *Result.ErrorMessage);
+                    Context.FailedConnectionCount++;
+                    Context.WiringErrors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+                        TEXT("EXEC_PIN_NOT_FOUND"),
+                        Step.StepId,
+                        TEXT("/steps/exec_after"),
+                        Result.ErrorMessage,
+                        Result.Suggestions.Num() > 0
+                            ? FString::Printf(TEXT("Available exec pins: %s"),
+                                *FString::Join(Result.Suggestions, TEXT(", ")))
+                            : TEXT("")));
+                }
             }
         }
 
@@ -437,6 +486,18 @@ void FOlivePlanExecutor::PhaseWireExec(
         {
             const FString& PinHint = ExecOut.Key;    // e.g., "True", "False", "Then 0"
             const FString& TargetStepId = ExecOut.Value;
+
+            // Self-loop guard: skip if exec output targets the same step
+            if (TargetStepId == Step.StepId)
+            {
+                UE_LOG(LogOlivePlanExecutor, Warning,
+                    TEXT("  Skipping self-loop on step '%s' (exec_output '%s' -> self)"),
+                    *Step.StepId, *PinHint);
+                Context.Warnings.Add(FString::Printf(
+                    TEXT("Step '%s': exec_output '%s' targets itself (self-loop skipped)"),
+                    *Step.StepId, *PinHint));
+                continue;
+            }
 
             UE_LOG(LogOlivePlanExecutor, Log,
                 TEXT("  Exec wire: '%s'.%s -> '%s' (exec_output)"),
@@ -472,6 +533,30 @@ void FOlivePlanExecutor::PhaseWireExec(
     }
 
     // ----------------------------------------------------------------
+    // Build the set of step IDs that are already targeted by another
+    // step's exec_after or exec_outputs.  These are NOT orphans.
+    // Hoisted here so both function-entry and event auto-chain can use it.
+    // ----------------------------------------------------------------
+    TSet<FString> TargetedStepIds;
+    for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
+    {
+        // exec_outputs values are target step IDs
+        for (const auto& ExecOut : Step.ExecOutputs)
+        {
+            TargetedStepIds.Add(ExecOut.Value);
+        }
+    }
+    // Steps that have exec_after set already have an incoming exec wire
+    // from their declared predecessor.
+    for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
+    {
+        if (!Step.ExecAfter.IsEmpty())
+        {
+            TargetedStepIds.Add(Step.StepId);
+        }
+    }
+
+    // ----------------------------------------------------------------
     // Auto-chain: Wire function entry node to first impure orphan step.
     //
     // In function graphs, the UK2Node_FunctionEntry "then" pin must be
@@ -494,32 +579,6 @@ void FOlivePlanExecutor::PhaseWireExec(
 
     if (EntryNode)
     {
-        // Build the set of step IDs that are already targeted by another step's
-        // exec_after or exec_outputs.  These are NOT orphans.
-        TSet<FString> TargetedStepIds;
-        for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
-        {
-            // exec_after: the step that has exec_after IS the target
-            // (it receives an exec wire from the exec_after source).
-            // But we need steps that are targets of OTHER steps' wiring,
-            // so we track what other steps point TO.
-            // exec_outputs values are target step IDs
-            for (const auto& ExecOut : Step.ExecOutputs)
-            {
-                TargetedStepIds.Add(ExecOut.Value);
-            }
-        }
-
-        // Also consider steps that have exec_after set -- they already have
-        // an incoming exec wire from their declared predecessor.
-        for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
-        {
-            if (!Step.ExecAfter.IsEmpty())
-            {
-                TargetedStepIds.Add(Step.StepId);
-            }
-        }
-
         // Find the first impure orphan step:
         //   - Has no exec_after
         //   - Is not targeted by any other step's exec_outputs
@@ -635,6 +694,161 @@ void FOlivePlanExecutor::PhaseWireExec(
         {
             UE_LOG(LogOlivePlanExecutor, Verbose,
                 TEXT("Auto-chain: no orphan steps found -- all steps have explicit exec wiring or are pure/events"));
+        }
+    }
+
+    // ----------------------------------------------------------------
+    // Auto-chain: Wire event nodes to their first impure follower step.
+    //
+    // In event graphs (EventGraph), events like BeginPlay or
+    // custom_event nodes are entry points that need their exec output
+    // wired to the first impure step that follows them in plan order.
+    // When the AI omits exec_after on the follower (as the prompt
+    // tells it to), the event is left dangling.  This mirrors the
+    // function-entry auto-chain above but works per-event.
+    // ----------------------------------------------------------------
+    for (int32 EventIdx = 0; EventIdx < Plan.Steps.Num(); ++EventIdx)
+    {
+        const FOliveIRBlueprintPlanStep& EventStep = Plan.Steps[EventIdx];
+
+        // Only process event and custom_event ops
+        if (EventStep.Op != OlivePlanOps::Event && EventStep.Op != OlivePlanOps::CustomEvent)
+        {
+            continue;
+        }
+
+        // Skip if this event already has outgoing exec wires declared in
+        // exec_outputs (the AI explicitly wired it)
+        if (EventStep.ExecOutputs.Num() > 0)
+        {
+            continue;
+        }
+
+        // Skip if the event node's exec output pin is already connected
+        // (e.g., by a prior step's exec_after pointing at this event's
+        // follower, or by reuse of an existing event node)
+        UEdGraphNode* EventNode = Context.GetNodePtr(EventStep.StepId);
+        const FOlivePinManifest* EventManifest = Context.GetManifest(EventStep.StepId);
+        if (!EventNode || !EventManifest)
+        {
+            continue;
+        }
+
+        const FOlivePinManifestEntry* EventExecOutEntry = EventManifest->FindExecOutput();
+        if (!EventExecOutEntry)
+        {
+            continue;
+        }
+
+        UEdGraphPin* EventExecOutPin = EventNode->FindPin(FName(*EventExecOutEntry->PinName));
+        if (!EventExecOutPin)
+        {
+            // Fallback: search for any exec output pin on the event node
+            for (UEdGraphPin* Pin : EventNode->Pins)
+            {
+                if (Pin && Pin->Direction == EGPD_Output &&
+                    Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+                {
+                    EventExecOutPin = Pin;
+                    break;
+                }
+            }
+        }
+
+        if (!EventExecOutPin || EventExecOutPin->LinkedTo.Num() > 0)
+        {
+            // Already connected or no exec output -- skip
+            continue;
+        }
+
+        // Walk forward from EventIdx+1 looking for the first impure orphan
+        // step that belongs to this event's chain (stop at the next event boundary)
+        const FOliveIRBlueprintPlanStep* FollowerStep = nullptr;
+        for (int32 FollowerIdx = EventIdx + 1; FollowerIdx < Plan.Steps.Num(); ++FollowerIdx)
+        {
+            const FOliveIRBlueprintPlanStep& Candidate = Plan.Steps[FollowerIdx];
+
+            // Stop scanning at the next event/custom_event -- that starts a new chain
+            if (Candidate.Op == OlivePlanOps::Event || Candidate.Op == OlivePlanOps::CustomEvent)
+            {
+                break;
+            }
+
+            // Must be an orphan (no exec_after, not targeted by other step)
+            if (!Candidate.ExecAfter.IsEmpty())
+            {
+                continue;
+            }
+            if (TargetedStepIds.Contains(Candidate.StepId))
+            {
+                continue;
+            }
+
+            // Must be impure (has exec input)
+            const FOlivePinManifest* CandManifest = Context.GetManifest(Candidate.StepId);
+            if (!CandManifest || CandManifest->bIsPure)
+            {
+                continue;
+            }
+
+            FollowerStep = &Candidate;
+            break;
+        }
+
+        if (!FollowerStep)
+        {
+            UE_LOG(LogOlivePlanExecutor, Verbose,
+                TEXT("Auto-chain: event '%s' has no impure orphan follower -- skipping"),
+                *EventStep.StepId);
+            continue;
+        }
+
+        // Resolve the follower's exec input pin
+        UEdGraphNode* FollowerNode = Context.GetNodePtr(FollowerStep->StepId);
+        const FOlivePinManifest* FollowerManifest = Context.GetManifest(FollowerStep->StepId);
+        const FOlivePinManifestEntry* FollowerExecIn = FollowerManifest ? FollowerManifest->FindExecInput() : nullptr;
+        UEdGraphPin* FollowerExecInPin = nullptr;
+        if (FollowerNode && FollowerExecIn)
+        {
+            FollowerExecInPin = FollowerNode->FindPin(FName(*FollowerExecIn->PinName));
+        }
+
+        if (!FollowerExecInPin)
+        {
+            UE_LOG(LogOlivePlanExecutor, Warning,
+                TEXT("Auto-chain: Could not resolve exec input pin for follower step '%s' after event '%s'"),
+                *FollowerStep->StepId, *EventStep.StepId);
+            continue;
+        }
+
+        // Wire event exec output -> follower exec input
+        FOlivePinConnector& Connector = FOlivePinConnector::Get();
+        FOliveBlueprintWriteResult ConnectResult = Connector.Connect(
+            EventExecOutPin, FollowerExecInPin, false);
+
+        if (ConnectResult.bSuccess)
+        {
+            Context.SuccessfulConnectionCount++;
+            UE_LOG(LogOlivePlanExecutor, Log,
+                TEXT("Auto-chained event '%s' exec output -> step '%s' exec input"),
+                *EventStep.StepId, *FollowerStep->StepId);
+        }
+        else
+        {
+            Context.FailedConnectionCount++;
+            const FString ErrorMsg = ConnectResult.Errors.Num() > 0
+                ? ConnectResult.Errors[0]
+                : TEXT("Unknown connection error");
+            UE_LOG(LogOlivePlanExecutor, Warning,
+                TEXT("Failed to auto-chain event '%s' to follower step '%s': %s"),
+                *EventStep.StepId, *FollowerStep->StepId, *ErrorMsg);
+
+            Context.WiringErrors.Add(FOliveIRBlueprintPlanError::MakePlanError(
+                TEXT("EVENT_AUTOCHAIN_FAILED"),
+                FString::Printf(
+                    TEXT("Failed to wire event '%s' to first follower step '%s': %s"),
+                    *EventStep.StepId, *FollowerStep->StepId, *ErrorMsg),
+                TEXT("Add explicit exec_after on the first step following the event")));
         }
     }
 }
@@ -1063,7 +1277,7 @@ FOliveSmartWireResult FOlivePlanExecutor::WireDataConnection(
     }
 
     FOlivePinConnector& Connector = FOlivePinConnector::Get();
-    FOliveBlueprintWriteResult ConnectResult = Connector.Connect(RealSourcePin, RealTargetPin, false);
+    FOliveBlueprintWriteResult ConnectResult = Connector.Connect(RealSourcePin, RealTargetPin, /*bAllowConversion=*/true);
 
     if (ConnectResult.bSuccess)
     {
@@ -1072,6 +1286,53 @@ FOliveSmartWireResult FOlivePlanExecutor::WireDataConnection(
         Result.ResolvedTargetPin = TargetPin->PinName;
         Result.SourceMatchMethod = SourceMatchMethod;
         Result.TargetMatchMethod = TargetMatchMethod;
+
+        // Check if auto-conversion inserted a node.
+        // When PinConnector inserts a conversion node, the source pin is
+        // connected to the conversion node's input (not the original target).
+        //
+        // ASSUMPTION: After PinConnector::Connect with conversion, the conversion node's
+        // input pin is the first (and typically only new) entry in LinkedTo. This holds
+        // because InsertConversionNode connects Source->ConversionInput then
+        // ConversionOutput->Target, so Source.LinkedTo[0] is the conversion input pin.
+        // If InsertConversionNode ever changes link ordering, this detection will break.
+        // Verify if modifying PinConnector.
+        const bool bConversionInserted = (RealSourcePin->LinkedTo.Num() > 0 &&
+            RealSourcePin->LinkedTo[0] != RealTargetPin);
+
+        if (bConversionInserted)
+        {
+            FOliveConversionNote Note;
+            Note.SourceStep = SourceStepId;
+            Note.TargetStep = TargetStepId;
+            Note.SourcePinName = SourcePin->PinName;
+            Note.TargetPinName = TargetPin->PinName;
+            Note.FromType = SourcePin->TypeDisplayString;
+            Note.ToType = TargetPin->TypeDisplayString;
+
+            // The conversion node is the intermediate between source and target.
+            // RealSourcePin->LinkedTo[0] is the conversion node's input pin.
+            UEdGraphNode* ConvNode = RealSourcePin->LinkedTo[0]->GetOwningNode();
+            if (ConvNode)
+            {
+                Note.ConversionNodeType = ConvNode->GetClass()->GetName();
+            }
+
+            UE_LOG(LogOlivePlanExecutor, Log,
+                TEXT("Auto-conversion: %s.%s (%s) -> %s.%s (%s) via %s"),
+                *SourceStepId, *Note.SourcePinName, *Note.FromType,
+                *TargetStepId, *Note.TargetPinName, *Note.ToType,
+                *Note.ConversionNodeType);
+
+            Context.Warnings.Add(FString::Printf(
+                TEXT("Auto-conversion inserted between %s.%s and %s.%s: %s -> %s (via %s)"),
+                *SourceStepId, *Note.SourcePinName,
+                *TargetStepId, *Note.TargetPinName,
+                *Note.FromType, *Note.ToType,
+                *Note.ConversionNodeType));
+
+            Context.ConversionNotes.Add(MoveTemp(Note));
+        }
 
         UE_LOG(LogOlivePlanExecutor, Verbose,
             TEXT("Data wire: %s.%s -> %s.%s (source: %s, target: %s)"),
@@ -1373,6 +1634,16 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::AssembleResult(
     for (const auto& ManifestPair : Context.StepManifests)
     {
         Result.PinManifestJsons.Add(ManifestPair.Key, ManifestPair.Value.ToJson());
+    }
+
+    // Serialize conversion notes for transparency
+    if (Context.ConversionNotes.Num() > 0)
+    {
+        Result.ConversionNotesJson.Reserve(Context.ConversionNotes.Num());
+        for (const FOliveConversionNote& Note : Context.ConversionNotes)
+        {
+            Result.ConversionNotesJson.Add(Note.ToJson());
+        }
     }
 
     // Add partial success warning

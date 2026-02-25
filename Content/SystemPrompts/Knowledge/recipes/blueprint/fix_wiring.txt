@@ -1,30 +1,12 @@
-WORKFLOW:
-1. Read the apply_plan_json result — it contains pin_manifests for failed connections
-2. Each failed connection lists ACTUAL available pins: {name, display_name, type, direction}
-3. Use blueprint.connect_pins with the ACTUAL pin names from the manifest
-   Do NOT guess pin names. Do NOT call blueprint.read to discover pins (manifests already have them).
+TAGS: fix wiring error connection pin connect_pins set_pin_default
+---
+FIX wiring after partial plan success:
+1. Read the apply_plan_json result -- it contains wiring_errors and pin_manifests
+2. Each failed connection lists ACTUAL available pins: {name, type, direction}
+3. Use blueprint.connect_pins with exact pin names from the manifest
 
-EXAMPLE (from a typical SpawnActor wiring failure):
-apply_plan_json returned:
-  "wiring_errors": [{"step_id":"spawn","hint":"Location","available_pins":[
-    {"name":"SpawnTransform","type":"Transform"},
-    {"name":"Class","type":"Actor Class Reference"}]}]
-
-Fix: Use the node_id from the apply result and the correct pin from the manifest:
-blueprint.connect_pins → {
-  "path":"/Game/Blueprints/BP_Gun",
-  "graph":"Fire",
-  "source_ref":{"node_id":"<from apply result>","pin":"ReturnValue"},
-  "target_ref":{"node_id":"<from apply result>","pin":"SpawnTransform"}}
-
-GOTCHAS:
-- Pin manifests in the apply result are GROUND TRUTH — use those exact names
-- Node IDs come from the apply result (e.g. "node_0", "node_2") — never invent them
-- Common mismatch: AI uses "Location"/"Rotation" but SpawnActor has "SpawnTransform" (Transform)
-- Common mismatch: AI uses "Object" but Cast node has "Input" or the class-specific pin
-- If multiple connections failed, batch all connect_pins calls in one turn
-- Pin references use DOT separator: node_id.pin_name (NOT node_id:pin_name)
-- Node IDs are scoped per graph — a node_id from "Fire" function does NOT exist in "EventGraph"
-- If fixing wiring in a function graph, pass the function name as the graph parameter, not "EventGraph"
-- exec_after expects plan step_ids (e.g. "evt", "spawn"), NOT K2Node IDs from blueprint.read
-- To add logic to an existing graph, create event/custom_event steps as entry points in your plan
+Pin manifests are ground truth -- use those exact names, do not guess.
+Node IDs come from step_to_node_map in the apply result -- never invent them.
+Common mismatch: AI uses "Location" but SpawnActor has "SpawnTransform" (Transform).
+If multiple connections failed, batch all connect_pins calls in one turn.
+If fixing a function graph, pass the function name as graph parameter.

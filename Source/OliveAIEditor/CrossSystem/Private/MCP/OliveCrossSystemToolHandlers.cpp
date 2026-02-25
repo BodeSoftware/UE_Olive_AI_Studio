@@ -1035,10 +1035,10 @@ void FOliveCrossSystemToolHandlers::LoadRecipeLibrary()
 			TEXT("Recipe manifest missing format_version — assuming 1.0"));
 		FormatVersion = TEXT("1.0");
 	}
-	else if (!FormatVersion.StartsWith(TEXT("1.")))
+	else if (!FormatVersion.StartsWith(TEXT("1.")) && !FormatVersion.StartsWith(TEXT("2.")))
 	{
 		UE_LOG(LogOliveCrossSystemTools, Error,
-			TEXT("Recipe manifest format_version '%s' is not supported (expected 1.x). Skipping recipe loading."),
+			TEXT("Recipe manifest format_version '%s' is not supported (expected 1.x or 2.x). Skipping recipe loading."),
 			*FormatVersion);
 		return;
 	}
@@ -1084,8 +1084,46 @@ void FOliveCrossSystemToolHandlers::LoadRecipeLibrary()
 			FString Content;
 			if (FFileHelper::LoadFileToString(Content, *FilePath))
 			{
-				RecipeLibrary.Add(Key, Content);
-				UE_LOG(LogOliveCrossSystemTools, Log, TEXT("Loaded recipe: %s (%d chars)"), *Key, Content.Len());
+				// Parse TAGS header if present (format: "TAGS: keyword1 keyword2\n---\ncontent")
+				TArray<FString> FileTags;
+				FString ActualContent = Content;
+
+				// Handle both \n and \r\n line endings for the --- separator
+				int32 SepIndex = Content.Find(TEXT("---\n"));
+				if (SepIndex == INDEX_NONE)
+				{
+					SepIndex = Content.Find(TEXT("---\r\n"));
+				}
+
+				if (SepIndex != INDEX_NONE)
+				{
+					const FString Header = Content.Left(SepIndex).TrimStartAndEnd();
+					if (Header.StartsWith(TEXT("TAGS:"), ESearchCase::IgnoreCase))
+					{
+						const FString TagLine = Header.Mid(5).TrimStartAndEnd();
+						TagLine.ParseIntoArray(FileTags, TEXT(" "), true);
+						for (FString& Tag : FileTags)
+						{
+							Tag = Tag.ToLower();
+						}
+						// Strip the TAGS header + separator, keep only body content
+						int32 ContentStart = SepIndex + 3;
+						if (ContentStart < Content.Len() && Content[ContentStart] == TEXT('\r'))
+						{
+							ContentStart++;
+						}
+						if (ContentStart < Content.Len() && Content[ContentStart] == TEXT('\n'))
+						{
+							ContentStart++;
+						}
+						ActualContent = Content.Mid(ContentStart);
+					}
+				}
+
+				RecipeLibrary.Add(Key, ActualContent);
+				RecipeTags.Add(Key, FileTags);
+				UE_LOG(LogOliveCrossSystemTools, Log, TEXT("Loaded recipe: %s (%d chars, %d tags)"),
+					*Key, ActualContent.Len(), FileTags.Num());
 			}
 			else
 			{
@@ -1126,12 +1164,10 @@ void FOliveCrossSystemToolHandlers::RegisterRecipeTools()
 
 	Registry.RegisterTool(
 		TEXT("olive.get_recipe"),
-		TEXT("Retrieve a worked example showing the exact tool-call sequence for a workflow. "
-			"Available categories: blueprint. "
-			"Call with category only to list recipes. Call with category + name for the full example. "
-			"Patterns: NEW blueprint -> get_recipe(blueprint, create) | "
-			"MODIFY existing -> get_recipe(blueprint, modify) | "
-			"FIX wiring -> get_recipe(blueprint, fix_wiring)"),
+		TEXT("Search for patterns, examples, and gotchas for Blueprint workflows. "
+			"Query with keywords related to your task or error "
+			"(e.g. 'spawn actor transform', 'variable type object', 'function graph entry'). "
+			"Returns the most relevant reference entry."),
 		OliveCrossSystemSchemas::RecipeGetRecipe(),
 		FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleGetRecipe),
 		{TEXT("crosssystem"), TEXT("read")},
@@ -1152,109 +1188,151 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleGetRecipe(const TSharedPtr
 		return FOliveToolResult::Error(
 			TEXT("RECIPE_INVALID_PARAMS"),
 			TEXT("Parameters required"),
-			TEXT("Call with {\"category\":\"blueprint\"} to list recipes, or {\"category\":\"blueprint\",\"name\":\"create\"} for content."));
+			TEXT("Call with {\"query\":\"keywords\"} to search for reference entries."));
 	}
 
-	FString Category, Name;
-	Params->TryGetStringField(TEXT("category"), Category);
-	Params->TryGetStringField(TEXT("name"), Name);
-
-	// No category — list all categories
-	if (Category.IsEmpty())
+	FString Query;
+	if (!Params->TryGetStringField(TEXT("query"), Query) || Query.IsEmpty())
 	{
-		TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
-		TArray<TSharedPtr<FJsonValue>> CatArray;
-		for (const FString& Cat : RecipeCategories)
-		{
-			int32 Count = 0;
-			for (const auto& Pair : RecipeLibrary)
-			{
-				if (Pair.Key.StartsWith(Cat + TEXT("/"))) Count++;
-			}
-			TSharedPtr<FJsonObject> CatObj = MakeShared<FJsonObject>();
-			CatObj->SetStringField(TEXT("name"), Cat);
-			CatObj->SetNumberField(TEXT("recipe_count"), Count);
-			CatArray.Add(MakeShared<FJsonValueObject>(CatObj));
-		}
-		Data->SetArrayField(TEXT("categories"), CatArray);
-		return FOliveToolResult::Success(Data);
-	}
-
-	// Validate category
-	if (!RecipeCategories.Contains(Category))
-	{
-		FString ValidCats;
-		for (const FString& Cat : RecipeCategories)
-		{
-			if (!ValidCats.IsEmpty()) ValidCats += TEXT(", ");
-			ValidCats += Cat;
-		}
 		return FOliveToolResult::Error(
-			TEXT("RECIPE_UNKNOWN_CATEGORY"),
-			FString::Printf(TEXT("Unknown category '%s'"), *Category),
-			FString::Printf(TEXT("Valid categories: %s"), *ValidCats));
+			TEXT("RECIPE_MISSING_QUERY"),
+			TEXT("'query' parameter is required"),
+			TEXT("Call with {\"query\":\"spawn actor transform\"} to search for relevant patterns and examples."));
 	}
 
-	// Category only — list recipes in category
-	if (Name.IsEmpty())
+	// Lowercase the query and split into search terms
+	const FString LowerQuery = Query.ToLower();
+	TArray<FString> QueryTerms;
+	LowerQuery.ParseIntoArray(QueryTerms, TEXT(" "), true);
+
+	if (QueryTerms.Num() == 0)
 	{
-		TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
-		Data->SetStringField(TEXT("category"), Category);
-		TArray<TSharedPtr<FJsonValue>> RecipeArray;
-		for (const auto& Pair : RecipeDescriptions)
-		{
-			if (Pair.Key.StartsWith(Category + TEXT("/")))
-			{
-				FString RecipeName = Pair.Key.RightChop(Category.Len() + 1);
-				TSharedPtr<FJsonObject> RecipeObj = MakeShared<FJsonObject>();
-				RecipeObj->SetStringField(TEXT("name"), RecipeName);
-				RecipeObj->SetStringField(TEXT("description"), Pair.Value);
-				RecipeArray.Add(MakeShared<FJsonValueObject>(RecipeObj));
-			}
-		}
-		Data->SetArrayField(TEXT("recipes"), RecipeArray);
-		return FOliveToolResult::Success(Data);
+		return FOliveToolResult::Error(
+			TEXT("RECIPE_EMPTY_QUERY"),
+			TEXT("Query must contain at least one search term"));
 	}
 
-	// Handle comma-separated names for batch fetch
-	TArray<FString> Names;
-	Name.ParseIntoArray(Names, TEXT(","), true);
-
-	TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
-	TArray<TSharedPtr<FJsonValue>> ResultArray;
-
-	for (const FString& SingleName : Names)
+	// Score each recipe entry by keyword matching
+	struct FScoredEntry
 	{
-		FString TrimmedName = SingleName.TrimStartAndEnd();
-		FString Key = FString::Printf(TEXT("%s/%s"), *Category, *TrimmedName);
+		FString Key;
+		int32 Score;
+	};
+	TArray<FScoredEntry> ScoredEntries;
 
-		const FString* Content = RecipeLibrary.Find(Key);
-		if (!Content)
+	for (const auto& Pair : RecipeLibrary)
+	{
+		const FString& Key = Pair.Key;
+		const FString& Content = Pair.Value;
+		const TArray<FString>* Tags = RecipeTags.Find(Key);
+
+		int32 Score = 0;
+		const FString LowerContent = Content.ToLower();
+
+		for (const FString& Term : QueryTerms)
 		{
-			FString ValidRecipes;
-			for (const auto& Pair : RecipeLibrary)
+			// Tag match: +2 points (exact match in curated tags)
+			bool bTagMatch = false;
+			if (Tags)
 			{
-				if (Pair.Key.StartsWith(Category + TEXT("/")))
+				for (const FString& Tag : *Tags)
 				{
-					FString RName = Pair.Key.RightChop(Category.Len() + 1);
-					if (!ValidRecipes.IsEmpty()) ValidRecipes += TEXT(", ");
-					ValidRecipes += RName;
+					if (Tag == Term)
+					{
+						bTagMatch = true;
+						break;
+					}
 				}
 			}
-			return FOliveToolResult::Error(
-				TEXT("RECIPE_NOT_FOUND"),
-				FString::Printf(TEXT("Recipe '%s' not found in category '%s'"), *TrimmedName, *Category),
-				FString::Printf(TEXT("Available recipes: %s"), *ValidRecipes));
+
+			if (bTagMatch)
+			{
+				Score += 2;
+			}
+			else if (LowerContent.Contains(Term))
+			{
+				// Content substring match: +1 point (fallback)
+				Score += 1;
+			}
 		}
 
-		TSharedPtr<FJsonObject> RecipeObj = MakeShared<FJsonObject>();
-		RecipeObj->SetStringField(TEXT("name"), TrimmedName);
-		RecipeObj->SetStringField(TEXT("content"), *Content);
-		ResultArray.Add(MakeShared<FJsonValueObject>(RecipeObj));
+		if (Score > 0)
+		{
+			ScoredEntries.Add({ Key, Score });
+		}
 	}
 
-	Data->SetStringField(TEXT("category"), Category);
-	Data->SetArrayField(TEXT("recipes"), ResultArray);
+	// Sort by score descending
+	ScoredEntries.Sort([](const FScoredEntry& A, const FScoredEntry& B)
+	{
+		return A.Score > B.Score;
+	});
+
+	// Build result
+	TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("query"), Query);
+
+	// Return top 3 matches
+	static constexpr int32 MaxResults = 3;
+	TArray<TSharedPtr<FJsonValue>> MatchesArray;
+
+	const int32 ResultCount = FMath::Min(ScoredEntries.Num(), MaxResults);
+	for (int32 i = 0; i < ResultCount; ++i)
+	{
+		const FScoredEntry& Entry = ScoredEntries[i];
+		const FString* Content = RecipeLibrary.Find(Entry.Key);
+		const TArray<FString>* Tags = RecipeTags.Find(Entry.Key);
+
+		TSharedPtr<FJsonObject> MatchObj = MakeShared<FJsonObject>();
+		MatchObj->SetStringField(TEXT("key"), Entry.Key);
+		MatchObj->SetNumberField(TEXT("score"), Entry.Score);
+
+		// Include tags array
+		TArray<TSharedPtr<FJsonValue>> TagsJsonArray;
+		if (Tags)
+		{
+			for (const FString& Tag : *Tags)
+			{
+				TagsJsonArray.Add(MakeShared<FJsonValueString>(Tag));
+			}
+		}
+		MatchObj->SetArrayField(TEXT("tags"), TagsJsonArray);
+
+		if (Content)
+		{
+			MatchObj->SetStringField(TEXT("content"), *Content);
+		}
+
+		MatchesArray.Add(MakeShared<FJsonValueObject>(MatchObj));
+	}
+
+	Data->SetArrayField(TEXT("matches"), MatchesArray);
+
+	// If no matches, provide a summary of all available entries so the AI can refine its query
+	if (ScoredEntries.Num() == 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> AvailableArray;
+		for (const auto& Pair : RecipeLibrary)
+		{
+			TSharedPtr<FJsonObject> EntryObj = MakeShared<FJsonObject>();
+			EntryObj->SetStringField(TEXT("key"), Pair.Key);
+
+			const TArray<FString>* Tags = RecipeTags.Find(Pair.Key);
+			TArray<TSharedPtr<FJsonValue>> TagsJsonArray;
+			if (Tags)
+			{
+				for (const FString& Tag : *Tags)
+				{
+					TagsJsonArray.Add(MakeShared<FJsonValueString>(Tag));
+				}
+			}
+			EntryObj->SetArrayField(TEXT("tags"), TagsJsonArray);
+
+			AvailableArray.Add(MakeShared<FJsonValueObject>(EntryObj));
+		}
+		Data->SetArrayField(TEXT("available_entries"), AvailableArray);
+	}
+
 	return FOliveToolResult::Success(Data);
 }
 

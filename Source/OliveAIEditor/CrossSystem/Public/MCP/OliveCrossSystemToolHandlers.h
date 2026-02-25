@@ -76,5 +76,8 @@ private:
 	/** Categories discovered from manifest */
 	TArray<FString> RecipeCategories;
 
+	/** Tags per recipe entry for keyword search. Key = "category/name" */
+	TMap<FString, TArray<FString>> RecipeTags;
+
 	TArray<FString> RegisteredToolNames;
 };

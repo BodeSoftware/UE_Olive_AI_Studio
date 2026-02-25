@@ -1,0 +1,17 @@
+TAGS: component reference target getcomponentbyclass scene muzzle arrow transform access
+---
+To reference a named component in plan JSON, use get_var with the component name:
+  {"step_id":"get_muzzle", "op":"get_var", "target":"MuzzlePoint"}
+  {"step_id":"get_tf", "op":"call", "target":"GetWorldTransform",
+   "inputs":{"Target":"@get_muzzle.auto"}}
+
+Components added via add_component ARE variables — get_var works directly.
+You CANNOT use set_var on components (they are read-only references).
+
+Alternative: use GetComponentByClass when you need a component by type rather than name:
+  {"step_id":"get_comp", "op":"call", "target":"GetComponentByClass",
+   "inputs":{"ComponentClass":"ArrowComponent"}}
+Do NOT invent functions like "GetMuzzlePoint" — use get_var or GetComponentByClass.
+Common component classes: StaticMeshComponent, ArrowComponent, BoxComponent,
+SphereComponent, CapsuleComponent, AudioComponent, ParticleSystemComponent,
+SkeletalMeshComponent, ProjectileMovementComponent, SceneComponent.

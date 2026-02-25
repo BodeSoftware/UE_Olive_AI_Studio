@@ -795,6 +795,34 @@ const TMap<FString, FString>& FOliveFunctionResolver::GetAliasMap()
         Map.Add(TEXT("Wait"), TEXT("Delay"));
         Map.Add(TEXT("Sleep"), TEXT("Delay"));
 
+        // ================================================================
+        // Transform Construction (UKismetMathLibrary)
+        // ================================================================
+        Map.Add(TEXT("MakeTransform"), TEXT("MakeTransform"));
+        Map.Add(TEXT("BreakTransform"), TEXT("BreakTransform"));
+        Map.Add(TEXT("MakeVector"), TEXT("MakeVector"));
+        Map.Add(TEXT("BreakVector"), TEXT("BreakVector"));
+        Map.Add(TEXT("MakeRotator"), TEXT("MakeRotator"));
+        Map.Add(TEXT("BreakRotator"), TEXT("BreakRotator"));
+        Map.Add(TEXT("MakeVector2D"), TEXT("MakeVector2D"));
+        Map.Add(TEXT("BreakVector2D"), TEXT("BreakVector2D"));
+
+        // ================================================================
+        // Commonly Attempted Names
+        // ================================================================
+        Map.Add(TEXT("GetActorTransform"), TEXT("GetActorTransform"));
+        Map.Add(TEXT("SetMaterial"), TEXT("SetMaterial"));
+        Map.Add(TEXT("SetCollisionProfileName"), TEXT("SetCollisionProfileName"));
+        Map.Add(TEXT("SetVisibility"), TEXT("SetVisibility"));
+        Map.Add(TEXT("SetHiddenInGame"), TEXT("SetHiddenInGame"));
+
+        // ================================================================
+        // Movement
+        // ================================================================
+        Map.Add(TEXT("LaunchCharacter"), TEXT("LaunchCharacter"));
+        Map.Add(TEXT("AddMovementInput"), TEXT("AddMovementInput"));
+        Map.Add(TEXT("GetVelocity"), TEXT("GetVelocity"));
+
         return Map;
     }();
 

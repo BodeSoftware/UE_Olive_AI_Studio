@@ -40,13 +40,14 @@
 - Log category: LogOliveGraphLayout
 - BuildConsumerMap scans inputs for @stepId refs to identify pure-node consumers
 
-## Current Task: Fix Blueprint Class Resolution (4 tasks)
-- Design plan: `plans/fix-blueprint-class-resolution-design.md`
-- Task 1: Create `FOliveClassResolver` (new .h/.cpp) — 6-step resolution chain + LRU cache
-- Task 2: Rewire 3 callers (OliveNodeFactory, OliveBlueprintWriter, OliveFunctionResolver) to use it
-- Task 3: Improve PLAN_INVALID_REF_FORMAT error message in OliveIRSchema.cpp
-- Task 4: Improve BP_CONNECT_PINS_FAILED + BP_ADD_NODE_FAILED self-correction hints in OliveSelfCorrectionPolicy.cpp
-- Task 2 is blocked by Task 1
+## CLI Provider Base Class Extraction (Completed)
+- `FOliveCLIProviderBase` at `Public/Providers/OliveCLIProviderBase.h` / `Private/Providers/OliveCLIProviderBase.cpp`
+- Abstract base for CLI providers; inherits IOliveAIProvider
+- Moved from FOliveClaudeCodeProvider: process management, pipes, callbacks, SendMessage, HandleResponseComplete, BuildConversationPrompt, BuildCLISystemPrompt, CancelRequest, KillProcess
+- Virtual hooks: `GetExecutablePath()`, `GetCLIArguments()`, `ParseOutputLine()`, `GetWorkingDirectory()`, `RequiresNodeRunner()`, `GetCLIName()`
+- `FOliveClaudeReaderRunnable` renamed to `FOliveCLIReaderRunnable`; old name kept as `using` alias
+- Error string "process exited with code" preserved for OliveProviderRetryManager::ClassifyError matching
+- Log category: `LogOliveCLIProvider` (base), `LogOliveClaudeCode` (Claude-specific)
 
 ## UE 5.5 API Quirks
 - **Float/Double PinType**: In UE 5.5, `PC_Float` and `PC_Double` must NOT be used as `PinCategory`. Instead use `PinCategory = PC_Real` with `PinSubCategory = PC_Float` (or `PC_Double`). Using `PC_Float` directly as category causes "Can't parse default value" compile warnings because the engine can't resolve an FProperty from a bare `PC_Float` category.

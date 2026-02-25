@@ -5,11 +5,42 @@
 #include "CoreMinimal.h"
 #include "IR/BlueprintPlanIR.h"
 #include "IR/CommonIR.h"
+#include "Dom/JsonObject.h"
 
-class FJsonObject;
 class UBlueprint;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogOlivePlanResolver, Log, All);
+
+/**
+ * Records a single resolver translation for transparency.
+ * These are serialized into the tool result so the AI can see
+ * what the resolver did silently. They also appear in the UE log.
+ */
+struct OLIVEAIEDITOR_API FOliveResolverNote
+{
+	/** The plan field that was transformed (e.g., "target", "inputs.Location") */
+	FString Field;
+
+	/** What the AI wrote */
+	FString OriginalValue;
+
+	/** What the resolver produced */
+	FString ResolvedValue;
+
+	/** Human-readable explanation of why */
+	FString Reason;
+
+	/** Serialize this note to a JSON object for inclusion in tool results */
+	TSharedPtr<FJsonObject> ToJson() const
+	{
+		TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
+		Obj->SetStringField(TEXT("field"), Field);
+		Obj->SetStringField(TEXT("original"), OriginalValue);
+		Obj->SetStringField(TEXT("resolved"), ResolvedValue);
+		Obj->SetStringField(TEXT("reason"), Reason);
+		return Obj;
+	}
+};
 
 /**
  * Result of resolving a single plan step to a concrete node type.
@@ -26,6 +57,17 @@ struct OLIVEAIEDITOR_API FOliveResolvedStep
 
 	/** Properties ready for FOliveNodeFactory::CreateNode */
 	TMap<FString, FString> Properties;
+
+	/** Per-step resolver notes explaining transformations applied to this step */
+	TArray<FOliveResolverNote> ResolverNotes;
+
+	/**
+	 * The owning class of the resolved function (for call ops only).
+	 * Set by the resolver when a UFunction* match is found.
+	 * NOT serialized — only valid during the same execution context.
+	 * Used by Phase 0 validation to check class hierarchy.
+	 */
+	UClass* ResolvedOwningClass = nullptr;
 };
 
 /**
@@ -46,6 +88,9 @@ struct OLIVEAIEDITOR_API FOlivePlanResolveResult
 
 	/** Non-fatal warnings (e.g., variable not found on Blueprint but may be inherited) */
 	TArray<FString> Warnings;
+
+	/** Plan-level resolver notes (e.g., synthetic step insertions from ExpandPlanInputs) */
+	TArray<FOliveResolverNote> GlobalNotes;
 };
 
 /**
@@ -103,6 +148,26 @@ public:
 		const TArray<FOliveResolvedStep>& ResolvedSteps,
 		const FOliveIRBlueprintPlan& Plan);
 
+	/**
+	 * Pre-process plan to expand high-level inputs into concrete Blueprint operations.
+	 * Currently handles: SpawnActor Location/Rotation -> MakeTransform synthesis.
+	 *
+	 * When the AI writes a spawn_actor step with "Location" or "Rotation" in its
+	 * Inputs, this method synthesizes a make_struct(Transform) step and rewires
+	 * the SpawnTransform pin. This lets the AI think in natural terms (Location/Rotation)
+	 * while the resolver handles UE's Transform pin requirement.
+	 *
+	 * If the step already has a "SpawnTransform" input, no expansion occurs
+	 * (explicit wins over implicit).
+	 *
+	 * @param Plan The plan to expand (modified in place)
+	 * @param OutNotes Resolver notes for transparency (appended, not cleared)
+	 * @return True if any expansions were made
+	 */
+	static bool ExpandPlanInputs(
+		FOliveIRBlueprintPlan& Plan,
+		TArray<FOliveResolverNote>& OutNotes);
+
 private:
 	/**
 	 * Resolve a single plan step to a concrete node type.
@@ -141,7 +206,8 @@ private:
 		UBlueprint* BP,
 		int32 Idx,
 		FOliveResolvedStep& Out,
-		TArray<FOliveIRBlueprintPlanError>& Errors);
+		TArray<FOliveIRBlueprintPlanError>& Errors,
+		TArray<FString>& Warnings);
 
 	/** Resolve a "set_var" op -- set variable node */
 	static bool ResolveSetVarOp(

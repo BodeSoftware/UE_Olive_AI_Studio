@@ -100,6 +100,35 @@
 - **Asset registry search for short BP names**: The critical fix. `TryAssetRegistrySearch()` tries common paths first (`/Game/Blueprints/X`, `/Game/X`) then falls back to full `GetAssets()` with `UBlueprint` class filter + name match.
 - **Self-correction improvements**: `PLAN_INVALID_REF_FORMAT` message now explains @ref must reference step_ids, not components. `BP_CONNECT_PINS_FAILED` now mandates `blueprint.read` before retry. `BP_ADD_NODE_FAILED` now has class-specific guidance.
 
+### CLI Provider Universal Fixes - Feb 2026
+- `plans/cli-provider-implementation-plan.md` -- Detailed implementation plan for resolver/executor/CLI fixes
+- **R1 (event name mapping) already implemented**: EventNameMap exists in ResolveEventOp at PlanResolver.cpp lines 602-613.
+- **R7 (INVALID_EXEC_REF guidance) already implemented**: SelfCorrectionPolicy.cpp lines 296-302.
+- **R5 (event auto-chain)**: Extends existing function entry auto-chain (PlanExecutor.cpp lines 482-639) to also auto-chain from event/custom_event nodes. Key: hoist TargetedStepIds to wider scope, iterate events in plan order, wire to next impure orphan.
+- **R6 (partial success = error)**: When `PlanResult.bPartial==true`, return `ExecutionError("PLAN_PARTIAL_SUCCESS")` instead of `Success()`. This makes SelfCorrectionPolicy detect it via `HasToolFailure`. The `status:"partial_success"` in ResultData distinguishes from total failure. Pipeline still commits transaction (nodes persist for repair).
+- **R3 (auto-conversion)**: Change `Connector.Connect(src, tgt, false)` to `true` in PhaseWireData (line 1066). Add FOliveConversionNote for transparency logging.
+- **R2 (SpawnActor expansion)**: New `ExpandPlanInputs()` on PlanResolver. Detects Location/Rotation inputs on spawn_actor, synthesizes MakeTransform step with `_synth_` prefix ID. Guard: skip if SpawnTransform already present.
+- **R4 (alias gaps)**: Add ~15 aliases: MakeTransform, BreakTransform, MakeVector, BreakVector, MakeRotator, BreakRotator, etc.
+- **FOliveResolverNote**: New struct for resolver transparency. Fields: Field, OriginalValue, ResolvedValue, Reason. Added to FOliveResolvedStep and FOlivePlanResolveResult.
+- **CLIBase extraction**: FOliveCLIProviderBase with virtual hooks GetExecutablePath(), GetCLIArguments(), ParseOutputLine(). FOliveClaudeCodeProvider shrinks to ~100 lines.
+- **New error code**: `PLAN_PARTIAL_SUCCESS` -- all nodes created but some wiring failed.
+
+### Resilience + Prompt Slimming - Feb 2026
+- `plans/resilience-implementation-tasks.md` -- 13 tasks across 3 phases
+- **Phase 1a**: Self-loop guard in PhaseWireExec. Guard BOTH exec_after AND exec_outputs. For exec_after, use if/else (NOT continue) because continue would skip exec_outputs processing for that step.
+- **Phase 1b REVERSAL**: Partial success now returns `FOliveWriteResult::Success(ResultData)` instead of `ExecutionError`. This REVERSES the R6 decision from CLI Provider Universal Fixes. The pipeline sees bSuccess=true, does NOT cancel transaction, nodes persist. The AI gets `status:"partial_success"` + `wiring_errors` in a success result.
+- **PLAN_PARTIAL_SUCCESS self-correction removed**: Since `HasToolFailure()` checks `bSuccess==false` and partial success now returns true, the self-correction case is dead code. Removed entirely (Option A).
+- **Write pipeline interaction**: Pipeline line 194 checks `!ExecuteResult.bSuccess`. Partial success returning Success() bypasses this, flows to Stage 5 (Verify), which may report compile errors from broken wires -- this is desired (AI gets maximum info).
+- **Phase 3 recipe refactor**: Tool keeps name `olive.get_recipe`, schema changes from `{category?, name?}` to `{query: string}`. LoadRecipeLibrary updated to parse TAGS format (format_version 2.0). Keyword matching: tag match = 2pts, content substring = 1pt.
+- **Manifest tags already exist** in `_manifest.json` but are unused by current code. Phase 3 puts tags IN the .txt files instead (self-contained entries).
+
+### Gun Fix (Orphan/Component/Compile) - Feb 2026
+- `plans/gun-fix-implementation-tasks.md` -- 5 tasks fixing 3 issues from gun+bullet test
+- **CRITICAL BUG FOUND**: `HasCompileFailure()` looks for `compile_result` at JSON top level, but `FOliveToolResult::ToJson()` nests it inside `"data"`. Compile error self-correction has been BROKEN for ALL tools. Fix: try top-level first, then fall back to `data.compile_result`.
+- **JSON nesting**: `FOliveToolResult::ToJson()` (OliveToolRegistry.cpp line 203) puts `ResultData` inside `"data"`. So pipeline fields (`compile_result`, `asset_path`, `compile_status`) are at `data.X`, not top-level. `HasToolFailure()` works because it checks top-level `success` (set by ToJson directly). `HasCompileFailure()` breaks because it checks top-level `compile_result` (which is inside `data`).
+- **Component guard**: New error code `COMPONENT_NOT_VARIABLE` in ResolveGetVarOp/ResolveSetVarOp. SCS traversal uses same pattern as `FOliveComponentWriter::FindSCSNode()`. Includes: `Engine/SimpleConstructionScript.h`, `Engine/SCS_Node.h`.
+- **Orphan cleanup**: `CleanupCreatedNodes` lambda in `PhaseCreateNodes`. Must skip reused event nodes (tracked via `ReusedStepIds` set). `Graph->RemoveNode()` inside transaction scope is defense-in-depth.
+
 ## File Structure
 - Tool handlers: `Source/OliveAIEditor/Blueprint/Private/MCP/OliveBlueprintToolHandlers.cpp` (very large file, 3000+ lines)
 - Schemas: `Source/OliveAIEditor/Blueprint/Private/MCP/OliveBlueprintSchemas.cpp`

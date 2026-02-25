@@ -564,8 +564,7 @@ UK2Node* FOliveNodeFactory::CreateForLoopNode(
 	}
 
 	// If not found as function, create as macro instance
-	LastError = TEXT("ForLoop function not found - macro support not yet implemented");
-	return nullptr;
+	return CreateMacroInstanceNode(Blueprint, Graph, TEXT("ForLoop"));
 }
 
 UK2Node* FOliveNodeFactory::CreateForEachLoopNode(
@@ -591,9 +590,7 @@ UK2Node* FOliveNodeFactory::CreateForEachLoopNode(
 	}
 
 	// ForEachLoop is implemented as a macro in Blueprints
-	// Full macro support requires additional implementation
-	LastError = TEXT("ForEachLoop function not found - macro support not yet implemented");
-	return nullptr;
+	return CreateMacroInstanceNode(Blueprint, Graph, TEXT("ForEachLoop"));
 }
 
 UK2Node* FOliveNodeFactory::CreateDelayNode(
@@ -859,6 +856,48 @@ UScriptStruct* FOliveNodeFactory::FindStruct(const FString& StructName)
 	return nullptr;
 }
 
+UK2Node* FOliveNodeFactory::CreateMacroInstanceNode(
+	UBlueprint* Blueprint,
+	UEdGraph* Graph,
+	const FString& MacroName)
+{
+	// Load the StandardMacros library
+	static const TCHAR* StandardMacrosPath =
+		TEXT("/Engine/EditorBlueprintResources/StandardMacros.StandardMacros");
+	UBlueprint* MacroLib = LoadObject<UBlueprint>(nullptr, StandardMacrosPath);
+	if (!MacroLib)
+	{
+		LastError = FString::Printf(
+			TEXT("Failed to load StandardMacros library for macro '%s'"), *MacroName);
+		return nullptr;
+	}
+
+	// Find the macro graph by name
+	UEdGraph* MacroGraph = nullptr;
+	for (UEdGraph* MG : MacroLib->MacroGraphs)
+	{
+		if (MG && MG->GetName() == MacroName)
+		{
+			MacroGraph = MG;
+			break;
+		}
+	}
+
+	if (!MacroGraph)
+	{
+		LastError = FString::Printf(
+			TEXT("Macro '%s' not found in StandardMacros"), *MacroName);
+		return nullptr;
+	}
+
+	// Create the macro instance node
+	UK2Node_MacroInstance* MacroNode = NewObject<UK2Node_MacroInstance>(Graph);
+	MacroNode->SetMacroGraph(MacroGraph);
+	MacroNode->AllocateDefaultPins();
+	Graph->AddNode(MacroNode, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+	return MacroNode;
+}
+
 void FOliveNodeFactory::InitializeNodeCreators()
 {
 	// ============================================================================
@@ -880,6 +919,22 @@ void FOliveNodeFactory::InitializeNodeCreators()
 
 	NodeCreators.Add(OliveNodeTypes::ForEachLoop, [this](UBlueprint* BP, UEdGraph* G, const TMap<FString, FString>& P) -> UEdGraphNode* {
 		return CreateForEachLoopNode(BP, G, P);
+	});
+
+	NodeCreators.Add(OliveNodeTypes::WhileLoop, [this](UBlueprint* BP, UEdGraph* G, const TMap<FString, FString>& P) -> UEdGraphNode* {
+		return CreateMacroInstanceNode(BP, G, TEXT("WhileLoop"));
+	});
+
+	NodeCreators.Add(OliveNodeTypes::DoOnce, [this](UBlueprint* BP, UEdGraph* G, const TMap<FString, FString>& P) -> UEdGraphNode* {
+		return CreateMacroInstanceNode(BP, G, TEXT("DoOnce"));
+	});
+
+	NodeCreators.Add(OliveNodeTypes::FlipFlop, [this](UBlueprint* BP, UEdGraph* G, const TMap<FString, FString>& P) -> UEdGraphNode* {
+		return CreateMacroInstanceNode(BP, G, TEXT("FlipFlop"));
+	});
+
+	NodeCreators.Add(OliveNodeTypes::Gate, [this](UBlueprint* BP, UEdGraph* G, const TMap<FString, FString>& P) -> UEdGraphNode* {
+		return CreateMacroInstanceNode(BP, G, TEXT("Gate"));
 	});
 
 	NodeCreators.Add(OliveNodeTypes::Delay, [this](UBlueprint* BP, UEdGraph* G, const TMap<FString, FString>& P) -> UEdGraphNode* {
@@ -1023,4 +1078,8 @@ void FOliveNodeFactory::InitializeNodeCreators()
 	RequiredPropertiesMap.Add(OliveNodeTypes::IsValid, TMap<FString, FString>());
 	RequiredPropertiesMap.Add(OliveNodeTypes::PrintString, TMap<FString, FString>());
 	RequiredPropertiesMap.Add(OliveNodeTypes::Reroute, TMap<FString, FString>());
+	RequiredPropertiesMap.Add(OliveNodeTypes::WhileLoop, TMap<FString, FString>());
+	RequiredPropertiesMap.Add(OliveNodeTypes::DoOnce, TMap<FString, FString>());
+	RequiredPropertiesMap.Add(OliveNodeTypes::FlipFlop, TMap<FString, FString>());
+	RequiredPropertiesMap.Add(OliveNodeTypes::Gate, TMap<FString, FString>());
 }

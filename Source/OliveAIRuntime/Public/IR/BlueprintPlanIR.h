@@ -68,6 +68,18 @@ namespace OlivePlanOps
 	/** Comment node (non-functional annotation) */
 	const FString Comment = TEXT("comment");
 
+	/** While loop (loop while condition is true) */
+	const FString WhileLoop = TEXT("while_loop");
+
+	/** Do Once (execute output only once, can be reset) */
+	const FString DoOnce = TEXT("do_once");
+
+	/** Flip Flop (alternate between two outputs) */
+	const FString FlipFlop = TEXT("flip_flop");
+
+	/** Gate (open/close to control execution flow) */
+	const FString Gate = TEXT("gate");
+
 	/**
 	 * Check whether a given op string is in the closed vocabulary.
 	 * @param Op The operation string to validate
@@ -317,6 +329,14 @@ struct OLIVEAIRUNTIME_API FOliveIRBlueprintPlanResult
 	/** Non-fatal warning messages */
 	UPROPERTY()
 	TArray<FString> Warnings;
+
+	/**
+	 * Auto-conversion notes for transparency.
+	 * Each entry is a serialized FOliveConversionNote JSON string, recording
+	 * where the PinConnector inserted a conversion node during data wiring.
+	 * Not a UPROPERTY because TSharedPtr<FJsonObject> is not supported by UHT.
+	 */
+	TArray<TSharedPtr<FJsonObject>> ConversionNotesJson;
 
 	/**
 	 * Serialize this result to a JSON object.

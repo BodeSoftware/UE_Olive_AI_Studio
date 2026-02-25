@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Plan/OlivePinManifest.h"
 #include "IR/BlueprintPlanIR.h"
+#include "Dom/JsonObject.h"
 
 // Forward declarations
 class UBlueprint;
@@ -13,6 +14,53 @@ class UEdGraphNode;
 struct FOliveResolvedStep;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogOlivePlanExecutor, Log, All);
+
+/**
+ * Records an auto-conversion node insertion during data wiring.
+ * Logged and serialized so the AI sees what type coercions happened.
+ * Created by PhaseWireData when PinConnector::Connect inserts an
+ * intermediate conversion node between two incompatible pin types.
+ */
+struct OLIVEAIEDITOR_API FOliveConversionNote
+{
+    /** Step ID of the source (output) pin */
+    FString SourceStep;
+
+    /** Step ID of the target (input) pin */
+    FString TargetStep;
+
+    /** Pin name on the source node */
+    FString SourcePinName;
+
+    /** Pin name on the target node */
+    FString TargetPinName;
+
+    /** Human-readable type of the source pin (e.g., "Float") */
+    FString FromType;
+
+    /** Human-readable type of the target pin (e.g., "Double") */
+    FString ToType;
+
+    /** Class name of the inserted conversion node */
+    FString ConversionNodeType;
+
+    /**
+     * Serialize this note to a JSON object for inclusion in tool results.
+     * @return JSON representation of the conversion note
+     */
+    TSharedPtr<FJsonObject> ToJson() const
+    {
+        TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
+        Obj->SetStringField(TEXT("source_step"), SourceStep);
+        Obj->SetStringField(TEXT("target_step"), TargetStep);
+        Obj->SetStringField(TEXT("source_pin"), SourcePinName);
+        Obj->SetStringField(TEXT("target_pin"), TargetPinName);
+        Obj->SetStringField(TEXT("from_type"), FromType);
+        Obj->SetStringField(TEXT("to_type"), ToType);
+        Obj->SetStringField(TEXT("conversion_node"), ConversionNodeType);
+        return Obj;
+    }
+};
 
 /**
  * Execution context for multi-phase plan application.
@@ -62,6 +110,9 @@ struct OLIVEAIEDITOR_API FOlivePlanExecutionContext
 
     /** Count of failed pin default sets */
     int32 FailedDefaultCount = 0;
+
+    /** Auto-conversion notes logged when PinConnector inserts conversion nodes */
+    TArray<FOliveConversionNote> ConversionNotes;
 
     /** Get manifest for a step, or nullptr if step was not created */
     const FOlivePinManifest* GetManifest(const FString& StepId) const;

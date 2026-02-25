@@ -337,6 +337,18 @@ private:
 		UEdGraph* Graph,
 		const TMap<FString, FString>& Properties);
 
+	/**
+	 * Create a macro instance node from the StandardMacros library
+	 * @param Blueprint The Blueprint containing the graph
+	 * @param Graph The target graph
+	 * @param MacroName Exact name of the macro in StandardMacros (e.g., "WhileLoop", "DoOnce")
+	 * @return The created macro instance node, or nullptr if creation failed
+	 */
+	UK2Node* CreateMacroInstanceNode(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		const FString& MacroName);
+
 	// ============================================================================
 	// Helper Methods
 	// ============================================================================

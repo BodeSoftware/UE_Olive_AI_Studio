@@ -588,6 +588,28 @@ FOliveWriteResult FOliveWritePipeline::StageReport(
 		else if (CR.HasWarnings()) Status = TEXT("warning");
 		else                       Status = TEXT("success");
 		FinalResult.ResultData->SetStringField(TEXT("compile_status"), Status);
+
+		// Propagate compile errors to top-level success.
+		// Transaction already committed in Stage 4 — nodes persist.
+		// Setting bSuccess=false causes FOliveToolResult.bSuccess=false,
+		// which triggers self-correction via HasToolFailure().
+		if (CR.HasErrors())
+		{
+			FinalResult.bSuccess = false;
+
+			FOliveIRMessage CompileErrorMsg;
+			CompileErrorMsg.Severity = EOliveIRSeverity::Error;
+			CompileErrorMsg.Code = TEXT("COMPILE_FAILED");
+			CompileErrorMsg.Message = FString::Printf(
+				TEXT("Blueprint compiled with %d error(s). Nodes are committed but Blueprint is in error state."),
+				CR.Errors.Num());
+			CompileErrorMsg.Suggestion = TEXT("Read compile_result.errors and fix with connect_pins or set_pin_default.");
+			FinalResult.ValidationMessages.Add(CompileErrorMsg);
+
+			UE_LOG(LogOliveWritePipeline, Warning,
+				TEXT("StageReport: Compile errors detected — setting bSuccess=false for tool '%s'"),
+				*Request.ToolName);
+		}
 	}
 	else
 	{

@@ -1,18 +1,10 @@
-## Recipes
-Call olive.get_recipe(category, name) before starting an unfamiliar task type.
-
-BLUEPRINT: create, modify, fix_wiring, variables_components, edit_existing_graph, multi_asset
-
-QUICK RULES:
-- NEW blueprint → create + add_component/add_variable + apply_plan_json (ALL graph nodes in one call)
-- MODIFY existing → project.search (find path) → blueprint.read → then write tools
-- SMALL EDIT (1-2 nodes) → read_event_graph → add_node + connect_pins
-- MULTI-ASSET (2+ blueprints) → create ALL structures first → then wire each graph → budget iterations per asset
-- FIX wiring → use pin_manifests from the apply result, NOT blueprint.read
+## Routing
+- Use olive.get_recipe(query) to look up patterns when stuck or encountering errors.
+- NEW blueprint: create + components/variables + apply_plan_json (ALL graph nodes in one call)
+- MODIFY existing: project.search (find path) -> blueprint.read -> then write tools
+- SMALL EDIT (1-2 nodes): read_event_graph -> add_node + connect_pins
+- MULTI-ASSET (2+ blueprints): create ALL structures first -> wire each graph -> budget iterations per asset
+- FIX wiring: use wiring_errors and pin_manifests from the apply result
 - NEVER call blueprint.read before blueprint.create
-- NEVER use add_node one-at-a-time for 3+ nodes — use plan_json
-- preview_plan_json is optional — prefer calling apply_plan_json directly
-- SpawnActor uses SpawnTransform (Transform), NOT separate Location/Rotation pins
-- Object variable refs need class_name: {"category":"object","class_name":"BP_Gun_C"} (append _C)
-- Pin refs use DOT: node_id.pin_name (NOT colon)
-- Node IDs are scoped per graph — don't use node_ids across different graphs
+- NEVER use add_node one-at-a-time for 3+ nodes -- use plan_json
+- Keep plans under 12 steps; split complex logic into multiple functions
