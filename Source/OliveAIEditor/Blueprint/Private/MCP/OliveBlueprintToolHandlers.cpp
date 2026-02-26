@@ -1043,6 +1043,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRead(const TSharedP
 	// Read Blueprint
 	FOliveBlueprintReader& Reader = FOliveBlueprintReader::Get();
 	TOptional<FOliveIRBlueprint> Result;
+	bool bAutoFull = false;
 
 	if (Mode == TEXT("full"))
 	{
@@ -1050,7 +1051,44 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRead(const TSharedP
 	}
 	else
 	{
-		Result = Reader.ReadBlueprintSummary(ResolvedPath);
+		// Auto-full-read for small Blueprints: count total nodes first.
+		// If small enough, return full data to save follow-up read calls.
+		static constexpr int32 AUTO_FULL_READ_NODE_THRESHOLD = 50;
+
+		UBlueprint* Blueprint = Reader.LoadBlueprint(ResolvedPath);
+		if (Blueprint)
+		{
+			int32 TotalNodeCount = 0;
+			for (UEdGraph* Graph : Blueprint->UbergraphPages)
+			{
+				if (Graph) { TotalNodeCount += Graph->Nodes.Num(); }
+			}
+			for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+			{
+				if (Graph) { TotalNodeCount += Graph->Nodes.Num(); }
+			}
+			for (UEdGraph* Graph : Blueprint->MacroGraphs)
+			{
+				if (Graph) { TotalNodeCount += Graph->Nodes.Num(); }
+			}
+
+			if (TotalNodeCount <= AUTO_FULL_READ_NODE_THRESHOLD)
+			{
+				bAutoFull = true;
+				UE_LOG(LogOliveBPTools, Log,
+					TEXT("HandleBlueprintRead: auto-upgrade to full read (%d nodes <= %d threshold)"),
+					TotalNodeCount, AUTO_FULL_READ_NODE_THRESHOLD);
+			}
+		}
+
+		if (bAutoFull)
+		{
+			Result = Reader.ReadBlueprintFull(ResolvedPath);
+		}
+		else
+		{
+			Result = Reader.ReadBlueprintSummary(ResolvedPath);
+		}
 	}
 
 	if (!Result.IsSet())
@@ -1069,6 +1107,15 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRead(const TSharedP
 	if (!ResolveInfo.RedirectedFrom.IsEmpty() && ResultData.IsValid())
 	{
 		ResultData->SetStringField(TEXT("redirected_from"), ResolveInfo.RedirectedFrom);
+	}
+
+	// Annotate auto-full-read so the caller knows full data was included automatically
+	if (bAutoFull && ResultData.IsValid())
+	{
+		ResultData->SetStringField(TEXT("read_mode"), TEXT("auto_full"));
+		ResultData->SetStringField(TEXT("read_mode_note"),
+			TEXT("Blueprint is small enough that full graph data was included automatically. "
+				 "No need to call read_function or read_event_graph."));
 	}
 
 	return FOliveToolResult::Success(ResultData);
@@ -3185,7 +3232,12 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddFunction(const T
 		TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
 		ResultData->SetStringField(TEXT("asset_path"), WriteResult.AssetPath);
 		ResultData->SetStringField(TEXT("function_name"), WriteResult.CreatedItemName);
-		ResultData->SetStringField(TEXT("message"), FString::Printf(TEXT("Successfully added function '%s'"), *WriteResult.CreatedItemName));
+		ResultData->SetStringField(TEXT("message"), FString::Printf(
+			TEXT("Successfully added function '%s'. "
+				 "NEXT STEP: Call olive.get_recipe for this function, then "
+				 "blueprint.preview_plan_json + blueprint.apply_plan_json to implement it. "
+				 "Do NOT add another function until this one has graph logic."),
+			*WriteResult.CreatedItemName));
 
 		return FOliveWriteResult::Success(ResultData);
 	});

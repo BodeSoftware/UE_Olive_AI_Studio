@@ -45,8 +45,9 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FOnMCPClientDisconnected, const FString& /* 
 
 /**
  * Tool Called Event
+ * Fires when a tool is called via MCP. Arguments is the tool's input parameters JSON (may be null).
  */
-DECLARE_MULTICAST_DELEGATE_TwoParams(FOnMCPToolCalled, const FString& /* ToolName */, const FString& /* ClientId */);
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnMCPToolCalled, const FString& /* ToolName */, const FString& /* ClientId */, const TSharedPtr<FJsonObject>& /* Arguments */);
 
 /**
  * MCP Notification Event for poll-based delivery
@@ -217,6 +218,23 @@ public:
 		const FString& ClientId = TEXT("")
 	);
 
+	// ==========================================
+	// Tool Filtering (Autonomous Mode)
+	// ==========================================
+
+	/**
+	 * Set a tool name prefix filter for tools/list responses.
+	 * When set, HandleToolsList returns only tools whose names start with
+	 * one of the allowed prefixes. HandleToolsCall is NOT affected (any
+	 * registered tool can still be called regardless of filter).
+	 *
+	 * @param AllowedPrefixes Set of tool name prefixes (e.g., {"blueprint.", "project.", "olive."})
+	 */
+	void SetToolFilter(const TSet<FString>& AllowedPrefixes);
+
+	/** Clear the tool filter, returning to full tool list. */
+	void ClearToolFilter();
+
 private:
 	FOliveMCPServer();
 	~FOliveMCPServer();
@@ -368,4 +386,14 @@ private:
 
 	/** Prune old events from buffer */
 	void PruneEventBuffer();
+
+	// ==========================================
+	// Tool Filter State
+	// ==========================================
+
+	/** Active tool filter prefixes. Empty = no filter (return all tools). */
+	TSet<FString> ToolFilterPrefixes;
+
+	/** Lock for tool filter access (filter set on game thread, read on HTTP thread) */
+	mutable FCriticalSection ToolFilterLock;
 };

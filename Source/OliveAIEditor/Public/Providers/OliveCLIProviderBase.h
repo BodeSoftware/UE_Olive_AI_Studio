@@ -62,6 +62,55 @@ private:
 };
 
 /**
+ * Context from the most recent autonomous run, used to enrich "continue" messages.
+ *
+ * Tracks the original user message, which assets were modified, and what tools
+ * were called during the run. When the user sends a continuation message
+ * (e.g., "continue", "keep going"), this context is injected into the prompt
+ * so the new CLI process knows what was already done.
+ */
+struct FAutonomousRunContext
+{
+	/** The original user message that started the run */
+	FString OriginalMessage;
+
+	/** Asset paths that were modified during the run (extracted from MCP tool calls) */
+	TArray<FString> ModifiedAssetPaths;
+
+	/** Tool call log entry: tool name + asset path (if any). */
+	struct FToolCallEntry
+	{
+		FString ToolName;
+		FString AssetPath;
+	};
+
+	/** Ordered log of tool calls made during the run. Capped at 50 entries. */
+	TArray<FToolCallEntry> ToolCallLog;
+
+	/** Run outcome */
+	enum class EOutcome : uint8
+	{
+		Completed,    // Process exited normally
+		IdleTimeout,  // Killed by idle timeout (no tool calls for N seconds)
+		RuntimeLimit  // Killed by total runtime limit
+	};
+	EOutcome Outcome = EOutcome::Completed;
+
+	/** Whether this context is valid (a run has completed) */
+	bool bValid = false;
+
+	/** Reset to empty state */
+	void Reset()
+	{
+		OriginalMessage.Empty();
+		ModifiedAssetPaths.Empty();
+		ToolCallLog.Empty();
+		Outcome = EOutcome::Completed;
+		bValid = false;
+	}
+};
+
+/**
  * Abstract base class for CLI-based AI providers.
  *
  * Provides the complete IOliveAIProvider implementation for providers that
@@ -263,6 +312,37 @@ protected:
 	void HandleResponseCompleteAutonomous(int32 ReturnCode);
 
 	/**
+	 * Check if a user message looks like a continuation request.
+	 * Matches common phrases like "continue", "keep going", "finish", "resume".
+	 *
+	 * @param Message The user's message text
+	 * @return True if the message appears to be a continuation of a previous task
+	 */
+	bool IsContinuationMessage(const FString& Message) const;
+
+	/**
+	 * Build an enriched prompt for a continuation message by injecting context
+	 * from the previous autonomous run. Includes the original task, what was done
+	 * (grouped by asset with deduped tool names), run outcome, and action directive.
+	 *
+	 * @param UserMessage The user's continuation message (e.g., "continue")
+	 * @return Enriched prompt with previous run context
+	 */
+	FString BuildContinuationPrompt(const FString& UserMessage) const;
+
+	/**
+	 * Build a compact summary of current state for each modified asset.
+	 * Loads each UBlueprint and formats components, variables, functions (with
+	 * node counts), event dispatchers, and compile status. Non-Blueprint assets
+	 * get a one-line note.
+	 *
+	 * MUST be called on the game thread (loads UObject packages).
+	 *
+	 * @return Formatted summary for injection into continuation prompts
+	 */
+	FString BuildAssetStateSummary() const;
+
+	/**
 	 * Kill the running CLI process and clean up all resources.
 	 * Safe to call from any thread. Waits for reader thread completion,
 	 * terminates the process, and closes all pipes.
@@ -354,6 +434,41 @@ protected:
 	 *  Updated by MCP server OnToolCalled delegate. Used for activity-based timeout. */
 	std::atomic<double> LastToolCallTimestamp{0.0};
 
+	/** Count of scaffolding operations (add_component, add_variable, modify_component,
+	 *  create_from_template) in the current run. Written on game thread via OnToolCalled,
+	 *  read on background thread for adaptive idle timeout. */
+	std::atomic<int32> ScaffoldingOpCount{0};
+
+	/** Count of olive.get_recipe calls in the current run. Multiple recipe lookups
+	 *  signal complex multi-function planning ahead — triggers extended idle timeout. */
+	std::atomic<int32> RecipeCallCount{0};
+
 	/** Delegate handle for MCP tool call subscription (cleaned up on process exit) */
 	FDelegateHandle ToolCallDelegateHandle;
+
+	/** Context from the most recent autonomous run for "continue" enrichment */
+	FAutonomousRunContext LastRunContext;
+
+	/** Whether the last process termination was due to timeout (idle or runtime limit).
+	 *  Set on the background thread in LaunchCLIProcess, read on game thread in HandleResponseCompleteAutonomous. */
+	bool bLastRunTimedOut = false;
+
+	/** Whether the last timeout was specifically a runtime limit (not idle timeout).
+	 *  Set on the background thread alongside bLastRunTimedOut. Used to distinguish
+	 *  idle stalls (auto-continuable) from runtime limit hits (not auto-continuable). */
+	bool bLastRunWasRuntimeLimit = false;
+
+	/** Number of automatic continuations since last user-initiated message.
+	 *  Reset to 0 on each non-continuation SendMessageAutonomous call. */
+	int32 AutoContinueCount = 0;
+
+	/** Whether the current SendMessageAutonomous invocation was triggered internally
+	 *  by the auto-continue mechanism in HandleResponseCompleteAutonomous.
+	 *  Set to true before the auto-continue AsyncTask dispatch, consumed at the top
+	 *  of SendMessageAutonomous. This ensures AutoContinueCount is preserved across
+	 *  auto-continues but reset on any user-initiated input. */
+	bool bIsAutoContinuation = false;
+
+	/** Maximum automatic continuations before giving up and reporting to user */
+	static constexpr int32 MaxAutoContinues = 3;
 };

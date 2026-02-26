@@ -525,18 +525,68 @@ void FOliveMCPServer::HandleInitialized(const FString& ClientId)
 
 TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsList(const TSharedPtr<FJsonObject>& Params)
 {
-	TSharedPtr<FJsonObject> Result = FOliveToolRegistry::Get().GetToolsListMCP();
+	TSharedPtr<FJsonObject> FullResult = FOliveToolRegistry::Get().GetToolsListMCP();
 
-	// Log tool count for diagnostics
+	// Apply tool filter if active
+	TSet<FString> ActiveFilter;
+	{
+		FScopeLock Lock(&ToolFilterLock);
+		ActiveFilter = ToolFilterPrefixes;
+	}
+
+	if (ActiveFilter.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> FilteredTools;
+		const TArray<TSharedPtr<FJsonValue>>* AllTools = nullptr;
+		if (FullResult.IsValid() && FullResult->TryGetArrayField(TEXT("tools"), AllTools))
+		{
+			for (const TSharedPtr<FJsonValue>& ToolVal : *AllTools)
+			{
+				const TSharedPtr<FJsonObject>* ToolObj;
+				if (ToolVal->TryGetObject(ToolObj) && ToolObj)
+				{
+					FString ToolName;
+					(*ToolObj)->TryGetStringField(TEXT("name"), ToolName);
+
+					bool bAllowed = false;
+					for (const FString& Prefix : ActiveFilter)
+					{
+						if (ToolName.StartsWith(Prefix))
+						{
+							bAllowed = true;
+							break;
+						}
+					}
+
+					if (bAllowed)
+					{
+						FilteredTools.Add(ToolVal);
+					}
+				}
+			}
+		}
+
+		TSharedPtr<FJsonObject> FilteredResult = MakeShared<FJsonObject>();
+		FilteredResult->SetArrayField(TEXT("tools"), FilteredTools);
+
+		UE_LOG(LogOliveAI, Log, TEXT("MCP tools/list: returning %d/%d tools (filtered by %d prefixes)"),
+			FilteredTools.Num(),
+			AllTools ? AllTools->Num() : 0,
+			ActiveFilter.Num());
+
+		return FilteredResult;
+	}
+
+	// No filter -- return all tools
 	int32 ToolCount = 0;
 	const TArray<TSharedPtr<FJsonValue>>* ToolsArray;
-	if (Result.IsValid() && Result->TryGetArrayField(TEXT("tools"), ToolsArray))
+	if (FullResult.IsValid() && FullResult->TryGetArrayField(TEXT("tools"), ToolsArray))
 	{
 		ToolCount = ToolsArray->Num();
 	}
 	UE_LOG(LogOliveAI, Log, TEXT("MCP tools/list: returning %d tools"), ToolCount);
 
-	return Result;
+	return FullResult;
 }
 
 TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsCall(
@@ -583,8 +633,8 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsCall(
 		return ErrorResult;
 	}
 
-	// Fire event
-	OnToolCalled.Broadcast(ToolName, ClientId);
+	// Fire event (pass Arguments so subscribers can inspect tool call parameters)
+	OnToolCalled.Broadcast(ToolName, ClientId, Arguments);
 
 	// Emit progress notification
 	{
@@ -689,8 +739,8 @@ void FOliveMCPServer::HandleToolsCallAsync(
 
 	UE_LOG(LogOliveAI, Log, TEXT("MCP tools/call: %s (client: %s)"), *ToolName, *ClientId);
 
-	// Fire event
-	OnToolCalled.Broadcast(ToolName, ClientId);
+	// Fire event (pass Arguments so subscribers can inspect tool call parameters)
+	OnToolCalled.Broadcast(ToolName, ClientId, Arguments);
 
 	// Emit progress notification
 	{
@@ -1155,6 +1205,24 @@ bool FOliveMCPServer::HandleEventsPoll(const FHttpServerRequest& Request, const 
 
 	OnComplete(MoveTemp(HttpResponse));
 	return true;
+}
+
+// ==========================================
+// Tool Filtering
+// ==========================================
+
+void FOliveMCPServer::SetToolFilter(const TSet<FString>& AllowedPrefixes)
+{
+	FScopeLock Lock(&ToolFilterLock);
+	ToolFilterPrefixes = AllowedPrefixes;
+	UE_LOG(LogOliveAI, Log, TEXT("MCP tool filter set: %d prefixes"), AllowedPrefixes.Num());
+}
+
+void FOliveMCPServer::ClearToolFilter()
+{
+	FScopeLock Lock(&ToolFilterLock);
+	ToolFilterPrefixes.Empty();
+	UE_LOG(LogOliveAI, Log, TEXT("MCP tool filter cleared"));
 }
 
 void FOliveMCPServer::PruneEventBuffer()

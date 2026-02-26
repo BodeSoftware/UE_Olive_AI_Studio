@@ -167,157 +167,13 @@
                 "inputs": [],
                 "outputs": [
                     { "name": "bSuccess", "type": "Boolean" }
-                ],
-                "plan": {
-                    "schema_version": "2.0",
-                    "steps": [
-                        {
-                            "step_id": "get_can_fire",
-                            "op": "get_var",
-                            "target": "bCanFire"
-                        },
-                        {
-                            "step_id": "check_can_fire",
-                            "op": "branch",
-                            "inputs": {
-                                "Condition": "@get_can_fire.auto"
-                            },
-                            "exec_outputs": {
-                                "True": "get_ammo",
-                                "False": "set_fail"
-                            }
-                        },
-                        {
-                            "step_id": "get_ammo",
-                            "op": "get_var",
-                            "target": "CurrentAmmo"
-                        },
-                        {
-                            "step_id": "has_ammo",
-                            "op": "call",
-                            "target": "Greater_IntInt",
-                            "inputs": {
-                                "A": "@get_ammo.auto",
-                                "B": "0"
-                            }
-                        },
-                        {
-                            "step_id": "branch_ammo",
-                            "op": "branch",
-                            "inputs": {
-                                "Condition": "@has_ammo.auto"
-                            },
-                            "exec_after": "get_ammo",
-                            "exec_outputs": {
-                                "True": "decrement",
-                                "False": "fire_empty"
-                            }
-                        },
-                        {
-                            "step_id": "decrement",
-                            "op": "call",
-                            "target": "Subtract_IntInt",
-                            "inputs": {
-                                "A": "@get_ammo.auto",
-                                "B": "1"
-                            }
-                        },
-                        {
-                            "step_id": "set_ammo",
-                            "op": "set_var",
-                            "target": "CurrentAmmo",
-                            "inputs": {
-                                "value": "@decrement.auto"
-                            },
-                            "exec_after": "decrement"
-                        },
-                        {
-                            "step_id": "fire_event",
-                            "op": "call_delegate",
-                            "target": "OnFired",
-                            "inputs": {
-                                "RemainingAmmo": "@decrement.auto"
-                            },
-                            "exec_after": "set_ammo"
-                        },
-                        {
-                            "step_id": "disable_fire",
-                            "op": "set_var",
-                            "target": "bCanFire",
-                            "inputs": {
-                                "value": "false"
-                            },
-                            "exec_after": "fire_event"
-                        },
-                        {
-                            "step_id": "get_fire_rate",
-                            "op": "get_var",
-                            "target": "FireRate"
-                        },
-                        {
-                            "step_id": "calc_cooldown",
-                            "op": "call",
-                            "target": "Divide_FloatFloat",
-                            "inputs": {
-                                "A": "1.0",
-                                "B": "@get_fire_rate.auto"
-                            }
-                        },
-                        {
-                            "step_id": "set_timer",
-                            "op": "call",
-                            "target": "SetTimerByFunctionName",
-                            "inputs": {
-                                "FunctionName": "ResetCanFire",
-                                "Time": "@calc_cooldown.auto",
-                                "bLooping": "false"
-                            },
-                            "exec_after": "disable_fire"
-                        },
-                        {
-                            "step_id": "set_success",
-                            "op": "set_var",
-                            "target": "bSuccess",
-                            "inputs": {
-                                "value": "true"
-                            },
-                            "exec_after": "set_timer"
-                        },
-                        {
-                            "step_id": "fire_empty",
-                            "op": "call_delegate",
-                            "target": "OnAmmoEmpty"
-                        },
-                        {
-                            "step_id": "set_fail",
-                            "op": "set_var",
-                            "target": "bSuccess",
-                            "inputs": {
-                                "value": "false"
-                            },
-                            "exec_after": "fire_empty"
-                        }
-                    ]
-                }
+                ]
             },
             {
                 "name": "ResetCanFire",
                 "description": "Called by timer to re-enable firing after cooldown.",
                 "inputs": [],
-                "outputs": [],
-                "plan": {
-                    "schema_version": "2.0",
-                    "steps": [
-                        {
-                            "step_id": "enable",
-                            "op": "set_var",
-                            "target": "bCanFire",
-                            "inputs": {
-                                "value": "true"
-                            }
-                        }
-                    ]
-                }
+                "outputs": []
             },
             {
                 "name": "Reload",
@@ -325,43 +181,7 @@
                 "inputs": [],
                 "outputs": [
                     { "name": "NewAmmo", "type": "Integer" }
-                ],
-                "plan": {
-                    "schema_version": "2.0",
-                    "steps": [
-                        {
-                            "step_id": "get_max",
-                            "op": "get_var",
-                            "target": "MaxAmmo"
-                        },
-                        {
-                            "step_id": "set_current",
-                            "op": "set_var",
-                            "target": "CurrentAmmo",
-                            "inputs": {
-                                "value": "@get_max.auto"
-                            }
-                        },
-                        {
-                            "step_id": "fire_reloaded",
-                            "op": "call_delegate",
-                            "target": "OnReloaded",
-                            "inputs": {
-                                "NewAmmo": "@get_max.auto"
-                            },
-                            "exec_after": "set_current"
-                        },
-                        {
-                            "step_id": "set_return",
-                            "op": "set_var",
-                            "target": "NewAmmo",
-                            "inputs": {
-                                "value": "@get_max.auto"
-                            },
-                            "exec_after": "fire_reloaded"
-                        }
-                    ]
-                }
+                ]
             }
         ]
     }

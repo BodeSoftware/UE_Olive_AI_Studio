@@ -58,7 +58,13 @@
 - **Generation counter**: `std::atomic<uint32> RequestGeneration` prevents stale async completions
   - Incremented in `SendMessage()`/`SendMessageAutonomous()` (start) and `CancelRequest()` (invalidate)
   - `LaunchCLIProcess` reads it via `.load()` and checks in all 3 game-thread dispatches (line-parse, buffer-flush, completion)
-- **Idle timeout**: `CLI_IDLE_TIMEOUT_SECONDS = 120.0` in anonymous namespace; resets on any stdout output; kills hung processes
+- **Idle timeout**: `CLI_IDLE_TIMEOUT_SECONDS = 90.0` in anonymous namespace; resets on any stdout output; kills hung processes
+- **Auto-continue**: on idle timeout + write-op progress + AutoContinueCount < MaxAutoContinues (3), relaunches with BuildContinuationPrompt. Uses AsyncTask to avoid re-entrancy. `bLastRunWasRuntimeLimit` flag distinguishes runtime limit (no auto-continue) from idle stall.
+  - `bIsAutoContinuation` flag: set before AsyncTask dispatch, consumed at top of SendMessageAutonomous. Prevents counter reset on auto-continue calls.
+  - `IsWriteOperation()` in anonymous namespace: checks tool name suffix for write ops (create, apply, add, set_, connect, etc.). Only write-op stalls trigger auto-continue.
+  - `BuildContinuationPrompt` now calls `BuildAssetStateSummary()` (loads UBlueprints on game thread) to inject asset state (components, variables, functions with node counts, compile status)
+  - BuildContinuationPrompt called INSIDE the AsyncTask lambda (game thread safe for UObject loading)
+- **Tool filtering**: `FOliveMCPServer::SetToolFilter(TSet<FString>)` / `ClearToolFilter()` restrict `HandleToolsList` by prefix. `DetermineToolPrefixes()` in anonymous namespace infers domain from user message. Set before LaunchCLIProcess, cleared in HandleResponseCompleteAutonomous and CancelRequest. `HandleToolsCall` is NOT filtered (any tool still callable).
 
 ## UE 5.5 API Quirks
 - **Float/Double PinType**: In UE 5.5, `PC_Float` and `PC_Double` must NOT be used as `PinCategory`. Instead use `PinCategory = PC_Real` with `PinSubCategory = PC_Float` (or `PC_Double`). Using `PC_Float` directly as category causes "Can't parse default value" compile warnings because the engine can't resolve an FProperty from a bare `PC_Float` category.

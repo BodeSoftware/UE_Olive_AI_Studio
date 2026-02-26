@@ -36,3 +36,13 @@
 - **Fix 3 (template result enrichment)**: `function_details` and `event_graph_details` arrays added to ApplyTemplate result. Each entry has `has_graph_logic`, `node_count`, `plan_steps` (condensed step summaries), `plan_errors`. Eliminates post-template read flood (7 reads -> 0).
 - **Fix 3 key data**: `PlanResult.CreatedNodes.Num()` provides node count. Step summaries built from `Plan.Steps` (step_id + op + target).
 - **Implementation order**: Fix 1 (30min) -> Fix 3 (1.5hr) -> Fix 2 (3hr). All independent, can parallelize.
+
+## Autonomous Efficiency Round 4 - Feb 2026
+- `plans/autonomous-efficiency-round4.md` -- 5 fixes (slim templates, auto-continue, tool filter, resolver notes, auto-read)
+- **Fix 1 (slim templates)**: Remove `plan` keys from ALL factory template JSON files (gun.json: 3 functions, stat_component.json: 1 function). Templates create structure only (components, vars, empty function stubs, dispatchers). AI writes its own plan_json. Update 4 prompt locations (AGENTS.md, recipe_routing.txt, cli_blueprint.txt, sandbox CLAUDE.md).
+- **Fix 1 key finding**: No-template run was 2x faster (4:53 vs 10:11). AI micro-edited template plans instead of trusting them. AI is demonstrably good at writing plan_json from recipes alone.
+- **Fix 2 (auto-continue on stall)**: Reduce `CLI_IDLE_TIMEOUT_SECONDS` from 120 to 50. After idle timeout + real work done + not at max retries, auto-relaunch via `SendMessageAutonomous(BuildContinuationPrompt("continue"))`. `AutoContinueCount` (max 3) on CLIProviderBase. Only fires for `IdleTimeout`, NOT `RuntimeLimit`. Uses `AsyncTask(GameThread)` to avoid re-entering from completion handler.
+- **Fix 3 (tool filter)**: `SetToolFilter(TSet<FString>)` / `ClearToolFilter()` on FOliveMCPServer. Filters `HandleToolsList` only -- `HandleToolsCall` accepts ANY tool (defense-in-depth). `DetermineToolPrefixes()` does keyword matching on user message. Default (ambiguous): blueprint + project + olive + cross-system (~35 tools). Multi-domain: no filter (all 104). `ToolFilterLock` for thread safety.
+- **Fix 4 (component event notes)**: Component bound events already work end-to-end (ResolveEventOp passes through to CreateEventNode which does SCS scan). Only change: better error suggestion text + resolver note for non-EventNameMap events.
+- **Fix 5 (auto-read small BPs)**: `AUTO_FULL_READ_NODE_THRESHOLD = 50`. In HandleBlueprintRead, count nodes via UBlueprint graph arrays before calling Reader. Below threshold: auto-upgrade summary to full read. Adds `read_mode: "auto_full"` hint to result JSON.
+- **All fixes independent** -- can fully parallelize. Total ~4.5 hours.

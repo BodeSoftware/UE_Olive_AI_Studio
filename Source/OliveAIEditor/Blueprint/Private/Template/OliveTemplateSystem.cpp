@@ -961,6 +961,20 @@ FOliveToolResult FOliveTemplateSystem::ApplyTemplate(
 	TArray<FString> CreatedDispatchers;
 	TArray<FString> CreatedFunctions;
 
+	// Per-function and per-event-graph summaries for the result JSON.
+	// This lets the AI see what logic was built without needing to call blueprint.read.
+	struct FTemplateFunctionSummary
+	{
+		FString Name;
+		int32 NodeCount = 0;
+		TArray<FString> StepSummaries;  // e.g., "evt: event BeginPlay", "spawn: spawn_actor Actor"
+		bool bPlanExecuted = false;
+		bool bPlanSucceeded = false;
+		TArray<FString> PlanErrors;
+	};
+	TArray<FTemplateFunctionSummary> FunctionSummaries;
+	TArray<FTemplateFunctionSummary> EventGraphSummaries;
+
 	// 5. Create the Blueprint
 	FOliveBlueprintWriter& Writer = FOliveBlueprintWriter::Get();
 	FOliveBlueprintWriteResult CreateResult = Writer.CreateBlueprint(AssetPath, ParentClass, BPType);
@@ -1236,6 +1250,17 @@ FOliveToolResult FOliveTemplateSystem::ApplyTemplate(
 							ErrMsg += TEXT("\n  ") + Err.Message;
 						}
 						Warnings.Add(ErrMsg);
+
+						// Track as a failed plan execution in function summaries
+						FTemplateFunctionSummary FuncSummary;
+						FuncSummary.Name = FuncName;
+						FuncSummary.bPlanExecuted = true;
+						FuncSummary.bPlanSucceeded = false;
+						for (const FOliveIRBlueprintPlanError& Err : ResolveResult.Errors)
+						{
+							FuncSummary.PlanErrors.Add(Err.Message);
+						}
+						FunctionSummaries.Add(MoveTemp(FuncSummary));
 						continue;
 					}
 
@@ -1275,11 +1300,50 @@ FOliveToolResult FOliveTemplateSystem::ApplyTemplate(
 						Warnings.Add(ErrMsg);
 					}
 
+					// Collect function plan summary for result enrichment
+					{
+						FTemplateFunctionSummary FuncSummary;
+						FuncSummary.Name = FuncName;
+						FuncSummary.bPlanExecuted = true;
+						FuncSummary.bPlanSucceeded = PlanResult.bSuccess || PlanResult.bPartial;
+						FuncSummary.NodeCount = PlanResult.StepToNodeMap.Num();
+
+						// Build step summaries from the expanded plan
+						for (const FOliveIRBlueprintPlanStep& Step : ResolveResult.ExpandedPlan.Steps)
+						{
+							FString Summary = FString::Printf(TEXT("%s: %s"), *Step.StepId, *Step.Op);
+							if (!Step.Target.IsEmpty())
+							{
+								Summary += TEXT(" ") + Step.Target;
+							}
+							FuncSummary.StepSummaries.Add(Summary);
+						}
+
+						// Capture errors if execution did not fully succeed
+						if (!PlanResult.bSuccess)
+						{
+							for (const FOliveIRBlueprintPlanError& Err : PlanResult.Errors)
+							{
+								FuncSummary.PlanErrors.Add(Err.Message);
+							}
+						}
+
+						FunctionSummaries.Add(MoveTemp(FuncSummary));
+					}
+
 					// Append resolve warnings
 					for (const FString& W : ResolveResult.Warnings)
 					{
 						Warnings.Add(FString::Printf(TEXT("[%s resolve] %s"), *FuncName, *W));
 					}
+				}
+				else
+				{
+					// Function created but has no plan -- track as empty stub
+					FTemplateFunctionSummary FuncSummary;
+					FuncSummary.Name = FuncName;
+					FuncSummary.bPlanExecuted = false;
+					FunctionSummaries.Add(MoveTemp(FuncSummary));
 				}
 			}
 		}
@@ -1334,6 +1398,17 @@ FOliveToolResult FOliveTemplateSystem::ApplyTemplate(
 						ErrMsg += TEXT("\n  ") + Err.Message;
 					}
 					Warnings.Add(ErrMsg);
+
+					// Track as a failed plan execution in event graph summaries
+					FTemplateFunctionSummary EGSummary;
+					EGSummary.Name = EGName;
+					EGSummary.bPlanExecuted = true;
+					EGSummary.bPlanSucceeded = false;
+					for (const FOliveIRBlueprintPlanError& Err : ResolveResult.Errors)
+					{
+						EGSummary.PlanErrors.Add(Err.Message);
+					}
+					EventGraphSummaries.Add(MoveTemp(EGSummary));
 					continue;
 				}
 
@@ -1376,6 +1451,37 @@ FOliveToolResult FOliveTemplateSystem::ApplyTemplate(
 						ErrMsg += TEXT("\n  ") + Err.Message;
 					}
 					Warnings.Add(ErrMsg);
+				}
+
+				// Collect event graph plan summary for result enrichment
+				{
+					FTemplateFunctionSummary EGSummary;
+					EGSummary.Name = EGName;
+					EGSummary.bPlanExecuted = true;
+					EGSummary.bPlanSucceeded = PlanResult.bSuccess || PlanResult.bPartial;
+					EGSummary.NodeCount = PlanResult.StepToNodeMap.Num();
+
+					// Build step summaries from the expanded plan
+					for (const FOliveIRBlueprintPlanStep& Step : ResolveResult.ExpandedPlan.Steps)
+					{
+						FString Summary = FString::Printf(TEXT("%s: %s"), *Step.StepId, *Step.Op);
+						if (!Step.Target.IsEmpty())
+						{
+							Summary += TEXT(" ") + Step.Target;
+						}
+						EGSummary.StepSummaries.Add(Summary);
+					}
+
+					// Capture errors if execution did not fully succeed
+					if (!PlanResult.bSuccess)
+					{
+						for (const FOliveIRBlueprintPlanError& Err : PlanResult.Errors)
+						{
+							EGSummary.PlanErrors.Add(Err.Message);
+						}
+					}
+
+					EventGraphSummaries.Add(MoveTemp(EGSummary));
 				}
 
 				// Append resolve warnings
@@ -1449,6 +1555,55 @@ FOliveToolResult FOliveTemplateSystem::ApplyTemplate(
 	ResultData->SetArrayField(TEXT("event_dispatchers"), StringArrayToJson(CreatedDispatchers));
 	ResultData->SetArrayField(TEXT("functions"), StringArrayToJson(CreatedFunctions));
 
+	// Function details with graph logic summary (eliminates need for post-template reads)
+	auto BuildDetailsArray = [&StringArrayToJson](const TArray<FTemplateFunctionSummary>& Summaries)
+		-> TArray<TSharedPtr<FJsonValue>>
+	{
+		TArray<TSharedPtr<FJsonValue>> DetailsArray;
+		for (const FTemplateFunctionSummary& Summary : Summaries)
+		{
+			TSharedPtr<FJsonObject> Detail = MakeShared<FJsonObject>();
+			Detail->SetStringField(TEXT("name"), Summary.Name);
+			Detail->SetBoolField(TEXT("has_graph_logic"), Summary.bPlanExecuted);
+
+			if (Summary.bPlanExecuted)
+			{
+				Detail->SetNumberField(TEXT("node_count"), Summary.NodeCount);
+				Detail->SetBoolField(TEXT("plan_succeeded"), Summary.bPlanSucceeded);
+
+				// Step summaries (compact, one line per step)
+				TArray<TSharedPtr<FJsonValue>> StepJsonArray;
+				for (const FString& S : Summary.StepSummaries)
+				{
+					StepJsonArray.Add(MakeShared<FJsonValueString>(S));
+				}
+				Detail->SetArrayField(TEXT("plan_steps"), StepJsonArray);
+
+				if (Summary.PlanErrors.Num() > 0)
+				{
+					Detail->SetArrayField(TEXT("plan_errors"), StringArrayToJson(Summary.PlanErrors));
+				}
+			}
+			else
+			{
+				// Function was created but has no plan (empty function body -- just entry node)
+				Detail->SetStringField(TEXT("note"), TEXT("Empty function body - needs plan_json"));
+			}
+
+			DetailsArray.Add(MakeShared<FJsonValueObject>(Detail));
+		}
+		return DetailsArray;
+	};
+
+	if (FunctionSummaries.Num() > 0)
+	{
+		ResultData->SetArrayField(TEXT("function_details"), BuildDetailsArray(FunctionSummaries));
+	}
+	if (EventGraphSummaries.Num() > 0)
+	{
+		ResultData->SetArrayField(TEXT("event_graph_details"), BuildDetailsArray(EventGraphSummaries));
+	}
+
 	// Warnings
 	if (Warnings.Num() > 0)
 	{
@@ -1460,6 +1615,41 @@ FOliveToolResult FOliveTemplateSystem::ApplyTemplate(
 		*TemplateId, *PresetName, *AssetPath,
 		CreatedComponents.Num(), CreatedVariables.Num(), CreatedDispatchers.Num(), CreatedFunctions.Num(),
 		Warnings.Num(), CompileResult.bSuccess ? TEXT("true") : TEXT("false"));
+
+	// Build message with explicit empty-function checklist for sequential processing.
+	// Listing functions by name prevents batching — "3 funcs" invites batching,
+	// "Fire (empty), Reload (empty)" creates a sequential checklist.
+	{
+		FString Message = FString::Printf(TEXT("Created '%s' from template '%s'"), *AssetPath, *TemplateId);
+		if (!PresetName.IsEmpty())
+		{
+			Message += FString::Printf(TEXT(" (preset=%s)"), *PresetName);
+		}
+
+		TArray<FString> EmptyFunctions;
+		for (const FTemplateFunctionSummary& Summary : FunctionSummaries)
+		{
+			if (!Summary.bPlanExecuted)
+			{
+				EmptyFunctions.Add(Summary.Name);
+			}
+		}
+
+		if (EmptyFunctions.Num() > 0)
+		{
+			Message += TEXT(". Functions needing graph logic: ");
+			for (int32 i = 0; i < EmptyFunctions.Num(); i++)
+			{
+				if (i > 0) { Message += TEXT(", "); }
+				Message += EmptyFunctions[i] + TEXT(" (empty)");
+			}
+			Message += TEXT(". REQUIRED: For each empty function, call olive.get_recipe then "
+				"blueprint.preview_plan_json + blueprint.apply_plan_json. "
+				"Work ONE function at a time — do NOT batch all recipes before writing plans.");
+		}
+
+		ResultData->SetStringField(TEXT("message"), Message);
+	}
 
 	FOliveToolResult Result = FOliveToolResult::Success(ResultData);
 	if (!CompileResult.bSuccess)

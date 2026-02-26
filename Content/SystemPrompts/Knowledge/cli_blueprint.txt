@@ -14,10 +14,13 @@ SMALL EDIT (1-2 nodes on existing graph):
 1. blueprint.read_event_graph → 2. blueprint.add_node + blueprint.connect_pins
 
 MULTI-ASSET (2+ Blueprints needed, e.g. "gun and bullet"):
-1. Create ALL asset structures first (blueprint.create + add_component + add_variable for EVERY asset)
-2. Wire graph logic for each asset AFTER all structures exist
-3. Budget: with 10 iterations and 2 assets, spend max 5 per asset
-4. NEVER spend all iterations on one asset when multiple are needed
+1. Complete ONE asset fully before starting the next:
+   a. Create structure: blueprint.create (or create_from_template) + add_component + add_variable + add_function
+   b. Wire ALL functions: get_recipe + preview + apply plan_json for each function
+   c. Compile once after all functions are wired
+   d. Fix any compile errors before moving on
+2. Then create and wire the next asset the same way.
+3. Why: deferring all wiring until after all scaffolding creates an impossible planning cliff and causes stalls.
 
 ## Plan JSON (v2.0)
 ```json
@@ -62,9 +65,12 @@ Enum: {"category":"byte","enum_name":"ECollisionChannel"}
 
 ## Templates
 Before creating a Blueprint from scratch, check if an available template matches.
-- blueprint.create_from_template(template_id, preset, asset_path) creates a complete Blueprint in one call.
-- Templates include components, variables, event dispatchers, functions, and event graphs.
+- blueprint.create_from_template(template_id, preset, asset_path) creates the Blueprint STRUCTURE in one call.
+- Templates create: components, variables, event dispatchers, and empty function stubs (with correct signatures).
+- After template creation, write plan_json for EACH function listed in the result. Call olive.get_recipe first for each.
+- Do NOT call blueprint.read or read_function after template creation -- the functions are empty stubs.
 - Use a preset name if one matches (e.g., "Bullet", "Rocket" for projectile template).
+- Call list_templates ONCE per task. Call get_template only for templates you plan to use.
 - If no template matches, proceed with the normal CREATE workflow above.
 
 ## Rules

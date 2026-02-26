@@ -22,13 +22,124 @@
 #include "Async/Async.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "Engine/Blueprint.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
+#include "EdGraph/EdGraph.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogOliveCLIProvider, Log, All);
 
 namespace
 {
-	/** Maximum seconds with no stdout output before killing a hung CLI process */
+	/** Base idle timeout: seconds with no stdout before killing a hung CLI process.
+	 *  120s accommodates typical plan generation pauses. Extended to 180s when the
+	 *  run has done scaffolding work or multiple recipe lookups (complex planning). */
 	constexpr double CLI_IDLE_TIMEOUT_SECONDS = 120.0;
+
+	/** Extended idle timeout for complex planning scenarios.
+	 *  Activated when the run has performed scaffolding ops (add_component,
+	 *  add_variable, modify_component, create_from_template) or looked up
+	 *  multiple recipes (get_recipe >= 2), indicating imminent multi-function
+	 *  graph planning that needs sustained thinking time. */
+	constexpr double CLI_EXTENDED_IDLE_TIMEOUT_SECONDS = 180.0;
+
+	/** Determine tool prefixes needed for a given user message.
+	 *  Used in autonomous mode to filter tools/list to only relevant domains. */
+	TSet<FString> DetermineToolPrefixes(const FString& Message)
+	{
+		FString Lower = Message.ToLower();
+
+		// Always-included core tools
+		TSet<FString> Prefixes = {
+			TEXT("project."),
+			TEXT("olive."),
+			TEXT("cross_system."),
+		};
+
+		bool bHasBlueprint = Lower.Contains(TEXT("blueprint")) || Lower.Contains(TEXT("actor"))
+			|| Lower.Contains(TEXT("component")) || Lower.Contains(TEXT("variable"))
+			|| Lower.Contains(TEXT("function")) || Lower.Contains(TEXT("event graph"));
+		bool bHasBT = Lower.Contains(TEXT("behavior tree")) || Lower.Contains(TEXT("behaviour tree"))
+			|| Lower.Contains(TEXT("blackboard")) || Lower.Contains(TEXT(" bt "))
+			|| Lower.Contains(TEXT(" ai "));
+		bool bHasPCG = Lower.Contains(TEXT("pcg")) || Lower.Contains(TEXT("procedural"));
+		bool bHasCpp = Lower.Contains(TEXT("c++")) || Lower.Contains(TEXT("cpp"))
+			|| Lower.Contains(TEXT("header")) || Lower.Contains(TEXT("source file"));
+
+		int32 DomainCount = (bHasBlueprint ? 1 : 0) + (bHasBT ? 1 : 0)
+			+ (bHasPCG ? 1 : 0) + (bHasCpp ? 1 : 0);
+
+		// If multiple domains or none (ambiguous), return empty to show all tools
+		if (DomainCount > 1)
+		{
+			return TSet<FString>(); // Empty = no filter
+		}
+
+		if (DomainCount == 0)
+		{
+			// Default: assume Blueprint (most common use case)
+			Prefixes.Add(TEXT("blueprint."));
+			Prefixes.Add(TEXT("animbp."));
+			Prefixes.Add(TEXT("widget."));
+			return Prefixes;
+		}
+
+		if (bHasBlueprint)
+		{
+			Prefixes.Add(TEXT("blueprint."));
+			Prefixes.Add(TEXT("animbp."));
+			Prefixes.Add(TEXT("widget."));
+		}
+		if (bHasBT)
+		{
+			Prefixes.Add(TEXT("bt."));
+			Prefixes.Add(TEXT("blackboard."));
+			// Also include Blueprint tools (BT tasks often reference BPs)
+			Prefixes.Add(TEXT("blueprint."));
+		}
+		if (bHasPCG)
+		{
+			Prefixes.Add(TEXT("pcg."));
+		}
+		if (bHasCpp)
+		{
+			Prefixes.Add(TEXT("cpp."));
+		}
+
+		return Prefixes;
+	}
+
+	/** Check if a tool name represents a write/mutation operation.
+	 *  Auto-continue should only trigger after write ops (genuine stalls after progress),
+	 *  not after reads/recipes (the AI was thinking about what plan to write). */
+	bool IsWriteOperation(const FString& ToolName)
+	{
+		FString OpPart = ToolName;
+		int32 DotIdx;
+		if (ToolName.FindChar(TEXT('.'), DotIdx))
+		{
+			OpPart = ToolName.Mid(DotIdx + 1);
+		}
+
+		return OpPart.StartsWith(TEXT("create")) || OpPart.StartsWith(TEXT("apply"))
+			|| OpPart.StartsWith(TEXT("add")) || OpPart.StartsWith(TEXT("set_"))
+			|| OpPart.StartsWith(TEXT("connect")) || OpPart.StartsWith(TEXT("disconnect"))
+			|| OpPart.StartsWith(TEXT("remove")) || OpPart.StartsWith(TEXT("delete"))
+			|| OpPart.StartsWith(TEXT("rename")) || OpPart.StartsWith(TEXT("reparent"))
+			|| OpPart.StartsWith(TEXT("modify")) || OpPart.StartsWith(TEXT("override"))
+			|| OpPart.Contains(TEXT("compile")) || OpPart.Contains(TEXT("batch_write"));
+	}
+
+	/** Check if a tool call is a scaffolding operation (structural setup before graph logic).
+	 *  When the AI has done scaffolding work in a run, it's about to plan graph logic
+	 *  and needs extended thinking time — the adaptive idle timeout uses this signal. */
+	bool IsScaffoldingOperation(const FString& ToolName)
+	{
+		return ToolName.Contains(TEXT("add_component"))
+			|| ToolName.Contains(TEXT("add_variable"))
+			|| ToolName.Contains(TEXT("modify_component"))
+			|| ToolName.Contains(TEXT("create_from_template"));
+	}
 }
 
 // ==========================================
@@ -266,10 +377,12 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 	ClaudeMd += TEXT("- Do not re-preview an unchanged plan. If preview succeeds, apply in the next turn. Revising and re-previewing is fine.\n");
 	ClaudeMd += TEXT("- Complete the FULL task: create structures, wire graph logic, compile, and verify. Do not stop partway.\n");
 	ClaudeMd += TEXT("- Once ALL Blueprints compile with 0 errors and 0 warnings, the task is COMPLETE. Immediately stop and report what you built.\n");
-	ClaudeMd += TEXT("- Before writing your first plan_json for each Blueprint, call olive.get_recipe to look up the correct wiring pattern. Skip only if create_from_template already provided the logic.\n");
+	ClaudeMd += TEXT("- Before writing your first plan_json for each function, call olive.get_recipe to look up the correct wiring pattern. This includes functions created by templates -- templates create empty stubs, you write the logic.\n");
 	ClaudeMd += TEXT("- Use schema_version \"2.0\" for all plan_json calls (v2.0 has automatic pin resolution).\n");
-	ClaudeMd += TEXT("- After `create_from_template`, always `blueprint.read` the result before modifying it.\n");
+	ClaudeMd += TEXT("- After `create_from_template`, check the result for the list of created functions. Write plan_json for EACH function -- they are empty stubs. Do NOT call blueprint.read or read_function after template creation.\n");
+	ClaudeMd += TEXT("- Multi-asset tasks: complete ONE Blueprint fully (structure + plan_json + compile) before starting the next. Do NOT scaffold all assets first then wire later -- this causes stalls.\n");
 	ClaudeMd += TEXT("- If `apply_plan_json` fails, re-read the graph, fix the plan, and retry once. Fall back to add_node/connect_pins only after a second failure.\n\n");
+	ClaudeMd += TEXT("- After adding a function to a Blueprint, write plan_json for that function before creating the next function or asset. Compile once per asset after all its functions are wired.\n");
 
 	// Append the full AGENTS.md content which has workflow patterns, plan JSON format, etc.
 	if (!AgentsContent.IsEmpty())
@@ -305,6 +418,18 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 		return;
 	}
 
+	// Reset auto-continue counter on user-initiated messages.
+	// bIsAutoContinuation is set by HandleResponseCompleteAutonomous before
+	// dispatching an auto-continue. All other entry paths leave it false.
+	if (bIsAutoContinuation)
+	{
+		bIsAutoContinuation = false; // Consume the flag
+	}
+	else
+	{
+		AutoContinueCount = 0; // User-initiated = fresh budget
+	}
+
 	// Validate
 	FString ValidationError;
 	if (!ValidateConfig(ValidationError))
@@ -330,34 +455,93 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 	// so the CLI reads the correct role context instead of the developer CLAUDE.md
 	SetupAutonomousSandbox();
 
+	// Enrich continuation messages with context from the previous run.
+	// This must happen AFTER SetupAutonomousSandbox (which writes CLAUDE.md)
+	// but BEFORE LaunchCLIProcess (which delivers the message via stdin).
+	FString EffectiveMessage = UserMessage;
+	if (LastRunContext.bValid && IsContinuationMessage(UserMessage))
+	{
+		EffectiveMessage = BuildContinuationPrompt(UserMessage);
+		UE_LOG(LogOliveCLIProvider, Log,
+			TEXT("Continuation detected: enriched prompt with %d modified assets from previous run"),
+			LastRunContext.ModifiedAssetPaths.Num());
+	}
+
+	// Initialize run context tracking for this new run
+	LastRunContext.Reset();
+	LastRunContext.OriginalMessage = UserMessage;
+	bLastRunTimedOut = false;
+	bLastRunWasRuntimeLimit = false;
+
+	// Set tool filter based on message content (autonomous mode only).
+	// Uses the original user message (not continuation prompt) for consistent filtering.
+	TSet<FString> ToolPrefixes = DetermineToolPrefixes(LastRunContext.OriginalMessage);
+	if (ToolPrefixes.Num() > 0)
+	{
+		FOliveMCPServer::Get().SetToolFilter(ToolPrefixes);
+	}
+	// else: empty set = no filter, show all tools
+
 	// Autonomous mode: no system prompt escaping, no BuildCLISystemPrompt.
 	// The CLI discovers tools via MCP and reads the sandbox CLAUDE.md for domain context.
 	FString CLIArgs = GetCLIArgumentsAutonomous();
 
 	UE_LOG(LogOliveCLIProvider, Log, TEXT("Launching autonomous CLI with args: %s"), *CLIArgs);
 
-	// Subscribe to MCP tool call events for activity-based timeout tracking.
+	// Subscribe to MCP tool call events for activity-based timeout tracking
+	// and tool call logging for continuation context.
 	// Uses the AliveGuard pattern to safely update the atomic timestamp from
 	// the game thread (OnToolCalled fires on game thread) while the background
 	// read loop checks it via std::atomic<double>.
 	LastToolCallTimestamp.store(FPlatformTime::Seconds());
+	ScaffoldingOpCount.store(0);
+	RecipeCallCount.store(0);
 	if (ToolCallDelegateHandle.IsValid())
 	{
 		FOliveMCPServer::Get().OnToolCalled.Remove(ToolCallDelegateHandle);
 	}
 	TSharedPtr<FThreadSafeBool> Guard = AliveGuard;
 	ToolCallDelegateHandle = FOliveMCPServer::Get().OnToolCalled.AddLambda(
-		[this, Guard](const FString& ToolName, const FString& ClientId)
+		[this, Guard](const FString& ToolName, const FString& ClientId, const TSharedPtr<FJsonObject>& Arguments)
 		{
 			if (*Guard)
 			{
 				LastToolCallTimestamp.store(FPlatformTime::Seconds());
+
+				// Track complexity signals for adaptive idle timeout
+				if (IsScaffoldingOperation(ToolName)) { ScaffoldingOpCount.fetch_add(1); }
+				if (ToolName == TEXT("olive.get_recipe")) { RecipeCallCount.fetch_add(1); }
+
+				// Track tool call for continuation context
+				FAutonomousRunContext::FToolCallEntry Entry;
+				Entry.ToolName = ToolName;
+
+				// Extract asset_path from arguments (most tools have this)
+				if (Arguments.IsValid())
+				{
+					FString AssetPath;
+					if (Arguments->TryGetStringField(TEXT("asset_path"), AssetPath) ||
+						Arguments->TryGetStringField(TEXT("path"), AssetPath))
+					{
+						Entry.AssetPath = AssetPath;
+						if (!LastRunContext.ModifiedAssetPaths.Contains(AssetPath))
+						{
+							LastRunContext.ModifiedAssetPaths.Add(AssetPath);
+						}
+					}
+				}
+
+				// Cap tool call log at 50 entries to keep continuation prompts bounded
+				if (LastRunContext.ToolCallLog.Num() < 50)
+				{
+					LastRunContext.ToolCallLog.Add(MoveTemp(Entry));
+				}
 			}
 		});
 
 	// Delegate to shared process lifecycle, with autonomous completion handler.
 	// Pass the sandbox directory so the CLI launches from there instead of the plugin source dir.
-	LaunchCLIProcess(CLIArgs, UserMessage, [this](int32 ReturnCode)
+	LaunchCLIProcess(CLIArgs, EffectiveMessage, [this](int32 ReturnCode)
 	{
 		HandleResponseCompleteAutonomous(ReturnCode);
 	}, AutonomousSandboxDir);
@@ -555,9 +739,21 @@ void FOliveCLIProviderBase::LaunchCLIProcess(
 			}
 			else
 			{
-				if (FPlatformTime::Seconds() - LastOutputTime > CLI_IDLE_TIMEOUT_SECONDS)
+				// Adaptive idle timeout: extend when complexity signals are present.
+				// Scaffolding ops (add_component, add_variable, etc.) or multiple
+				// recipe lookups indicate imminent complex graph planning.
+				const int32 Scaffolding = ScaffoldingOpCount.load();
+				const int32 Recipes = RecipeCallCount.load();
+				const double EffectiveIdleTimeout = (Scaffolding > 0 || Recipes >= 2)
+					? CLI_EXTENDED_IDLE_TIMEOUT_SECONDS
+					: CLI_IDLE_TIMEOUT_SECONDS;
+
+				if (FPlatformTime::Seconds() - LastOutputTime > EffectiveIdleTimeout)
 				{
-					UE_LOG(LogOliveCLIProvider, Warning, TEXT("%s process idle for %.0f seconds - terminating"), *CLIName, CLI_IDLE_TIMEOUT_SECONDS);
+					UE_LOG(LogOliveCLIProvider, Warning,
+						TEXT("%s process idle for %.0f seconds (limit=%.0fs, scaffolding=%d, recipes=%d) - terminating"),
+						*CLIName, EffectiveIdleTimeout, EffectiveIdleTimeout, Scaffolding, Recipes);
+					bLastRunTimedOut = true;
 					bStopReading = true;
 					if (*Guard)
 					{
@@ -582,6 +778,7 @@ void FOliveCLIProviderBase::LaunchCLIProcess(
 					UE_LOG(LogOliveCLIProvider, Warning,
 						TEXT("%s process: no MCP tool call in %.0f seconds - terminating"),
 						*CLIName, IdleToolTimeout);
+					bLastRunTimedOut = true;
 					bStopReading = true;
 					if (*Guard)
 					{
@@ -597,6 +794,8 @@ void FOliveCLIProviderBase::LaunchCLIProcess(
 			if (MaxRuntimeSeconds > 0.0 && (FPlatformTime::Seconds() - ProcessStartTime) > MaxRuntimeSeconds)
 			{
 				UE_LOG(LogOliveCLIProvider, Warning, TEXT("%s process exceeded total runtime limit (%.0f seconds) - terminating"), *CLIName, MaxRuntimeSeconds);
+				bLastRunTimedOut = true;
+				bLastRunWasRuntimeLimit = true;
 				bStopReading = true;
 				if (*Guard)
 				{
@@ -707,13 +906,95 @@ void FOliveCLIProviderBase::HandleResponseCompleteAutonomous(int32 ReturnCode)
 		ToolCallDelegateHandle.Reset();
 	}
 
+	// Clear tool filter (must happen before potential auto-continue which re-sets it)
+	FOliveMCPServer::Get().ClearToolFilter();
+
+	// Capture run context for potential continuation.
+	// bLastRunTimedOut is set on the background thread before process termination;
+	// we read it here on the game thread after the process has exited.
+	LastRunContext.bValid = true;
+	if (bLastRunTimedOut)
+	{
+		LastRunContext.Outcome = bLastRunWasRuntimeLimit
+			? FAutonomousRunContext::EOutcome::RuntimeLimit
+			: FAutonomousRunContext::EOutcome::IdleTimeout;
+	}
+	// else stays Completed (the default set in Reset())
+
+	// Check if the last tool call was a write operation.
+	// Only auto-continue after writes (genuine stalls mid-task).
+	// If the AI stalled after reads/recipes, it was thinking — let it timeout and report to user.
+	bool bLastToolWasWrite = false;
+	if (LastRunContext.ToolCallLog.Num() > 0)
+	{
+		bLastToolWasWrite = IsWriteOperation(LastRunContext.ToolCallLog.Last().ToolName);
+	}
+
+	// Auto-continue: if the run idle-timed-out and made real write progress,
+	// automatically relaunch with continuation context.
+	// Only auto-continue on idle timeouts, NOT runtime limit timeouts
+	// (the run was long enough; auto-continuing would exceed time budgets).
+	if (bLastRunTimedOut
+		&& LastRunContext.Outcome == FAutonomousRunContext::EOutcome::IdleTimeout
+		&& LastRunContext.ToolCallLog.Num() > 0
+		&& bLastToolWasWrite
+		&& AutoContinueCount < MaxAutoContinues)
+	{
+		AutoContinueCount++;
+
+		UE_LOG(LogOliveCLIProvider, Log,
+			TEXT("Auto-continuing after stall (attempt %d/%d): %d modified assets from previous run"),
+			AutoContinueCount, MaxAutoContinues, LastRunContext.ModifiedAssetPaths.Num());
+
+		// Release busy state so SendMessageAutonomous can acquire it
+		bIsBusy = false;
+
+		// Re-use the existing callbacks (they are still valid in CallbackLock scope).
+		// Copy them out before the recursive call clears them.
+		FOnOliveStreamChunk SavedOnChunk = CurrentOnChunk;
+		FOnOliveComplete SavedOnComplete = CurrentOnComplete;
+		FOnOliveError SavedOnError = CurrentOnError;
+
+		// Mark next SendMessageAutonomous as auto-continuation so it doesn't reset the counter
+		bIsAutoContinuation = true;
+
+		// Dispatch the continuation on the next game thread tick to avoid
+		// re-entering SendMessageAutonomous from within HandleResponseComplete.
+		AsyncTask(ENamedThreads::GameThread, [this,
+			SavedOnChunk, SavedOnComplete, SavedOnError]()
+		{
+			// Re-check AliveGuard before accessing members
+			if (!(*AliveGuard))
+			{
+				return;
+			}
+
+			// Build continuation prompt ON the game thread (safe for UObject loading in BuildAssetStateSummary)
+			FString ContinuationPrompt = BuildContinuationPrompt(TEXT("continue"));
+			SendMessageAutonomous(ContinuationPrompt, SavedOnChunk, SavedOnComplete, SavedOnError);
+		});
+
+		return; // Skip normal completion callback
+	}
+	else if (bLastRunTimedOut
+		&& LastRunContext.Outcome == FAutonomousRunContext::EOutcome::IdleTimeout
+		&& LastRunContext.ToolCallLog.Num() > 0
+		&& !bLastToolWasWrite)
+	{
+		UE_LOG(LogOliveCLIProvider, Log,
+			TEXT("Idle timeout after read operation (%s) — reporting to user instead of auto-continuing"),
+			*LastRunContext.ToolCallLog.Last().ToolName);
+		// Fall through to normal completion path below
+	}
+
 	// Log activity stats for diagnostic purposes
 	const double LastTool = LastToolCallTimestamp.load();
 	UE_LOG(LogOliveCLIProvider, Log,
-		TEXT("Autonomous run complete (exit code %d): last tool call %.1fs ago, accumulated %d chars"),
+		TEXT("Autonomous run complete (exit code %d): last tool call %.1fs ago, accumulated %d chars, %d tool calls logged"),
 		ReturnCode,
 		LastTool > 0.0 ? FPlatformTime::Seconds() - LastTool : -1.0,
-		AccumulatedResponse.Len());
+		AccumulatedResponse.Len(),
+		LastRunContext.ToolCallLog.Num());
 
 	if (ReturnCode != 0 && AccumulatedResponse.IsEmpty())
 	{
@@ -729,6 +1010,272 @@ void FOliveCLIProviderBase::HandleResponseCompleteAutonomous(int32 ReturnCode)
 	Usage.FinishReason = TEXT("stop");
 	bIsBusy = false;
 	CurrentOnComplete.ExecuteIfBound(AccumulatedResponse, Usage);
+}
+
+bool FOliveCLIProviderBase::IsContinuationMessage(const FString& Message) const
+{
+	FString Lower = Message.ToLower().TrimStartAndEnd();
+
+	// Exact match for common continuation phrases
+	if (Lower == TEXT("continue") ||
+		Lower == TEXT("keep going") ||
+		Lower == TEXT("finish") ||
+		Lower == TEXT("finish the task") ||
+		Lower == TEXT("keep working") ||
+		Lower == TEXT("resume"))
+	{
+		return true;
+	}
+
+	// Prefix match for phrases with additional context (e.g., "continue building the gun")
+	if (Lower.StartsWith(TEXT("continue ")) ||
+		Lower.StartsWith(TEXT("keep going")) ||
+		Lower.StartsWith(TEXT("finish ")))
+	{
+		return true;
+	}
+
+	return false;
+}
+
+FString FOliveCLIProviderBase::BuildContinuationPrompt(const FString& UserMessage) const
+{
+	FString Prompt;
+
+	// Header
+	Prompt += TEXT("## Continuation of Previous Task\n\n");
+
+	// Original task
+	Prompt += TEXT("### Original Task\n");
+	Prompt += LastRunContext.OriginalMessage;
+	Prompt += TEXT("\n\n");
+
+	// What was done
+	Prompt += TEXT("### What Was Already Done\n");
+	if (LastRunContext.ToolCallLog.Num() > 0)
+	{
+		// Group by asset for readability
+		TMap<FString, TArray<FString>> ByAsset;
+		for (const FAutonomousRunContext::FToolCallEntry& Entry : LastRunContext.ToolCallLog)
+		{
+			FString Key = Entry.AssetPath.IsEmpty() ? TEXT("(general)") : Entry.AssetPath;
+			ByAsset.FindOrAdd(Key).Add(Entry.ToolName);
+		}
+
+		for (const auto& Pair : ByAsset)
+		{
+			Prompt += FString::Printf(TEXT("- %s: "), *Pair.Key);
+
+			// Deduplicate consecutive identical tool names for brevity
+			TArray<FString> Condensed;
+			FString LastTool;
+			int32 Count = 0;
+			for (const FString& Tool : Pair.Value)
+			{
+				if (Tool == LastTool)
+				{
+					Count++;
+				}
+				else
+				{
+					if (!LastTool.IsEmpty())
+					{
+						Condensed.Add(Count > 1 ?
+							FString::Printf(TEXT("%s x%d"), *LastTool, Count) : LastTool);
+					}
+					LastTool = Tool;
+					Count = 1;
+				}
+			}
+			if (!LastTool.IsEmpty())
+			{
+				Condensed.Add(Count > 1 ?
+					FString::Printf(TEXT("%s x%d"), *LastTool, Count) : LastTool);
+			}
+
+			Prompt += FString::Join(Condensed, TEXT(", "));
+			Prompt += TEXT("\n");
+		}
+	}
+	else
+	{
+		Prompt += TEXT("No tool calls were recorded from the previous run.\n");
+	}
+
+	// Run outcome
+	Prompt += TEXT("\n### Previous Run Outcome\n");
+	switch (LastRunContext.Outcome)
+	{
+	case FAutonomousRunContext::EOutcome::IdleTimeout:
+		Prompt += TEXT("The previous run STALLED (idle timeout -- no tool calls for an extended period). ");
+		Prompt += TEXT("The task is incomplete. You need to continue from where it stopped.\n");
+		break;
+	case FAutonomousRunContext::EOutcome::RuntimeLimit:
+		Prompt += TEXT("The previous run hit the runtime limit. The task is incomplete.\n");
+		break;
+	case FAutonomousRunContext::EOutcome::Completed:
+		Prompt += TEXT("The previous run completed normally. ");
+		Prompt += TEXT("The user wants you to continue or finish remaining work.\n");
+		break;
+	}
+
+	// Asset state summary (pre-read on game thread so the AI doesn't need to re-read)
+	FString AssetState = BuildAssetStateSummary();
+	if (!AssetState.IsEmpty())
+	{
+		Prompt += TEXT("\n");
+		Prompt += AssetState;
+	}
+
+	// Action directive
+	Prompt += TEXT("\n### Your Task Now\n");
+	if (LastRunContext.ModifiedAssetPaths.Num() > 0)
+	{
+		Prompt += TEXT("**Do NOT re-read these assets** -- their current state is shown above.\n");
+		Prompt += TEXT("1. For each function with 0-1 nodes (EMPTY stubs), call `olive.get_recipe` then `blueprint.apply_plan_json`.\n");
+		Prompt += TEXT("2. Wire event graph logic if needed.\n");
+		Prompt += TEXT("3. Compile each Blueprint and verify 0 errors.\n");
+	}
+	else
+	{
+		Prompt += TEXT("1. Determine what still needs to be done to complete the original task.\n");
+		Prompt += TEXT("2. Complete the remaining work.\n");
+	}
+
+	// Include the user's continuation message if it has additional context
+	FString Trimmed = UserMessage.TrimStartAndEnd();
+	if (!Trimmed.Equals(TEXT("continue"), ESearchCase::IgnoreCase) &&
+		!Trimmed.Equals(TEXT("keep going"), ESearchCase::IgnoreCase) &&
+		!Trimmed.Equals(TEXT("finish"), ESearchCase::IgnoreCase) &&
+		!Trimmed.Equals(TEXT("resume"), ESearchCase::IgnoreCase))
+	{
+		Prompt += TEXT("\n### Additional Instructions\n");
+		Prompt += Trimmed;
+		Prompt += TEXT("\n");
+	}
+
+	return Prompt;
+}
+
+FString FOliveCLIProviderBase::BuildAssetStateSummary() const
+{
+	check(IsInGameThread());
+
+	if (LastRunContext.ModifiedAssetPaths.Num() == 0)
+	{
+		return FString();
+	}
+
+	FString Summary;
+	Summary += TEXT("### Current Asset State\n");
+
+	for (const FString& AssetPath : LastRunContext.ModifiedAssetPaths)
+	{
+		UObject* Asset = StaticLoadObject(UObject::StaticClass(), nullptr, *AssetPath);
+		UBlueprint* Blueprint = Cast<UBlueprint>(Asset);
+
+		if (!Blueprint)
+		{
+			Summary += FString::Printf(TEXT("\n**%s** — %s\n"),
+				*AssetPath, Asset ? TEXT("non-Blueprint asset") : TEXT("not found"));
+			continue;
+		}
+
+		Summary += FString::Printf(TEXT("\n**%s** (parent: %s)\n"),
+			*AssetPath,
+			Blueprint->ParentClass ? *Blueprint->ParentClass->GetName() : TEXT("unknown"));
+
+		// Components
+		if (Blueprint->SimpleConstructionScript)
+		{
+			const TArray<USCS_Node*>& Nodes = Blueprint->SimpleConstructionScript->GetAllNodes();
+			if (Nodes.Num() > 0)
+			{
+				Summary += TEXT("- Components: ");
+				TArray<FString> CompEntries;
+				for (const USCS_Node* Node : Nodes)
+				{
+					if (Node && Node->ComponentClass)
+					{
+						CompEntries.Add(FString::Printf(TEXT("%s (%s)"),
+							*Node->GetVariableName().ToString(),
+							*Node->ComponentClass->GetName()));
+					}
+				}
+				Summary += FString::Join(CompEntries, TEXT(", "));
+				Summary += TEXT("\n");
+			}
+		}
+
+		// Variables
+		if (Blueprint->NewVariables.Num() > 0)
+		{
+			Summary += TEXT("- Variables: ");
+			TArray<FString> VarEntries;
+			for (const FBPVariableDescription& Var : Blueprint->NewVariables)
+			{
+				VarEntries.Add(FString::Printf(TEXT("%s (%s)"),
+					*Var.VarName.ToString(),
+					*Var.VarType.PinCategory.ToString()));
+			}
+			Summary += FString::Join(VarEntries, TEXT(", "));
+			Summary += TEXT("\n");
+		}
+
+		// Event Dispatchers
+		if (Blueprint->DelegateSignatureGraphs.Num() > 0)
+		{
+			Summary += TEXT("- Event Dispatchers: ");
+			TArray<FString> DispNames;
+			for (const UEdGraph* Graph : Blueprint->DelegateSignatureGraphs)
+			{
+				if (Graph) { DispNames.Add(Graph->GetName()); }
+			}
+			Summary += FString::Join(DispNames, TEXT(", "));
+			Summary += TEXT("\n");
+		}
+
+		// Functions with node counts
+		if (Blueprint->FunctionGraphs.Num() > 0)
+		{
+			Summary += TEXT("- Functions:\n");
+			for (const UEdGraph* FuncGraph : Blueprint->FunctionGraphs)
+			{
+				if (!FuncGraph) continue;
+				int32 NodeCount = FuncGraph->Nodes.Num();
+				// 0-1 nodes means empty stub (entry node only)
+				Summary += FString::Printf(TEXT("  - %s (%d nodes%s)\n"),
+					*FuncGraph->GetName(),
+					NodeCount,
+					NodeCount <= 1 ? TEXT(" -- EMPTY, needs plan_json") : TEXT(""));
+			}
+		}
+
+		// Event graph
+		for (const UEdGraph* Graph : Blueprint->UbergraphPages)
+		{
+			if (Graph)
+			{
+				Summary += FString::Printf(TEXT("- EventGraph: %d nodes\n"), Graph->Nodes.Num());
+			}
+		}
+
+		// Compile status
+		if (Blueprint->Status == BS_Error)
+		{
+			Summary += TEXT("- Compile: ERROR\n");
+		}
+		else if (Blueprint->Status == BS_UpToDate)
+		{
+			Summary += TEXT("- Compile: OK\n");
+		}
+		else
+		{
+			Summary += TEXT("- Compile: needs recompile\n");
+		}
+	}
+
+	return Summary;
 }
 
 FString FOliveCLIProviderBase::BuildConversationPrompt(const TArray<FOliveChatMessage>& Messages, const TArray<FOliveToolDefinition>& Tools) const
@@ -907,6 +1454,9 @@ void FOliveCLIProviderBase::CancelRequest()
 {
 	bStopReading = true;
 	++RequestGeneration; // Invalidate in-flight async tasks from old request
+
+	// Clear tool filter to restore full tool visibility
+	FOliveMCPServer::Get().ClearToolFilter();
 
 	// Clear callbacks BEFORE killing process so the completion
 	// lambda (if it races to fire) won't invoke stale delegates

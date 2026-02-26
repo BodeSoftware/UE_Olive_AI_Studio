@@ -13,17 +13,18 @@ You have MCP tools for creating and modifying Unreal Engine 5.5 assets. Tool sch
 
 **Create new Blueprint:**
 1. Check templates first: `blueprint.list_templates` -- if one fits, use `blueprint.create_from_template`
-2. After creation, `blueprint.read` the result to see what the template already built before adding more logic.
-3. Otherwise: `blueprint.create` -> `blueprint.add_component` / `blueprint.add_variable` -> `blueprint.apply_plan_json`
+2. Templates create STRUCTURE only (components, variables, empty function stubs, event dispatchers). After template creation, write plan_json for EACH function listed in the result. Call `olive.get_recipe` first for each function's wiring pattern.
+3. Do NOT call `blueprint.read` or `blueprint.read_function` after template creation -- the functions are empty stubs waiting for your logic.
+4. Otherwise: `blueprint.create` -> `blueprint.add_component` / `blueprint.add_variable` -> `blueprint.apply_plan_json`
 
 **Modify existing Blueprint:**
 1. `project.search` (find exact path) -> `blueprint.read` (understand current state) -> write tools
 
 **Small edit (1-2 nodes):** `blueprint.read_event_graph` -> `blueprint.add_node` + `blueprint.connect_pins`
 
-**Before your first plan_json for each Blueprint:** Call `olive.get_recipe` with the pattern you need (e.g., "fire weapon", "spawn projectile", "health component"). Recipes contain tested wiring patterns that prevent common errors.
+**Before your first plan_json for each function:** Call `olive.get_recipe` with the pattern you need (e.g., "fire weapon", "spawn projectile", "health component"). Recipes contain tested wiring patterns. This applies AFTER template creation too -- templates create empty function stubs, you write the logic.
 
-**Multi-asset (2+ Blueprints):** Create ALL asset structures first, then wire graph logic for each.
+**Multi-asset (2+ Blueprints):** Complete ONE asset at a time. For each asset: create structure (components, variables, functions), wire all plan_json for its functions, then compile. Move to the next asset only after the current one compiles clean.
 
 ## Plan JSON Format
 
@@ -81,6 +82,6 @@ Always use `/Game/...` format ending with the asset name: `/Game/Blueprints/BP_G
 - **Keep plans under 12 steps.** Split complex logic into multiple functions.
 - **Prefer plan_json for 3+ nodes.** Only fall back to add_node/connect_pins after plan_json has failed twice.
 - **Complete the full task** -- create structures, wire graphs, compile, verify. Do not stop partway.
-- **Always call `olive.get_recipe` before your first `apply_plan_json`** for each Blueprint. Recipes contain tested wiring patterns. Skip only if you already used `create_from_template` which embeds plans.
+- **Always call `olive.get_recipe` before your first `apply_plan_json`** for each function. Recipes contain tested wiring patterns. This includes functions created by templates (they are empty stubs).
 - **Done condition:** Once ALL Blueprints compile with 0 errors and 0 warnings, the task is complete. Stop immediately and report what you built (asset paths, key features, any notes). Do not add cosmetic changes, extra previews, or verification reads after a clean compile.
 - Component overlap/hit events: use `op:"event"` with `target:"OnComponentBeginOverlap"` (auto-detects component). Add `"component_name":"MyComp"` in `properties` if ambiguous.

@@ -1556,7 +1556,7 @@ bool FOliveBlueprintPlanResolver::ResolveEventOp(
 			Step.StepId,
 			FString::Printf(TEXT("/steps/%d/target"), Idx),
 			TEXT("'event' op requires a 'target' specifying the event name"),
-			TEXT("Set 'target' to the event name (e.g., \"BeginPlay\", \"Tick\", \"ActorBeginOverlap\")")));
+			TEXT("Set 'target' to the event name (e.g., \"BeginPlay\", \"Tick\", \"ActorBeginOverlap\", \"OnComponentBeginOverlap\", \"OnComponentHit\")")));
 
 		UE_LOG(LogOlivePlanResolver, Warning,
 			TEXT("    ResolveEventOp FAILED: event '%s' not mapped. Parent class: '%s'"),
@@ -1583,15 +1583,34 @@ bool FOliveBlueprintPlanResolver::ResolveEventOp(
 	};
 
 	FString ResolvedEventName = Step.Target;
-	if (const FString* MappedName = EventNameMap.Find(Step.Target))
+	const bool bIsNativeEvent = EventNameMap.Contains(Step.Target);
+	if (bIsNativeEvent)
 	{
-		ResolvedEventName = *MappedName;
+		ResolvedEventName = *EventNameMap.Find(Step.Target);
 		UE_LOG(LogOlivePlanResolver, Log,
 			TEXT("Step '%s': Mapped event name '%s' -> '%s'"),
 			*Step.StepId, *Step.Target, *ResolvedEventName);
 	}
 
 	Out.Properties.Add(TEXT("event_name"), ResolvedEventName);
+
+	// Non-native events that reach here are likely component delegate events
+	// (e.g., OnComponentBeginOverlap, OnComponentHit). custom_event ops use a
+	// separate op type and never enter ResolveEventOp. Add a resolver note for
+	// transparency so the AI knows the name will be passed to NodeFactory as-is.
+	if (!bIsNativeEvent)
+	{
+		FOliveResolverNote Note;
+		Note.Field = TEXT("event_name");
+		Note.OriginalValue = Step.Target;
+		Note.ResolvedValue = ResolvedEventName;
+		Note.Reason = TEXT("Not a native event override. Will be resolved as a component delegate event by NodeFactory.");
+		Out.ResolverNotes.Add(MoveTemp(Note));
+
+		UE_LOG(LogOlivePlanResolver, Log,
+			TEXT("Step '%s': Non-native event '%s' — will be treated as component delegate event"),
+			*Step.StepId, *ResolvedEventName);
+	}
 
 	UE_LOG(LogOlivePlanResolver, Verbose,
 		TEXT("Step '%s': Resolved event '%s'"),
