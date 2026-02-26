@@ -138,6 +138,15 @@
 - **PlanExecutor unchanged**: Plan resolver maps ops to curated OliveNodeTypes, so universal fallback only activates via direct add_node tool calls.
 - **CallParentFunction gap found**: Declared in OliveNodeTypes namespace but never registered in InitializeNodeCreators. Universal fallback would handle it, but a curated creator would be better (follow-up).
 
+### Blueprint Pipeline Reliability Upgrade - Feb 2026
+- `plans/blueprint-pipeline-reliability-impl.md` -- 3-phase implementation plan (verified line numbers)
+- **Phase 1 (Safety Net)**: Granular fallback after 3 plan failures with same error. `bIsInGranularFallback` + `LastPlanFailureReason` on SelfCorrectionPolicy. LoopDetector.Reset() on switch gives fresh budget. `BuildRollbackAwareMessage()` for rollback + retries remaining, `BuildGranularFallbackMessage()` for forced switch. MaxCorrectionCyclesPerWorker raised to 20 (backstop only). Template compile errors surfaced via `compile_result` JSON structure in ResultData.
+- **Phase 2 (Graph Context)**: New `FOliveGraphContext` struct in OliveBlueprintPlanResolver.h. `BuildFromBlueprint()` scans UbergraphPages/FunctionGraphs/MacroGraphs, extracts InputParamNames/OutputParamNames from UK2Node_FunctionEntry/Result UserDefinedPins. `bIsLatent` on FOliveResolvedStep (from UFunction Latent metadata or Delay op). `CheckLatentInFunctionGraph` validator rejects latent in function graphs. `FunctionInput`/`FunctionOutput` virtual OliveNodeTypes map to existing FunctionEntry/FunctionResult nodes in PhaseCreateNodes (added to ReusedStepIds to survive rollback). All Resolve()/Validate() signatures get optional `const FOliveGraphContext&` parameter with default.
+- **Phase 3 (Lookup Tables)**: 10 Float->Double aliases in GetAliasMap(). NodeFactory.FindFunction() expanded from 3 to 11 library classes (adding KismetMath, KismetString, KismetArray, GameplayStatics, SceneComponent, PrimitiveComponent, Pawn, Character).
+- **New error code**: `LATENT_IN_FUNCTION`
+- **Key line numbers verified**: SelfCorrectionPolicy.cpp Evaluate() at line 15, compile branch lines 72-123, tool failure branch lines 126-187, Reset() at line 194. NodeFactory.cpp FindFunction() at line 1063, library classes at lines 1098-1102. FunctionResolver.cpp GetAliasMap() at line 697, last alias at line 930. PlanValidator.cpp Validate() at line 16, checks at lines 40-41. PlanExecutor.cpp PhaseCreateNodes at line 244, event reuse ends at line 365.
+- **Handoff plan line numbers are STALE**: References like "line ~73044" are completely wrong. Always verify against actual code.
+
 ### Priority 1+2: Component Variable Fixes - Feb 2026
 - `plans/priority1_2_component_fixes.md` -- 6 tasks fixing remaining gaps after master plan Phase 1+2
 - **KEY FINDING: Most master plan Phase 1 and Phase 2 changes were already implemented.** BlueprintHasVariable already has SCS check, lenient fallback already removed, Phase 1.5/5.5 already exist, bIsRequired already added, validator already softened.
@@ -146,6 +155,13 @@
 - **FOliveIRVariable struct location**: `Source/OliveAIRuntime/Public/IR/CommonIR.h` line 458. Field is `DefinedIn` (not `Source`). Type info uses `FOliveIRType.ClassName` (not `TypeName`).
 - **FOliveIRType struct location**: `Source/OliveAIRuntime/Public/IR/OliveIRTypes.h` line 49. Object types use `Category = EOliveIRTypeCategory::Object` + `ClassName`.
 - **All 6 tasks are independent** -- can run fully in parallel with 2-3 coders.
+
+### Autonomous Mode Decisions - Feb 2026
+> See `autonomous-mode-decisions.md` for full details on NeoStack migration, timeout fixes, and efficiency rounds 2-3.
+- **NeoStack**: `bUseAutonomousMCPMode` flag, `SendMessageAutonomous()`, MCP tool discovery, no orchestration loop.
+- **Timeout**: Activity-based idle timeout (`AutonomousIdleToolSeconds=120`), hard limit 900s. Partial success rollback fix.
+- **Round 2**: `call_delegate` op, ExpandedPlan propagation bug fix, mandatory recipe lookup.
+- **Round 3**: Anti-stall interleave guidance, "continue" context injection (`FAutonomousRunContext`), template result enrichment (`function_details`). `FOnMCPToolCalled` delegate extended to 3 params (adds Arguments JSON).
 
 ## File Structure
 - Tool handlers: `Source/OliveAIEditor/Blueprint/Private/MCP/OliveBlueprintToolHandlers.cpp` (very large file, 5000+ lines)

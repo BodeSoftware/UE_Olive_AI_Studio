@@ -179,16 +179,24 @@ struct OLIVEAIEDITOR_API FOlivePinManifest
         const FString& NodeId,
         const FString& NodeType);
 
-private:
     // ====================================================================
-    // Internal Helpers
+    // Type Conversion Utilities
     // ====================================================================
 
     /**
      * Convert a UE FEdGraphPinType to our EOliveIRTypeCategory.
      * Uses the same mapping as FOlivePinSerializer::MapPinCategory.
+     *
+     * Public so callers (e.g., OlivePlanExecutor) can patch manifest entries
+     * when graph pins report Wildcard but the authoritative type is known
+     * from another source (e.g., UK2Node_EditablePinBase::UserDefinedPins).
      */
     static EOliveIRTypeCategory ConvertPinTypeToIRCategory(const FEdGraphPinType& PinType);
+
+private:
+    // ====================================================================
+    // Internal Helpers
+    // ====================================================================
 
     /**
      * Compute Levenshtein edit distance between two strings.

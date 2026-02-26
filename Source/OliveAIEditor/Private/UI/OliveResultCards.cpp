@@ -110,6 +110,14 @@ FOliveResultCardData FOliveResultCardData::FromToolResult(
 							Card.Actions.Add(GoToError);
 						}
 					}
+					else if (!ErrVal->AsString().IsEmpty())
+					{
+						// String fallback: some serialization paths emit errors as plain strings
+						FOliveIRCompileError StringErr;
+						StringErr.Message = ErrVal->AsString();
+						StringErr.Severity = EOliveIRCompileErrorSeverity::Error;
+						Card.Errors.Add(MoveTemp(StringErr));
+					}
 				}
 			}
 
@@ -120,6 +128,14 @@ FOliveResultCardData FOliveResultCardData::FromToolResult(
 					if (WarnVal->AsObject().IsValid())
 					{
 						Card.Warnings.Add(FOliveIRCompileError::FromJson(WarnVal->AsObject()));
+					}
+					else if (!WarnVal->AsString().IsEmpty())
+					{
+						// String fallback: some serialization paths emit warnings as plain strings
+						FOliveIRCompileError StringWarn;
+						StringWarn.Message = WarnVal->AsString();
+						StringWarn.Severity = EOliveIRCompileErrorSeverity::Warning;
+						Card.Warnings.Add(MoveTemp(StringWarn));
 					}
 				}
 			}

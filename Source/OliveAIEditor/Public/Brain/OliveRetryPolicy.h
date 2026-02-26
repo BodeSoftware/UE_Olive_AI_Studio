@@ -12,14 +12,17 @@ struct OLIVEAIEDITOR_API FOliveRetryPolicy
 	/** Max retries for the same error signature within one worker */
 	int32 MaxRetriesPerError = 3;
 
-	/** Total retry budget per worker */
-	int32 MaxCorrectionCyclesPerWorker = 5;
+	/** Total retry budget per worker (raised to 20 as a hard backstop; per-error limits fire first) */
+	int32 MaxCorrectionCyclesPerWorker = 20;
 
 	/** How many workers can fail before stopping the run */
 	int32 MaxWorkerFailures = 2;
 
 	/** Delay between retries (0 = immediate) */
 	float RetryDelaySeconds = 0.0f;
+
+	/** When true, plan-loop detection triggers granular fallback instead of StopWorker */
+	bool bAllowGranularFallback = true;
 };
 
 /**

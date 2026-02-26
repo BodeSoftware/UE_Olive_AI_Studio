@@ -1,227 +1,86 @@
-# CLAUDE.md
+# Olive AI Studio -- Unreal Engine 5.5
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+You have MCP tools for creating and modifying Unreal Engine 5.5 assets. Tool schemas describe parameters; this file covers workflow patterns and rules that schemas cannot express.
 
-## Build & Test
+## Tool Categories
+- `blueprint.*` -- Create, read, and modify Blueprint assets (graph logic via Plan JSON)
+- `bt.*` / `blackboard.*` -- Behavior Trees and Blackboards
+- `pcg.*` -- PCG graphs
+- `cpp.*` -- C++ classes and source files
+- `project.*` -- Asset search, bulk operations, cross-system tools
 
-**Build command:**
-```bash
-"C:/Program Files/Epic Games/UE_5.5/Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.exe" UE_Olive_AI_ToolkitEditor Win64 Development "-Project=B:/Unreal Projects/UE_Olive_AI_Toolkit/UE_Olive_AI_Toolkit.uproject" -WaitMutex
-```
-- Invoke UBT directly from bash — `cmd.exe /c` does NOT work well with spaces in paths
-- Incremental builds take ~5-6 seconds
+## Blueprint Workflow
 
-**Log files for diagnosing failures:**
-- Project log: `../../Saved/Logs/UE_Olive_AI_Toolkit.log`
-- UBT log: `C:/Users/<User>/AppData/Local/UnrealBuildTool/Log.txt`
+**Create new Blueprint:**
+1. Check templates first: `blueprint.list_templates` -- if one fits, use `blueprint.create_from_template`
+2. After creation, `blueprint.read` the result to see what the template already built before adding more logic.
+3. Otherwise: `blueprint.create` -> `blueprint.add_component` / `blueprint.add_variable` -> `blueprint.apply_plan_json`
 
-**Tests:** UE Automation Framework, filter by `OliveAI.*` in Session Frontend > Automation.
-Tests live in `Source/OliveAIEditor/Private/Tests/` (subdirs: `Brain/`, `Conversation/`, `FocusProfiles/`).
+**Modify existing Blueprint:**
+1. `project.search` (find exact path) -> `blueprint.read` (understand current state) -> write tools
 
----
+**Small edit (1-2 nodes):** `blueprint.read_event_graph` -> `blueprint.add_node` + `blueprint.connect_pins`
 
-## Project Overview
+**Before your first plan_json for each Blueprint:** Call `olive.get_recipe` with the pattern you need (e.g., "fire weapon", "spawn projectile", "health component"). Recipes contain tested wiring patterns that prevent common errors.
 
-Olive AI Studio is an editor-only UE 5.5+ plugin providing AI-powered development assistance via two interfaces: a dockable Slate chat panel and an MCP (JSON-RPC) server for external agents like Claude Code. Both share the same tool layer, validation engine, and write pipeline.
+**Multi-asset (2+ Blueprints):** Create ALL asset structures first, then wire graph logic for each.
 
-> **Development scope:** All work stays within `Plugins/UE_Olive_AI_Studio/`. The parent project (`UE_Olive_AI_Toolkit`) is for testing only.
+## Plan JSON Format
 
----
+Plan JSON is the primary way to build graph logic. Always preview before applying: `blueprint.preview_plan_json` then `blueprint.apply_plan_json` (never in the same response).
 
-## Architecture
-
-### Module Layout
-
-```
-Source/
-├── OliveAIRuntime/          # Minimal runtime module (LoadingPhase: Default)
-│   └── IR/                  # Intermediate Representation structs
-│       ├── OliveIRTypes.h         # Base IR types
-│       ├── CommonIR.h             # FOliveIRGraph, FOliveIRNode
-│       ├── BlueprintIR.h          # Blueprint-specific IR
-│       ├── BehaviorTreeIR.h       # BT IR
-│       ├── PCGIR.h                # PCG IR
-│       ├── CppIR.h                # C++ IR
-│       ├── OliveCompileIR.h       # Compile result IR
-│       └── OliveIRSchema.h        # IR schema validation
-│
-└── OliveAIEditor/           # Editor-only module (LoadingPhase: PostEngineInit)
-    ├── UI/                  # Slate widgets (chat panel, operation feed)
-    ├── Chat/                # Conversation manager, prompt assembly, editor session
-    ├── Brain/               # Brain layer state machine, loop detection, self-correction
-    ├── Providers/           # API clients (8 providers)
-    ├── MCP/                 # MCP server, JSON-RPC, tool registry
-    ├── Services/            # Validation engine, transactions, asset resolver
-    ├── Index/               # Project index (asset search, class hierarchy)
-    ├── Profiles/            # Focus profiles + tool packs
-    ├── Settings/            # UDeveloperSettings (UOliveAISettings)
-    ├── Blueprint/           # Blueprint read/write/catalog
-    ├── BehaviorTree/        # BT/Blackboard
-    ├── PCG/                 # PCG graphs
-    ├── Cpp/                 # C++ integration
-    └── CrossSystem/         # Multi-asset operations
+```json
+{"schema_version":"2.0","steps":[
+  {"step_id":"evt","op":"event","target":"BeginPlay"},
+  {"step_id":"get_hp","op":"get_var","target":"Health"},
+  {"step_id":"check","op":"branch","inputs":{"Condition":"@get_hp.auto"},"exec_after":"evt",
+   "exec_outputs":{"True":"heal","False":"die"}},
+  {"step_id":"heal","op":"call","target":"PrintString","inputs":{"InString":"Alive"}},
+  {"step_id":"die","op":"call","target":"PrintString","inputs":{"InString":"Dead"}}
+]}
 ```
 
-`OliveAIEditor.Build.cs` adds recursive include paths for sub-modules: `Blueprint`, `BehaviorTree`, `PCG`, `Cpp`, `CrossSystem`, `Brain`.
+### Step Fields
+- `step_id` -- unique identifier (e.g., "s1", "evt", "spawn")
+- `op` -- operation from closed vocabulary (see below)
+- `target` -- function name, variable name, event name, or class name depending on op
+- `inputs` -- pin values: `"PinName":"literal"` for defaults, `"PinName":"@step_id.auto"` for data wires
+- `exec_after` -- step_id of the preceding impure node in execution flow
+- `exec_outputs` -- for Branch/Cast: `{"True":"step_a","False":"step_b"}`
 
-### Startup Order (OliveAIEditorModule.cpp)
+### Operations
+`event`, `custom_event`, `call`, `call_delegate`, `get_var`, `set_var`, `branch`, `sequence`, `cast`, `for_loop`, `for_each_loop`, `while_loop`, `do_once`, `flip_flop`, `gate`, `delay`, `is_valid`, `print_string`, `spawn_actor`, `make_struct`, `break_struct`, `return`, `comment`
 
-`OliveAIEditor` uses `PostEngineInit` loading phase but calls `OnPostEngineInit()` directly (not via delegate) because the delegate has already fired by that point. Initialization order:
+- `call_delegate` broadcasts an event dispatcher. Use for dispatchers created via `blueprint.add_event_dispatcher`.
 
-1. Register editor commands + UI extensions
-2. Initialize `FOliveEditorChatSession` singleton (owns `ConversationManager`)
-3. `FOliveValidationEngine::Get().RegisterCoreRules()`
-4. `FOliveProjectIndex::Get().Initialize()`
-5. `FOliveToolRegistry::Get().RegisterBuiltInTools()` (project tools)
-6. `FOliveNodeCatalog::Get().Initialize()` → `FOliveBlueprintToolHandlers::Get().RegisterAllTools()`
-7. BT tools → PCG tools (guarded by availability check) → C++ tools → CrossSystem tools
-8. `FOliveFocusProfileManager::Get().Initialize()` (must come after all tool registration)
-9. `FOliveToolPackManager::Get().Initialize()`
-10. Prompt assembler + MCP prompt templates
-11. `FOliveMCPServer::Get().Start()` (if `bAutoStartMCPServer`)
+### Execution Wiring Rules
+- **Impure nodes** (call, call_delegate, set_var, branch, sequence, for_loop, delay, spawn_actor, print_string, cast, do_once, flip_flop, gate, while_loop) MUST have `exec_after` chaining them to a preceding impure step or event.
+- **Pure nodes** (get_var, make_struct, break_struct, is_valid) do NOT use `exec_after`.
+- `exec_after` and `exec_outputs` are **mutually exclusive on the source step**. If a step uses `exec_outputs` (Branch, Cast), downstream steps chain from those targets, not from the branch step itself.
+- Data-provider steps (get_var, make_struct) should appear BEFORE steps that reference them via `@step_id`.
 
-### Key Singletons (all `static Foo& Get()`)
+### Data Wiring Syntax
+- `@step_id.auto` -- auto-match by type (use ~80% of the time)
+- `@step_id.~hint` -- fuzzy prefix match on pin name
+- `@step_id.PinName` -- exact pin name
+- `@ComponentName` -- auto-expanded to a get_var for that component
+- No `@` prefix = literal default value for the pin
 
-| Singleton | Responsibility |
-|-----------|---------------|
-| `FOliveToolRegistry` | Central tool registry (thread-safe via `FRWLock`) |
-| `FOliveMCPServer` | HTTP JSON-RPC server (ports 3000–3009) |
-| `FOliveProjectIndex` | Asset registry wrapper / search |
-| `FOliveNodeCatalog` | Blueprint node catalog with fuzzy matching |
-| `FOliveWritePipeline` | 6-stage write safety pipeline |
-| `FOliveValidationEngine` | Validation rule registry |
-| `FOliveTransactionManager` | `FScopedTransaction` wrapper |
-| `FOliveFocusProfileManager` | Focus profile filtering |
-| `FOliveToolPackManager` | Dynamic tool pack gating per turn |
-| `FOliveEditorChatSession` | Editor-lifetime session (owns ConversationManager) |
+### Function Resolution
+Use natural names: `Destroy` resolves to `K2_DestroyActor`, `Print` to `PrintString`, `GetWorldTransform` to `K2_GetComponentToWorld`. K2_ prefixes and common aliases are resolved automatically.
 
-### Write Pipeline (6 Stages)
+## Asset Paths
+Always use `/Game/...` format ending with the asset name: `/Game/Blueprints/BP_Gun` (not `/Game/Blueprints/`). For existing assets, use `project.search` to find exact paths. For new assets, choose the path directly.
 
-1. **Validate** — input validation, preconditions
-2. **Confirm** — tier routing (Tier 1: auto, Tier 2: plan+confirm, Tier 3: preview). MCP clients skip this.
-3. **Transact** — `FScopedTransaction` + `Modify()`
-4. **Execute** — actual mutation via `FOliveWriteExecutor` delegate
-5. **Verify** — structural checks + optional compile (`bAutoCompile`) + orphaned exec-flow detection
-6. **Report** — structured result with timing
-
-Result chain: `FOliveWriteResult` → `.ToToolResult()` → `FOliveToolResult`. Factory methods: `Success()`, `ValidationError()`, `ExecutionError()`, `ConfirmationNeeded()`.
-
-### Brain Layer
-
-`FOliveBrainLayer` is a state machine: `Idle` → `Planning` → `WorkerActive` → `AwaitingConfirmation` → `Cancelling` → `Completed` / `Error`. Worker phases: `Streaming`, `ExecutingTools`, `Compiling`, `SelfCorrecting`, `Complete`. Includes `FOliveLoopDetector` (infinite loop detection) and `FOliveSelfCorrectionPolicy` (retry after tool failures).
-
-### Editor Chat Session
-
-`FOliveEditorChatSession` is an editor-lifetime singleton that owns the `ConversationManager`. The chat panel (`SOliveAIChatPanel`) holds only a `TWeakPtr` — closing the panel does NOT cancel in-flight operations. Background completions trigger toast notifications.
-
-### MCP Transport
-
-HTTP JSON-RPC 2.0 server on `/mcp` endpoint. `mcp-bridge.js` converts stdio ↔ HTTP for Claude Code CLI. Auto-discovers ports 3000–3009. Protocol version `2024-11-05`. Tool calls dispatch to game thread via `AsyncTask(ENamedThreads::GameThread, ...)`.
-
-### Large Graph Paging
-
-Threshold: `OLIVE_LARGE_GRAPH_THRESHOLD = 500` nodes. Page size: `OLIVE_GRAPH_PAGE_SIZE = 100` (max 200). `ReadGraphSummary()` returns metadata only; `ReadGraphPage()` builds the full `NodeIdMap` but serializes only a page slice.
-
----
-
-## Coding Standards
-
-### Naming Conventions
-
-| Type | Prefix | Example |
-|------|--------|---------|
-| Classes (UObject) | `U` | `UOliveAISettings` |
-| Classes (AActor) | `A` | `AOliveDebugActor` |
-| Structs | `F` | `FOliveToolResult` |
-| Interfaces | `I` | `IOliveAIProvider` |
-| Enums | `E` | `EOliveOperationStatus` |
-| Slate widgets | `S` | `SOliveAIChatPanel` |
-| Delegates | `F...Delegate` / `FOn...` | `FOnOliveStreamChunk` |
-
-- All files prefixed with `Olive` (e.g., `OliveClassName.h` / `OliveClassName.cpp`)
-- Log category: `LogOliveAI`
-- Return `FOliveToolResult` with structured errors (code + message + suggestion), not bare booleans
-
-### Tool Handler Pattern
-
-validate params → load Blueprint → build `FOliveWriteRequest` → bind executor lambda → `ExecuteWithOptionalConfirmation`
-
-Schema implementations: `OliveBlueprintSchemas.cpp`. Tool registrations: `RegisterReaderTools()`, etc.
-Note: `OliveBlueprintToolHandlers.cpp` is 3000+ lines with anonymous namespace helpers.
-
----
-
-## Key Design Decisions
-
-### Confirmation Tiers
-
-| Tier | Risk | Operations | UX |
-|------|------|------------|-----|
-| 1 | Low | Add variable, add component, create empty BP | Auto-execute |
-| 2 | Medium | Create function with logic, wire event graph | Plan → Confirm |
-| 3 | High | Refactor, delete, reparent | Non-destructive preview |
-
-### Providers (8 implemented)
-
-`ClaudeCode` (default, no API key), `OpenRouter`, `ZAI`, `Anthropic`, `OpenAI`, `Google`, `Ollama`, `OpenAICompatible`. Interface: `IOliveAIProvider` with `SendMessage()` (streaming), `CancelRequest()`, `ValidateConnection()`. Error classification uses parseable prefix: `[HTTP:{code}:RetryAfter={s}]`.
-
-### Focus Profiles + Tool Packs
-
-Focus profiles filter tool visibility: Auto, Blueprint, AI & Behavior, Level & PCG, C++ & Blueprint.
-Tool packs (`Config/OliveToolPacks.json`) define named sets: `read_pack`, `write_pack_basic`, `write_pack_graph`, `danger_pack`. `FOliveToolPackManager` gates packs per turn based on intent flags (`bTurnHasExplicitWriteIntent`, `bTurnHasDangerIntent`).
-
-### Safety Presets
-
-`UOliveAISettings` exposes presets: `Careful`, `Fast`, `YOLO` — with per-operation tier overrides. Rate limit: `MaxWriteOpsPerMinute = 30`. Brain layer settings: batch write max ops, context window, correction cycles. Checkpoint interval: every 5 steps.
-
----
-
-## UE Compatibility Guardrails (Critical)
-
-Unreal's startup popup ("rebuild from source") is generic. Treat it as a symptom, not a diagnosis.
-
-### Required Workflow for Any Compile/Load Failure
-
-1. Read the real errors from project log and UBT log (see Build & Test above)
-2. Fix the first real compiler error(s), not downstream ones
-3. Rebuild and confirm success before concluding resolved
-
-### Header/API Safety Rules
-
-- Never guess Unreal header names or member fields
-- Verify symbols in engine source under `Engine/Plugins/.../Source/.../Public` before coding
-- If a type is forward-declared but members are accessed, include the concrete header in `.cpp`
-- Prefer version-accurate UE 5.5 APIs over legacy fields
-
-### Known UE 5.5 API Drift
-
-- PCG subgraph settings: `PCGSubgraph.h` (not `PCGSubgraphSettings.h`)
-- `UPCGEdge::OtherPin` is obsolete → use `GetOtherPin(...)` with `PCGEdge.h`
-- Always confirm current symbols in UE 5.5 source for Blueprint/editor APIs
-
----
-
-## Key File Locations
-
-| Component | Path |
-|-----------|------|
-| Plugin manifest | `UE_Olive_AI_Studio.uplugin` |
-| Module entry point | `Source/OliveAIEditor/Private/OliveAIEditorModule.cpp` |
-| Settings | `Source/OliveAIEditor/Public/Settings/OliveAISettings.h` |
-| Tool registry | `Source/OliveAIEditor/Public/MCP/OliveToolRegistry.h` |
-| MCP server | `Source/OliveAIEditor/Public/MCP/OliveMCPServer.h` |
-| Write pipeline | `Source/OliveAIEditor/Blueprint/Public/Pipeline/OliveWritePipeline.h` |
-| BP tool handlers | `Source/OliveAIEditor/Blueprint/Private/MCP/OliveBlueprintToolHandlers.cpp` |
-| BP schemas | `Source/OliveAIEditor/Blueprint/Private/MCP/OliveBlueprintSchemas.cpp` |
-| Node catalog | `Source/OliveAIEditor/Blueprint/Private/Catalog/OliveNodeCatalog.cpp` |
-| Provider interface | `Source/OliveAIEditor/Public/Providers/IOliveAIProvider.h` |
-| Brain layer | `Source/OliveAIEditor/Public/Brain/OliveBrainLayer.h` |
-| Editor chat session | `Source/OliveAIEditor/Public/Chat/OliveEditorChatSession.h` |
-| Conversation manager | `Source/OliveAIEditor/Public/Chat/OliveConversationManager.h` |
-| IR types | `Source/OliveAIRuntime/Public/IR/OliveIRTypes.h` |
-| Tool packs config | `Config/OliveToolPacks.json` |
-| System prompts | `Content/SystemPrompts/` |
-| MCP bridge | `mcp-bridge.js`, `.mcp.json` |
-| Agent prompts | `.claude/agents/*.md` |
-| Configuration | `Config/DefaultOliveAI.ini` |
-| Tests | `Source/OliveAIEditor/Private/Tests/` |
+## Important Rules
+- **Read before modifying** any existing asset -- never guess at current state.
+- **Preview before apply** -- always call `blueprint.preview_plan_json` before `blueprint.apply_plan_json`. Never batch both in the same response.
+- **Don't re-preview unchanged plans**: If preview succeeds, apply in the next turn. Revising and re-previewing is fine. If apply fails partially, fix with `connect_pins`/`set_pin_default` rather than re-planning from scratch.
+- **If apply_plan_json fails:** re-read the graph, fix the plan based on the error, and retry once. If it fails a second time, fall back to step-by-step `add_node`/`connect_pins`.
+- **Fix compile errors** before declaring done. If `apply_plan_json` returns errors, use `wiring_errors` and `pin_manifests` from the result to correct.
+- **Keep plans under 12 steps.** Split complex logic into multiple functions.
+- **Prefer plan_json for 3+ nodes.** Only fall back to add_node/connect_pins after plan_json has failed twice.
+- **Complete the full task** -- create structures, wire graphs, compile, verify. Do not stop partway.
+- **Always call `olive.get_recipe` before your first `apply_plan_json`** for each Blueprint. Recipes contain tested wiring patterns. Skip only if you already used `create_from_template` which embeds plans.
+- **Done condition:** Once ALL Blueprints compile with 0 errors and 0 warnings, the task is complete. Stop immediately and report what you built (asset paths, key features, any notes). Do not add cosmetic changes, extra previews, or verification reads after a clean compile.
+- Component overlap/hit events: use `op:"event"` with `target:"OnComponentBeginOverlap"` (auto-detects component). Add `"component_name":"MyComp"` in `properties` if ambiguous.

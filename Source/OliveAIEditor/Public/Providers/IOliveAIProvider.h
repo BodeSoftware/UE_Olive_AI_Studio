@@ -280,6 +280,27 @@ public:
 	) = 0;
 
 	/**
+	 * Send a message in autonomous mode. The agent discovers tools via MCP
+	 * and manages its own agentic loop. The plugin does not orchestrate turns,
+	 * parse tool calls, or inject system prompts.
+	 *
+	 * Default implementation rejects -- only CLI-based providers override this.
+	 *
+	 * @param UserMessage  The user's task description sent to stdin
+	 * @param OnChunk      Called for each streamed progress chunk
+	 * @param OnComplete   Called when the autonomous process finishes
+	 * @param OnError      Called on error or if autonomous mode is unsupported
+	 */
+	virtual void SendMessageAutonomous(
+		const FString& UserMessage,
+		FOnOliveStreamChunk OnChunk,
+		FOnOliveComplete OnComplete,
+		FOnOliveError OnError)
+	{
+		OnError.ExecuteIfBound(TEXT("Autonomous mode not supported by this provider"));
+	}
+
+	/**
 	 * Cancel any in-flight request
 	 */
 	virtual void CancelRequest() = 0;

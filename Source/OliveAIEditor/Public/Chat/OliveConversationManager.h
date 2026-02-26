@@ -244,6 +244,20 @@ public:
 
 private:
 	// ==========================================
+	// Autonomous Mode
+	// ==========================================
+
+	/** Check if the active provider supports autonomous MCP mode and it's enabled in settings. */
+	bool IsAutonomousProvider() const;
+
+	/**
+	 * Autonomous path: launch Claude Code with MCP tool discovery, no orchestration loop.
+	 * The provider process runs until natural completion; tools are called via MCP server.
+	 * @param Message User's message text
+	 */
+	void SendUserMessageAutonomous(const FString& Message);
+
+	// ==========================================
 	// Internal Message Handling
 	// ==========================================
 
@@ -413,6 +427,9 @@ private:
 
 	/** Name of the failed foundational tool (for skip messages) */
 	FString FailedFoundationalTool;
+
+	/** Asset paths that failed with ASSET_NOT_FOUND in current batch — used to skip subsequent tools targeting the same dead path */
+	TSet<FString> FailedAssetPaths;
 
 	// ==========================================
 	// Brain Layer Components

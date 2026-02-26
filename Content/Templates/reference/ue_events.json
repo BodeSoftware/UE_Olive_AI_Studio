@@ -1,0 +1,113 @@
+{
+    "template_id": "ue_events",
+    "template_type": "reference",
+    "display_name": "UE Actor Event Reference",
+
+    "catalog_description": "Actor lifecycle and interaction events: BeginPlay, Tick, overlap, damage, hit, and destruction. Shows correct op:event target names and output pin signatures for plan JSON.",
+    "catalog_examples": "",
+
+    "tags": "event beginplay tick overlap damage hit destroyed endplay actor lifecycle",
+
+    "patterns": [
+        {
+            "name": "BeginPlay",
+            "description": "Fires once when the actor starts playing (after all components are initialized). Most common event for setup logic.",
+            "notes": "Use op:event, target:BeginPlay. No output data pins (exec only).",
+            "plan_example": {
+                "step_id": "evt",
+                "op": "event",
+                "target": "BeginPlay"
+            }
+        },
+        {
+            "name": "Tick",
+            "description": "Fires every frame while the actor is ticking.",
+            "notes": "Use op:event, target:Tick. Output pins: DeltaSeconds (Float). The actor must have ticking enabled.",
+            "plan_example": {
+                "step_id": "evt",
+                "op": "event",
+                "target": "Tick"
+            }
+        },
+        {
+            "name": "EndPlay",
+            "description": "Fires when the actor is being removed from the world or the game is ending.",
+            "notes": "Use op:event, target:EndPlay. Output pins: EndPlayReason (EEndPlayReason).",
+            "plan_example": {
+                "step_id": "evt",
+                "op": "event",
+                "target": "EndPlay"
+            }
+        },
+        {
+            "name": "ActorBeginOverlap",
+            "description": "Fires when another actor begins overlapping this actor. Requires a collision component with Generate Overlap Events enabled.",
+            "notes": "Use op:event, target:ActorBeginOverlap. Output pins: OtherActor (Actor).",
+            "plan_example": {
+                "step_id": "evt",
+                "op": "event",
+                "target": "ActorBeginOverlap"
+            }
+        },
+        {
+            "name": "ActorEndOverlap",
+            "description": "Fires when another actor stops overlapping this actor.",
+            "notes": "Use op:event, target:ActorEndOverlap. Output pins: OtherActor (Actor).",
+            "plan_example": {
+                "step_id": "evt",
+                "op": "event",
+                "target": "ActorEndOverlap"
+            }
+        },
+        {
+            "name": "Hit",
+            "description": "Fires when this actor is hit by another actor in a physics collision (blocking hit).",
+            "notes": "Use op:event, target:Hit. Output pins: MyComp (PrimitiveComponent), Other (Actor), OtherComp (PrimitiveComponent), NormalImpulse (Vector), HitResult (HitResult).",
+            "plan_example": {
+                "step_id": "evt",
+                "op": "event",
+                "target": "Hit"
+            }
+        },
+        {
+            "name": "AnyDamage",
+            "description": "Fires when the actor receives any type of damage via ApplyDamage.",
+            "notes": "Use op:event, target:AnyDamage. Output pins: Damage (Float), DamageType (DamageType), InstigatedBy (Controller), DamageCauser (Actor).",
+            "plan_example": {
+                "step_id": "evt",
+                "op": "event",
+                "target": "AnyDamage"
+            }
+        },
+        {
+            "name": "PointDamage",
+            "description": "Fires when the actor receives point damage (e.g., from a projectile via ApplyPointDamage).",
+            "notes": "Use op:event, target:PointDamage. Output pins: Damage (Float), DamageType (DamageType), HitLocation (Vector), HitNormal (Vector), HitComponent (PrimitiveComponent), BoneName (Name), ShotFromDirection (Vector), InstigatedBy (Controller), DamageCauser (Actor), HitInfo (HitResult).",
+            "plan_example": {
+                "step_id": "evt",
+                "op": "event",
+                "target": "PointDamage"
+            }
+        },
+        {
+            "name": "RadialDamage",
+            "description": "Fires when the actor receives radial (area-of-effect) damage.",
+            "notes": "Use op:event, target:RadialDamage. Output pins: DamageReceived (Float), DamageType (DamageType), Origin (Vector), HitInfo (HitResult), InstigatedBy (Controller), DamageCauser (Actor).",
+            "plan_example": {
+                "step_id": "evt",
+                "op": "event",
+                "target": "RadialDamage"
+            }
+        },
+        {
+            "name": "Destroyed",
+            "description": "Fires when DestroyActor is called on this actor, just before actual destruction.",
+            "notes": "Use op:event, target:Destroyed. No output data pins (exec only).",
+            "plan_example": {
+                "step_id": "evt",
+                "op": "event",
+                "target": "Destroyed"
+            }
+        }
+    ]
+}

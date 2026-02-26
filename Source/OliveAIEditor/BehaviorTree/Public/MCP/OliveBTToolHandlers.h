@@ -71,7 +71,7 @@ private:
 		UBlackboardData*& OutBB, FOliveToolResult& OutError);
 	bool LoadBehaviorTreeFromParams(const TSharedPtr<FJsonObject>& Params,
 		UBehaviorTree*& OutBT, FOliveToolResult& OutError);
-	EOliveIRBlackboardKeyType ParseKeyType(const FString& TypeStr);
+	EOliveIRBlackboardKeyType ParseKeyType(const FString& InTypeStr);
 
 	TArray<FString> RegisteredToolNames;
 };

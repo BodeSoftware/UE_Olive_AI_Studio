@@ -5,12 +5,14 @@
 #include "Chat/OlivePromptAssembler.h"
 #include "Providers/OliveProviderRetryManager.h"
 #include "MCP/OliveToolRegistry.h"
+#include "MCP/OliveMCPServer.h"
 #include "Index/OliveProjectIndex.h"
 #include "Settings/OliveAISettings.h"
 #include "Profiles/OliveFocusProfileManager.h"
 #include "OliveAIEditorModule.h"
 #include "Brain/OliveToolExecutionContext.h"
 #include "Chat/OliveRunManager.h"
+#include "OliveSnapshotManager.h"
 #include "Misc/Guid.h"
 #include "Serialization/JsonSerializer.h"
 
@@ -201,6 +203,172 @@ void FOliveConversationManager::ClearHistory()
 }
 
 // ==========================================
+// Autonomous Mode
+// ==========================================
+
+bool FOliveConversationManager::IsAutonomousProvider() const
+{
+	if (!Provider.IsValid())
+	{
+		return false;
+	}
+
+	const UOliveAISettings* Settings = UOliveAISettings::Get();
+	const bool bAutonomousEnabled = Settings && Settings->bUseAutonomousMCPMode;
+
+	return bAutonomousEnabled && Provider->GetProviderName() == TEXT("Claude Code CLI");
+}
+
+void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message)
+{
+	// 1. Add user message to conversation history for UI display
+	FOliveChatMessage UserMessage;
+	UserMessage.Role = EOliveChatRole::User;
+	UserMessage.Content = Message;
+	UserMessage.Timestamp = FDateTime::UtcNow();
+	AddMessage(UserMessage);
+
+	// 2. Begin processing
+	bIsProcessing = true;
+	OnProcessingStarted.Broadcast();
+
+	// 3. Ensure MCP server is running so Claude Code can discover tools
+	if (!FOliveMCPServer::Get().IsRunning())
+	{
+		UE_LOG(LogOliveAI, Log, TEXT("Starting MCP server for autonomous mode"));
+		FOliveMCPServer::Get().Start();
+	}
+
+	// 4. Auto-snapshot before autonomous run for one-click rollback safety net.
+	//    This is especially important because MCP-origin tool calls bypass
+	//    Tier 2/3 confirmation flows.
+	if (ActiveContextPaths.Num() > 0)
+	{
+		const FString TruncatedMessage = Message.Left(60);
+		const FString SnapshotLabel = FString::Printf(TEXT("Pre-autonomous: %s"), *TruncatedMessage);
+		FOliveToolResult SnapshotResult = FOliveSnapshotManager::Get().CreateSnapshot(
+			SnapshotLabel, ActiveContextPaths, TEXT("Auto-snapshot before autonomous Claude Code run"));
+
+		if (SnapshotResult.bSuccess)
+		{
+			UE_LOG(LogOliveAI, Log, TEXT("Auto-snapshot created before autonomous run"));
+		}
+		else
+		{
+			UE_LOG(LogOliveAI, Warning, TEXT("Failed to create auto-snapshot before autonomous run"));
+		}
+	}
+	else
+	{
+		UE_LOG(LogOliveAI, Log, TEXT("Skipping auto-snapshot: no active context paths"));
+	}
+
+	// 5. Begin a Brain run
+	if (Brain.IsValid())
+	{
+		Brain->BeginRun();
+	}
+
+	// 6. Set up callbacks with WeakSelf pattern (matches existing orchestrated path)
+	TWeakPtr<FOliveConversationManager> WeakSelf = AsShared();
+
+	FOnOliveStreamChunk OnChunk;
+	OnChunk.BindLambda([WeakSelf](const FOliveStreamChunk& Chunk)
+	{
+		if (TSharedPtr<FOliveConversationManager> This = WeakSelf.Pin())
+		{
+			if (!Chunk.Text.IsEmpty())
+			{
+				This->CurrentStreamingContent += Chunk.Text;
+				This->OnStreamChunk.Broadcast(Chunk.Text);
+			}
+		}
+	});
+
+	FOnOliveComplete OnComplete;
+	OnComplete.BindLambda([WeakSelf](const FString& FullResponse, const FOliveProviderUsage& Usage)
+	{
+		if (TSharedPtr<FOliveConversationManager> This = WeakSelf.Pin())
+		{
+			// Update token usage
+			This->TotalTokensUsed += Usage.TotalTokens;
+
+			// Add assistant response to history
+			FOliveChatMessage AssistantMessage;
+			AssistantMessage.Role = EOliveChatRole::Assistant;
+			AssistantMessage.Content = !FullResponse.IsEmpty() ? FullResponse : This->CurrentStreamingContent;
+			AssistantMessage.Timestamp = FDateTime::UtcNow();
+			This->AddMessage(AssistantMessage);
+
+			// Brain: complete run
+			if (This->Brain.IsValid() && This->Brain->GetState() != EOliveBrainState::Idle)
+			{
+				This->Brain->CompleteRun(EOliveRunOutcome::Completed);
+				This->Brain->ResetToIdle();
+			}
+
+			This->bIsProcessing = false;
+			This->CurrentStreamingContent.Empty();
+			This->OnProcessingComplete.Broadcast();
+
+			// Apply deferred focus profile switch if one was requested during processing
+			if (!This->DeferredFocusProfile.IsEmpty())
+			{
+				const FString ProfileToApply = This->DeferredFocusProfile;
+				This->DeferredFocusProfile.Empty();
+				This->ActiveFocusProfile = ProfileToApply;
+				UE_LOG(LogOliveAI, Log, TEXT("Deferred focus profile applied after autonomous run: %s"), *ProfileToApply);
+				This->OnDeferredProfileApplied.Broadcast(ProfileToApply);
+			}
+
+			// Drain the next queued message if any are waiting
+			This->DrainNextQueuedMessage();
+		}
+	});
+
+	FOnOliveError OnErr;
+	OnErr.BindLambda([WeakSelf](const FString& ErrorMessage)
+	{
+		if (TSharedPtr<FOliveConversationManager> This = WeakSelf.Pin())
+		{
+			UE_LOG(LogOliveAI, Error, TEXT("Autonomous run error: %s"), *ErrorMessage);
+
+			// Brain: error state
+			if (This->Brain.IsValid() && This->Brain->IsActive())
+			{
+				This->Brain->CompleteRun(EOliveRunOutcome::Failed);
+				This->Brain->ResetToIdle();
+			}
+
+			This->bIsProcessing = false;
+			This->CurrentStreamingContent.Empty();
+
+			This->OnError.Broadcast(ErrorMessage);
+			This->OnProcessingComplete.Broadcast();
+
+			// Apply deferred focus profile switch if one was requested during processing
+			if (!This->DeferredFocusProfile.IsEmpty())
+			{
+				const FString ProfileToApply = This->DeferredFocusProfile;
+				This->DeferredFocusProfile.Empty();
+				This->ActiveFocusProfile = ProfileToApply;
+				UE_LOG(LogOliveAI, Log, TEXT("Deferred focus profile applied after autonomous error: %s"), *ProfileToApply);
+				This->OnDeferredProfileApplied.Broadcast(ProfileToApply);
+			}
+
+			// Drain the next queued message if any are waiting
+			This->DrainNextQueuedMessage();
+		}
+	});
+
+	// 7. Launch autonomous provider -- tools are discovered via MCP, no orchestration
+	UE_LOG(LogOliveAI, Log, TEXT("Launching autonomous Claude Code run for message: %.80s%s"),
+		*Message.Left(80), Message.Len() > 80 ? TEXT("...") : TEXT(""));
+
+	Provider->SendMessageAutonomous(Message, OnChunk, OnComplete, OnErr);
+}
+
+// ==========================================
 // Message Handling
 // ==========================================
 
@@ -236,6 +404,17 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 	if (!Provider.IsValid())
 	{
 		OnError.Broadcast(TEXT("No AI provider configured. Please configure a provider in settings."));
+		return;
+	}
+
+	// Route to autonomous path for Claude Code CLI when autonomous MCP mode is enabled.
+	// This bypasses the entire orchestrated loop (system message assembly, tool schema
+	// serialization, prompt distillation, iteration budgets, correction directives,
+	// self-correction policy, and loop detection). Claude Code discovers tools via MCP
+	// and manages its own agentic loop.
+	if (IsAutonomousProvider())
+	{
+		SendUserMessageAutonomous(Message);
 		return;
 	}
 
@@ -863,6 +1042,7 @@ void FOliveConversationManager::ProcessPendingToolCalls()
 	PendingToolResults.Empty();
 	bSkipRemainingBatch = false;
 	FailedFoundationalTool.Empty();
+	FailedAssetPaths.Empty();
 	PendingConfirmationQueue.Empty();
 	CurrentBatchFailureCount = 0;
 	CurrentBatchCorrectionSummary.Empty();
@@ -941,6 +1121,38 @@ void FOliveConversationManager::ProcessPendingToolCalls()
 			PendingToolResults.Add(SkipMessage);
 			PendingToolExecutions--;
 			continue;
+		}
+
+		// Skip tools targeting an asset path that already failed with ASSET_NOT_FOUND
+		// in this batch. Intentionally bypasses HandleToolResult so skipped tools
+		// do not consume the self-correction budget.
+		if (!FailedAssetPaths.IsEmpty())
+		{
+			FString ToolAssetPath;
+			if (ToolCall.ToolArguments.IsValid())
+			{
+				if (!ToolCall.ToolArguments->TryGetStringField(TEXT("path"), ToolAssetPath))
+				{
+					ToolCall.ToolArguments->TryGetStringField(TEXT("asset_path"), ToolAssetPath);
+				}
+			}
+
+			if (!ToolAssetPath.IsEmpty() && FailedAssetPaths.Contains(ToolAssetPath))
+			{
+				FOliveChatMessage SkipMessage;
+				SkipMessage.Role = EOliveChatRole::Tool;
+				SkipMessage.ToolCallId = ToolCall.ToolCallId;
+				SkipMessage.ToolName = ToolCall.ToolName;
+				SkipMessage.Content = FString::Printf(
+					TEXT("{\"success\":false,\"error\":{\"code\":\"SKIPPED_ASSET_NOT_FOUND\","
+						 "\"message\":\"Skipped: asset '%s' was not found by a prior tool in this batch. "
+						 "Use project.search to find the correct path, then retry.\"}}"),
+					*ToolAssetPath);
+				SkipMessage.Timestamp = FDateTime::UtcNow();
+				PendingToolResults.Add(SkipMessage);
+				PendingToolExecutions--;
+				continue;
+			}
 		}
 
 		ExecuteToolCall(ToolCall);
@@ -1169,6 +1381,26 @@ void FOliveConversationManager::HandleToolResult(
 		CurrentBatchCorrectionSummary += FString::Printf(
 			TEXT("- %s (id: %s): %s - %s\n"),
 			*ToolName, *ToolCallId, *ErrorCode, *ErrorMsg);
+
+		// Track asset paths that failed with ASSET_NOT_FOUND so subsequent
+		// tools in this batch targeting the same path can be skipped without
+		// consuming the self-correction budget.
+		if (ErrorCode == TEXT("ASSET_NOT_FOUND"))
+		{
+			FString FailedPath;
+			if (const TSharedPtr<FJsonObject>* FoundArgs = ActiveToolCallArgs.Find(ToolCallId))
+			{
+				if (!(*FoundArgs)->TryGetStringField(TEXT("path"), FailedPath))
+				{
+					(*FoundArgs)->TryGetStringField(TEXT("asset_path"), FailedPath);
+				}
+			}
+			if (!FailedPath.IsEmpty())
+			{
+				FailedAssetPaths.Add(FailedPath);
+				UE_LOG(LogOliveAI, Log, TEXT("Recorded ASSET_NOT_FOUND path '%s' for batch skip."), *FailedPath);
+			}
+		}
 	}
 
 	// If a foundational tool failed, skip remaining dependent tools in this batch
@@ -1402,6 +1634,22 @@ void FOliveConversationManager::ContinueAfterToolResults()
 		// All tools in this batch succeeded -- corrections are resolved
 		bHasPendingCorrections = false;
 		CorrectionRepromptCount = 0;
+
+		// Refill re-prompt budget after successful work. Without this,
+		// early empty AI responses can exhaust all re-prompts before real
+		// work begins, leaving no defense against premature completion.
+		ZeroToolRepromptCount = 0;
+
+		// Allow text-only completion after meaningful multi-step work.
+		// Without this, bTurnHasExplicitWriteIntent stays true for the entire
+		// run and forces the AI to call tools even after all work is done,
+		// wasting iterations on busywork. Require >= 4 iterations so the AI
+		// must complete create, add components/variables, wire graphs, and
+		// compile before it can wrap up.
+		if (CurrentToolIteration >= 4)
+		{
+			bTurnHasExplicitWriteIntent = false;
+		}
 	}
 
 	// Reset batch failure tracking

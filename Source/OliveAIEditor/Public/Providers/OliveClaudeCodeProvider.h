@@ -69,11 +69,19 @@ protected:
 	virtual FString GetExecutablePath() const override;
 
 	/**
-	 * Builds Claude-specific CLI arguments:
+	 * Builds Claude-specific CLI arguments for orchestrated mode:
 	 * --print --output-format stream-json --verbose --dangerously-skip-permissions
 	 * --max-turns 1 --strict-mcp-config <system-prompt-arg>
 	 */
 	virtual FString GetCLIArguments(const FString& SystemPromptArg) const override;
+
+	/**
+	 * Builds Claude-specific CLI arguments for autonomous MCP mode.
+	 * No --strict-mcp-config (Claude discovers tools via MCP), no --append-system-prompt
+	 * (AGENTS.md provides context), --max-turns 50 as a safety ceiling.
+	 * @return Argument string for autonomous execution
+	 */
+	virtual FString GetCLIArgumentsAutonomous() const override;
 
 	/**
 	 * Parses Claude's stream-json output format.

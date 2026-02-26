@@ -157,6 +157,32 @@ public:
 		meta=(DisplayName="Max Rate Limit Wait (seconds)", ClampMin=0, ClampMax=300))
 	int32 MaxRetryAfterWaitSeconds = 120;
 
+	/** Use autonomous MCP mode for Claude Code CLI.
+	 *  When enabled, Claude Code discovers tools via MCP and manages its own loop.
+	 *  When disabled, the plugin orchestrates each turn (legacy behavior). */
+	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
+		meta=(DisplayName="Autonomous MCP Mode (Claude Code)"))
+	bool bUseAutonomousMCPMode = true;
+
+	/** Maximum total runtime for autonomous CLI mode (seconds). 0 = no limit.
+	 *  Acts as a cost-control safety net. The activity and idle timeouts catch hung processes. */
+	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
+		meta=(DisplayName="Autonomous Max Runtime (seconds)", ClampMin=0, ClampMax=1800))
+	int32 AutonomousMaxRuntimeSeconds = 900;
+
+	/** Maximum seconds with no MCP tool call before killing an autonomous CLI process.
+	 *  This catches "thinking but not acting" -- the AI produces stdout but makes no progress.
+	 *  Set to 0 to disable. The idle stdout timeout (120s) still catches fully hung processes. */
+	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
+		meta=(DisplayName="Autonomous Tool Idle Timeout (seconds)", ClampMin=0, ClampMax=600))
+	int32 AutonomousIdleToolSeconds = 240;
+
+	/** Maximum turns for autonomous CLI mode. Safety ceiling, not orchestration.
+	 *  Each MCP tools/call counts as one turn. Complex tasks may need 40-60. */
+	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
+		meta=(DisplayName="Autonomous Max Turns", ClampMin=1, ClampMax=200))
+	int32 AutonomousMaxTurns = 50;
+
 	// ==========================================
 	// MCP Server Settings
 	// ==========================================

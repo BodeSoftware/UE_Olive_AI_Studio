@@ -3,7 +3,8 @@ Think through the complete design before calling tools.
 
 ## Workflows
 CREATE new Blueprint:
-1. blueprint.create → 2. add_component/add_variable → 3. blueprint.apply_plan_json (ALL graph logic in one call)
+1. Check if a template fits (see Templates below) → blueprint.create_from_template
+2. If no template fits: blueprint.create → add_component/add_variable → blueprint.apply_plan_json (ALL graph logic in one call)
 
 MODIFY existing Blueprint:
 1. project.search (find exact path) → 2. blueprint.read (understand current state) → 3. add_variable/add_component → 4. blueprint.apply_plan_json
@@ -29,15 +30,20 @@ MULTI-ASSET (2+ Blueprints needed, e.g. "gun and bullet"):
 ```
 
 ## Ops
-event, custom_event, call, get_var, set_var, branch, sequence, cast, for_loop, for_each_loop, while_loop, do_once, flip_flop, gate, delay, is_valid, print_string, spawn_actor, make_struct, break_struct, return, comment
+event, custom_event, call, call_delegate, get_var, set_var, branch, sequence, cast, for_loop, for_each_loop, while_loop, do_once, flip_flop, gate, delay, is_valid, print_string, spawn_actor, make_struct, break_struct, return, comment
+- call_delegate: broadcasts an event dispatcher. Use for dispatchers created via blueprint.add_event_dispatcher. Target = dispatcher name (e.g., "OnFired").
 
 ## Wires
 Data: @step.auto (type-match, use ~80%), @step.~hint (fuzzy), @step.PinName (exact)
 Literals: "InString":"Hello" (no @ = pin default)
-Exec: exec_after:"step_id" (chains then→execute), exec_outputs:{"True":"a","False":"b"} for Branch
+Component refs: @ComponentName is auto-expanded to a get_var step (e.g., "@InteractionSphere" becomes get_var for that component)
+Exec: exec_after:"step_id" (chains then->execute), exec_outputs:{"True":"a","False":"b"} for Branch/Cast
+IMPORTANT: exec_after and exec_outputs are MUTUALLY EXCLUSIVE on the source step. If a step uses exec_outputs (Branch, Cast), do NOT also use exec_after from the same step. Chain subsequent steps from the exec_outputs targets instead.
 
 ## Function Graphs vs EventGraph
 - EventGraph: use op:"event" with target:"BeginPlay"/"Tick"/etc. as entry points
+- Component delegate events: use op:"event" with target:"OnComponentBeginOverlap"/"OnComponentEndOverlap"/"OnComponentHit".
+  These auto-detect the component and create a ComponentBoundEvent node. Add "component_name":"MyComponent" to properties if ambiguous.
 - Function graphs (blueprint.add_function): the entry node is auto-created.
   Subsequent impure steps MUST have exec_after pointing to the previous impure step.
   Pure steps (get_var, pure function calls) need no exec wiring.
@@ -54,6 +60,13 @@ Class ref (TSubclassOf): {"category":"class","class_name":"Actor"}
 Array: {"category":"array","value_type":{"category":"float"}}
 Enum: {"category":"byte","enum_name":"ECollisionChannel"}
 
+## Templates
+Before creating a Blueprint from scratch, check if an available template matches.
+- blueprint.create_from_template(template_id, preset, asset_path) creates a complete Blueprint in one call.
+- Templates include components, variables, event dispatchers, functions, and event graphs.
+- Use a preset name if one matches (e.g., "Bullet", "Rocket" for projectile template).
+- If no template matches, proceed with the normal CREATE workflow above.
+
 ## Rules
 - Complete the FULL task in one run — don't stop after creating assets. Create structures, wire graphs, compile, and verify. Never say "here's what you'd need to do" — DO it.
 - If a tool returns compile errors, fix them before declaring done.
@@ -61,6 +74,8 @@ Enum: {"category":"byte","enum_name":"ECollisionChannel"}
 - Asset paths MUST end with asset name: /Game/Blueprints/BP_Gun (NOT /Game/Blueprints/)
 - For EXISTING assets, use project.search to find exact paths. For NEW assets, choose the path directly.
 - Use apply_plan_json for 3+ nodes. For 1-2 nodes, add_node + connect_pins is fine.
+- Do not re-preview an unchanged plan. If preview succeeds, apply immediately in the next turn. If you revise the plan after seeing issues, preview the revised version.
+- If apply_plan_json returns wiring errors (partial success), fix remaining issues with granular connect_pins/set_pin_default rather than re-planning from scratch.
 - STEP ORDER: data-provider steps (get_var, pure calls) BEFORE steps that reference them via @ref.
 - If add_variable fails, do NOT reference that variable in subsequent plan_json calls.
 - Component classes: StaticMeshComponent, SphereComponent, BoxComponent, CapsuleComponent, ArrowComponent, ProjectileMovementComponent, SceneComponent, AudioComponent

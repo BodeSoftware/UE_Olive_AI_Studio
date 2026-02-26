@@ -162,6 +162,13 @@ public:
 	 */
 	bool IsRunning() const { return State == EOliveMCPServerState::Running; }
 
+	/**
+	 * Write .mcp.json config file to the plugin directory.
+	 * Called after the MCP server starts so that Claude Code CLI can discover
+	 * the MCP bridge. Uses the standard command/args format with mcp-bridge.js.
+	 */
+	void WriteMcpConfigFile();
+
 	// ==========================================
 	// Events
 	// ==========================================
@@ -298,6 +305,10 @@ private:
 
 	/** Cleanup inactive clients */
 	void CleanupInactiveClients();
+
+	/** Remove the .mcp.json config file from the plugin directory.
+	 *  Called on Stop() to prevent stale config from persisting. */
+	void CleanupMcpConfigFile();
 
 	// ==========================================
 	// State

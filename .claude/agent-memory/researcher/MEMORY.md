@@ -32,6 +32,18 @@ PCG plugin headers: `C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/PCG/Sourc
 - Hot reload: do NOT trigger automatically — AddCodeToProject handles it; prompt user otherwise
 - All reflection iteration must be on the game thread
 
+## NeoStack / AIK Architecture (plans/research/neostack-architecture.md)
+- Product: Agent Integration Kit by Betide Studio — docs at aik.betide.studio
+- MCP server: always-on HTTP server, port 9315 default, auto-starts with editor
+- DUAL transport on same port: SSE (`/sse`, MCP 2024-11-05) for Claude Code; Streamable HTTP (`/mcp`, MCP 2025-03-26) for Gemini CLI/Cursor
+- Claude Code STILL uses SSE transport (not Streamable HTTP) as of Feb 2026 — `.mcp.json` URL should be `/sse`
+- Process lifecycle: ONE process per user request (not per turn); Claude Code exits when task complete
+- Domain knowledge: Profiles inject system prompt additions; no AGENTS.md — Claude Code reads CLAUDE.md natively
+- Tool consolidation: v0.5.0 reduced from 27+ to 15 tools — fewer broader tools is the AIK philosophy
+- .mcp.json placed at project root, written dynamically after server binds with actual port
+- ACP (stdio subprocess) = in-editor chat; MCP HTTP = external agents (Cursor); both used simultaneously
+- No public source code — AIK is proprietary (GitHub has only EOSIntegrationKit, SteamIntegrationKit, etc.)
+
 ## Search Patterns
 - Use `find "C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/..." -name "*.h"` to locate headers
 - Engine also accessible at same path with UE_5.1, UE_5.6, UE_5.7 installed on C: drive

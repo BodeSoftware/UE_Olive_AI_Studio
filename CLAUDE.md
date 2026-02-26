@@ -70,7 +70,10 @@ Source/
     ├── Index/               # Project index (asset search, class hierarchy)
     ├── Profiles/            # Focus profiles + tool packs
     ├── Settings/            # UDeveloperSettings (UOliveAISettings)
-    ├── Blueprint/           # Blueprint read/write/catalog/plan
+    ├── Blueprint/           # Blueprint read/write/catalog/plan/template
+    │   ├── Public/Template/ # FOliveTemplateSystem (factory + reference templates)
+    │   ├── Public/Plan/     # FOlivePlanValidator, FOlivePlanExecutor, FOliveBlueprintPlanResolver
+    │   └── Private/Template/# OliveTemplateSystem.cpp
     ├── BehaviorTree/        # BT/Blackboard
     ├── PCG/                 # PCG graphs
     ├── Cpp/                 # C++ integration
@@ -91,15 +94,16 @@ Source/
 3. `FOliveValidationEngine::Get().RegisterCoreRules()`
 4. `FOliveProjectIndex::Get().Initialize()`
 5. `FOliveToolRegistry::Get().RegisterBuiltInTools()` (project tools)
-6. `FOliveNodeCatalog::Get().Initialize()` → `FOliveBlueprintToolHandlers::Get().RegisterAllTools()`
+6. `FOliveNodeCatalog::Get().Initialize()` → `FOliveBlueprintToolHandlers::Get().RegisterAllTools()` (includes `RegisterTemplateTools()`)
 7. `FOliveBTNodeCatalog::Get().Initialize()` → `FOliveBTToolHandlers::Get().RegisterAllTools()` → `RegisterBehaviorTreeRules()`
 8. PCG tools (guarded by availability check): `FOlivePCGNodeCatalog` → `FOlivePCGToolHandlers`
 9. `FOliveCppToolHandlers::Get().RegisterAllTools()` → `RegisterCppRules()`
 10. `FOliveCrossSystemToolHandlers::Get().RegisterAllTools()` → `RegisterCrossSystemRules()`
-11. `FOliveFocusProfileManager::Get().Initialize()` (must come after all tool registration)
-12. `FOliveToolPackManager::Get().Initialize()`
-13. `FOlivePromptAssembler::Get().Initialize()` + `FOliveMCPPromptTemplates::Get().Initialize()`
-14. `FOliveMCPServer::Get().Start()` (if `bAutoStartMCPServer`)
+11. `FOliveTemplateSystem::Get().Initialize()` (scans `Content/Templates/` for factory + reference JSON templates)
+12. `FOliveFocusProfileManager::Get().Initialize()` (must come after all tool registration)
+13. `FOliveToolPackManager::Get().Initialize()`
+14. `FOlivePromptAssembler::Get().Initialize()` + `FOliveMCPPromptTemplates::Get().Initialize()`
+15. `FOliveMCPServer::Get().Start()` (if `bAutoStartMCPServer`)
 
 ### Key Singletons (all `static Foo& Get()`)
 
@@ -117,10 +121,11 @@ Source/
 | `FOliveEditorChatSession` | Editor-lifetime session (owns ConversationManager, MessageQueue, RetryManager) |
 | `FOliveRunManager` | Multi-step agentic run orchestration |
 | `FOliveCompileManager` | Blueprint compilation management |
-| `FOlivePromptAssembler` | System prompt assembly |
+| `FOlivePromptAssembler` | System prompt assembly + capability knowledge injection |
 | `FOliveSnapshotManager` | Snapshot/rollback management |
 | `FOliveMCPPromptTemplates` | MCP prompt template registry |
 | `FOliveBTNodeCatalog` | Behavior Tree node catalog |
+| `FOliveTemplateSystem` | Factory + reference template registry; loaded from `Content/Templates/` |
 
 ### Write Pipeline (6 Stages)
 
@@ -139,7 +144,7 @@ Result chain: `FOliveWriteResult` → `.ToToolResult()` → `FOliveToolResult`. 
 
 Related Brain subsystems (in `Public/Brain/`):
 - `FOliveLoopDetector` (in `OliveRetryPolicy.h`) — infinite loop detection, owned by `FOliveConversationManager`
-- `FOliveSelfCorrectionPolicy` — retry evaluation after tool failures
+- `FOliveSelfCorrectionPolicy` — retry evaluation after tool failures; includes plan content deduplication (`PreviousPlanHashes`), progressive error disclosure (terse→full→escalate), and 3-tier error classification (A=FixableMistake, B=UnsupportedFeature, C=Ambiguous)
 - `FOlivePromptDistiller` — context window distillation
 - `FOliveOperationHistory` — operation history tracking
 - `FOliveToolExecutionContext` — per-tool execution context
@@ -185,7 +190,7 @@ Threshold: `OLIVE_LARGE_GRAPH_THRESHOLD = 500` nodes. Page size: `OLIVE_GRAPH_PA
 validate params → load Blueprint → build `FOliveWriteRequest` → bind executor lambda → `ExecuteWithOptionalConfirmation`
 
 Schema implementations: `OliveBlueprintSchemas.cpp`. Tool registrations: `RegisterReaderTools()`, etc.
-Note: `OliveBlueprintToolHandlers.cpp` is 5000+ lines with anonymous namespace helpers.
+Note: `OliveBlueprintToolHandlers.cpp` is 7000+ lines with anonymous namespace helpers. Registration methods: `RegisterReaderTools()`, `RegisterWriterTools()`, `RegisterPlanTools()`, `RegisterTemplateTools()`.
 
 ---
 
@@ -243,6 +248,21 @@ Intent-level graph editing system where the AI describes "what" it wants (e.g., 
 - **Code:** `Blueprint/Public/Plan/` and `Blueprint/Private/Plan/`
 - **Settings:** `bEnableBlueprintPlanJsonTools`, `PlanJsonMaxSteps = 128`, `bPlanJsonRequirePreviewForApply`, `bEnforcePlanFirstGraphRouting`, `PlanFirstGraphRoutingThreshold = 3`
 
+**Plan Pipeline (resolver → validator → executor):**
+1. `FOliveBlueprintPlanResolver::Resolve()` — alias resolution, SCS component variable recognition, pure-node collapse, `ExpandPlanInputs()` for auto-synthesis
+2. `FOlivePlanValidator::Validate()` — Phase 0 structural checks: `COMPONENT_FUNCTION_ON_ACTOR` (unwired Target on Actor BP) and `EXEC_WIRING_CONFLICT` (exec_after targeting a step with exec_outputs)
+3. `FOlivePlanExecutor::Execute()` — 7 phases: CreateNodes → AutoWireComponents (Phase 1.5) → WireExec → WireData → SetDefaults → PreCompileValidation (Phase 5.5) → AutoLayout. `FOlivePlanExecutionContext` carries `AutoFixCount`, `PreCompileIssues`, `NodeIdToStepId`.
+
+### Blueprint Templates
+
+Factory templates create complete Blueprints from parameterized JSON. Reference templates provide pattern documentation the AI can read before writing plans.
+
+- **Tools:** `blueprint.create_from_template`, `blueprint.get_template`, `blueprint.list_templates` (all in `RegisterTemplateTools()`)
+- **Templates:** `Content/Templates/factory/` (e.g., `stat_component.json`) and `Content/Templates/reference/` (e.g., `component_patterns.json`, `ue_events.json`)
+- **Template format:** JSON with `template_id`, `template_type`, `parameters` (with defaults), optional `presets`, `blueprint` section (type, variables, event_dispatchers, functions with embedded plan JSON), `catalog_description`
+- **Parameter substitution:** `${param_name}` tokens, supports bool ternary conditionals like `${start_full} ? ${max_value} : 0`
+- **Catalog injection:** `FOliveTemplateSystem::GetCatalogBlock()` is appended to capability knowledge by `FOlivePromptAssembler::GetCapabilityKnowledge()` so AI agents always see available templates
+
 ### Safety Presets
 
 `UOliveAISettings` exposes presets: `Careful`, `Fast`, `YOLO` — with per-operation tier overrides. Rate limit: `MaxWriteOpsPerMinute = 30`. Brain layer settings: batch write max ops, context window, correction cycles. Checkpoint interval: every 5 steps.
@@ -270,6 +290,8 @@ Unreal's startup popup ("rebuild from source") is generic. Treat it as a symptom
 
 - PCG subgraph settings: `PCGSubgraph.h` (not `PCGSubgraphSettings.h`)
 - `UPCGEdge::OtherPin` is obsolete → use `GetOtherPin(...)` with `PCGEdge.h`
+- `TWeakObjectPtr` has no `IsNull()` — use `.Get() != nullptr` or `IsValid()`
+- `FEdGraphPinType::PinSubCategoryObject` is `TWeakObjectPtr<UObject>` — check with `.Get()`
 - Always confirm current symbols in UE 5.5 source for Blueprint/editor APIs
 
 ---
@@ -317,7 +339,10 @@ This project uses specialized subagents. USE THEM — do not try to do everythin
 | BP tool handlers | `Source/OliveAIEditor/Blueprint/Private/MCP/OliveBlueprintToolHandlers.cpp` |
 | BP schemas | `Source/OliveAIEditor/Blueprint/Private/MCP/OliveBlueprintSchemas.cpp` |
 | BP plan JSON | `Source/OliveAIEditor/Blueprint/Public/Plan/`, `Source/OliveAIRuntime/Public/IR/BlueprintPlanIR.h` |
+| Plan validator | `Source/OliveAIEditor/Blueprint/Public/Plan/OlivePlanValidator.h` |
 | Node catalog | `Source/OliveAIEditor/Blueprint/Private/Catalog/OliveNodeCatalog.cpp` |
+| Template system | `Source/OliveAIEditor/Blueprint/Public/Template/OliveTemplateSystem.h` |
+| Template data | `Content/Templates/factory/`, `Content/Templates/reference/` |
 | Provider interface | `Source/OliveAIEditor/Public/Providers/IOliveAIProvider.h` |
 | Brain layer | `Source/OliveAIEditor/Public/Brain/OliveBrainLayer.h` |
 | Retry/loop detection | `Source/OliveAIEditor/Public/Brain/OliveRetryPolicy.h` |

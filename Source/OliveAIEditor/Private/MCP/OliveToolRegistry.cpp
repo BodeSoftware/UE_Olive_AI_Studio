@@ -64,37 +64,86 @@ namespace
 		return Cloned;
 	}
 
-	TSharedPtr<FJsonObject> NormalizeBlueprintParams(
-		const FString& ToolName,
-		const TSharedPtr<FJsonObject>& Params,
+	/**
+	 * Try to copy the value of AliasName to CanonicalName on Effective if the
+	 * canonical field is missing/empty and the alias field has a non-empty value.
+	 * Returns true if an alias was applied.
+	 */
+	bool TryApplyAlias(
+		TSharedPtr<FJsonObject>& Effective,
+		const FString& CanonicalName,
+		const FString& AliasName,
 		TArray<FString>& OutNormalizedFields)
 	{
-		if (!IsBlueprintTool(ToolName))
+		FString ExistingValue;
+		if (Effective->TryGetStringField(CanonicalName, ExistingValue) && !ExistingValue.IsEmpty())
 		{
-			return Params;
+			return false; // canonical already present, nothing to do
 		}
 
-		TSharedPtr<FJsonObject> Effective = CloneParams(Params);
+		FString AliasValue;
+		if (Effective->TryGetStringField(AliasName, AliasValue) && !AliasValue.IsEmpty())
+		{
+			Effective->SetStringField(CanonicalName, AliasValue);
+			OutNormalizedFields.Add(FString::Printf(TEXT("%s->%s"), *AliasName, *CanonicalName));
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Try to copy a JSON object or array field from AliasName to CanonicalName
+	 * on Effective if the canonical field is missing. Works for plan_json<-plan etc.
+	 */
+	bool TryApplyFieldAlias(
+		TSharedPtr<FJsonObject>& Effective,
+		const FString& CanonicalName,
+		const FString& AliasName,
+		TArray<FString>& OutNormalizedFields)
+	{
+		if (Effective->HasField(CanonicalName))
+		{
+			return false;
+		}
+
+		if (Effective->HasField(AliasName))
+		{
+			Effective->SetField(CanonicalName, Effective->TryGetField(AliasName));
+			OutNormalizedFields.Add(FString::Printf(TEXT("%s->%s"), *AliasName, *CanonicalName));
+			return true;
+		}
+		return false;
+	}
+
+	/** Extract the tool family prefix (everything before the first dot). */
+	FString GetToolFamily(const FString& ToolName)
+	{
+		int32 DotIndex;
+		if (ToolName.FindChar(TEXT('.'), DotIndex))
+		{
+			return ToolName.Left(DotIndex);
+		}
+		return ToolName;
+	}
+
+	/** Normalize parameters for Blueprint tools. */
+	void NormalizeBlueprintParams(
+		const FString& ToolName,
+		TSharedPtr<FJsonObject>& Effective,
+		TArray<FString>& OutNormalizedFields)
+	{
+		// Path aliasing — plan tools use asset_path, others use path
 		const TCHAR* CanonicalField = IsBlueprintPlanTool(ToolName) ? TEXT("asset_path") : TEXT("path");
 
 		FString CanonicalValue;
 		const bool bHasCanonical = Effective->TryGetStringField(CanonicalField, CanonicalValue) && !CanonicalValue.IsEmpty();
 
-		auto TryAlias = [&](const FString& AliasName) -> bool
-		{
-			FString AliasValue;
-			if (Effective->TryGetStringField(AliasName, AliasValue) && !AliasValue.IsEmpty())
-			{
-				Effective->SetStringField(CanonicalField, AliasValue);
-				OutNormalizedFields.Add(FString::Printf(TEXT("%s->%s"), *AliasName, CanonicalField));
-				return true;
-			}
-			return false;
-		};
-
 		if (!bHasCanonical)
 		{
-			TryAlias(TEXT("asset_path")) || TryAlias(TEXT("path")) || TryAlias(TEXT("asset")) || TryAlias(TEXT("blueprint"));
+			TryApplyAlias(Effective, CanonicalField, TEXT("asset_path"), OutNormalizedFields)
+				|| TryApplyAlias(Effective, CanonicalField, TEXT("path"), OutNormalizedFields)
+				|| TryApplyAlias(Effective, CanonicalField, TEXT("asset"), OutNormalizedFields)
+				|| TryApplyAlias(Effective, CanonicalField, TEXT("blueprint"), OutNormalizedFields);
 		}
 
 		// Keep both common path keys in sync to avoid schema/handler drift between tools.
@@ -112,6 +161,148 @@ namespace
 		{
 			Effective->SetStringField(TEXT("path"), AssetPathValue);
 			OutNormalizedFields.Add(TEXT("asset_path->path"));
+		}
+
+		// plan_json <- plan / steps (supports both object and array fields)
+		TryApplyFieldAlias(Effective, TEXT("plan_json"), TEXT("plan"), OutNormalizedFields)
+			|| TryApplyFieldAlias(Effective, TEXT("plan_json"), TEXT("steps"), OutNormalizedFields);
+
+		// function_name <- name / function
+		TryApplyAlias(Effective, TEXT("function_name"), TEXT("name"), OutNormalizedFields)
+			|| TryApplyAlias(Effective, TEXT("function_name"), TEXT("function"), OutNormalizedFields);
+
+		// parent_class <- parent / base_class
+		TryApplyAlias(Effective, TEXT("parent_class"), TEXT("parent"), OutNormalizedFields)
+			|| TryApplyAlias(Effective, TEXT("parent_class"), TEXT("base_class"), OutNormalizedFields);
+
+		// template_id <- template / id
+		TryApplyAlias(Effective, TEXT("template_id"), TEXT("template"), OutNormalizedFields)
+			|| TryApplyAlias(Effective, TEXT("template_id"), TEXT("id"), OutNormalizedFields);
+	}
+
+	/** Normalize parameters for BT / Blackboard tools. */
+	void NormalizeBTParams(
+		TSharedPtr<FJsonObject>& Effective,
+		TArray<FString>& OutNormalizedFields)
+	{
+		// path <- asset_path / asset
+		TryApplyAlias(Effective, TEXT("path"), TEXT("asset_path"), OutNormalizedFields)
+			|| TryApplyAlias(Effective, TEXT("path"), TEXT("asset"), OutNormalizedFields);
+
+		// key_type <- type
+		TryApplyAlias(Effective, TEXT("key_type"), TEXT("type"), OutNormalizedFields);
+	}
+
+	/** Normalize parameters for PCG tools. */
+	void NormalizePCGParams(
+		TSharedPtr<FJsonObject>& Effective,
+		TArray<FString>& OutNormalizedFields)
+	{
+		// path <- asset_path / asset
+		TryApplyAlias(Effective, TEXT("path"), TEXT("asset_path"), OutNormalizedFields)
+			|| TryApplyAlias(Effective, TEXT("path"), TEXT("asset"), OutNormalizedFields);
+
+		// settings_class <- type / node_type / class
+		TryApplyAlias(Effective, TEXT("settings_class"), TEXT("type"), OutNormalizedFields)
+			|| TryApplyAlias(Effective, TEXT("settings_class"), TEXT("node_type"), OutNormalizedFields)
+			|| TryApplyAlias(Effective, TEXT("settings_class"), TEXT("class"), OutNormalizedFields);
+	}
+
+	/** Normalize parameters for C++ tools. Tool-specific disambiguation for 'name'. */
+	void NormalizeCppParams(
+		const FString& ToolName,
+		TSharedPtr<FJsonObject>& Effective,
+		TArray<FString>& OutNormalizedFields)
+	{
+		// file_path <- path / file
+		TryApplyAlias(Effective, TEXT("file_path"), TEXT("path"), OutNormalizedFields)
+			|| TryApplyAlias(Effective, TEXT("file_path"), TEXT("file"), OutNormalizedFields);
+
+		// module_name <- module
+		TryApplyAlias(Effective, TEXT("module_name"), TEXT("module"), OutNormalizedFields);
+
+		// anchor_text <- anchor / search_text
+		TryApplyAlias(Effective, TEXT("anchor_text"), TEXT("anchor"), OutNormalizedFields)
+			|| TryApplyAlias(Effective, TEXT("anchor_text"), TEXT("search_text"), OutNormalizedFields);
+
+		// Tool-specific: 'name' can map to class_name, property_name, or function_name
+		// depending on the specific tool.
+		if (ToolName == TEXT("cpp.read_class") || ToolName == TEXT("cpp.list_blueprint_callable")
+			|| ToolName == TEXT("cpp.list_overridable") || ToolName == TEXT("cpp.create_class"))
+		{
+			TryApplyAlias(Effective, TEXT("class_name"), TEXT("name"), OutNormalizedFields)
+				|| TryApplyAlias(Effective, TEXT("class_name"), TEXT("class"), OutNormalizedFields);
+		}
+		else if (ToolName == TEXT("cpp.add_property"))
+		{
+			TryApplyAlias(Effective, TEXT("property_name"), TEXT("name"), OutNormalizedFields);
+			TryApplyAlias(Effective, TEXT("property_type"), TEXT("type"), OutNormalizedFields);
+		}
+		else if (ToolName == TEXT("cpp.add_function"))
+		{
+			TryApplyAlias(Effective, TEXT("function_name"), TEXT("name"), OutNormalizedFields)
+				|| TryApplyAlias(Effective, TEXT("function_name"), TEXT("function"), OutNormalizedFields);
+		}
+		else if (ToolName == TEXT("cpp.read_enum"))
+		{
+			TryApplyAlias(Effective, TEXT("enum_name"), TEXT("name"), OutNormalizedFields);
+		}
+		else if (ToolName == TEXT("cpp.read_struct"))
+		{
+			TryApplyAlias(Effective, TEXT("struct_name"), TEXT("name"), OutNormalizedFields);
+		}
+	}
+
+	/** Normalize parameters for project.* tools. */
+	void NormalizeProjectParams(
+		TSharedPtr<FJsonObject>& Effective,
+		TArray<FString>& OutNormalizedFields)
+	{
+		// asset_path <- path / asset
+		TryApplyAlias(Effective, TEXT("asset_path"), TEXT("path"), OutNormalizedFields)
+			|| TryApplyAlias(Effective, TEXT("asset_path"), TEXT("asset"), OutNormalizedFields);
+
+		// paths <- assets / asset_paths (array fields)
+		TryApplyFieldAlias(Effective, TEXT("paths"), TEXT("assets"), OutNormalizedFields)
+			|| TryApplyFieldAlias(Effective, TEXT("paths"), TEXT("asset_paths"), OutNormalizedFields);
+	}
+
+	/**
+	 * Universal parameter normalization. Runs before every ExecuteTool() call.
+	 * Detects the tool family from the tool name and applies per-family alias maps.
+	 */
+	TSharedPtr<FJsonObject> NormalizeToolParams(
+		const FString& ToolName,
+		const TSharedPtr<FJsonObject>& Params,
+		TArray<FString>& OutNormalizedFields)
+	{
+		if (!Params.IsValid())
+		{
+			return Params;
+		}
+
+		TSharedPtr<FJsonObject> Effective = CloneParams(Params);
+		const FString Family = GetToolFamily(ToolName);
+
+		if (Family == TEXT("blueprint"))
+		{
+			NormalizeBlueprintParams(ToolName, Effective, OutNormalizedFields);
+		}
+		else if (Family == TEXT("behaviortree") || Family == TEXT("blackboard") || Family == TEXT("bt"))
+		{
+			NormalizeBTParams(Effective, OutNormalizedFields);
+		}
+		else if (Family == TEXT("pcg"))
+		{
+			NormalizePCGParams(Effective, OutNormalizedFields);
+		}
+		else if (Family == TEXT("cpp"))
+		{
+			NormalizeCppParams(ToolName, Effective, OutNormalizedFields);
+		}
+		else if (Family == TEXT("project"))
+		{
+			NormalizeProjectParams(Effective, OutNormalizedFields);
 		}
 
 		return Effective;
@@ -133,16 +324,16 @@ namespace
 
 TSharedPtr<FJsonObject> FOliveToolDefinition::ToMCPJson() const
 {
+	// MCP protocol format (2024-11-05):
+	// { "name": "...", "description": "...", "inputSchema": { "type": "object", "properties": {...} } }
 	TSharedPtr<FJsonObject> ToolJson = MakeShared<FJsonObject>();
 
-	// MCP format uses "function" wrapper
-	TSharedPtr<FJsonObject> FunctionJson = MakeShared<FJsonObject>();
-	FunctionJson->SetStringField(TEXT("name"), Name);
-	FunctionJson->SetStringField(TEXT("description"), Description);
+	ToolJson->SetStringField(TEXT("name"), Name);
+	ToolJson->SetStringField(TEXT("description"), Description);
 
 	if (InputSchema.IsValid())
 	{
-		FunctionJson->SetObjectField(TEXT("parameters"), InputSchema);
+		ToolJson->SetObjectField(TEXT("inputSchema"), InputSchema);
 	}
 	else
 	{
@@ -150,11 +341,8 @@ TSharedPtr<FJsonObject> FOliveToolDefinition::ToMCPJson() const
 		TSharedPtr<FJsonObject> EmptySchema = MakeShared<FJsonObject>();
 		EmptySchema->SetStringField(TEXT("type"), TEXT("object"));
 		EmptySchema->SetObjectField(TEXT("properties"), MakeShared<FJsonObject>());
-		FunctionJson->SetObjectField(TEXT("parameters"), EmptySchema);
+		ToolJson->SetObjectField(TEXT("inputSchema"), EmptySchema);
 	}
-
-	ToolJson->SetStringField(TEXT("type"), TEXT("function"));
-	ToolJson->SetObjectField(TEXT("function"), FunctionJson);
 
 	return ToolJson;
 }
@@ -401,7 +589,7 @@ FOliveToolResult FOliveToolRegistry::ExecuteTool(const FString& Name, const TSha
 {
 	double StartTime = FPlatformTime::Seconds();
 	TArray<FString> NormalizedFields;
-	TSharedPtr<FJsonObject> EffectiveParams = NormalizeBlueprintParams(Name, Params, NormalizedFields);
+	TSharedPtr<FJsonObject> EffectiveParams = NormalizeToolParams(Name, Params, NormalizedFields);
 
 	const bool bIsPlanTool = IsBlueprintPlanTool(Name);
 	const bool bIsGranularGraphTool = IsBlueprintGranularGraphTool(Name);

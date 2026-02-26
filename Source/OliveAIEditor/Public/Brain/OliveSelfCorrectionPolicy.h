@@ -98,9 +98,11 @@ private:
 	 *                           from the current plan's resolved steps (meaning errors are stale,
 	 *                           caused by pre-existing issues or previous operations).
 	 *                           Only set to true when plan metadata is available; defaults to false.
+	 * @param OutRolledBackNodeCount  Number of nodes rolled back by the executor (from "rolled_back_nodes"
+	 *                                field in result data). 0 if not present.
 	 * @return true if compile_result.success == false
 	 */
-	bool HasCompileFailure(const FString& ResultJson, FString& OutErrors, FString& OutAssetPath, bool& OutHasStaleErrors) const;
+	bool HasCompileFailure(const FString& ResultJson, FString& OutErrors, FString& OutAssetPath, bool& OutHasStaleErrors, int32& OutRolledBackNodeCount) const;
 
 	/**
 	 * Check if the result is a tool execution failure.
@@ -120,13 +122,21 @@ private:
 
 	/**
 	 * Build enriched error message for tool failures.
+	 *
+	 * @param ToolName The tool that failed
+	 * @param ErrorCode The error code (e.g., "ASSET_NOT_FOUND")
+	 * @param ErrorMessage The full error message
+	 * @param AttemptNum Current retry attempt number
+	 * @param MaxAttempts Maximum retries allowed
+	 * @param AssetContext Asset path context, used for auto-search on ASSET_NOT_FOUND
 	 */
 	FString BuildToolErrorMessage(
 		const FString& ToolName,
 		const FString& ErrorCode,
 		const FString& ErrorMessage,
 		int32 AttemptNum,
-		int32 MaxAttempts
+		int32 MaxAttempts,
+		const FString& AssetContext = TEXT("")
 	) const;
 
 	/**
@@ -148,7 +158,34 @@ private:
 	 */
 	FString BuildPlanHash(const FString& ToolName, const TSharedPtr<FJsonObject>& ToolCallArgs) const;
 
+	/**
+	 * Build message for plan failures where rollback happened but retries remain.
+	 * Tells AI to resubmit corrected plan, NOT to reference deleted node IDs.
+	 */
+	FString BuildRollbackAwareMessage(
+		const FString& ToolName,
+		const FString& Errors,
+		int32 AttemptNum,
+		int32 MaxAttempts,
+		int32 RolledBackNodeCount) const;
+
+	/**
+	 * Build message for forced switch from plan mode to granular step-by-step mode.
+	 * This is mandatory -- the AI MUST use granular tools after this message.
+	 */
+	FString BuildGranularFallbackMessage(
+		const FString& ToolName,
+		const FString& Errors,
+		const FString& AssetPath,
+		int32 RolledBackNodeCount) const;
+
 	/** Map of plan content hash -> submission count. Reset per turn. */
 	TMap<FString, int32> PreviousPlanHashes;
+
+	/** Whether we have switched to granular fallback mode for this turn */
+	bool bIsInGranularFallback = false;
+
+	/** The last plan failure error text (so granular mode knows what to avoid) */
+	FString LastPlanFailureReason;
 
 };

@@ -1,0 +1,368 @@
+{
+    "template_id": "gun",
+    "template_type": "factory",
+    "display_name": "Gun",
+
+    "catalog_description": "Actor with mesh, muzzle point, fire/reload functions, ammo tracking, and event dispatchers. Pair with the projectile template for a complete weapon system.",
+    "catalog_examples": "Pistol, Rifle, Shotgun, SMG, Sniper, Launcher",
+
+    "parameters": {
+        "weapon_name": {
+            "type": "string",
+            "default": "Gun",
+            "description": "Name prefix for variables and events"
+        },
+        "max_ammo": {
+            "type": "int",
+            "default": "30",
+            "description": "Maximum ammo capacity"
+        },
+        "start_loaded": {
+            "type": "bool",
+            "default": "true",
+            "description": "Start at max ammo (true) or zero (false)"
+        },
+        "fire_rate": {
+            "type": "float",
+            "default": "5.0",
+            "description": "Shots per second"
+        },
+        "damage": {
+            "type": "float",
+            "default": "20.0",
+            "description": "Base damage per shot"
+        },
+        "muzzle_velocity": {
+            "type": "float",
+            "default": "5000.0",
+            "description": "Projectile launch speed in cm/s"
+        }
+    },
+
+    "presets": {
+        "Pistol": {
+            "weapon_name": "Pistol",
+            "max_ammo": "12",
+            "fire_rate": "3",
+            "damage": "25",
+            "muzzle_velocity": "5000"
+        },
+        "Rifle": {
+            "weapon_name": "Rifle",
+            "max_ammo": "30",
+            "fire_rate": "10",
+            "damage": "15",
+            "muzzle_velocity": "8000"
+        },
+        "Shotgun": {
+            "weapon_name": "Shotgun",
+            "max_ammo": "8",
+            "fire_rate": "1",
+            "damage": "80",
+            "muzzle_velocity": "4000"
+        },
+        "SMG": {
+            "weapon_name": "SMG",
+            "max_ammo": "25",
+            "fire_rate": "15",
+            "damage": "10",
+            "muzzle_velocity": "6000"
+        },
+        "Sniper": {
+            "weapon_name": "Sniper",
+            "max_ammo": "5",
+            "fire_rate": "0.5",
+            "damage": "150",
+            "muzzle_velocity": "15000"
+        }
+    },
+
+    "blueprint": {
+        "type": "Actor",
+        "parent_class": "Actor",
+
+        "components": [
+            {
+                "class": "SceneComponent",
+                "name": "Root",
+                "is_root": true
+            },
+            {
+                "class": "StaticMeshComponent",
+                "name": "${weapon_name}Mesh",
+                "parent": "Root",
+                "properties": {
+                    "CollisionProfileName": "NoCollision"
+                }
+            },
+            {
+                "class": "SceneComponent",
+                "name": "MuzzlePoint",
+                "parent": "${weapon_name}Mesh"
+            }
+        ],
+
+        "variables": [
+            {
+                "name": "CurrentAmmo",
+                "type": "Integer",
+                "default": "${start_loaded} ? ${max_ammo} : 0",
+                "category": "${weapon_name}"
+            },
+            {
+                "name": "MaxAmmo",
+                "type": "Integer",
+                "default": "${max_ammo}",
+                "category": "${weapon_name}"
+            },
+            {
+                "name": "${weapon_name}Damage",
+                "type": "Float",
+                "default": "${damage}",
+                "category": "${weapon_name}"
+            },
+            {
+                "name": "MuzzleVelocity",
+                "type": "Float",
+                "default": "${muzzle_velocity}",
+                "category": "${weapon_name}"
+            },
+            {
+                "name": "FireRate",
+                "type": "Float",
+                "default": "${fire_rate}",
+                "category": "${weapon_name}"
+            },
+            {
+                "name": "bCanFire",
+                "type": "Boolean",
+                "default": "true",
+                "category": "${weapon_name}"
+            }
+        ],
+
+        "event_dispatchers": [
+            {
+                "name": "OnFired",
+                "params": [
+                    { "name": "RemainingAmmo", "type": "Integer" }
+                ]
+            },
+            {
+                "name": "OnAmmoEmpty",
+                "params": []
+            },
+            {
+                "name": "OnReloaded",
+                "params": [
+                    { "name": "NewAmmo", "type": "Integer" }
+                ]
+            }
+        ],
+
+        "functions": [
+            {
+                "name": "Fire",
+                "description": "Attempt to fire. Decrements ammo if available, fires OnFired. When ammo reaches zero, fires OnAmmoEmpty.",
+                "inputs": [],
+                "outputs": [
+                    { "name": "bSuccess", "type": "Boolean" }
+                ],
+                "plan": {
+                    "schema_version": "2.0",
+                    "steps": [
+                        {
+                            "step_id": "get_can_fire",
+                            "op": "get_var",
+                            "target": "bCanFire"
+                        },
+                        {
+                            "step_id": "check_can_fire",
+                            "op": "branch",
+                            "inputs": {
+                                "Condition": "@get_can_fire.auto"
+                            },
+                            "exec_outputs": {
+                                "True": "get_ammo",
+                                "False": "set_fail"
+                            }
+                        },
+                        {
+                            "step_id": "get_ammo",
+                            "op": "get_var",
+                            "target": "CurrentAmmo"
+                        },
+                        {
+                            "step_id": "has_ammo",
+                            "op": "call",
+                            "target": "Greater_IntInt",
+                            "inputs": {
+                                "A": "@get_ammo.auto",
+                                "B": "0"
+                            }
+                        },
+                        {
+                            "step_id": "branch_ammo",
+                            "op": "branch",
+                            "inputs": {
+                                "Condition": "@has_ammo.auto"
+                            },
+                            "exec_after": "get_ammo",
+                            "exec_outputs": {
+                                "True": "decrement",
+                                "False": "fire_empty"
+                            }
+                        },
+                        {
+                            "step_id": "decrement",
+                            "op": "call",
+                            "target": "Subtract_IntInt",
+                            "inputs": {
+                                "A": "@get_ammo.auto",
+                                "B": "1"
+                            }
+                        },
+                        {
+                            "step_id": "set_ammo",
+                            "op": "set_var",
+                            "target": "CurrentAmmo",
+                            "inputs": {
+                                "value": "@decrement.auto"
+                            },
+                            "exec_after": "decrement"
+                        },
+                        {
+                            "step_id": "fire_event",
+                            "op": "call_delegate",
+                            "target": "OnFired",
+                            "inputs": {
+                                "RemainingAmmo": "@decrement.auto"
+                            },
+                            "exec_after": "set_ammo"
+                        },
+                        {
+                            "step_id": "disable_fire",
+                            "op": "set_var",
+                            "target": "bCanFire",
+                            "inputs": {
+                                "value": "false"
+                            },
+                            "exec_after": "fire_event"
+                        },
+                        {
+                            "step_id": "get_fire_rate",
+                            "op": "get_var",
+                            "target": "FireRate"
+                        },
+                        {
+                            "step_id": "calc_cooldown",
+                            "op": "call",
+                            "target": "Divide_FloatFloat",
+                            "inputs": {
+                                "A": "1.0",
+                                "B": "@get_fire_rate.auto"
+                            }
+                        },
+                        {
+                            "step_id": "set_timer",
+                            "op": "call",
+                            "target": "SetTimerByFunctionName",
+                            "inputs": {
+                                "FunctionName": "ResetCanFire",
+                                "Time": "@calc_cooldown.auto",
+                                "bLooping": "false"
+                            },
+                            "exec_after": "disable_fire"
+                        },
+                        {
+                            "step_id": "set_success",
+                            "op": "set_var",
+                            "target": "bSuccess",
+                            "inputs": {
+                                "value": "true"
+                            },
+                            "exec_after": "set_timer"
+                        },
+                        {
+                            "step_id": "fire_empty",
+                            "op": "call_delegate",
+                            "target": "OnAmmoEmpty"
+                        },
+                        {
+                            "step_id": "set_fail",
+                            "op": "set_var",
+                            "target": "bSuccess",
+                            "inputs": {
+                                "value": "false"
+                            },
+                            "exec_after": "fire_empty"
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "ResetCanFire",
+                "description": "Called by timer to re-enable firing after cooldown.",
+                "inputs": [],
+                "outputs": [],
+                "plan": {
+                    "schema_version": "2.0",
+                    "steps": [
+                        {
+                            "step_id": "enable",
+                            "op": "set_var",
+                            "target": "bCanFire",
+                            "inputs": {
+                                "value": "true"
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "Reload",
+                "description": "Restore ammo to max and fire OnReloaded.",
+                "inputs": [],
+                "outputs": [
+                    { "name": "NewAmmo", "type": "Integer" }
+                ],
+                "plan": {
+                    "schema_version": "2.0",
+                    "steps": [
+                        {
+                            "step_id": "get_max",
+                            "op": "get_var",
+                            "target": "MaxAmmo"
+                        },
+                        {
+                            "step_id": "set_current",
+                            "op": "set_var",
+                            "target": "CurrentAmmo",
+                            "inputs": {
+                                "value": "@get_max.auto"
+                            }
+                        },
+                        {
+                            "step_id": "fire_reloaded",
+                            "op": "call_delegate",
+                            "target": "OnReloaded",
+                            "inputs": {
+                                "NewAmmo": "@get_max.auto"
+                            },
+                            "exec_after": "set_current"
+                        },
+                        {
+                            "step_id": "set_return",
+                            "op": "set_var",
+                            "target": "NewAmmo",
+                            "inputs": {
+                                "value": "@get_max.auto"
+                            },
+                            "exec_after": "fire_reloaded"
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+}

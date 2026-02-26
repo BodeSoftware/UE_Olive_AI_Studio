@@ -18,6 +18,9 @@
 #include "Engine/World.h"
 #include "Editor.h"
 #include "Misc/Guid.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "HAL/PlatformFileManager.h"
 #include "Async/Async.h"
 
 // ==========================================
@@ -121,6 +124,9 @@ bool FOliveMCPServer::Start(int32 Port)
 
 	UE_LOG(LogOliveAI, Log, TEXT("MCP Server started on port %d"), ActualPort);
 
+	// Write .mcp.json so Claude Code CLI can discover the bridge
+	WriteMcpConfigFile();
+
 	return true;
 }
 
@@ -132,6 +138,9 @@ void FOliveMCPServer::Stop()
 	}
 
 	State = EOliveMCPServerState::Stopping;
+
+	// Remove .mcp.json so stale config doesn't persist
+	CleanupMcpConfigFile();
 
 	// Clear cleanup timer
 	if (CleanupTimerHandle.IsValid() && GEditor && GEditor->GetEditorWorldContext().World())
@@ -170,6 +179,52 @@ void FOliveMCPServer::Stop()
 	State = EOliveMCPServerState::Stopped;
 
 	UE_LOG(LogOliveAI, Log, TEXT("MCP Server stopped"));
+}
+
+// ==========================================
+// .mcp.json Management
+// ==========================================
+
+void FOliveMCPServer::WriteMcpConfigFile()
+{
+	const FString PluginDir = FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("UE_Olive_AI_Studio")));
+	const FString ConfigPath = FPaths::Combine(PluginDir, TEXT(".mcp.json"));
+
+	// Match the existing bridge format: command + args.
+	// mcp-bridge.js auto-discovers the server on ports 3000-3009.
+	const FString ConfigContent = FString::Printf(
+		TEXT("{\n")
+		TEXT("  \"mcpServers\": {\n")
+		TEXT("    \"olive-ai-studio\": {\n")
+		TEXT("      \"command\": \"node\",\n")
+		TEXT("      \"args\": [\"mcp-bridge.js\"]\n")
+		TEXT("    }\n")
+		TEXT("  }\n")
+		TEXT("}\n")
+	);
+
+	if (FFileHelper::SaveStringToFile(ConfigContent, *ConfigPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+	{
+		UE_LOG(LogOliveAI, Log, TEXT("Wrote .mcp.json to %s"), *ConfigPath);
+	}
+	else
+	{
+		UE_LOG(LogOliveAI, Warning, TEXT("Failed to write .mcp.json to %s"), *ConfigPath);
+	}
+}
+
+void FOliveMCPServer::CleanupMcpConfigFile()
+{
+	const FString PluginDir = FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("UE_Olive_AI_Studio")));
+	const FString ConfigPath = FPaths::Combine(PluginDir, TEXT(".mcp.json"));
+
+	if (IFileManager::Get().FileExists(*ConfigPath))
+	{
+		IFileManager::Get().Delete(*ConfigPath);
+		UE_LOG(LogOliveAI, Log, TEXT("Cleaned up .mcp.json at %s"), *ConfigPath);
+	}
 }
 
 // ==========================================
@@ -297,7 +352,7 @@ TSharedPtr<FJsonObject> FOliveMCPServer::ProcessJsonRpcRequest(
 	TSharedPtr<FJsonObject> Params = OliveJsonRpc::GetParams(Request);
 	TSharedPtr<FJsonValue> RequestId = OliveJsonRpc::GetRequestId(Request);
 
-	UE_LOG(LogOliveAI, Verbose, TEXT("MCP Request: %s from %s"), *Method, *ClientId);
+	UE_LOG(LogOliveAI, Log, TEXT("MCP Request: %s from %s"), *Method, *ClientId);
 
 	// Update client activity
 	UpdateClientActivity(ClientId);
@@ -470,7 +525,18 @@ void FOliveMCPServer::HandleInitialized(const FString& ClientId)
 
 TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsList(const TSharedPtr<FJsonObject>& Params)
 {
-	return FOliveToolRegistry::Get().GetToolsListMCP();
+	TSharedPtr<FJsonObject> Result = FOliveToolRegistry::Get().GetToolsListMCP();
+
+	// Log tool count for diagnostics
+	int32 ToolCount = 0;
+	const TArray<TSharedPtr<FJsonValue>>* ToolsArray;
+	if (Result.IsValid() && Result->TryGetArrayField(TEXT("tools"), ToolsArray))
+	{
+		ToolCount = ToolsArray->Num();
+	}
+	UE_LOG(LogOliveAI, Log, TEXT("MCP tools/list: returning %d tools"), ToolCount);
+
+	return Result;
 }
 
 TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsCall(
@@ -528,6 +594,9 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsCall(
 		SendNotification(TEXT("tools/progress"), ProgressParams, ClientId);
 	}
 
+	// Capture start time before execution for duration tracking
+	const double ToolStartTime = FPlatformTime::Seconds();
+
 	// Execute tool with MCP origin context
 	FOliveToolCallContext ToolContext;
 	ToolContext.Origin = EOliveToolCallOrigin::MCP;
@@ -539,10 +608,12 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsCall(
 	// Build MCP response
 	TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
 
+	const FString ToolResultText = ToolResult.ToJsonString();
+
 	TArray<TSharedPtr<FJsonValue>> Content;
 	TSharedPtr<FJsonObject> TextContent = MakeShared<FJsonObject>();
 	TextContent->SetStringField(TEXT("type"), TEXT("text"));
-	TextContent->SetStringField(TEXT("text"), ToolResult.ToJsonString());
+	TextContent->SetStringField(TEXT("text"), ToolResultText);
 	Content.Add(MakeShared<FJsonValueObject>(TextContent));
 
 	Result->SetArrayField(TEXT("content"), Content);
@@ -552,12 +623,16 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsCall(
 		Result->SetBoolField(TEXT("isError"), true);
 	}
 
-
-	// Emit completion notification
+	// Emit completion notification with timing and summary
 	{
+		const int32 DurationMs = static_cast<int32>((FPlatformTime::Seconds() - ToolStartTime) * 1000.0);
+		const FString Summary = ToolResultText.Left(200);
+
 		TSharedPtr<FJsonObject> CompleteParams = MakeShared<FJsonObject>();
 		CompleteParams->SetStringField(TEXT("tool"), ToolName);
 		CompleteParams->SetStringField(TEXT("status"), ToolResult.bSuccess ? TEXT("completed") : TEXT("failed"));
+		CompleteParams->SetNumberField(TEXT("duration_ms"), DurationMs);
+		CompleteParams->SetStringField(TEXT("summary"), Summary);
 		SendNotification(TEXT("tools/progress"), CompleteParams, ClientId);
 	}
 	return Result;
@@ -612,6 +687,8 @@ void FOliveMCPServer::HandleToolsCallAsync(
 		return;
 	}
 
+	UE_LOG(LogOliveAI, Log, TEXT("MCP tools/call: %s (client: %s)"), *ToolName, *ClientId);
+
 	// Fire event
 	OnToolCalled.Broadcast(ToolName, ClientId);
 
@@ -623,8 +700,11 @@ void FOliveMCPServer::HandleToolsCallAsync(
 		SendNotification(TEXT("tools/progress"), ProgressParams, ClientId);
 	}
 
+	// Capture start time before dispatching to game thread for accurate wall-clock duration
+	const double ToolStartTime = FPlatformTime::Seconds();
+
 	// Dispatch tool execution to the game thread
-	AsyncTask(ENamedThreads::GameThread, [this, ToolName, Arguments, ClientId, RequestId, OnComplete]()
+	AsyncTask(ENamedThreads::GameThread, [this, ToolName, Arguments, ClientId, RequestId, OnComplete, ToolStartTime]()
 	{
 		// Set up execution context on the game thread
 		FOliveToolCallContext ToolContext;
@@ -634,13 +714,17 @@ void FOliveMCPServer::HandleToolsCallAsync(
 
 		FOliveToolResult ToolResult = FOliveToolRegistry::Get().ExecuteTool(ToolName, Arguments);
 
+		UE_LOG(LogOliveAI, Log, TEXT("MCP tools/call result: %s -> %s"), *ToolName, ToolResult.bSuccess ? TEXT("SUCCESS") : TEXT("FAILED"));
+
 		// Build MCP response
 		TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+
+		const FString ToolResultText = ToolResult.ToJsonString();
 
 		TArray<TSharedPtr<FJsonValue>> Content;
 		TSharedPtr<FJsonObject> TextContent = MakeShared<FJsonObject>();
 		TextContent->SetStringField(TEXT("type"), TEXT("text"));
-		TextContent->SetStringField(TEXT("text"), ToolResult.ToJsonString());
+		TextContent->SetStringField(TEXT("text"), ToolResultText);
 		Content.Add(MakeShared<FJsonValueObject>(TextContent));
 
 		Result->SetArrayField(TEXT("content"), Content);
@@ -650,11 +734,16 @@ void FOliveMCPServer::HandleToolsCallAsync(
 			Result->SetBoolField(TEXT("isError"), true);
 		}
 
-		// Emit completion notification
+		// Emit completion notification with timing and summary
 		{
+			const int32 DurationMs = static_cast<int32>((FPlatformTime::Seconds() - ToolStartTime) * 1000.0);
+			const FString Summary = ToolResultText.Left(200);
+
 			TSharedPtr<FJsonObject> CompleteParams = MakeShared<FJsonObject>();
 			CompleteParams->SetStringField(TEXT("tool"), ToolName);
 			CompleteParams->SetStringField(TEXT("status"), ToolResult.bSuccess ? TEXT("completed") : TEXT("failed"));
+			CompleteParams->SetNumberField(TEXT("duration_ms"), DurationMs);
+			CompleteParams->SetStringField(TEXT("summary"), Summary);
 			SendNotification(TEXT("tools/progress"), CompleteParams, ClientId);
 		}
 

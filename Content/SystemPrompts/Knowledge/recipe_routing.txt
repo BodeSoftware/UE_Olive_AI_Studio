@@ -1,10 +1,10 @@
 ## Routing
-- Use olive.get_recipe(query) to look up patterns when stuck or encountering errors.
-- NEW blueprint: create + components/variables + apply_plan_json (ALL graph nodes in one call)
+- ALWAYS call olive.get_recipe(query) before your first plan_json for each Blueprint. Contains tested wiring patterns. Skip only after create_from_template.
+- NEW blueprint: check templates first (blueprint.create_from_template). If none fit: create + components/variables + apply_plan_json
 - MODIFY existing: project.search (find path) -> blueprint.read -> then write tools
 - SMALL EDIT (1-2 nodes): read_event_graph -> add_node + connect_pins
 - MULTI-ASSET (2+ blueprints): create ALL structures first -> wire each graph -> budget iterations per asset
 - FIX wiring: use wiring_errors and pin_manifests from the apply result
 - NEVER call blueprint.read before blueprint.create
-- NEVER use add_node one-at-a-time for 3+ nodes -- use plan_json
+- Prefer plan_json for 3+ nodes; fall back to add_node only after plan_json fails twice
 - Keep plans under 12 steps; split complex logic into multiple functions

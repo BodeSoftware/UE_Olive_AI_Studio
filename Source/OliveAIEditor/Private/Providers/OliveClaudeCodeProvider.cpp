@@ -12,6 +12,7 @@
  */
 
 #include "Providers/OliveClaudeCodeProvider.h"
+#include "Settings/OliveAISettings.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
@@ -211,6 +212,23 @@ FString FOliveClaudeCodeProvider::GetCLIArguments(const FString& SystemPromptArg
 	);
 }
 
+FString FOliveClaudeCodeProvider::GetCLIArgumentsAutonomous() const
+{
+	// Autonomous MCP mode: Claude Code discovers tools via the MCP server and manages
+	// its own agentic loop. Key differences from orchestrated GetCLIArguments():
+	//
+	// - NO --strict-mcp-config: allows Claude to discover the .mcp.json in the working
+	//   directory and connect to the MCP server for tool calls.
+	// - NO --append-system-prompt: AGENTS.md in the working directory provides domain
+	//   context; tool schemas are discovered via MCP tools/list.
+	// - --max-turns N: safety ceiling from settings, NOT orchestration. Each MCP tools/call
+	//   counts as a turn. Complex multi-asset tasks easily need 40-60 tool calls.
+	const UOliveAISettings* Settings = UOliveAISettings::Get();
+	const int32 MaxTurns = Settings ? Settings->AutonomousMaxTurns : 50;
+
+	return FString::Printf(TEXT("--print --output-format stream-json --verbose --dangerously-skip-permissions --max-turns %d"), MaxTurns);
+}
+
 void FOliveClaudeCodeProvider::ParseOutputLine(const FString& Line)
 {
 	// Claude --print --output-format streaming-json outputs JSON lines
@@ -279,12 +297,39 @@ void FOliveClaudeCodeProvider::ParseOutputLine(const FString& Line)
 	}
 	else if (Type == TEXT("tool_use") || Type == TEXT("tool_call"))
 	{
-		// With --max-turns 1, Claude Code should not execute tools internally.
-		// If this fires, something unexpected is happening with the CLI.
+		// In autonomous MCP mode, tool_use events are expected -- Claude Code calls
+		// tools via the MCP server and reports each call in the stream-json output.
+		// In orchestrated mode (--max-turns 1), these are unexpected but harmless.
+		// Either way, emit a progress chunk so the UI shows tool activity.
 		FString ToolName;
 		JsonObject->TryGetStringField(TEXT("name"), ToolName);
-		UE_LOG(LogOliveClaudeCode, Warning,
-			TEXT("Unexpected internal tool call (--max-turns 1 should prevent this): %s"), *ToolName);
+		if (ToolName.IsEmpty())
+		{
+			// Some stream-json formats nest the name inside a content object
+			const TSharedPtr<FJsonObject>* ContentObj;
+			if (JsonObject->TryGetObjectField(TEXT("content"), ContentObj))
+			{
+				(*ContentObj)->TryGetStringField(TEXT("name"), ToolName);
+			}
+		}
+
+		UE_LOG(LogOliveClaudeCode, Log, TEXT("Agent calling tool: %s"), *ToolName);
+
+		FScopeLock Lock(&CallbackLock);
+		FOliveStreamChunk Chunk;
+		Chunk.Text = FString::Printf(TEXT("[Tool] Calling %s..."), *ToolName);
+		CurrentOnChunk.ExecuteIfBound(Chunk);
+	}
+	else if (Type == TEXT("tool_result"))
+	{
+		// Informational: the MCP server already executed the tool and returned the result
+		// to Claude Code. We just emit a brief status chunk for UI visibility.
+		UE_LOG(LogOliveClaudeCode, Verbose, TEXT("Agent tool call completed"));
+
+		FScopeLock Lock(&CallbackLock);
+		FOliveStreamChunk Chunk;
+		Chunk.Text = TEXT("[Tool] Complete");
+		CurrentOnChunk.ExecuteIfBound(Chunk);
 	}
 	else if (Type == TEXT("message_stop"))
 	{

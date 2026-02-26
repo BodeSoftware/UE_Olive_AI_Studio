@@ -11,15 +11,25 @@
 #include "Providers/OliveCLIProviderBase.h"
 #include "Providers/OliveCLIToolCallParser.h"
 #include "Providers/OliveCLIToolSchemaSerializer.h"
+#include "Settings/OliveAISettings.h"
 #include "Chat/OlivePromptAssembler.h"
+#include "Template/OliveTemplateSystem.h"
+#include "MCP/OliveMCPServer.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/FileManager.h"
+#include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Async/Async.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogOliveCLIProvider, Log, All);
+
+namespace
+{
+	/** Maximum seconds with no stdout output before killing a hung CLI process */
+	constexpr double CLI_IDLE_TIMEOUT_SECONDS = 120.0;
+}
 
 // ==========================================
 // FOliveCLIReaderRunnable
@@ -88,6 +98,18 @@ void FOliveCLIReaderRunnable::Stop()
 
 FOliveCLIProviderBase::~FOliveCLIProviderBase()
 {
+	// Signal all captured lambdas that `this` is about to become invalid.
+	// Must happen BEFORE KillProcess() because KillProcess may not wait for
+	// all queued game-thread AsyncTasks to drain.
+	*AliveGuard = false;
+
+	// Clean up MCP tool call delegate to prevent dangling callback
+	if (ToolCallDelegateHandle.IsValid())
+	{
+		FOliveMCPServer::Get().OnToolCalled.Remove(ToolCallDelegateHandle);
+		ToolCallDelegateHandle.Reset();
+	}
+
 	KillProcess();
 }
 
@@ -123,6 +145,14 @@ FString FOliveCLIProviderBase::GetCLIName() const
 	return TEXT("CLI");
 }
 
+FString FOliveCLIProviderBase::GetCLIArgumentsAutonomous() const
+{
+	// Default: delegate to the standard argument builder with no system prompt.
+	// Subclasses should override with autonomous-specific flags (e.g., no --strict-mcp-config,
+	// higher --max-turns ceiling for self-directed tool loops).
+	return GetCLIArguments(TEXT(""));
+}
+
 void FOliveCLIProviderBase::SendMessage(
 	const TArray<FOliveChatMessage>& Messages,
 	const TArray<FOliveToolDefinition>& Tools,
@@ -147,7 +177,7 @@ void FOliveCLIProviderBase::SendMessage(
 		return;
 	}
 
-	// Store callbacks
+	// Store callbacks (including OnToolCall which is orchestrated-specific)
 	{
 		FScopeLock Lock(&CallbackLock);
 		CurrentOnChunk = OnChunk;
@@ -157,46 +187,218 @@ void FOliveCLIProviderBase::SendMessage(
 	}
 
 	bIsBusy = true;
+	++RequestGeneration;
 	AccumulatedResponse.Empty();
 
 	// Build prompt and system prompt on the game thread (prompt assembler accesses UObject settings)
 	FString Prompt = BuildConversationPrompt(Messages, Tools);
 	FString SystemPromptText = BuildCLISystemPrompt(Prompt, Tools);
 
+	// Escape system prompt for command line
+	FString EscapedSystemPrompt = SystemPromptText;
+	EscapedSystemPrompt.ReplaceInline(TEXT("\\"), TEXT("\\\\"));
+	EscapedSystemPrompt.ReplaceInline(TEXT("\""), TEXT("\\\""));
+
+	// Build the system prompt argument fragment
+	FString SystemPromptArg;
+	if (!EscapedSystemPrompt.IsEmpty())
+	{
+		SystemPromptArg = FString::Printf(TEXT("--append-system-prompt \"%s\" "), *EscapedSystemPrompt);
+	}
+
+	// Get provider-specific CLI arguments
+	FString CLIArgs = GetCLIArguments(SystemPromptArg);
+
+	UE_LOG(LogOliveCLIProvider, Log, TEXT("System prompt injected: %d chars"), SystemPromptText.Len());
+
+	// Delegate to shared process lifecycle, with orchestrated completion handler
+	LaunchCLIProcess(CLIArgs, Prompt, [this](int32 ReturnCode)
+	{
+		HandleResponseComplete(ReturnCode);
+	});
+}
+
+void FOliveCLIProviderBase::SetupAutonomousSandbox()
+{
+	// Create sandbox in Saved/ (gitignored by default, UE convention for runtime files)
+	const FString ProjectDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+	AutonomousSandboxDir = FPaths::Combine(ProjectDir, TEXT("Saved/OliveAI/AgentSandbox"));
+	IFileManager::Get().MakeDirectory(*AutonomousSandboxDir, true);
+
+	// --- Write .mcp.json with absolute path to mcp-bridge.js ---
+	const FString PluginDir = FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("UE_Olive_AI_Studio")));
+	const FString BridgePath = FPaths::Combine(PluginDir, TEXT("mcp-bridge.js"));
+	// Normalize to forward slashes for JSON
+	FString BridgePathJson = BridgePath.Replace(TEXT("\\"), TEXT("/"));
+
+	const FString McpConfig = FString::Printf(
+		TEXT("{\n")
+		TEXT("  \"mcpServers\": {\n")
+		TEXT("    \"olive-ai-studio\": {\n")
+		TEXT("      \"command\": \"node\",\n")
+		TEXT("      \"args\": [\"%s\"]\n")
+		TEXT("    }\n")
+		TEXT("  }\n")
+		TEXT("}\n"),
+		*BridgePathJson
+	);
+
+	const FString McpConfigPath = FPaths::Combine(AutonomousSandboxDir, TEXT(".mcp.json"));
+	FFileHelper::SaveStringToFile(McpConfig, *McpConfigPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+
+	// --- Write CLAUDE.md with agent role context ---
+	// Read AGENTS.md from plugin dir for domain-specific workflow guidance
+	FString AgentsContent;
+	const FString AgentsPath = FPaths::Combine(PluginDir, TEXT("AGENTS.md"));
+	FFileHelper::LoadFileToString(AgentsContent, *AgentsPath);
+
+	FString ClaudeMd;
+	ClaudeMd += TEXT("# Olive AI Studio - Agent Context\n\n");
+	ClaudeMd += TEXT("You are an AI assistant integrated with Unreal Engine 5.5 via Olive AI Studio.\n");
+	ClaudeMd += TEXT("Your job is to help users create and modify game assets (Blueprints, Behavior Trees, PCG graphs, etc.) using the MCP tools provided.\n\n");
+	ClaudeMd += TEXT("## Critical Rules\n");
+	ClaudeMd += TEXT("- You are NOT a plugin developer. Do NOT modify plugin source code.\n");
+	ClaudeMd += TEXT("- Use ONLY the MCP tools to create and edit game assets.\n");
+	ClaudeMd += TEXT("- All asset paths should be under `/Game/` (the project's Content directory).\n");
+	ClaudeMd += TEXT("- When creating Blueprints, use `blueprint.create` or `blueprint.create_from_template` -- never try to create .uasset files manually.\n");
+	ClaudeMd += TEXT("- Always preview before applying plan JSON: call `blueprint.preview_plan_json` first, then `blueprint.apply_plan_json` in a separate turn.\n");
+	ClaudeMd += TEXT("- Do not re-preview an unchanged plan. If preview succeeds, apply in the next turn. Revising and re-previewing is fine.\n");
+	ClaudeMd += TEXT("- Complete the FULL task: create structures, wire graph logic, compile, and verify. Do not stop partway.\n");
+	ClaudeMd += TEXT("- Once ALL Blueprints compile with 0 errors and 0 warnings, the task is COMPLETE. Immediately stop and report what you built.\n");
+	ClaudeMd += TEXT("- Before writing your first plan_json for each Blueprint, call olive.get_recipe to look up the correct wiring pattern. Skip only if create_from_template already provided the logic.\n");
+	ClaudeMd += TEXT("- Use schema_version \"2.0\" for all plan_json calls (v2.0 has automatic pin resolution).\n");
+	ClaudeMd += TEXT("- After `create_from_template`, always `blueprint.read` the result before modifying it.\n");
+	ClaudeMd += TEXT("- If `apply_plan_json` fails, re-read the graph, fix the plan, and retry once. Fall back to add_node/connect_pins only after a second failure.\n\n");
+
+	// Append the full AGENTS.md content which has workflow patterns, plan JSON format, etc.
+	if (!AgentsContent.IsEmpty())
+	{
+		ClaudeMd += TEXT("---\n\n");
+		ClaudeMd += AgentsContent;
+	}
+
+	const FString ClaudeMdPath = FPaths::Combine(AutonomousSandboxDir, TEXT("CLAUDE.md"));
+	FFileHelper::SaveStringToFile(ClaudeMd, *ClaudeMdPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+
+	// --- Write AGENTS.md (copy from plugin dir) ---
+	// Claude Code reads AGENTS.md for agent-specific workflow guidance.
+	// The plugin's AGENTS.md is already written for the agent role (tool usage, plan JSON, etc.)
+	if (!AgentsContent.IsEmpty())
+	{
+		const FString SandboxAgentsPath = FPaths::Combine(AutonomousSandboxDir, TEXT("AGENTS.md"));
+		FFileHelper::SaveStringToFile(AgentsContent, *SandboxAgentsPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+	}
+
+	UE_LOG(LogOliveCLIProvider, Log, TEXT("Autonomous sandbox created at: %s"), *AutonomousSandboxDir);
+}
+
+void FOliveCLIProviderBase::SendMessageAutonomous(
+	const FString& UserMessage,
+	FOnOliveStreamChunk OnChunk,
+	FOnOliveComplete OnComplete,
+	FOnOliveError OnError)
+{
+	if (bIsBusy)
+	{
+		OnError.ExecuteIfBound(TEXT("Request already in progress"));
+		return;
+	}
+
+	// Validate
+	FString ValidationError;
+	if (!ValidateConfig(ValidationError))
+	{
+		OnError.ExecuteIfBound(ValidationError);
+		return;
+	}
+
+	// Store callbacks (no OnToolCall -- tools go through MCP server in autonomous mode)
+	{
+		FScopeLock Lock(&CallbackLock);
+		CurrentOnChunk = OnChunk;
+		CurrentOnToolCall.Unbind();
+		CurrentOnComplete = OnComplete;
+		CurrentOnError = OnError;
+	}
+
+	bIsBusy = true;
+	++RequestGeneration;
+	AccumulatedResponse.Empty();
+
+	// Set up autonomous sandbox with agent-specific CLAUDE.md and .mcp.json
+	// so the CLI reads the correct role context instead of the developer CLAUDE.md
+	SetupAutonomousSandbox();
+
+	// Autonomous mode: no system prompt escaping, no BuildCLISystemPrompt.
+	// The CLI discovers tools via MCP and reads the sandbox CLAUDE.md for domain context.
+	FString CLIArgs = GetCLIArgumentsAutonomous();
+
+	UE_LOG(LogOliveCLIProvider, Log, TEXT("Launching autonomous CLI with args: %s"), *CLIArgs);
+
+	// Subscribe to MCP tool call events for activity-based timeout tracking.
+	// Uses the AliveGuard pattern to safely update the atomic timestamp from
+	// the game thread (OnToolCalled fires on game thread) while the background
+	// read loop checks it via std::atomic<double>.
+	LastToolCallTimestamp.store(FPlatformTime::Seconds());
+	if (ToolCallDelegateHandle.IsValid())
+	{
+		FOliveMCPServer::Get().OnToolCalled.Remove(ToolCallDelegateHandle);
+	}
+	TSharedPtr<FThreadSafeBool> Guard = AliveGuard;
+	ToolCallDelegateHandle = FOliveMCPServer::Get().OnToolCalled.AddLambda(
+		[this, Guard](const FString& ToolName, const FString& ClientId)
+		{
+			if (*Guard)
+			{
+				LastToolCallTimestamp.store(FPlatformTime::Seconds());
+			}
+		});
+
+	// Delegate to shared process lifecycle, with autonomous completion handler.
+	// Pass the sandbox directory so the CLI launches from there instead of the plugin source dir.
+	LaunchCLIProcess(CLIArgs, UserMessage, [this](int32 ReturnCode)
+	{
+		HandleResponseCompleteAutonomous(ReturnCode);
+	}, AutonomousSandboxDir);
+}
+
+void FOliveCLIProviderBase::LaunchCLIProcess(
+	const FString& CLIArgs,
+	const FString& StdinContent,
+	TFunction<void(int32)> OnProcessExit,
+	const FString& WorkingDirectoryOverride)
+{
+	// Capture the current generation at launch time. All async dispatches in this
+	// process lifecycle check against this value to discard stale completions.
+	const uint32 ThisGeneration = RequestGeneration.load();
+
 	// Capture CLIName for use in the background lambda (avoids calling virtual in destructor race)
 	const FString CLIName = GetCLIName();
 
+	// Capture alive-guard by value (shared copy). The guard survives past `this`
+	// destruction, allowing queued lambdas to detect that the provider is gone
+	// and bail out before touching any member.
+	TSharedPtr<FThreadSafeBool> Guard = AliveGuard;
+
 	// Spawn process on background thread
-	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this, Prompt, SystemPromptText, CLIName]()
+	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this, Guard, CLIArgs, StdinContent, CLIName, ThisGeneration, OnProcessExit = MoveTemp(OnProcessExit), WorkingDirectoryOverride]()
 	{
+		// Early-exit if provider was destroyed before we even started
+		if (!*Guard) return;
+
 		FString ExePath = GetExecutablePath();
 		if (ExePath.IsEmpty())
 		{
-			AsyncTask(ENamedThreads::GameThread, [this, CLIName]()
+			AsyncTask(ENamedThreads::GameThread, [this, Guard, CLIName]()
 			{
+				if (!*Guard) return;
 				FScopeLock Lock(&CallbackLock);
 				bIsBusy = false;
 				CurrentOnError.ExecuteIfBound(FString::Printf(TEXT("%s CLI not found"), *CLIName));
 			});
 			return;
 		}
-
-		// Escape system prompt for command line
-		FString EscapedSystemPrompt = SystemPromptText;
-		EscapedSystemPrompt.ReplaceInline(TEXT("\\"), TEXT("\\\\"));
-		EscapedSystemPrompt.ReplaceInline(TEXT("\""), TEXT("\\\""));
-
-		// Build the system prompt argument fragment
-		FString SystemPromptArg;
-		if (!EscapedSystemPrompt.IsEmpty())
-		{
-			SystemPromptArg = FString::Printf(TEXT("--append-system-prompt \"%s\" "), *EscapedSystemPrompt);
-		}
-
-		// Get provider-specific CLI arguments
-		FString CLIArgs = GetCLIArguments(SystemPromptArg);
-
-		UE_LOG(LogOliveCLIProvider, Log, TEXT("System prompt injected: %d chars"), SystemPromptText.Len());
 
 		// Determine executable and args based on whether Node.js runner is needed
 		FString Executable;
@@ -221,7 +423,7 @@ void FOliveCLIProviderBase::SendMessage(
 			Args = CLIArgs;
 		}
 
-		const FString ProcessWorkDir = GetWorkingDirectory();
+		const FString ProcessWorkDir = WorkingDirectoryOverride.IsEmpty() ? GetWorkingDirectory() : WorkingDirectoryOverride;
 		UE_LOG(LogOliveCLIProvider, Log, TEXT("Running: %s %s"), *Executable, *Args);
 		UE_LOG(LogOliveCLIProvider, Log, TEXT("Working Directory: %s"), *ProcessWorkDir);
 
@@ -231,8 +433,9 @@ void FOliveCLIProviderBase::SendMessage(
 
 		if (!FPlatformProcess::CreatePipe(StdoutRead, StdoutWrite))
 		{
-			AsyncTask(ENamedThreads::GameThread, [this, CLIName]()
+			AsyncTask(ENamedThreads::GameThread, [this, Guard, CLIName]()
 			{
+				if (!*Guard) return;
 				FScopeLock Lock(&CallbackLock);
 				bIsBusy = false;
 				CurrentOnError.ExecuteIfBound(FString::Printf(TEXT("Failed to create stdout pipe for %s process"), *CLIName));
@@ -240,7 +443,7 @@ void FOliveCLIProviderBase::SendMessage(
 			return;
 		}
 
-		// Create stdin pipe for delivering the prompt instead of the -p CLI argument.
+		// Create stdin pipe for delivering content instead of the -p CLI argument.
 		// This avoids the Windows ~32KB command-line length limit that causes crashes
 		// when the conversation history grows large during agentic loop iterations.
 		// bWritePipeLocal=true makes the write end non-inheritable (parent keeps it)
@@ -251,8 +454,9 @@ void FOliveCLIProviderBase::SendMessage(
 		if (!FPlatformProcess::CreatePipe(StdinRead, StdinWrite, /*bWritePipeLocal=*/true))
 		{
 			FPlatformProcess::ClosePipe(StdoutRead, StdoutWrite);
-			AsyncTask(ENamedThreads::GameThread, [this, CLIName]()
+			AsyncTask(ENamedThreads::GameThread, [this, Guard, CLIName]()
 			{
+				if (!*Guard) return;
 				FScopeLock Lock(&CallbackLock);
 				bIsBusy = false;
 				CurrentOnError.ExecuteIfBound(FString::Printf(TEXT("Failed to create stdin pipe for %s process"), *CLIName));
@@ -279,8 +483,9 @@ void FOliveCLIProviderBase::SendMessage(
 		{
 			FPlatformProcess::ClosePipe(StdoutRead, StdoutWrite);
 			FPlatformProcess::ClosePipe(StdinRead, StdinWrite);
-			AsyncTask(ENamedThreads::GameThread, [this, CLIName]()
+			AsyncTask(ENamedThreads::GameThread, [this, Guard, CLIName]()
 			{
+				if (!*Guard) return;
 				FScopeLock Lock(&CallbackLock);
 				bIsBusy = false;
 				CurrentOnError.ExecuteIfBound(FString::Printf(TEXT("Failed to spawn %s process"), *CLIName));
@@ -295,26 +500,37 @@ void FOliveCLIProviderBase::SendMessage(
 		FPlatformProcess::ClosePipe(StdinRead, nullptr);
 		StdinRead = nullptr;
 
-		// Deliver the prompt via stdin. The FString overload appends a trailing newline,
-		// which is harmless since CLI processes read stdin to EOF.
-		FPlatformProcess::WritePipe(StdinWrite, Prompt);
+		// Deliver content via stdin if non-empty. The FString overload appends a
+		// trailing newline, which is harmless since CLI processes read stdin to EOF.
+		if (!StdinContent.IsEmpty())
+		{
+			FPlatformProcess::WritePipe(StdinWrite, StdinContent);
+			UE_LOG(LogOliveCLIProvider, Log, TEXT("Stdin content delivered: %d chars"), StdinContent.Len());
+		}
 
-		UE_LOG(LogOliveCLIProvider, Log, TEXT("Prompt delivered via stdin: %d chars"), Prompt.Len());
-
-		// Close write end of stdin to signal EOF. Without this the child blocks forever
-		// waiting for more input.
+		// Close write end of stdin to signal EOF. Without this the child blocks
+		// forever waiting for more input.
 		FPlatformProcess::ClosePipe(nullptr, StdinWrite);
 		StdinWrite = nullptr;
 
-		// Read output inline (same approach as the original SendMessage)
+		// Read output inline
 		bStopReading = false;
 		FString OutputBuffer;
+		double LastOutputTime = FPlatformTime::Seconds();
+		const double ProcessStartTime = FPlatformTime::Seconds();
+
+		// Read max runtime from settings (0 = no limit). This is primarily a cost-control
+		// safety net for autonomous mode, but applies universally since orchestrated turns
+		// complete in seconds and will never hit a reasonable limit.
+		const UOliveAISettings* RuntimeSettings = UOliveAISettings::Get();
+		const double MaxRuntimeSeconds = RuntimeSettings ? static_cast<double>(RuntimeSettings->AutonomousMaxRuntimeSeconds) : 300.0;
 
 		while (FPlatformProcess::IsProcRunning(ProcessHandle) && !bStopReading)
 		{
 			FString Chunk = FPlatformProcess::ReadPipe(StdoutRead);
 			if (!Chunk.IsEmpty())
 			{
+				LastOutputTime = FPlatformTime::Seconds();
 				OutputBuffer += Chunk;
 
 				// Process complete lines
@@ -327,10 +543,11 @@ void FOliveCLIProviderBase::SendMessage(
 					if (!Line.IsEmpty())
 					{
 						// Dispatch line parsing to game thread via virtual ParseOutputLine
-						AsyncTask(ENamedThreads::GameThread, [this, Line]()
+						AsyncTask(ENamedThreads::GameThread, [this, Guard, Line, ThisGeneration]()
 						{
+							if (!*Guard) return;
 							FScopeLock Lock(&CallbackLock);
-							if (!bIsBusy) return;
+							if (!bIsBusy || RequestGeneration != ThisGeneration) return;
 							ParseOutputLine(Line);
 						});
 					}
@@ -338,7 +555,54 @@ void FOliveCLIProviderBase::SendMessage(
 			}
 			else
 			{
+				if (FPlatformTime::Seconds() - LastOutputTime > CLI_IDLE_TIMEOUT_SECONDS)
+				{
+					UE_LOG(LogOliveCLIProvider, Warning, TEXT("%s process idle for %.0f seconds - terminating"), *CLIName, CLI_IDLE_TIMEOUT_SECONDS);
+					bStopReading = true;
+					if (*Guard)
+					{
+						FPlatformProcess::TerminateProc(ProcessHandle, true);
+					}
+					break;
+				}
 				FPlatformProcess::Sleep(0.01f);
+			}
+
+			// Activity-based timeout: kill if no MCP tool call in AutonomousIdleToolSeconds.
+			// This catches "thinking but not acting" scenarios where stdout is flowing
+			// (so idle timeout doesn't trigger) but no tool calls are being made.
+			// LastToolCallTimestamp is std::atomic<double>, written on game thread by
+			// OnToolCalled delegate, read here on background thread -- safe without lock.
+			const double LastToolCall = LastToolCallTimestamp.load();
+			if (LastToolCall > 0.0)
+			{
+				const double IdleToolTimeout = RuntimeSettings ? static_cast<double>(RuntimeSettings->AutonomousIdleToolSeconds) : 120.0;
+				if (IdleToolTimeout > 0.0 && (FPlatformTime::Seconds() - LastToolCall) > IdleToolTimeout)
+				{
+					UE_LOG(LogOliveCLIProvider, Warning,
+						TEXT("%s process: no MCP tool call in %.0f seconds - terminating"),
+						*CLIName, IdleToolTimeout);
+					bStopReading = true;
+					if (*Guard)
+					{
+						FPlatformProcess::TerminateProc(ProcessHandle, true);
+					}
+					break;
+				}
+			}
+
+			// Total runtime limit (cost control for autonomous mode).
+			// Checked every iteration regardless of data flow. A value of 0 disables
+			// the limit. Orchestrated turns complete in seconds and won't hit this.
+			if (MaxRuntimeSeconds > 0.0 && (FPlatformTime::Seconds() - ProcessStartTime) > MaxRuntimeSeconds)
+			{
+				UE_LOG(LogOliveCLIProvider, Warning, TEXT("%s process exceeded total runtime limit (%.0f seconds) - terminating"), *CLIName, MaxRuntimeSeconds);
+				bStopReading = true;
+				if (*Guard)
+				{
+					FPlatformProcess::TerminateProc(ProcessHandle, true);
+				}
+				break;
 			}
 		}
 
@@ -359,28 +623,36 @@ void FOliveCLIProviderBase::SendMessage(
 		// Process remaining buffer
 		if (!OutputBuffer.IsEmpty())
 		{
-			AsyncTask(ENamedThreads::GameThread, [this, OutputBuffer]()
+			AsyncTask(ENamedThreads::GameThread, [this, Guard, OutputBuffer, ThisGeneration]()
 			{
+				if (!*Guard) return;
 				FScopeLock Lock(&CallbackLock);
-				if (!bIsBusy) return;
+				if (!bIsBusy || RequestGeneration != ThisGeneration) return;
 				ParseOutputLine(OutputBuffer);
 			});
 		}
 
-		// Cleanup stdout pipe
+		// Cleanup stdout pipe (local handle, safe regardless of provider lifetime)
 		FPlatformProcess::ClosePipe(StdoutRead, nullptr);
 
-		// Get return code
-		int32 ReturnCode;
-		FPlatformProcess::GetProcReturnCode(ProcessHandle, &ReturnCode);
-		FPlatformProcess::CloseProc(ProcessHandle);
-
-		// Signal completion -- delegate to HandleResponseComplete for tool call parsing
-		AsyncTask(ENamedThreads::GameThread, [this, ReturnCode]()
+		// Get return code and close process handle.
+		// Guard check: if the provider was destroyed, the destructor's KillProcess()
+		// already called TerminateProc + CloseProc on the member ProcessHandle.
+		// Skip cleanup here to avoid double-close.
+		int32 ReturnCode = -1;
+		if (*Guard)
 		{
+			FPlatformProcess::GetProcReturnCode(ProcessHandle, &ReturnCode);
+			FPlatformProcess::CloseProc(ProcessHandle);
+		}
+
+		// Signal completion via caller-provided exit handler
+		AsyncTask(ENamedThreads::GameThread, [this, Guard, ReturnCode, ThisGeneration, OnProcessExit]()
+		{
+			if (!*Guard) return;
 			FScopeLock Lock(&CallbackLock);
-			if (!bIsBusy) return;
-			HandleResponseComplete(ReturnCode);
+			if (!bIsBusy || RequestGeneration != ThisGeneration) return;
+			OnProcessExit(ReturnCode);
 		});
 	});
 }
@@ -420,6 +692,43 @@ void FOliveCLIProviderBase::HandleResponseComplete(int32 ReturnCode)
 	Usage.FinishReason = bHasToolCalls ? TEXT("tool_calls") : TEXT("stop");
 	bIsBusy = false;
 	CurrentOnComplete.ExecuteIfBound(CleanedText, Usage);
+}
+
+void FOliveCLIProviderBase::HandleResponseCompleteAutonomous(int32 ReturnCode)
+{
+	// Called under CallbackLock, while bIsBusy is true.
+	// Autonomous mode: no <tool_call> parsing needed -- tools were executed via MCP server.
+	// Simply emit the accumulated response text.
+
+	// Clean up MCP tool call delegate
+	if (ToolCallDelegateHandle.IsValid())
+	{
+		FOliveMCPServer::Get().OnToolCalled.Remove(ToolCallDelegateHandle);
+		ToolCallDelegateHandle.Reset();
+	}
+
+	// Log activity stats for diagnostic purposes
+	const double LastTool = LastToolCallTimestamp.load();
+	UE_LOG(LogOliveCLIProvider, Log,
+		TEXT("Autonomous run complete (exit code %d): last tool call %.1fs ago, accumulated %d chars"),
+		ReturnCode,
+		LastTool > 0.0 ? FPlatformTime::Seconds() - LastTool : -1.0,
+		AccumulatedResponse.Len());
+
+	if (ReturnCode != 0 && AccumulatedResponse.IsEmpty())
+	{
+		bIsBusy = false;
+		// CRITICAL: Keep this exact error format -- OliveProviderRetryManager::ClassifyError
+		// matches "process exited with code" to detect process crashes.
+		CurrentOnError.ExecuteIfBound(FString::Printf(TEXT("%s process exited with code %d"), *GetCLIName(), ReturnCode));
+		return;
+	}
+
+	FOliveProviderUsage Usage;
+	Usage.Model = CurrentConfig.ModelId.IsEmpty() ? FString::Printf(TEXT("%s-cli"), *GetCLIName().ToLower()) : CurrentConfig.ModelId;
+	Usage.FinishReason = TEXT("stop");
+	bIsBusy = false;
+	CurrentOnComplete.ExecuteIfBound(AccumulatedResponse, Usage);
 }
 
 FString FOliveCLIProviderBase::BuildConversationPrompt(const TArray<FOliveChatMessage>& Messages, const TArray<FOliveToolDefinition>& Tools) const
@@ -495,7 +804,7 @@ FString FOliveCLIProviderBase::BuildConversationPrompt(const TArray<FOliveChatMe
 	if (UserMessageCount == 1 && ToolResultCount == 0)
 	{
 		Prompt += TEXT("- Respond ONLY with <tool_call> blocks. Do NOT respond with explanation text.\n");
-		Prompt += TEXT("- If the task is creating NEW Blueprints, start with blueprint.create (do NOT search first).\n");
+		Prompt += TEXT("- If the task is creating NEW Blueprints, check if a template fits first (blueprint.create_from_template). Otherwise use blueprint.create.\n");
 		Prompt += TEXT("- If the task is modifying EXISTING assets, start with project.search to find exact paths.\n");
 		Prompt += TEXT("- Batch only independent calls (e.g., create + add_component + add_variable).\n");
 		Prompt += TEXT("- Do NOT batch blueprint.preview_plan_json and blueprint.apply_plan_json in the same response.\n\n");
@@ -565,6 +874,19 @@ FString FOliveCLIProviderBase::BuildCLISystemPrompt(const FString& UserTask, con
 	}
 
 	// ==========================================
+	// Template catalog (factory + reference templates)
+	// ==========================================
+	if (FOliveTemplateSystem::Get().HasTemplates())
+	{
+		const FString& Catalog = FOliveTemplateSystem::Get().GetCatalogBlock();
+		if (!Catalog.IsEmpty())
+		{
+			SystemPrompt += Catalog;
+			SystemPrompt += TEXT("\n\n");
+		}
+	}
+
+	// ==========================================
 	// Tool schemas (CLI-specific: inline since no native tool calling)
 	// ==========================================
 	if (Tools.Num() > 0)
@@ -584,6 +906,7 @@ FString FOliveCLIProviderBase::BuildCLISystemPrompt(const FString& UserTask, con
 void FOliveCLIProviderBase::CancelRequest()
 {
 	bStopReading = true;
+	++RequestGeneration; // Invalidate in-flight async tasks from old request
 
 	// Clear callbacks BEFORE killing process so the completion
 	// lambda (if it races to fire) won't invoke stale delegates
@@ -602,6 +925,13 @@ void FOliveCLIProviderBase::CancelRequest()
 void FOliveCLIProviderBase::KillProcess()
 {
 	bStopReading = true;
+
+	// Clean up MCP tool call delegate to prevent dangling callback
+	if (ToolCallDelegateHandle.IsValid())
+	{
+		FOliveMCPServer::Get().OnToolCalled.Remove(ToolCallDelegateHandle);
+		ToolCallDelegateHandle.Reset();
+	}
 
 	if (ReaderThread)
 	{

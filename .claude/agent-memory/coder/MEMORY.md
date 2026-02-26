@@ -42,14 +42,23 @@
 - Log category: LogOliveGraphLayout
 - BuildConsumerMap scans inputs for @stepId refs to identify pure-node consumers
 
-## CLI Provider Base Class Extraction (Completed)
+## CLI Provider Base Class (NeoStack T4 Refactored)
 - `FOliveCLIProviderBase` at `Public/Providers/OliveCLIProviderBase.h` / `Private/Providers/OliveCLIProviderBase.cpp`
 - Abstract base for CLI providers; inherits IOliveAIProvider
-- Moved from FOliveClaudeCodeProvider: process management, pipes, callbacks, SendMessage, HandleResponseComplete, BuildConversationPrompt, BuildCLISystemPrompt, CancelRequest, KillProcess
-- Virtual hooks: `GetExecutablePath()`, `GetCLIArguments()`, `ParseOutputLine()`, `GetWorkingDirectory()`, `RequiresNodeRunner()`, `GetCLIName()`
-- `FOliveClaudeReaderRunnable` renamed to `FOliveCLIReaderRunnable`; old name kept as `using` alias
-- Error string "process exited with code" preserved for OliveProviderRetryManager::ClassifyError matching
+- Virtual hooks: `GetExecutablePath()`, `GetCLIArguments()`, `GetCLIArgumentsAutonomous()`, `ParseOutputLine()`, `GetWorkingDirectory()`, `RequiresNodeRunner()`, `GetCLIName()`
+- Error string "process exited with code" preserved in BOTH HandleResponseComplete and HandleResponseCompleteAutonomous
 - Log category: `LogOliveCLIProvider` (base), `LogOliveClaudeCode` (Claude-specific)
+- **LaunchCLIProcess()**: extracted shared process lifecycle (spawn, stdin, read loop, exit) used by both SendMessage and SendMessageAutonomous
+  - Callers set bIsBusy/callbacks/generation BEFORE calling; LaunchCLIProcess captures current generation for staleness checks
+  - `OnProcessExit` TFunction called on game thread inside Guard+Generation+Lock checks
+  - `MoveTemp(OnProcessExit)` into background lambda; copied into completion game-thread lambda
+- **SendMessage()** (orchestrated): builds prompts on game thread, escapes system prompt, calls LaunchCLIProcess with HandleResponseComplete
+- **SendMessageAutonomous()** (autonomous/MCP): no prompt building, no tool schema serialization, calls LaunchCLIProcess with HandleResponseCompleteAutonomous
+- **HandleResponseCompleteAutonomous()**: emits AccumulatedResponse via OnComplete, no tool_call parsing (tools go through MCP)
+- **Generation counter**: `std::atomic<uint32> RequestGeneration` prevents stale async completions
+  - Incremented in `SendMessage()`/`SendMessageAutonomous()` (start) and `CancelRequest()` (invalidate)
+  - `LaunchCLIProcess` reads it via `.load()` and checks in all 3 game-thread dispatches (line-parse, buffer-flush, completion)
+- **Idle timeout**: `CLI_IDLE_TIMEOUT_SECONDS = 120.0` in anonymous namespace; resets on any stdout output; kills hung processes
 
 ## UE 5.5 API Quirks
 - **Float/Double PinType**: In UE 5.5, `PC_Float` and `PC_Double` must NOT be used as `PinCategory`. Instead use `PinCategory = PC_Real` with `PinSubCategory = PC_Float` (or `PC_Double`). Using `PC_Float` directly as category causes "Can't parse default value" compile warnings because the engine can't resolve an FProperty from a bare `PC_Float` category.
@@ -100,9 +109,70 @@
 - ApplyTemplate and GetTemplateContent: STUBS for Task 4
 - Task 1 complete; remaining: Task 2 (JSON files), Task 3 (tool handlers), Task 4 (executor), Task 5 (prompt injection), Task 6 (startup integration)
 
+## Pipeline Reliability Phase 1: Granular Fallback + Retry Policy (Completed)
+- `FOliveRetryPolicy.MaxCorrectionCyclesPerWorker` raised from 5 to 20 (hard backstop)
+- `FOliveRetryPolicy.bAllowGranularFallback = true` flag added
+- `FOliveSelfCorrectionPolicy` new fields: `bIsInGranularFallback`, `LastPlanFailureReason` (reset in `Reset()`)
+- `HasCompileFailure()` now takes `int32& OutRolledBackNodeCount` out-param; extracts from `data.rolled_back_nodes`
+- Loop detection split: `IsLooping||IsOscillating` separate from `IsBudgetExhausted` (hard backstop)
+- Granular fallback: on loop detection, if not already in fallback mode, resets loop detector & switches to step-by-step
+- `BuildRollbackAwareMessage()`: tells AI to resubmit corrected plan, warns about deleted node IDs
+- `BuildGranularFallbackMessage()`: forces AI to use add_node/connect_pins/set_pin_default instead of plan_json
+- Tool failure branch also extracts `rolled_back_nodes` via JSON parse + applies same granular fallback pattern
+- Template system: `compile_result` JSON object added to ResultData; `FOliveIRMessage` with COMPILE_FAILED code added to Result.Messages when compile fails
+- `FOliveToolResult::Success()` takes only `TSharedPtr<FJsonObject>` -- no message param. Use `Result.Messages.Add()` for warnings.
+
+## Pipeline Reliability Phase 2: Graph Context Threading (Completed)
+- `FOliveGraphContext` struct in `OliveBlueprintPlanResolver.h`: GraphName, bIsFunctionGraph, bIsMacroGraph, InputParamNames, OutputParamNames, Graph*
+- `BuildFromBlueprint()` searches UbergraphPages, FunctionGraphs, MacroGraphs; extracts UserDefinedPins from UK2Node_FunctionEntry/Result
+- `bIsLatent` on `FOliveResolvedStep`: set from `UFunction::HasMetaData("Latent")` in ResolveCallOp, or explicitly for Delay op
+- GraphContext threaded through: `Resolve()`, `ResolveStep()`, `ResolveGetVarOp()`, `ResolveSetVarOp()`, `Validate()`
+- Function param detection: get_var matching InputParamNames -> FunctionInput type; set_var matching OutputParamNames -> FunctionOutput type
+- `OliveNodeTypes::FunctionInput` / `FunctionOutput` are virtual types (no actual node creation; reuse FunctionEntry/Result)
+- `CheckLatentInFunctionGraph()` in validator: rejects latent steps in function graphs with `LATENT_IN_FUNCTION` error code
+- Executor: FunctionInput/FunctionOutput virtual steps find existing FunctionEntry/FunctionResult nodes, add to ReusedStepIds
+- `OlivePlanValidator.h` includes `OliveBlueprintPlanResolver.h` (needed for FOliveGraphContext default parameter)
+- All callers updated: 4 in OliveBlueprintToolHandlers.cpp (preview+apply: Resolve+Validate), 2 in OliveTemplateSystem.cpp (func+EG Resolve)
+- Variable name in tool handlers: `GraphTarget` (not `GraphName`)
+
 ## Phase 2 Task 6 (Large-Graph Read Mode)
 - Constants: `OLIVE_LARGE_GRAPH_THRESHOLD = 500`, `OLIVE_GRAPH_PAGE_SIZE = 100` in OliveGraphReader.h
 - `ReadGraphSummary()`: builds NodeIdMap, counts connections, but leaves Nodes array empty
 - `ReadGraphPage()`: builds FULL NodeIdMap, serializes only [Offset, Offset+Limit) slice
 - Tool handlers detect large graphs and auto-return summary; `page` param for paging; `mode=full` forces full read
 - Summary metadata (event_nodes, node_type_breakdown) built in anonymous namespace helper `AttachLargeGraphSummaryMetadata()`
+
+## NeoStack T0: Tool Resilience Hardening (Completed)
+- **0A**: `NormalizeBlueprintParams()` replaced by `NormalizeToolParams()` in `OliveToolRegistry.cpp` anonymous namespace
+  - Per-family normalizers: `NormalizeBlueprintParams`, `NormalizeBTParams`, `NormalizePCGParams`, `NormalizeCppParams`, `NormalizeProjectParams`
+  - Shared helpers: `TryApplyAlias()` (string fields), `TryApplyFieldAlias()` (object/array fields), `GetToolFamily()`
+  - Blueprint: path aliases + `plan_json<-plan/steps`, `function_name<-name/function`, `parent_class<-parent/base_class`, `template_id<-template/id`
+  - Cpp: tool-specific `name` disambiguation (class_name for read_class/create_class, property_name for add_property, etc.)
+- **0B**: All `GetStringField()` for required params replaced with `TryGetStringField()+empty check+3-part error` in BT/PCG/Cpp/CrossSystem handlers
+  - Files: `BehaviorTree/Private/MCP/OliveBTToolHandlers.cpp`, `PCG/Private/MCP/OlivePCGToolHandlers.cpp`, `Cpp/Private/MCP/OliveCppToolHandlers.cpp`, `CrossSystem/Private/MCP/OliveCrossSystemToolHandlers.cpp`
+- **0C**: Type parsing aliases expanded in `ParseTypeFromParams()` (str/fstring->string, fvector/vec/vec3->vector, etc.); BT `ParseKeyType()` made case-insensitive
+- **0D**: Suggestion strings added to all bare errors in `OliveGraphBatchExecutor.cpp` and non-blueprint handlers
+- Note: `FOliveBlueprintWriteResult::Error()` takes only message+path (no suggestion param), so batch executor errors embed suggestions in the message itself
+
+## call_delegate Op (Round 2 Task 1)
+- `OlivePlanOps::CallDelegate = "call_delegate"` added to BlueprintPlanIR.h vocabulary
+- `OliveNodeTypes::CallDelegate = "CallDelegate"` in OliveNodeFactory.h
+- `ResolveCallDelegateOp()`: validates target against BP's NewVariables with `PC_MCDelegate` category
+- `CreateCallDelegateNode()`: finds `FMulticastDelegateProperty` on SkeletonGeneratedClass (fallback GeneratedClass), uses `UK2Node_CallDelegate` + `SetFromProperty(DelegateProp, true, OwnerClass)`
+- Include: `K2Node_CallDelegate.h` (from BlueprintGraph module, also has `K2Node_BaseMCDelegate.h`)
+- `bIsPure = false` (delegate broadcasts have exec pins)
+- gun.json template: dispatcher steps use `call_delegate` instead of `call`; timer uses `SetTimerByFunctionName` instead of `K2_SetTimerDelegate`
+
+## Timeout & Plan Reliability Fixes (Partial - C1, B1-B3)
+- **C1**: Post-pipeline rollback now checks `status == "partial_success"` in ResultData before rolling back. Partial success (nodes created, some wiring failed) is preserved; only total failures trigger rollback.
+- **B1**: `ResolveStep()` remaps `op: "entry"` -> `op: "event"` early (alias handling). Event dispatch in function graphs checks if target matches function name / "entry" / empty and maps to `FunctionInput` instead of `ResolveEventOp`.
+- **B2**: `ExpandComponentRefs()` now builds `BlueprintVariableNames` set from `Blueprint->NewVariables`. Bare `@VarName` and dotted `@VarName.hint` refs matching BP variables synthesize `_synth_getvar_xxx` get_var steps. Priority: step ID > function param > SCS component > BP variable.
+- **B3**: `ExpandBranchConditions()` new static resolver pass, called after `ExpandPlanInputs` in `Resolve()`. Detects branch steps where Condition `@ref` points to a get_var of non-boolean variable. Synthesizes `Greater_IntInt` (int) or `Greater_DoubleDouble` (float/real) comparison step. UE 5.5 pin category for float/double is `"real"` (not "float"/"double").
+
+## ExpandedPlan Fix (Round 2 Task 2)
+- `FOlivePlanResolveResult` now carries `ExpandedPlan` field -- the plan after all pre-processing (ExpandComponentRefs, ExpandPlanInputs, ExpandBranchConditions)
+- All post-resolve code MUST use `ResolveResult.ExpandedPlan` instead of the original `Plan` variable
+- Apply handler: drift detection moved AFTER Resolve() so fingerprint matches preview's expanded-plan fingerprint
+- Tool handlers pattern: `FOliveIRBlueprintPlan& ExpandedPlan = ResolveResult.ExpandedPlan;` alias after Resolve
+- Template system: both function graph and event graph executor calls use `ResolveResult.ExpandedPlan`
+- Lambda capture in apply handler: `FOliveIRBlueprintPlan CapturedPlan = ExpandedPlan;` (not original Plan)

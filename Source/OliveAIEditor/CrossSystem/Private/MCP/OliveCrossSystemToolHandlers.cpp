@@ -167,7 +167,8 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleBulkRead(const TSharedPtr<
 	const TArray<TSharedPtr<FJsonValue>>* PathsArray;
 	if (!Params->TryGetArrayField(TEXT("paths"), PathsArray))
 	{
-		return FOliveToolResult::Error(TEXT("MISSING_PATHS"), TEXT("paths array is required"));
+		return FOliveToolResult::Error(TEXT("MISSING_PATHS"), TEXT("'paths' array is required"),
+			TEXT("Provide an array of /Game/... asset paths. Example: [\"paths\": [\"/Game/BP_Player\", \"/Game/BP_Enemy\"]]"));
 	}
 	for (const auto& Value : *PathsArray)
 	{
@@ -186,21 +187,40 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleImplementInterface(const T
 	const TArray<TSharedPtr<FJsonValue>>* PathsArray;
 	if (!Params->TryGetArrayField(TEXT("paths"), PathsArray))
 	{
-		return FOliveToolResult::Error(TEXT("MISSING_PATHS"), TEXT("paths array is required"));
+		return FOliveToolResult::Error(TEXT("MISSING_PATHS"), TEXT("'paths' array is required"),
+			TEXT("Provide an array of Blueprint asset paths. Example: [\"paths\": [\"/Game/BP_Player\"]]"));
 	}
 	for (const auto& Value : *PathsArray)
 	{
 		Paths.Add(Value->AsString());
 	}
 
-	FString Interface = Params->GetStringField(TEXT("interface"));
+	FString Interface;
+	if (!Params->TryGetStringField(TEXT("interface"), Interface) || Interface.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'interface' is missing"),
+			TEXT("Provide the interface name. Example: \"BPI_Interactable\", \"BPI_Damageable\""));
+	}
 	return FOliveMultiAssetOperations::Get().ImplementInterface(Paths, Interface);
 }
 
 FOliveToolResult FOliveCrossSystemToolHandlers::HandleRefactorRename(const TSharedPtr<FJsonObject>& Params)
 {
-	FString AssetPath = Params->GetStringField(TEXT("asset_path"));
-	FString NewName = Params->GetStringField(TEXT("new_name"));
+	FString AssetPath;
+	if (!Params->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'asset_path' is missing"),
+			TEXT("Provide the asset path to rename. Example: \"/Game/Blueprints/BP_OldName\""));
+	}
+	FString NewName;
+	if (!Params->TryGetStringField(TEXT("new_name"), NewName) || NewName.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'new_name' is missing"),
+			TEXT("Provide the new name for the asset. Example: \"BP_NewName\""));
+	}
 	bool bUpdateReferences = true;
 	Params->TryGetBoolField(TEXT("update_references"), bUpdateReferences);
 
@@ -209,8 +229,20 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleRefactorRename(const TShar
 
 FOliveToolResult FOliveCrossSystemToolHandlers::HandleCreateAICharacter(const TSharedPtr<FJsonObject>& Params)
 {
-	FString Name = Params->GetStringField(TEXT("name"));
-	FString Path = Params->GetStringField(TEXT("path"));
+	FString Name;
+	if (!Params->TryGetStringField(TEXT("name"), Name) || Name.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'name' is missing"),
+			TEXT("Provide the base name for the AI character. Example: \"EnemyGuard\""));
+	}
+	FString Path;
+	if (!Params->TryGetStringField(TEXT("path"), Path) || Path.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'path' is missing"),
+			TEXT("Provide the /Game/... directory path. Example: \"/Game/AI/Characters\""));
+	}
 
 	FString ParentClass = TEXT("ACharacter");
 	Params->TryGetStringField(TEXT("parent_class"), ParentClass);
@@ -239,9 +271,27 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleCreateAICharacter(const TS
 
 FOliveToolResult FOliveCrossSystemToolHandlers::HandleMoveToCpp(const TSharedPtr<FJsonObject>& Params)
 {
-	FString AssetPath = Params->GetStringField(TEXT("asset_path"));
-	FString ModuleName = Params->GetStringField(TEXT("module_name"));
-	FString TargetClassName = Params->GetStringField(TEXT("target_class_name"));
+	FString AssetPath;
+	if (!Params->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'asset_path' is missing"),
+			TEXT("Provide the Blueprint asset path to migrate. Example: \"/Game/Blueprints/BP_Player\""));
+	}
+	FString ModuleName;
+	if (!Params->TryGetStringField(TEXT("module_name"), ModuleName) || ModuleName.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'module_name' is missing"),
+			TEXT("Provide the target C++ module name. Use cpp.list_project_classes to see available modules."));
+	}
+	FString TargetClassName;
+	if (!Params->TryGetStringField(TEXT("target_class_name"), TargetClassName) || TargetClassName.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'target_class_name' is missing"),
+			TEXT("Provide the target C++ class name. Example: \"AMyPlayerCharacter\""));
+	}
 
 	FString ParentClass;
 	Params->TryGetStringField(TEXT("parent_class"), ParentClass);
@@ -319,14 +369,16 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleBatchWrite(const TSharedPt
 	FString BlueprintPath;
 	if (!Params->TryGetStringField(TEXT("path"), BlueprintPath) || BlueprintPath.IsEmpty())
 	{
-		return FOliveToolResult::Error(TEXT("MISSING_PATH"), TEXT("'path' parameter is required"));
+		return FOliveToolResult::Error(TEXT("MISSING_PATH"), TEXT("'path' parameter is required"),
+			TEXT("Provide the Blueprint asset path. Example: \"/Game/Blueprints/BP_Player\""));
 	}
 
 	// 2. Get ops array
 	const TArray<TSharedPtr<FJsonValue>>* OpsArray = nullptr;
 	if (!Params->TryGetArrayField(TEXT("ops"), OpsArray) || !OpsArray || OpsArray->Num() == 0)
 	{
-		return FOliveToolResult::Error(TEXT("MISSING_OPS"), TEXT("'ops' array is required and must not be empty"));
+		return FOliveToolResult::Error(TEXT("MISSING_OPS"), TEXT("'ops' array is required and must not be empty"),
+			TEXT("Provide an 'ops' array of {tool, params} objects. Example: [{\"tool\":\"blueprint.add_node\",\"params\":{\"type\":\"PrintString\"}}]"));
 	}
 
 	// 3. Check ops count against settings limit
@@ -339,7 +391,8 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleBatchWrite(const TSharedPt
 	{
 		return FOliveToolResult::Error(TEXT("TOO_MANY_OPS"),
 			FString::Printf(TEXT("Batch contains %d ops but maximum is %d (configurable via BatchWriteMaxOps)"),
-				OpsArray->Num(), MaxOps));
+				OpsArray->Num(), MaxOps),
+			TEXT("Split the batch into smaller chunks, or increase BatchWriteMaxOps in settings."));
 	}
 
 	// Parse options
@@ -528,7 +581,8 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleBatchWrite(const TSharedPt
 	if (!Blueprint)
 	{
 		return FOliveToolResult::Error(TEXT("ASSET_NOT_FOUND"),
-			FString::Printf(TEXT("Could not load Blueprint at '%s'"), *BlueprintPath));
+			FString::Printf(TEXT("Could not load Blueprint at '%s'"), *BlueprintPath),
+			TEXT("Verify the asset exists and is a Blueprint. Use project.search to find the correct path."));
 	}
 
 	// Results storage
@@ -740,7 +794,13 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleBatchWrite(const TSharedPt
 
 FOliveToolResult FOliveCrossSystemToolHandlers::HandleSnapshot(const TSharedPtr<FJsonObject>& Params)
 {
-	FString Name = Params->GetStringField(TEXT("name"));
+	FString Name;
+	if (!Params->TryGetStringField(TEXT("name"), Name) || Name.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'name' is missing"),
+			TEXT("Provide a name for the snapshot. Example: \"before_refactor\""));
+	}
 
 	TArray<FString> Paths;
 	const TArray<TSharedPtr<FJsonValue>>* PathsArray;
@@ -767,7 +827,13 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleListSnapshots(const TShare
 
 FOliveToolResult FOliveCrossSystemToolHandlers::HandleRollback(const TSharedPtr<FJsonObject>& Params)
 {
-	FString SnapshotId = Params->GetStringField(TEXT("snapshot_id"));
+	FString SnapshotId;
+	if (!Params->TryGetStringField(TEXT("snapshot_id"), SnapshotId) || SnapshotId.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'snapshot_id' is missing"),
+			TEXT("Provide the snapshot ID. Use project.list_snapshots to see available snapshots."));
+	}
 
 	TArray<FString> Paths;
 	const TArray<TSharedPtr<FJsonValue>>* PathsArray;
@@ -790,7 +856,13 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleRollback(const TSharedPtr<
 
 FOliveToolResult FOliveCrossSystemToolHandlers::HandleDiff(const TSharedPtr<FJsonObject>& Params)
 {
-	FString SnapshotId = Params->GetStringField(TEXT("snapshot_id"));
+	FString SnapshotId;
+	if (!Params->TryGetStringField(TEXT("snapshot_id"), SnapshotId) || SnapshotId.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'snapshot_id' is missing"),
+			TEXT("Provide the snapshot ID to compare against. Use project.list_snapshots to see available snapshots."));
+	}
 
 	TArray<FString> Paths;
 	const TArray<TSharedPtr<FJsonValue>>* PathsArray;
@@ -901,7 +973,8 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleGetRelevantContext(const T
 	FString Query;
 	if (!Params->TryGetStringField(TEXT("query"), Query) || Query.IsEmpty())
 	{
-		return FOliveToolResult::Error(TEXT("MISSING_QUERY"), TEXT("query parameter is required"));
+		return FOliveToolResult::Error(TEXT("MISSING_QUERY"), TEXT("query parameter is required"),
+			TEXT("Provide a search query string. Example: \"player character blueprint\""));
 	}
 
 	// Determine max_assets from params or settings

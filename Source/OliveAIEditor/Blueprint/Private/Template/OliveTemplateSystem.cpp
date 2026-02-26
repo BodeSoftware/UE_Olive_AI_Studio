@@ -30,6 +30,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Kismet2/KismetEditorUtilities.h"
 
 DEFINE_LOG_CATEGORY(LogOliveTemplates);
 
@@ -479,31 +480,26 @@ TMap<FString, FString> FOliveTemplateSystem::MergeParameters(
 		}
 
 		// Step 2: Overlay preset values if a preset name is specified
+		// Presets are stored as a JSON object: { "Bullet": { "speed": "5000", ... }, "Rocket": { ... } }
+		// The key is the preset name, the value is the parameter overrides directly.
 		if (!PresetName.IsEmpty())
 		{
-			const TArray<TSharedPtr<FJsonValue>>* PresetsArray = nullptr;
-			if (Info.FullJson->TryGetArrayField(TEXT("presets"), PresetsArray) && PresetsArray)
+			bool bPresetFound = false;
+			const TSharedPtr<FJsonObject>* PresetsObj = nullptr;
+			if (Info.FullJson->TryGetObjectField(TEXT("presets"), PresetsObj) && PresetsObj)
 			{
-				for (const TSharedPtr<FJsonValue>& PresetVal : *PresetsArray)
+				// Case-insensitive preset lookup
+				for (const auto& PresetPair : (*PresetsObj)->Values)
 				{
-					const TSharedPtr<FJsonObject>* PresetObj = nullptr;
-					if (!PresetVal->TryGetObject(PresetObj) || !PresetObj)
+					if (!PresetPair.Key.Equals(PresetName, ESearchCase::IgnoreCase))
 					{
 						continue;
 					}
 
-					FString Name;
-					(*PresetObj)->TryGetStringField(TEXT("name"), Name);
-					if (!Name.Equals(PresetName, ESearchCase::IgnoreCase))
+					const TSharedPtr<FJsonObject>* PresetValues = nullptr;
+					if (PresetPair.Value->TryGetObject(PresetValues) && PresetValues)
 					{
-						continue;
-					}
-
-					// Found matching preset -- overlay its params
-					const TSharedPtr<FJsonObject>* PresetParams = nullptr;
-					if ((*PresetObj)->TryGetObjectField(TEXT("params"), PresetParams) && PresetParams)
-					{
-						for (const auto& PPair : (*PresetParams)->Values)
+						for (const auto& PPair : (*PresetValues)->Values)
 						{
 							FString Value;
 							if (PPair.Value->TryGetString(Value))
@@ -513,32 +509,8 @@ TMap<FString, FString> FOliveTemplateSystem::MergeParameters(
 						}
 					}
 
-					break; // Only one preset can match
-				}
-			}
-
-			// DESIGN NOTE: If the preset name doesn't match any preset, we log a warning
-			// but continue with defaults. The architect should review whether this should
-			// be a hard error instead.
-			bool bPresetFound = false;
-			{
-				const TArray<TSharedPtr<FJsonValue>>* PresetsCheck = nullptr;
-				if (Info.FullJson->TryGetArrayField(TEXT("presets"), PresetsCheck) && PresetsCheck)
-				{
-					for (const TSharedPtr<FJsonValue>& PresetVal : *PresetsCheck)
-					{
-						const TSharedPtr<FJsonObject>* PresetObj = nullptr;
-						if (PresetVal->TryGetObject(PresetObj) && PresetObj)
-						{
-							FString Name;
-							(*PresetObj)->TryGetStringField(TEXT("name"), Name);
-							if (Name.Equals(PresetName, ESearchCase::IgnoreCase))
-							{
-								bPresetFound = true;
-								break;
-							}
-						}
-					}
+					bPresetFound = true;
+					break;
 				}
 			}
 
@@ -589,6 +561,74 @@ namespace
 		return EOliveIRTypeCategory::Unknown;
 	}
 
+	/**
+	 * When ParseSimpleTypeCategory returns Unknown, try to resolve the raw type string
+	 * as a UClass or UScriptStruct. This handles template authors who write "type": "Actor"
+	 * instead of the canonical "type": "object", "class_name": "Actor".
+	 */
+	void ResolveUnknownIRType(FOliveIRType& Type, const FString& RawTypeStr)
+	{
+		if (Type.Category != EOliveIRTypeCategory::Unknown || RawTypeStr.IsEmpty())
+		{
+			return;
+		}
+
+		// Try with and without common UE prefixes
+		TArray<FString> Candidates;
+		Candidates.Add(RawTypeStr);
+		if (!RawTypeStr.StartsWith(TEXT("A")) && !RawTypeStr.StartsWith(TEXT("U")))
+		{
+			Candidates.Add(TEXT("A") + RawTypeStr);
+			Candidates.Add(TEXT("U") + RawTypeStr);
+		}
+		if (!RawTypeStr.StartsWith(TEXT("F")))
+		{
+			Candidates.Add(TEXT("F") + RawTypeStr);
+		}
+
+		// Try UClass first
+		for (const FString& Name : Candidates)
+		{
+			UClass* Class = FindObject<UClass>(nullptr, *FString::Printf(TEXT("/Script/Engine.%s"), *Name));
+			if (!Class)
+			{
+				Class = FindObject<UClass>(nullptr, *FString::Printf(TEXT("/Script/CoreUObject.%s"), *Name));
+			}
+			if (Class)
+			{
+				Type.Category = EOliveIRTypeCategory::Object;
+				Type.ClassName = Class->GetName();
+				UE_LOG(LogOliveTemplates, Log,
+					TEXT("ResolveUnknownIRType: '%s' resolved as UClass '%s'"),
+					*RawTypeStr, *Type.ClassName);
+				return;
+			}
+		}
+
+		// Try UScriptStruct
+		for (const FString& Name : Candidates)
+		{
+			UScriptStruct* Struct = FindObject<UScriptStruct>(nullptr, *FString::Printf(TEXT("/Script/Engine.%s"), *Name));
+			if (!Struct)
+			{
+				Struct = FindObject<UScriptStruct>(nullptr, *FString::Printf(TEXT("/Script/CoreUObject.%s"), *Name));
+			}
+			if (Struct)
+			{
+				Type.Category = EOliveIRTypeCategory::Struct;
+				Type.StructName = Struct->GetName();
+				UE_LOG(LogOliveTemplates, Log,
+					TEXT("ResolveUnknownIRType: '%s' resolved as UScriptStruct '%s'"),
+					*RawTypeStr, *Type.StructName);
+				return;
+			}
+		}
+
+		UE_LOG(LogOliveTemplates, Warning,
+			TEXT("ResolveUnknownIRType: Could not resolve '%s' as class or struct"),
+			*RawTypeStr);
+	}
+
 	/** Parse a template variable JSON object into FOliveIRVariable */
 	FOliveIRVariable ParseTemplateVariable(const TSharedPtr<FJsonObject>& VarJson)
 	{
@@ -604,6 +644,14 @@ namespace
 		{
 			Var.Type.Category = ParseSimpleTypeCategory(TypeStr);
 		}
+
+		// Read type metadata fields
+		VarJson->TryGetStringField(TEXT("class_name"), Var.Type.ClassName);
+		VarJson->TryGetStringField(TEXT("struct_name"), Var.Type.StructName);
+		VarJson->TryGetStringField(TEXT("enum_name"), Var.Type.EnumName);
+
+		// Fallback: if category is Unknown, try to resolve the raw type string
+		ResolveUnknownIRType(Var.Type, TypeStr);
 
 		return Var;
 	}
@@ -621,6 +669,15 @@ namespace
 		{
 			Param.Type.Category = ParseSimpleTypeCategory(TypeStr);
 		}
+
+		// Read type metadata fields
+		ParamJson->TryGetStringField(TEXT("class_name"), Param.Type.ClassName);
+		ParamJson->TryGetStringField(TEXT("struct_name"), Param.Type.StructName);
+		ParamJson->TryGetStringField(TEXT("enum_name"), Param.Type.EnumName);
+		ParamJson->TryGetBoolField(TEXT("is_reference"), Param.bIsReference);
+
+		// Fallback: if category is Unknown, try to resolve the raw type string
+		ResolveUnknownIRType(Param.Type, TypeStr);
 
 		return Param;
 	}
@@ -701,32 +758,26 @@ FString FOliveTemplateSystem::GetTemplateContent(
 			Result += TEXT("\n");
 		}
 
-		// Presets
-		const TArray<TSharedPtr<FJsonValue>>* PresetsArray = nullptr;
-		if (Info->FullJson->TryGetArrayField(TEXT("presets"), PresetsArray) && PresetsArray)
+		// Presets (stored as JSON object: key = preset name, value = param overrides)
+		const TSharedPtr<FJsonObject>* PresetsObj = nullptr;
+		if (Info->FullJson->TryGetObjectField(TEXT("presets"), PresetsObj) && PresetsObj)
 		{
 			Result += TEXT("Presets:\n");
-			for (const TSharedPtr<FJsonValue>& PresetVal : *PresetsArray)
+			for (const auto& PresetPair : (*PresetsObj)->Values)
 			{
-				const TSharedPtr<FJsonObject>* PresetObj = nullptr;
-				if (PresetVal->TryGetObject(PresetObj) && PresetObj)
-				{
-					FString Name;
-					(*PresetObj)->TryGetStringField(TEXT("name"), Name);
-					Result += FString::Printf(TEXT("  %s:"), *Name);
+				Result += FString::Printf(TEXT("  %s:"), *PresetPair.Key);
 
-					const TSharedPtr<FJsonObject>* PresetParams = nullptr;
-					if ((*PresetObj)->TryGetObjectField(TEXT("params"), PresetParams) && PresetParams)
+				const TSharedPtr<FJsonObject>* PresetValues = nullptr;
+				if (PresetPair.Value->TryGetObject(PresetValues) && PresetValues)
+				{
+					for (const auto& PP : (*PresetValues)->Values)
 					{
-						for (const auto& PP : (*PresetParams)->Values)
-						{
-							FString Val;
-							PP.Value->TryGetString(Val);
-							Result += FString::Printf(TEXT(" %s=%s"), *PP.Key, *Val);
-						}
+						FString Val;
+						PP.Value->TryGetString(Val);
+						Result += FString::Printf(TEXT(" %s=%s"), *PP.Key, *Val);
 					}
-					Result += TEXT("\n");
 				}
+				Result += TEXT("\n");
 			}
 			Result += TEXT("\n");
 		}
@@ -1171,9 +1222,10 @@ FOliveToolResult FOliveTemplateSystem::ApplyTemplate(
 					// Parse the plan
 					FOliveIRBlueprintPlan Plan = FOliveIRBlueprintPlan::FromJson(*PlanObj);
 
-					// Resolve
+					// Resolve (build graph context for the function graph)
+					FOliveGraphContext FuncContext = FOliveGraphContext::BuildFromBlueprint(Blueprint, FuncName);
 					FOlivePlanResolveResult ResolveResult =
-						FOliveBlueprintPlanResolver::Resolve(Plan, Blueprint);
+						FOliveBlueprintPlanResolver::Resolve(Plan, Blueprint, FuncContext);
 
 					if (!ResolveResult.bSuccess)
 					{
@@ -1205,10 +1257,12 @@ FOliveToolResult FOliveTemplateSystem::ApplyTemplate(
 						continue;
 					}
 
-					// Execute plan
+					// Execute plan using the expanded plan (with all resolver
+					// expansions: ExpandComponentRefs, ExpandPlanInputs, etc.)
 					FOlivePlanExecutor PlanExecutor;
 					FOliveIRBlueprintPlanResult PlanResult = PlanExecutor.Execute(
-						Plan, ResolveResult.ResolvedSteps, Blueprint, FuncGraph, AssetPath, FuncName);
+						ResolveResult.ExpandedPlan, ResolveResult.ResolvedSteps,
+						Blueprint, FuncGraph, AssetPath, FuncName);
 
 					if (!PlanResult.bSuccess)
 					{
@@ -1228,6 +1282,15 @@ FOliveToolResult FOliveTemplateSystem::ApplyTemplate(
 					}
 				}
 			}
+		}
+
+		// 10b. Force skeleton recompile so newly created functions are discoverable
+		// by subsequent event graph plans that may call them (e.g., "call Fire").
+		// Without this, FindFunction() fails because the skeleton class hasn't been
+		// rebuilt after add_function.
+		if (CreatedFunctions.Num() > 0)
+		{
+			FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::SkipSave);
 		}
 
 		// 11. Execute event graph plans
@@ -1257,9 +1320,10 @@ FOliveToolResult FOliveTemplateSystem::ApplyTemplate(
 				// Parse the plan
 				FOliveIRBlueprintPlan Plan = FOliveIRBlueprintPlan::FromJson(*PlanObj);
 
-				// Resolve
+				// Resolve (build graph context for the EventGraph)
+				FOliveGraphContext EGContext = FOliveGraphContext::BuildFromBlueprint(Blueprint, TEXT("EventGraph"));
 				FOlivePlanResolveResult ResolveResult =
-					FOliveBlueprintPlanResolver::Resolve(Plan, Blueprint);
+					FOliveBlueprintPlanResolver::Resolve(Plan, Blueprint, EGContext);
 
 				if (!ResolveResult.bSuccess)
 				{
@@ -1296,11 +1360,12 @@ FOliveToolResult FOliveTemplateSystem::ApplyTemplate(
 					continue;
 				}
 
-				// Execute plan
+				// Execute plan using the expanded plan (with all resolver
+				// expansions: ExpandComponentRefs, ExpandPlanInputs, etc.)
 				FOlivePlanExecutor PlanExecutor;
 				FOliveIRBlueprintPlanResult PlanResult = PlanExecutor.Execute(
-					Plan, ResolveResult.ResolvedSteps, Blueprint, EventGraph,
-					AssetPath, TEXT("EventGraph"));
+					ResolveResult.ExpandedPlan, ResolveResult.ResolvedSteps,
+					Blueprint, EventGraph, AssetPath, TEXT("EventGraph"));
 
 				if (!PlanResult.bSuccess)
 				{
@@ -1344,6 +1409,22 @@ FOliveToolResult FOliveTemplateSystem::ApplyTemplate(
 	}
 	ResultData->SetBoolField(TEXT("compiled"), CompileResult.bSuccess);
 
+	// compile_result structure for self-correction compatibility
+	{
+		TSharedPtr<FJsonObject> CompileResultJson = MakeShared<FJsonObject>();
+		CompileResultJson->SetBoolField(TEXT("success"), CompileResult.bSuccess);
+		if (!CompileResult.bSuccess)
+		{
+			TArray<TSharedPtr<FJsonValue>> ErrorJsonArray;
+			for (const FOliveIRCompileError& Err : CompileResult.Errors)
+			{
+				ErrorJsonArray.Add(MakeShared<FJsonValueString>(Err.Message));
+			}
+			CompileResultJson->SetArrayField(TEXT("errors"), ErrorJsonArray);
+		}
+		ResultData->SetObjectField(TEXT("compile_result"), CompileResultJson);
+	}
+
 	// Applied parameters
 	TSharedPtr<FJsonObject> ParamsResult = MakeShared<FJsonObject>();
 	for (const auto& Pair : MergedParams)
@@ -1380,5 +1461,17 @@ FOliveToolResult FOliveTemplateSystem::ApplyTemplate(
 		CreatedComponents.Num(), CreatedVariables.Num(), CreatedDispatchers.Num(), CreatedFunctions.Num(),
 		Warnings.Num(), CompileResult.bSuccess ? TEXT("true") : TEXT("false"));
 
-	return FOliveToolResult::Success(ResultData);
+	FOliveToolResult Result = FOliveToolResult::Success(ResultData);
+	if (!CompileResult.bSuccess)
+	{
+		FOliveIRMessage CompileWarning;
+		CompileWarning.Severity = EOliveIRSeverity::Warning;
+		CompileWarning.Code = TEXT("COMPILE_FAILED");
+		CompileWarning.Message = FString::Printf(
+			TEXT("Template '%s' applied but Blueprint FAILED TO COMPILE. %d compile error(s). "
+				 "Review errors and fix before proceeding."),
+			*TemplateId, CompileResult.Errors.Num());
+		Result.Messages.Add(MoveTemp(CompileWarning));
+	}
+	return Result;
 }

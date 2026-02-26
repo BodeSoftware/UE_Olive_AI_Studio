@@ -25,6 +25,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include <atomic>
 #include "IOliveAIProvider.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/Runnable.h"
@@ -93,6 +94,23 @@ public:
 		const FOliveRequestOptions& Options = FOliveRequestOptions()
 	) override;
 
+	/**
+	 * Send a message in autonomous MCP mode. Launches the CLI process with
+	 * autonomous arguments (no system prompt injection, no tool schema serialization).
+	 * The CLI discovers tools via MCP server and manages its own agentic loop.
+	 *
+	 * @param UserMessage  The user's task description sent to stdin
+	 * @param OnChunk      Called for each streamed progress chunk (text, tool activity, etc.)
+	 * @param OnComplete   Called when the autonomous process finishes naturally
+	 * @param OnError      Called on process spawn failure, idle timeout, or non-zero exit with no output
+	 */
+	virtual void SendMessageAutonomous(
+		const FString& UserMessage,
+		FOnOliveStreamChunk OnChunk,
+		FOnOliveComplete OnComplete,
+		FOnOliveError OnError
+	) override;
+
 	virtual void CancelRequest() override;
 	virtual bool IsBusy() const override { return bIsBusy; }
 	virtual FString GetLastError() const override { return LastError; }
@@ -119,6 +137,17 @@ protected:
 	 * @return The full argument string for the CLI process
 	 */
 	virtual FString GetCLIArguments(const FString& SystemPromptArg) const = 0;
+
+	/**
+	 * Get CLI arguments for autonomous MCP mode.
+	 * In autonomous mode the CLI discovers tools via MCP and manages its own agentic loop,
+	 * so there is no system prompt injection, no --max-turns 1, and no --strict-mcp-config.
+	 * Override in subclasses for provider-specific autonomous arguments.
+	 *
+	 * Default implementation: delegates to GetCLIArguments with an empty system prompt arg.
+	 * @return The full argument string for autonomous CLI execution
+	 */
+	virtual FString GetCLIArgumentsAutonomous() const;
 
 	/**
 	 * Parse a single line of stdout output.
@@ -178,13 +207,60 @@ protected:
 	FString BuildCLISystemPrompt(const FString& UserTask, const TArray<FOliveToolDefinition>& Tools) const;
 
 	/**
-	 * Handle process completion. Parses tool calls from accumulated response text
-	 * via FOliveCLIToolCallParser and emits them through OnToolCall before signaling
-	 * completion. Called on the game thread under CallbackLock.
+	 * Shared process lifecycle: spawn CLI, pipe stdin, read stdout loop, handle exit.
+	 * Used by both SendMessage() (orchestrated) and SendMessageAutonomous() (autonomous).
+	 *
+	 * Callers must set bIsBusy, store callbacks, increment RequestGeneration, and clear
+	 * AccumulatedResponse BEFORE calling this method. LaunchCLIProcess captures the
+	 * current RequestGeneration for staleness checks internally.
+	 *
+	 * Thread model:
+	 * - Must be called on the game thread (captures AliveGuard, CLIName, then
+	 *   dispatches to a background thread for process I/O).
+	 * - OnProcessExit is called on the game thread, inside Guard + Generation + CallbackLock checks.
+	 *
+	 * @param CLIArgs                  Fully-built CLI argument string (output of GetCLIArguments or GetCLIArgumentsAutonomous)
+	 * @param StdinContent             Written to stdin then EOF. If empty, stdin is closed immediately (signal EOF with no input).
+	 * @param OnProcessExit            Called on the game thread with the process return code. Invoked inside
+	 *                                 Guard/Generation/CallbackLock checks so the callee can safely access members.
+	 * @param WorkingDirectoryOverride If non-empty, used as the process working directory instead of GetWorkingDirectory().
+	 *                                 Primary use case: autonomous sandbox directory.
+	 */
+	void LaunchCLIProcess(
+		const FString& CLIArgs,
+		const FString& StdinContent,
+		TFunction<void(int32)> OnProcessExit,
+		const FString& WorkingDirectoryOverride = FString()
+	);
+
+	/**
+	 * Set up the autonomous agent sandbox directory with .mcp.json and CLAUDE.md.
+	 * Creates {ProjectDir}/Saved/OliveAI/AgentSandbox/ with:
+	 * - .mcp.json pointing to mcp-bridge.js via absolute path
+	 * - CLAUDE.md with agent role context (from AGENTS.md content)
+	 * Stores the path in AutonomousSandboxDir for use as working directory.
+	 */
+	void SetupAutonomousSandbox();
+
+	/**
+	 * Handle process completion for orchestrated mode.
+	 * Parses tool calls from accumulated response text via FOliveCLIToolCallParser
+	 * and emits them through OnToolCall before signaling completion.
+	 * Called on the game thread under CallbackLock.
 	 *
 	 * @param ReturnCode The process exit code
 	 */
 	void HandleResponseComplete(int32 ReturnCode);
+
+	/**
+	 * Handle process completion for autonomous MCP mode.
+	 * Emits accumulated response text via OnComplete without parsing tool calls
+	 * (tools were executed via MCP server, not via <tool_call> XML blocks).
+	 * Called on the game thread under CallbackLock.
+	 *
+	 * @param ReturnCode The process exit code
+	 */
+	void HandleResponseCompleteAutonomous(int32 ReturnCode);
 
 	/**
 	 * Kill the running CLI process and clean up all resources.
@@ -232,6 +308,9 @@ protected:
 	/** Whether a request is currently in progress */
 	FThreadSafeBool bIsBusy;
 
+	/** Generation counter to distinguish stale async completions from current request */
+	std::atomic<uint32> RequestGeneration{0};
+
 	/** Accumulated response text from stdout */
 	FString AccumulatedResponse;
 
@@ -250,6 +329,31 @@ protected:
 	/** Lock protecting callback access and AccumulatedResponse */
 	FCriticalSection CallbackLock;
 
+	/**
+	 * Shared alive-guard for safe async access.
+	 *
+	 * Background threads and queued game-thread AsyncTasks capture a shared copy
+	 * of this bool. The destructor sets it to false BEFORE tearing down members.
+	 * Lambdas check *AliveGuard before touching `this`, preventing use-after-free
+	 * when the provider is destroyed while async work is still pending.
+	 *
+	 * This is necessary because:
+	 * - AsyncTask(GameThread, ...) lambdas can sit in the task queue after `this` dies
+	 * - The background read thread may still reference `this` members during cleanup
+	 * - FScopeLock(&CallbackLock) at the top of each lambda would crash on a dead object
+	 */
+	TSharedPtr<FThreadSafeBool> AliveGuard = MakeShared<FThreadSafeBool>(true);
+
 	/** Working directory for the CLI process */
 	FString WorkingDirectory;
+
+	/** Sandbox directory for autonomous mode (written before launch, cleaned up on completion) */
+	FString AutonomousSandboxDir;
+
+	/** Timestamp of last successful MCP tool call during autonomous mode.
+	 *  Updated by MCP server OnToolCalled delegate. Used for activity-based timeout. */
+	std::atomic<double> LastToolCallTimestamp{0.0};
+
+	/** Delegate handle for MCP tool call subscription (cleaned up on process exit) */
+	FDelegateHandle ToolCallDelegateHandle;
 };

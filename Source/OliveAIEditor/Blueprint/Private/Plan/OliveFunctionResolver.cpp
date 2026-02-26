@@ -196,7 +196,19 @@ TArray<UClass*> FOliveFunctionResolver::GetSearchOrder(
         }
     }
 
-    // 2. Blueprint parent class hierarchy
+    // 2. Blueprint's own GeneratedClass (Blueprint-defined functions live here,
+    // e.g., custom functions created via add_function). Must come before parent
+    // class search since calling your own functions is the most common case.
+    if (Blueprint && Blueprint->GeneratedClass)
+    {
+        if (!Added.Contains(Blueprint->GeneratedClass))
+        {
+            Result.Add(Blueprint->GeneratedClass);
+            Added.Add(Blueprint->GeneratedClass);
+        }
+    }
+
+    // 3. Blueprint parent class hierarchy
     if (Blueprint && Blueprint->ParentClass)
     {
         UClass* Current = Blueprint->ParentClass;
@@ -211,7 +223,7 @@ TArray<UClass*> FOliveFunctionResolver::GetSearchOrder(
         }
     }
 
-    // 2.5: Component classes on this Blueprint's SCS
+    // 4: Component classes on this Blueprint's SCS
     // This ensures functions like SetSpeed are found on the Blueprint's own
     // ProjectileMovementComponent before falling through to BroadSearch
     // where they might match an irrelevant class.
@@ -228,7 +240,7 @@ TArray<UClass*> FOliveFunctionResolver::GetSearchOrder(
         }
     }
 
-    // 3. Common library classes (in priority order)
+    // 5. Common library classes (in priority order)
     UClass* CommonClasses[] = {
         UKismetSystemLibrary::StaticClass(),
         UKismetMathLibrary::StaticClass(),
@@ -511,13 +523,31 @@ TArray<FOliveFunctionMatch> FOliveFunctionResolver::BroadSearch(
         if (Found && Found->HasAnyFunctionFlags(FUNC_BlueprintCallable))
         {
             // Relevance-aware confidence scoring:
-            //   Function library (designed for general use):    70
-            //   Gameplay class present on this Blueprint's SCS: 90
-            //   Gameplay class NOT on this Blueprint (or no BP): 40
-            //   Fallback:                                        40
+            //   Blueprint's own class (GeneratedClass/SkeletonClass): 95
+            //   Function library (designed for general use):           70
+            //   Gameplay class present on this Blueprint's SCS:        90
+            //   Gameplay class NOT on this Blueprint (or no BP):       40
+            //   Fallback:                                              40
             int32 Confidence = 40;
 
-            if (bIsFunctionLibrary)
+            // FIX RC4: Check if this class is the Blueprint's own generated class
+            // or skeleton class. Blueprint-defined functions (Pickup, Fire, Drop)
+            // live on SKEL_BP_Gun_C / BP_Gun_C and should get high confidence.
+            bool bIsBlueprintOwnClass = false;
+            if (Blueprint)
+            {
+                if ((Blueprint->GeneratedClass && Class == Blueprint->GeneratedClass)
+                    || (Blueprint->SkeletonGeneratedClass && Class == Blueprint->SkeletonGeneratedClass))
+                {
+                    bIsBlueprintOwnClass = true;
+                }
+            }
+
+            if (bIsBlueprintOwnClass)
+            {
+                Confidence = 95;
+            }
+            else if (bIsFunctionLibrary)
             {
                 Confidence = 70;
             }
@@ -916,6 +946,22 @@ const TMap<FString, FString>& FOliveFunctionResolver::GetAliasMap()
         Map.Add(TEXT("LaunchCharacter"), TEXT("LaunchCharacter"));
         Map.Add(TEXT("AddMovementInput"), TEXT("AddMovementInput"));
         Map.Add(TEXT("GetVelocity"), TEXT("GetVelocity"));
+
+        // ================================================================
+        // UE 5.5+ Float->Double Renames
+        // ================================================================
+        // In UE 5.5, many float math functions were renamed to use Double.
+        // These aliases ensure plans written with old Float names still resolve.
+        Map.Add(TEXT("Add_FloatFloat"), TEXT("Add_DoubleDouble"));
+        Map.Add(TEXT("Subtract_FloatFloat"), TEXT("Subtract_DoubleDouble"));
+        Map.Add(TEXT("Multiply_FloatFloat"), TEXT("Multiply_DoubleDouble"));
+        Map.Add(TEXT("Divide_FloatFloat"), TEXT("Divide_DoubleDouble"));
+        Map.Add(TEXT("Less_FloatFloat"), TEXT("Less_DoubleDouble"));
+        Map.Add(TEXT("Greater_FloatFloat"), TEXT("Greater_DoubleDouble"));
+        Map.Add(TEXT("LessEqual_FloatFloat"), TEXT("LessEqual_DoubleDouble"));
+        Map.Add(TEXT("GreaterEqual_FloatFloat"), TEXT("GreaterEqual_DoubleDouble"));
+        Map.Add(TEXT("EqualEqual_FloatFloat"), TEXT("EqualEqual_DoubleDouble"));
+        Map.Add(TEXT("NotEqual_FloatFloat"), TEXT("NotEqual_DoubleDouble"));
 
         return Map;
     }();

@@ -4,9 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "IR/BlueprintPlanIR.h"
+#include "Plan/OliveBlueprintPlanResolver.h" // For FOliveGraphContext (needed by default parameter)
 
 class UBlueprint;
-struct FOliveResolvedStep;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogOlivePlanValidator, Log, All);
 
@@ -72,7 +72,24 @@ public:
 	static FOlivePlanValidationResult Validate(
 		const FOliveIRBlueprintPlan& Plan,
 		const TArray<FOliveResolvedStep>& ResolvedSteps,
-		UBlueprint* Blueprint);
+		UBlueprint* Blueprint,
+		const FOliveGraphContext& GraphContext = FOliveGraphContext());
+
+	/**
+	 * Auto-fix exec_after/exec_outputs conflicts.
+	 * When a step has exec_after targeting a step that also uses exec_outputs,
+	 * the primary exec output pin would be double-claimed. This method removes
+	 * the redundant exec_after, since exec_outputs already controls the flow.
+	 *
+	 * Must be called BEFORE Validate() to prevent EXEC_WIRING_CONFLICT errors.
+	 *
+	 * @param Plan The plan to fix (modified in place)
+	 * @param OutNotes Resolver notes appended for each auto-fix (transparency)
+	 * @return True if any conflicts were auto-fixed
+	 */
+	static bool AutoFixExecConflicts(
+		FOliveIRBlueprintPlan& Plan,
+		TArray<FOliveResolverNote>& OutNotes);
 
 private:
 	/**
@@ -91,5 +108,17 @@ private:
 	 */
 	static void CheckExecWiringConflicts(
 		const FOlivePlanValidationContext& Context,
+		FOlivePlanValidationResult& Result);
+
+	/**
+	 * Check 3: Latent-in-function-graph guard.
+	 * Rejects latent actions (Delay, AI MoveTo, etc.) in function graphs.
+	 * Latent functions require the calling context to suspend execution, which
+	 * is only possible in event graph execution contexts, not function calls.
+	 */
+	static void CheckLatentInFunctionGraph(
+		const FOlivePlanValidationContext& Context,
+		const TArray<FOliveResolvedStep>& ResolvedSteps,
+		const FOliveGraphContext& GraphContext,
 		FOlivePlanValidationResult& Result);
 };

@@ -2,6 +2,7 @@
 
 #include "Brain/OliveSelfCorrectionPolicy.h"
 #include "Brain/OliveRetryPolicy.h"
+#include "Index/OliveProjectIndex.h"
 #include "OliveAIEditorModule.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -71,7 +72,8 @@ FOliveCorrectionDecision FOliveSelfCorrectionPolicy::Evaluate(
 	// Check for compile failure
 	FString CompileErrors, AssetPath;
 	bool bHasStaleErrors = false;
-	if (HasCompileFailure(ResultJson, CompileErrors, AssetPath, bHasStaleErrors))
+	int32 RolledBackNodeCount = 0;
+	if (HasCompileFailure(ResultJson, CompileErrors, AssetPath, bHasStaleErrors, RolledBackNodeCount))
 	{
 		// Stale error: compile error is NOT caused by this plan's steps.
 		// Do NOT count toward loop detector -- the AI did nothing wrong this turn.
@@ -104,17 +106,57 @@ FOliveCorrectionDecision FOliveSelfCorrectionPolicy::Evaluate(
 		Decision.MaxAttempts = Policy.MaxRetriesPerError;
 
 		// Check for loops
-		if (LoopDetector.IsLooping(Signature, Policy) || LoopDetector.IsOscillating() || LoopDetector.IsBudgetExhausted(Policy))
+		if (LoopDetector.IsLooping(Signature, Policy) || LoopDetector.IsOscillating())
+		{
+			if (!bIsInGranularFallback && Policy.bAllowGranularFallback)
+			{
+				// Switch to granular fallback instead of dying
+				bIsInGranularFallback = true;
+				LastPlanFailureReason = CompileErrors;
+
+				// Reset the loop detector so granular attempts get a fresh error budget
+				LoopDetector.Reset();
+
+				Decision.Action = EOliveCorrectionAction::FeedBackErrors;
+				Decision.EnrichedMessage = BuildGranularFallbackMessage(
+					ToolName, CompileErrors, AssetPath, RolledBackNodeCount);
+
+				UE_LOG(LogOliveAI, Warning,
+					TEXT("SelfCorrection: Plan loop detected for '%s'. Switching to GRANULAR FALLBACK mode."),
+					*AssetPath);
+				return Decision;
+			}
+
+			// Already in granular fallback, or fallback disabled -- truly stop
+			Decision.Action = EOliveCorrectionAction::StopWorker;
+			Decision.LoopReport = LoopDetector.BuildLoopReport();
+			UE_LOG(LogOliveAI, Warning,
+				TEXT("SelfCorrection: Loop detected for compile failure on '%s' (granular=%s). Stopping."),
+				*AssetPath, bIsInGranularFallback ? TEXT("true") : TEXT("false"));
+			return Decision;
+		}
+		// Retain IsBudgetExhausted as hard backstop (now at 20 cycles)
+		if (LoopDetector.IsBudgetExhausted(Policy))
 		{
 			Decision.Action = EOliveCorrectionAction::StopWorker;
 			Decision.LoopReport = LoopDetector.BuildLoopReport();
-			UE_LOG(LogOliveAI, Warning, TEXT("SelfCorrection: Loop detected for compile failure on '%s'. Stopping."), *AssetPath);
+			UE_LOG(LogOliveAI, Warning,
+				TEXT("SelfCorrection: Global budget exhausted on '%s'. Stopping."), *AssetPath);
 			return Decision;
 		}
 
 		// Feed back errors for retry
 		Decision.Action = EOliveCorrectionAction::FeedBackErrors;
-		Decision.EnrichedMessage = BuildCompileErrorMessage(ToolName, CompileErrors, SignatureAttempts, Policy.MaxRetriesPerError);
+		if (RolledBackNodeCount > 0)
+		{
+			Decision.EnrichedMessage = BuildRollbackAwareMessage(
+				ToolName, CompileErrors, SignatureAttempts, Policy.MaxRetriesPerError, RolledBackNodeCount);
+		}
+		else
+		{
+			Decision.EnrichedMessage = BuildCompileErrorMessage(
+				ToolName, CompileErrors, SignatureAttempts, Policy.MaxRetriesPerError);
+		}
 		UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Compile failure on '%s', attempt %d/%d"),
 			*AssetPath, SignatureAttempts, Policy.MaxRetriesPerError);
 		UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Injecting compile correction:\n%s"), *Decision.EnrichedMessage);
@@ -125,6 +167,25 @@ FOliveCorrectionDecision FOliveSelfCorrectionPolicy::Evaluate(
 	FString ErrorCode, ErrorMessage;
 	if (HasToolFailure(ResultJson, ErrorCode, ErrorMessage))
 	{
+		// Extract rollback info from result (same pattern as compile failure path)
+		int32 ToolRolledBackNodeCount = 0;
+		{
+			TSharedPtr<FJsonObject> ToolJsonObj;
+			TSharedRef<TJsonReader<>> ToolReader = TJsonReaderFactory<>::Create(ResultJson);
+			if (FJsonSerializer::Deserialize(ToolReader, ToolJsonObj) && ToolJsonObj.IsValid())
+			{
+				const TSharedPtr<FJsonObject>* ToolDataObj = nullptr;
+				if (ToolJsonObj->TryGetObjectField(TEXT("data"), ToolDataObj) && ToolDataObj && (*ToolDataObj).IsValid())
+				{
+					double RBDouble = 0;
+					if ((*ToolDataObj)->TryGetNumberField(TEXT("rolled_back_nodes"), RBDouble))
+					{
+						ToolRolledBackNodeCount = static_cast<int32>(RBDouble);
+					}
+				}
+			}
+		}
+
 		// Classify error before deciding retry behavior
 		const EOliveErrorCategory Category = ClassifyErrorCode(ErrorCode, ErrorMessage);
 
@@ -134,7 +195,7 @@ FOliveCorrectionDecision FOliveSelfCorrectionPolicy::Evaluate(
 		{
 			Decision.Action = EOliveCorrectionAction::FeedBackErrors;
 			Decision.EnrichedMessage = BuildToolErrorMessage(
-				ToolName, ErrorCode, ErrorMessage, 1, 1);
+				ToolName, ErrorCode, ErrorMessage, 1, 1, AssetContext);
 			Decision.EnrichedMessage += TEXT("\n\n[UNSUPPORTED] This error indicates a feature "
 				"limitation, not a fixable mistake. Do NOT retry the same operation. "
 				"Choose a fundamentally different approach or ask the user for guidance.");
@@ -153,11 +214,42 @@ FOliveCorrectionDecision FOliveSelfCorrectionPolicy::Evaluate(
 		Decision.MaxAttempts = Policy.MaxRetriesPerError;
 
 		// Check for loops
-		if (LoopDetector.IsLooping(Signature, Policy) || LoopDetector.IsOscillating() || LoopDetector.IsBudgetExhausted(Policy))
+		if (LoopDetector.IsLooping(Signature, Policy) || LoopDetector.IsOscillating())
+		{
+			if (!bIsInGranularFallback && Policy.bAllowGranularFallback)
+			{
+				// Switch to granular fallback instead of dying
+				bIsInGranularFallback = true;
+				LastPlanFailureReason = ErrorMessage;
+
+				// Reset the loop detector so granular attempts get a fresh error budget
+				LoopDetector.Reset();
+
+				Decision.Action = EOliveCorrectionAction::FeedBackErrors;
+				Decision.EnrichedMessage = BuildGranularFallbackMessage(
+					ToolName, ErrorMessage, AssetContext, ToolRolledBackNodeCount);
+
+				UE_LOG(LogOliveAI, Warning,
+					TEXT("SelfCorrection: Tool loop detected for '%s' error '%s'. Switching to GRANULAR FALLBACK mode."),
+					*ToolName, *ErrorCode);
+				return Decision;
+			}
+
+			// Already in granular fallback, or fallback disabled -- truly stop
+			Decision.Action = EOliveCorrectionAction::StopWorker;
+			Decision.LoopReport = LoopDetector.BuildLoopReport();
+			UE_LOG(LogOliveAI, Warning,
+				TEXT("SelfCorrection: Loop detected for tool '%s' error '%s' (granular=%s). Stopping."),
+				*ToolName, *ErrorCode, bIsInGranularFallback ? TEXT("true") : TEXT("false"));
+			return Decision;
+		}
+		// Retain IsBudgetExhausted as hard backstop (now at 20 cycles)
+		if (LoopDetector.IsBudgetExhausted(Policy))
 		{
 			Decision.Action = EOliveCorrectionAction::StopWorker;
 			Decision.LoopReport = LoopDetector.BuildLoopReport();
-			UE_LOG(LogOliveAI, Warning, TEXT("SelfCorrection: Loop detected for tool '%s' error '%s'. Stopping."), *ToolName, *ErrorCode);
+			UE_LOG(LogOliveAI, Warning,
+				TEXT("SelfCorrection: Global budget exhausted for tool '%s'. Stopping."), *ToolName);
 			return Decision;
 		}
 
@@ -166,10 +258,17 @@ FOliveCorrectionDecision FOliveSelfCorrectionPolicy::Evaluate(
 		{
 			Decision.Action = EOliveCorrectionAction::FeedBackErrors;
 			Decision.EnrichedMessage = BuildToolErrorMessage(
-				ToolName, ErrorCode, ErrorMessage, SignatureAttempts, Policy.MaxRetriesPerError);
+				ToolName, ErrorCode, ErrorMessage, SignatureAttempts, Policy.MaxRetriesPerError, AssetContext);
 			Decision.EnrichedMessage += TEXT("\n\n[ESCALATION] This error may indicate a fundamental "
 				"limitation rather than a fixable mistake. If the same approach keeps failing, "
 				"try add_node with the exact UK2Node class name, or ask the user.");
+
+			if (ToolRolledBackNodeCount > 0)
+			{
+				Decision.EnrichedMessage += FString::Printf(
+					TEXT("\nNOTE: %d nodes were ROLLED BACK. Do NOT reference node IDs from the failed operation."),
+					ToolRolledBackNodeCount);
+			}
 
 			UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Category C escalation for '%s' error '%s', "
 				"attempt %d."), *ToolName, *ErrorCode, SignatureAttempts);
@@ -178,7 +277,13 @@ FOliveCorrectionDecision FOliveSelfCorrectionPolicy::Evaluate(
 
 		// Category A (and first attempt of Category C): standard retry
 		Decision.Action = EOliveCorrectionAction::FeedBackErrors;
-		Decision.EnrichedMessage = BuildToolErrorMessage(ToolName, ErrorCode, ErrorMessage, SignatureAttempts, Policy.MaxRetriesPerError);
+		Decision.EnrichedMessage = BuildToolErrorMessage(ToolName, ErrorCode, ErrorMessage, SignatureAttempts, Policy.MaxRetriesPerError, AssetContext);
+		if (ToolRolledBackNodeCount > 0)
+		{
+			Decision.EnrichedMessage += FString::Printf(
+				TEXT("\nNOTE: %d nodes were ROLLED BACK. Do NOT reference node IDs from the failed operation."),
+				ToolRolledBackNodeCount);
+		}
 		UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Tool failure '%s' error '%s', attempt %d/%d"),
 			*ToolName, *ErrorCode, SignatureAttempts, Policy.MaxRetriesPerError);
 		UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Injecting tool correction:\n%s"), *Decision.EnrichedMessage);
@@ -193,11 +298,14 @@ FOliveCorrectionDecision FOliveSelfCorrectionPolicy::Evaluate(
 void FOliveSelfCorrectionPolicy::Reset()
 {
 	PreviousPlanHashes.Empty();
+	bIsInGranularFallback = false;
+	LastPlanFailureReason.Empty();
 }
 
-bool FOliveSelfCorrectionPolicy::HasCompileFailure(const FString& ResultJson, FString& OutErrors, FString& OutAssetPath, bool& OutHasStaleErrors) const
+bool FOliveSelfCorrectionPolicy::HasCompileFailure(const FString& ResultJson, FString& OutErrors, FString& OutAssetPath, bool& OutHasStaleErrors, int32& OutRolledBackNodeCount) const
 {
 	OutHasStaleErrors = false;
+	OutRolledBackNodeCount = 0;
 
 	TSharedPtr<FJsonObject> JsonObj;
 	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ResultJson);
@@ -270,6 +378,16 @@ bool FOliveSelfCorrectionPolicy::HasCompileFailure(const FString& ResultJson, FS
 		if (OutAssetPath.IsEmpty())
 		{
 			DataObj->TryGetStringField(TEXT("blueprint_path"), OutAssetPath);
+		}
+	}
+
+	// Extract rolled_back_nodes count from "data" if present (set by plan executor rollback)
+	if (DataObj.IsValid())
+	{
+		double RolledBackDouble = 0;
+		if (DataObj->TryGetNumberField(TEXT("rolled_back_nodes"), RolledBackDouble))
+		{
+			OutRolledBackNodeCount = static_cast<int32>(RolledBackDouble);
 		}
 	}
 
@@ -478,7 +596,8 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 	const FString& ErrorCode,
 	const FString& ErrorMessage,
 	int32 AttemptNum,
-	int32 MaxAttempts) const
+	int32 MaxAttempts,
+	const FString& AssetContext) const
 {
 	FString Header = FString::Printf(
 		TEXT("[TOOL FAILED - Attempt %d/%d] Tool '%s' failed with error %s: %s"),
@@ -492,7 +611,35 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 	}
 	else if (ErrorCode == TEXT("ASSET_NOT_FOUND"))
 	{
-		Guidance = TEXT("The asset path is wrong. Use project.search_assets to find the correct path, then retry with the corrected path.");
+		Guidance = TEXT("The asset path is wrong.");
+
+		// Auto-search the project index to suggest correct paths
+		const FString ShortName = FPaths::GetBaseFilename(AssetContext);
+		if (!ShortName.IsEmpty() && FOliveProjectIndex::Get().IsReady())
+		{
+			static constexpr int32 MaxSuggestions = 5;
+			const TArray<FOliveAssetInfo> SearchResults = FOliveProjectIndex::Get().SearchAssets(ShortName, MaxSuggestions);
+
+			if (SearchResults.Num() > 0)
+			{
+				Guidance += TEXT("\n\nDid you mean one of these?");
+				for (const FOliveAssetInfo& Result : SearchResults)
+				{
+					Guidance += FString::Printf(TEXT("\n  - %s  (%s)"), *Result.Path, *Result.AssetClass.ToString());
+				}
+				Guidance += TEXT("\n\nUse the correct path from above and retry.");
+			}
+			else
+			{
+				Guidance += FString::Printf(
+					TEXT("\n\nNo assets found matching '%s'. Use project.search_assets with different keywords to find the correct path."),
+					*ShortName);
+			}
+		}
+		else
+		{
+			Guidance += TEXT(" Use project.search_assets to find the correct path, then retry.");
+		}
 	}
 	else if (ErrorCode == TEXT("NODE_TYPE_UNKNOWN") || ErrorCode == TEXT("BP_ADD_NODE_FAILED"))
 	{
@@ -666,6 +813,47 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 	}
 
 	return Result;
+}
+
+FString FOliveSelfCorrectionPolicy::BuildRollbackAwareMessage(
+	const FString& ToolName,
+	const FString& Errors,
+	int32 AttemptNum,
+	int32 MaxAttempts,
+	int32 RolledBackNodeCount) const
+{
+	return FString::Printf(
+		TEXT("[COMPILE FAILED + ROLLBACK - Attempt %d/%d] The Blueprint failed to compile after executing '%s'. "
+			 "%d nodes were ROLLED BACK -- the graph is restored to its pre-plan state.\n"
+			 "Errors:\n%s\n"
+			 "REQUIRED ACTION: Fix the plan and resubmit with apply_plan_json.\n"
+			 "Do NOT use connect_pins or reference any node IDs from the failed plan -- those nodes no longer exist.\n"
+			 "Common fixes:\n"
+			 "- Latent calls (Delay, AI MoveTo, etc.) CANNOT be in function graphs -- use a Custom Event in EventGraph instead\n"
+			 "- Function parameters are NOT class variables -- if in a function graph, parameters are pins on the entry node\n"
+			 "- Missing variables -- ensure add_variable succeeded before referencing in a plan"),
+		AttemptNum, MaxAttempts, *ToolName, RolledBackNodeCount, *Errors);
+}
+
+FString FOliveSelfCorrectionPolicy::BuildGranularFallbackMessage(
+	const FString& ToolName,
+	const FString& Errors,
+	const FString& AssetPath,
+	int32 RolledBackNodeCount) const
+{
+	return FString::Printf(
+		TEXT("[PLAN APPROACH FAILED -- SWITCHING TO STEP-BY-STEP MODE]\n"
+			 "The plan_json approach failed 3 times with the same error. %d nodes were rolled back.\n"
+			 "Last error:\n%s\n\n"
+			 "You MUST now switch to granular node-by-node building:\n"
+			 "1. Call blueprint.read or blueprint.read_function on '%s' to see current graph state\n"
+			 "2. Use blueprint.add_node to create nodes ONE AT A TIME -- each call returns the node_id and pin manifest\n"
+			 "3. Use blueprint.connect_pins to wire them using the node_ids from step 2\n"
+			 "4. Use blueprint.set_pin_default for any default values\n"
+			 "5. Call blueprint.compile to verify\n\n"
+			 "This is slower but gives you accurate state after each operation.\n"
+			 "Do NOT use apply_plan_json again for this graph -- it has failed repeatedly."),
+		RolledBackNodeCount, *Errors, *AssetPath);
 }
 
 EOliveErrorCategory FOliveSelfCorrectionPolicy::ClassifyErrorCode(

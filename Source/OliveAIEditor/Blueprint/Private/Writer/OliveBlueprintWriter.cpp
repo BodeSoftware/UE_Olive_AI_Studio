@@ -1214,38 +1214,99 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::AddEventDispatcher(
 
 	Blueprint->Modify();
 
-	// Create the multicast delegate variable
-	FEdGraphPinType PinType;
-	PinType.PinCategory = UEdGraphSchema_K2::PC_MCDelegate;
-
-	// Add the delegate variable
-	bool bSuccess = FBlueprintEditorUtils::AddMemberVariable(
+	// ====================================================================
+	// Step 1: Create the delegate signature graph via AddFunctionGraph.
+	// AddFunctionGraph → CreateDefaultNodesForGraph creates a properly
+	// initialized UK2Node_FunctionEntry (with FunctionReference set).
+	// We then move the graph from FunctionGraphs to DelegateSignatureGraphs.
+	// Direct DelegateSignatureGraphs.Add + CreateDefaultNodesForGraph
+	// does NOT work — the schema only creates entry nodes for graphs it
+	// finds in FunctionGraphs.
+	// ====================================================================
+	UEdGraph* SigGraph = FBlueprintEditorUtils::CreateNewGraph(
 		Blueprint,
 		FName(*DispatcherName),
-		PinType
+		UEdGraph::StaticClass(),
+		UEdGraphSchema_K2::StaticClass()
 	);
 
-	if (!bSuccess)
+	if (!SigGraph)
 	{
 		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Failed to add event dispatcher '%s'"), *DispatcherName));
+			FString::Printf(TEXT("Failed to create delegate signature graph for '%s'"), *DispatcherName));
 	}
 
-	// Note: Adding parameters to the delegate signature requires additional work
-	// with FMulticastDelegateProperty which is more complex. For now, we create
-	// a parameterless dispatcher. Adding params would require creating a delegate
-	// signature function.
-	if (Params.Num() > 0)
+	// AddFunctionGraph creates default nodes (entry + result) with proper init
+	FBlueprintEditorUtils::AddFunctionGraph<UClass>(Blueprint, SigGraph, /*bIsUserCreated=*/true, /*SignatureFromObject=*/nullptr);
+
+	// Move from FunctionGraphs to DelegateSignatureGraphs
+	Blueprint->FunctionGraphs.Remove(SigGraph);
+	Blueprint->DelegateSignatureGraphs.Add(SigGraph);
+	SigGraph->bAllowDeletion = false;
+	SigGraph->bAllowRenaming = true;
+
+	// ====================================================================
+	// Step 2: Find the entry node, add params, remove the result node.
+	// Delegate signatures are fire-and-forget — no return value.
+	// ====================================================================
+	UK2Node_FunctionEntry* EntryNode = nullptr;
+	for (UEdGraphNode* Node : SigGraph->Nodes)
 	{
-		FOliveBlueprintWriteResult Result = FOliveBlueprintWriteResult::Success(AssetPath, DispatcherName);
-		Result.AddWarning(TEXT("Event dispatcher parameters are not yet supported; created without parameters"));
-		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
-		return Result;
+		EntryNode = Cast<UK2Node_FunctionEntry>(Node);
+		if (EntryNode)
+		{
+			break;
+		}
 	}
 
+	// Remove FunctionResult node — delegates don't return values
+	for (int32 i = SigGraph->Nodes.Num() - 1; i >= 0; --i)
+	{
+		if (Cast<UK2Node_FunctionResult>(SigGraph->Nodes[i]))
+		{
+			SigGraph->RemoveNode(SigGraph->Nodes[i]);
+			break;
+		}
+	}
+
+	if (EntryNode)
+	{
+		// Add parameters to the delegate signature
+		for (const FOliveIRFunctionParam& Param : Params)
+		{
+			FEdGraphPinType PinType = CreatePinTypeFromParam(Param);
+
+			TSharedPtr<FUserPinInfo> NewPinInfo = MakeShareable(new FUserPinInfo());
+			NewPinInfo->PinName = FName(*Param.Name);
+			NewPinInfo->PinType = PinType;
+			NewPinInfo->DesiredPinDirection = EGPD_Output; // Entry outputs = delegate params
+
+			EntryNode->UserDefinedPins.Add(NewPinInfo);
+		}
+
+		EntryNode->ReconstructNode();
+	}
+
+	// ====================================================================
+	// Step 3: Create the PC_MCDelegate variable.
+	// This links the delegate property to the signature graph by name:
+	//   Variable "OnBulletHit" -> graph "OnBulletHit" -> compiled function
+	//   "OnBulletHit__DelegateSignature"
+	// ====================================================================
+	FEdGraphPinType DelegatePinType;
+	DelegatePinType.PinCategory = UEdGraphSchema_K2::PC_MCDelegate;
+
+	FBlueprintEditorUtils::AddMemberVariable(
+		Blueprint, FName(*DispatcherName), DelegatePinType);
+
+	// ====================================================================
+	// Step 4: Structural modification triggers recompile
+	// ====================================================================
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 
-	UE_LOG(LogOliveBPWriter, Log, TEXT("Added event dispatcher '%s' to '%s'"), *DispatcherName, *AssetPath);
+	UE_LOG(LogOliveBPWriter, Log,
+		TEXT("Added event dispatcher '%s' to '%s' with %d params"),
+		*DispatcherName, *AssetPath, Params.Num());
 
 	return FOliveBlueprintWriteResult::Success(AssetPath, DispatcherName);
 }

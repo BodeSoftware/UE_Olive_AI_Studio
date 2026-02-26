@@ -16,6 +16,9 @@
 #include "Engine/Blueprint.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
+#include "K2Node_FunctionEntry.h"
+#include "K2Node_FunctionResult.h"
+#include "EdGraphSchema_K2.h"
 #include "Misc/SecureHash.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonWriter.h"
@@ -96,12 +99,95 @@ namespace
 }
 
 // ============================================================================
+// FOliveGraphContext::BuildFromBlueprint
+// ============================================================================
+
+FOliveGraphContext FOliveGraphContext::BuildFromBlueprint(UBlueprint* Blueprint, const FString& GraphName)
+{
+	FOliveGraphContext Ctx;
+	Ctx.GraphName = GraphName;
+
+	if (!Blueprint)
+	{
+		return Ctx;
+	}
+
+	// Search UbergraphPages (EventGraph and other ubergraphs)
+	for (UEdGraph* Graph : Blueprint->UbergraphPages)
+	{
+		if (Graph && Graph->GetFName() == FName(*GraphName))
+		{
+			Ctx.Graph = Graph;
+			return Ctx; // EventGraph/ubergraph -- not a function graph
+		}
+	}
+
+	// Search FunctionGraphs
+	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+	{
+		if (Graph && Graph->GetFName() == FName(*GraphName))
+		{
+			Ctx.Graph = Graph;
+			Ctx.bIsFunctionGraph = true;
+
+			// Scan for FunctionEntry to get input param names
+			for (UEdGraphNode* Node : Graph->Nodes)
+			{
+				if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(Node))
+				{
+					for (const auto& Pin : Entry->UserDefinedPins)
+					{
+						if (Pin.IsValid())
+						{
+							Ctx.InputParamNames.Add(Pin->PinName.ToString());
+						}
+					}
+				}
+				else if (UK2Node_FunctionResult* Result = Cast<UK2Node_FunctionResult>(Node))
+				{
+					for (const auto& Pin : Result->UserDefinedPins)
+					{
+						if (Pin.IsValid())
+						{
+							Ctx.OutputParamNames.Add(Pin->PinName.ToString());
+						}
+					}
+				}
+			}
+
+			UE_LOG(LogOlivePlanResolver, Log,
+				TEXT("GraphContext: '%s' is function graph (%d inputs, %d outputs)"),
+				*GraphName, Ctx.InputParamNames.Num(), Ctx.OutputParamNames.Num());
+			return Ctx;
+		}
+	}
+
+	// Search MacroGraphs
+	for (UEdGraph* Graph : Blueprint->MacroGraphs)
+	{
+		if (Graph && Graph->GetFName() == FName(*GraphName))
+		{
+			Ctx.Graph = Graph;
+			Ctx.bIsMacroGraph = true;
+			return Ctx;
+		}
+	}
+
+	// Graph not found -- could be a new graph about to be created
+	UE_LOG(LogOlivePlanResolver, Log,
+		TEXT("GraphContext: Graph '%s' not found in Blueprint '%s' -- using default context"),
+		*GraphName, *Blueprint->GetName());
+	return Ctx;
+}
+
+// ============================================================================
 // Resolve (public entry point)
 // ============================================================================
 
 FOlivePlanResolveResult FOliveBlueprintPlanResolver::Resolve(
 	const FOliveIRBlueprintPlan& Plan,
-	UBlueprint* Blueprint)
+	UBlueprint* Blueprint,
+	const FOliveGraphContext& GraphContext)
 {
 	FOlivePlanResolveResult Result;
 
@@ -128,13 +214,21 @@ FOlivePlanResolveResult FOliveBlueprintPlanResolver::Resolve(
 	}
 
 	// ------------------------------------------------------------------
-	// Pre-processing: Expand high-level inputs (e.g., SpawnActor Location/Rotation
-	// -> synthesized MakeTransform step). This mutates the plan, potentially
-	// inserting synthetic steps, so we work on a mutable copy.
+	// Pre-processing: Expand high-level inputs. This mutates the plan,
+	// potentially inserting synthetic steps, so we work on a mutable copy.
 	// ------------------------------------------------------------------
 	FOliveIRBlueprintPlan MutablePlan = Plan;
 	TArray<FOliveResolverNote> ExpansionNotes;
+
+	// Pass 1: Expand dotless @refs to component/variable get_var steps (RC2/RC3 fix)
+	ExpandComponentRefs(MutablePlan, Blueprint, GraphContext, ExpansionNotes);
+
+	// Pass 2: Expand SpawnActor Location/Rotation -> synthesized MakeTransform step
 	ExpandPlanInputs(MutablePlan, ExpansionNotes);
+
+	// Pass 3: Expand branch conditions with non-boolean @refs to > 0 comparisons
+	ExpandBranchConditions(MutablePlan, Blueprint, ExpansionNotes);
+
 	Result.GlobalNotes = MoveTemp(ExpansionNotes);
 
 	UE_LOG(LogOlivePlanResolver, Log, TEXT("Resolving plan with %d steps for Blueprint '%s'%s"),
@@ -150,7 +244,7 @@ FOlivePlanResolveResult FOliveBlueprintPlanResolver::Resolve(
 		const FOliveIRBlueprintPlanStep& Step = MutablePlan.Steps[i];
 		FOliveResolvedStep Resolved;
 
-		if (ResolveStep(Step, Blueprint, i, Resolved, Result.Errors, Result.Warnings))
+		if (ResolveStep(Step, Blueprint, i, Resolved, Result.Errors, Result.Warnings, GraphContext))
 		{
 			Result.ResolvedSteps.Add(MoveTemp(Resolved));
 		}
@@ -163,10 +257,14 @@ FOlivePlanResolveResult FOliveBlueprintPlanResolver::Resolve(
 
 	Result.bSuccess = bAllSucceeded;
 
+	// Carry the mutated plan (with all expansions applied) in the result
+	// so callers use it instead of the original pre-expansion plan.
+	Result.ExpandedPlan = MoveTemp(MutablePlan);
+
 	UE_LOG(LogOlivePlanResolver, Log, TEXT("Plan resolution %s: %d/%d steps resolved, %d errors, %d warnings"),
 		Result.bSuccess ? TEXT("succeeded") : TEXT("failed"),
 		Result.ResolvedSteps.Num(),
-		MutablePlan.Steps.Num(),
+		Result.ExpandedPlan.Steps.Num(),
 		Result.Errors.Num(),
 		Result.Warnings.Num());
 
@@ -276,6 +374,484 @@ bool FOliveBlueprintPlanResolver::ExpandPlanInputs(
 }
 
 // ============================================================================
+// ExpandBranchConditions — Synthesize > 0 comparisons for non-boolean branch inputs
+// ============================================================================
+
+bool FOliveBlueprintPlanResolver::ExpandBranchConditions(
+	FOliveIRBlueprintPlan& Plan,
+	UBlueprint* Blueprint,
+	TArray<FOliveResolverNote>& OutNotes)
+{
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	// Build step lookup for source step analysis
+	TMap<FString, const FOliveIRBlueprintPlanStep*> StepLookup;
+	for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
+	{
+		StepLookup.Add(Step.StepId, &Step);
+	}
+
+	bool bExpanded = false;
+
+	for (int32 i = 0; i < Plan.Steps.Num(); ++i)
+	{
+		FOliveIRBlueprintPlanStep& Step = Plan.Steps[i];
+
+		if (Step.Op != OlivePlanOps::Branch)
+		{
+			continue;
+		}
+
+		// Check the Condition input
+		FString* ConditionValue = Step.Inputs.Find(TEXT("Condition"));
+		if (!ConditionValue || !ConditionValue->StartsWith(TEXT("@")))
+		{
+			continue;
+		}
+
+		// Parse the @ref
+		FString RefBody = ConditionValue->Mid(1);
+		int32 DotIdx;
+		if (!RefBody.FindChar(TEXT('.'), DotIdx))
+		{
+			continue; // Bare ref, can't analyze source
+		}
+
+		FString SourceStepId = RefBody.Left(DotIdx);
+		const FOliveIRBlueprintPlanStep** SourceStepPtr = StepLookup.Find(SourceStepId);
+		if (!SourceStepPtr)
+		{
+			continue; // Source step not found, will fail at wiring time
+		}
+
+		const FOliveIRBlueprintPlanStep& SourceStep = **SourceStepPtr;
+
+		// Check if the source step produces a non-boolean output.
+		// For get_var: check the variable type on the Blueprint.
+		bool bNeedsComparison = false;
+		bool bIsFloatType = false;
+
+		if (SourceStep.Op == OlivePlanOps::GetVar)
+		{
+			// Look up variable type
+			for (const FBPVariableDescription& Var : Blueprint->NewVariables)
+			{
+				if (Var.VarName.ToString() == SourceStep.Target)
+				{
+					// Check if the variable is NOT boolean
+					const FString Category = Var.VarType.PinCategory.ToString();
+					if (Category != TEXT("bool"))
+					{
+						bNeedsComparison = true;
+						// Determine if this is a float/double type for correct comparison function
+						// PC_Real is the category for both float and double in UE 5.5
+						bIsFloatType = (Category == TEXT("real") || Category == TEXT("double") || Category == TEXT("float"));
+					}
+					break;
+				}
+			}
+		}
+
+		if (!bNeedsComparison)
+		{
+			continue;
+		}
+
+		// Synthesize a > 0 comparison step
+		FString SynthStepId = FString::Printf(TEXT("_synth_cmp_%s"), *Step.StepId);
+
+		// Dispatch to correct comparison function based on variable type
+		const FString ComparisonFunction = bIsFloatType
+			? TEXT("Greater_DoubleDouble")
+			: TEXT("Greater_IntInt");
+
+		FOliveIRBlueprintPlanStep CompareStep;
+		CompareStep.StepId = SynthStepId;
+		CompareStep.Op = OlivePlanOps::Call;
+		CompareStep.Target = ComparisonFunction;
+		CompareStep.Inputs.Add(TEXT("A"), *ConditionValue); // Forward the original @ref
+		CompareStep.Inputs.Add(TEXT("B"), TEXT("0"));
+
+		// Rewrite the branch's Condition to point at the comparison result
+		*ConditionValue = FString::Printf(TEXT("@%s.auto"), *SynthStepId);
+
+		// Insert before the branch step
+		Plan.Steps.Insert(CompareStep, i);
+		StepLookup.Add(SynthStepId, &Plan.Steps[i]); // Update lookup
+		++i; // Skip the inserted step
+
+		bExpanded = true;
+
+		FOliveResolverNote Note;
+		Note.Field = FString::Printf(TEXT("step '%s' inputs.Condition"), *Step.StepId);
+		Note.OriginalValue = FString::Printf(TEXT("@%s (non-boolean)"), *SourceStepId);
+		Note.ResolvedValue = FString::Printf(TEXT("Synthesized %s > 0 comparison step '%s'"), *ComparisonFunction, *SynthStepId);
+		Note.Reason = TEXT("Branch Condition requires Boolean. Source provides Integer/Float. Synthesized a > 0 comparison.");
+		OutNotes.Add(MoveTemp(Note));
+
+		UE_LOG(LogOlivePlanResolver, Log,
+			TEXT("ExpandBranchConditions: Synthesized '%s' step '%s' for branch '%s' (source: '%s')"),
+			*ComparisonFunction, *SynthStepId, *Step.StepId, *SourceStepId);
+	}
+
+	return bExpanded;
+}
+
+// ============================================================================
+// ExpandComponentRefs — Pre-process dotless @refs to component/variable get_var steps
+// ============================================================================
+
+bool FOliveBlueprintPlanResolver::ExpandComponentRefs(
+	FOliveIRBlueprintPlan& Plan,
+	UBlueprint* Blueprint,
+	const FOliveGraphContext& GraphContext,
+	TArray<FOliveResolverNote>& OutNotes)
+{
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	// Build set of existing step IDs for collision detection
+	TSet<FString> ExistingStepIds;
+	for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
+	{
+		ExistingStepIds.Add(Step.StepId);
+	}
+
+	// Build set of SCS component variable names for fast lookup
+	TSet<FString> SCSComponentNames;
+	if (Blueprint->SimpleConstructionScript)
+	{
+		TArray<USCS_Node*> AllNodes = Blueprint->SimpleConstructionScript->GetAllNodes();
+		for (USCS_Node* Node : AllNodes)
+		{
+			if (Node)
+			{
+				SCSComponentNames.Add(Node->GetVariableName().ToString());
+			}
+		}
+	}
+
+	// Build set of Blueprint variable names (NewVariables, not SCS)
+	// This catches bare @refs like @MuzzlePoint where the variable was added
+	// via add_variable (not add_component) and therefore is NOT in SCS.
+	TSet<FString> BlueprintVariableNames;
+	for (const FBPVariableDescription& Var : Blueprint->NewVariables)
+	{
+		BlueprintVariableNames.Add(Var.VarName.ToString());
+	}
+
+	// Build set of function input parameter names (for function graph context)
+	TSet<FString> FunctionInputParams;
+	if (GraphContext.bIsFunctionGraph)
+	{
+		for (const FString& ParamName : GraphContext.InputParamNames)
+		{
+			FunctionInputParams.Add(ParamName);
+		}
+	}
+
+	// Track synthesized steps to insert (step, insertion index)
+	struct FSyntheticStepInsert
+	{
+		FOliveIRBlueprintPlanStep Step;
+		int32 InsertBeforeIndex;
+	};
+	TArray<FSyntheticStepInsert> Inserts;
+
+	// Track already-synthesized component get_var steps to avoid duplicates
+	// Key: component name -> synthesized step ID
+	TMap<FString, FString> SynthesizedComponentSteps;
+
+	bool bExpanded = false;
+
+	for (int32 i = 0; i < Plan.Steps.Num(); ++i)
+	{
+		FOliveIRBlueprintPlanStep& Step = Plan.Steps[i];
+
+		// Scan inputs for dotless @refs
+		TMap<FString, FString> RewrittenInputs;
+		for (const auto& InputPair : Step.Inputs)
+		{
+			const FString& PinName = InputPair.Key;
+			const FString& Value = InputPair.Value;
+
+			if (!Value.StartsWith(TEXT("@")))
+			{
+				continue;
+			}
+
+			FString RefBody = Value.Mid(1); // strip @
+
+			// Check if this has a dot -- if so, check if the part before
+			// the dot is a function parameter or component name (not a step ID)
+			int32 DotIndex = INDEX_NONE;
+			RefBody.FindChar(TEXT('.'), DotIndex);
+
+			if (DotIndex != INDEX_NONE)
+			{
+				// Has a dot -- check if the step ID part matches a function param
+				// (RC3: @ParamName.PinHint where ParamName is a function input)
+				FString RefStepId = RefBody.Left(DotIndex);
+
+				// If it's already a valid step ID, skip
+				if (ExistingStepIds.Contains(RefStepId))
+				{
+					continue;
+				}
+
+				// Check if it's a function input parameter
+				if (FunctionInputParams.Contains(RefStepId))
+				{
+					// Check if we already synthesized a FunctionInput step for this param
+					FString* ExistingSynthId = SynthesizedComponentSteps.Find(RefStepId);
+					if (!ExistingSynthId)
+					{
+						// Synthesize a get_var step that will be resolved to FunctionInput
+						FString SynthStepId = FString::Printf(TEXT("_synth_param_%s"), *RefStepId.ToLower());
+
+						FOliveIRBlueprintPlanStep SynthStep;
+						SynthStep.StepId = SynthStepId;
+						SynthStep.Op = OlivePlanOps::GetVar;
+						SynthStep.Target = RefStepId;
+
+						Inserts.Add({ MoveTemp(SynthStep), i });
+						SynthesizedComponentSteps.Add(RefStepId, SynthStepId);
+						ExistingStepIds.Add(SynthStepId);
+
+						FOliveResolverNote Note;
+						Note.Field = FString::Printf(TEXT("step '%s' inputs.%s"), *Step.StepId, *PinName);
+						Note.OriginalValue = Value;
+						Note.ResolvedValue = FString::Printf(TEXT("Synthesized get_var step '%s' for function parameter '%s'"), *SynthStepId, *RefStepId);
+						Note.Reason = TEXT("@ref referenced a function parameter name, not a step_id. Synthesized a get_var step to access the parameter.");
+						OutNotes.Add(MoveTemp(Note));
+
+						UE_LOG(LogOlivePlanResolver, Log,
+							TEXT("ExpandComponentRefs: Synthesized get_var step '%s' for function param '%s' (referenced by step '%s')"),
+							*SynthStepId, *RefStepId, *Step.StepId);
+					}
+
+					// Rewrite the @ref to point at the synthesized step
+					FString PinHint = RefBody.Mid(DotIndex + 1);
+					FString SynthId = SynthesizedComponentSteps[RefStepId];
+					RewrittenInputs.Add(PinName, FString::Printf(TEXT("@%s.%s"), *SynthId, *PinHint));
+					bExpanded = true;
+					continue;
+				}
+
+				// Check if it's a component name with a dot (e.g., @Mesh.auto)
+				if (SCSComponentNames.Contains(RefStepId))
+				{
+					FString* ExistingSynthId = SynthesizedComponentSteps.Find(RefStepId);
+					if (!ExistingSynthId)
+					{
+						FString SynthStepId = FString::Printf(TEXT("_synth_getcomp_%s"), *RefStepId.ToLower());
+
+						FOliveIRBlueprintPlanStep SynthStep;
+						SynthStep.StepId = SynthStepId;
+						SynthStep.Op = OlivePlanOps::GetVar;
+						SynthStep.Target = RefStepId;
+
+						Inserts.Add({ MoveTemp(SynthStep), i });
+						SynthesizedComponentSteps.Add(RefStepId, SynthStepId);
+						ExistingStepIds.Add(SynthStepId);
+
+						FOliveResolverNote Note;
+						Note.Field = FString::Printf(TEXT("step '%s' inputs.%s"), *Step.StepId, *PinName);
+						Note.OriginalValue = Value;
+						Note.ResolvedValue = FString::Printf(TEXT("Synthesized get_var step '%s' for component '%s'"), *SynthStepId, *RefStepId);
+						Note.Reason = TEXT("@ref referenced a component name, not a step_id. Synthesized a get_var step to access the component.");
+						OutNotes.Add(MoveTemp(Note));
+
+						UE_LOG(LogOlivePlanResolver, Log,
+							TEXT("ExpandComponentRefs: Synthesized get_var step '%s' for component '%s' (referenced by step '%s')"),
+							*SynthStepId, *RefStepId, *Step.StepId);
+					}
+
+					FString PinHint = RefBody.Mid(DotIndex + 1);
+					FString SynthId = SynthesizedComponentSteps[RefStepId];
+					RewrittenInputs.Add(PinName, FString::Printf(TEXT("@%s.%s"), *SynthId, *PinHint));
+					bExpanded = true;
+					continue;
+				}
+
+				// Check if it's a Blueprint variable with a dot (e.g., @MuzzlePoint.WorldLocation)
+				if (BlueprintVariableNames.Contains(RefStepId))
+				{
+					FString* ExistingSynthId = SynthesizedComponentSteps.Find(RefStepId);
+					if (!ExistingSynthId)
+					{
+						FString SynthStepId = FString::Printf(TEXT("_synth_getvar_%s"), *RefStepId.ToLower());
+
+						FOliveIRBlueprintPlanStep SynthStep;
+						SynthStep.StepId = SynthStepId;
+						SynthStep.Op = OlivePlanOps::GetVar;
+						SynthStep.Target = RefStepId;
+
+						Inserts.Add({ MoveTemp(SynthStep), i });
+						SynthesizedComponentSteps.Add(RefStepId, SynthStepId);
+						ExistingStepIds.Add(SynthStepId);
+
+						FOliveResolverNote Note;
+						Note.Field = FString::Printf(TEXT("step '%s' inputs.%s"), *Step.StepId, *PinName);
+						Note.OriginalValue = Value;
+						Note.ResolvedValue = FString::Printf(TEXT("Synthesized get_var step '%s' for variable '%s'"), *SynthStepId, *RefStepId);
+						Note.Reason = TEXT("@ref referenced a Blueprint variable name, not a step_id. Synthesized a get_var step to access the variable.");
+						OutNotes.Add(MoveTemp(Note));
+
+						UE_LOG(LogOlivePlanResolver, Log,
+							TEXT("ExpandComponentRefs: Synthesized get_var step '%s' for variable '%s' (referenced by step '%s')"),
+							*SynthStepId, *RefStepId, *Step.StepId);
+					}
+
+					FString PinHint = RefBody.Mid(DotIndex + 1);
+					FString SynthId = SynthesizedComponentSteps[RefStepId];
+					RewrittenInputs.Add(PinName, FString::Printf(TEXT("@%s.%s"), *SynthId, *PinHint));
+					bExpanded = true;
+					continue;
+				}
+			}
+			else
+			{
+				// No dot -- this is a bare @ComponentName (e.g., "@InteractionSphere")
+				// Check if it matches an SCS component
+				if (SCSComponentNames.Contains(RefBody))
+				{
+					FString* ExistingSynthId = SynthesizedComponentSteps.Find(RefBody);
+					if (!ExistingSynthId)
+					{
+						FString SynthStepId = FString::Printf(TEXT("_synth_getcomp_%s"), *RefBody.ToLower());
+
+						FOliveIRBlueprintPlanStep SynthStep;
+						SynthStep.StepId = SynthStepId;
+						SynthStep.Op = OlivePlanOps::GetVar;
+						SynthStep.Target = RefBody;
+
+						Inserts.Add({ MoveTemp(SynthStep), i });
+						SynthesizedComponentSteps.Add(RefBody, SynthStepId);
+						ExistingStepIds.Add(SynthStepId);
+
+						FOliveResolverNote Note;
+						Note.Field = FString::Printf(TEXT("step '%s' inputs.%s"), *Step.StepId, *PinName);
+						Note.OriginalValue = Value;
+						Note.ResolvedValue = FString::Printf(TEXT("Synthesized get_var step '%s' for component '%s'"), *SynthStepId, *RefBody);
+						Note.Reason = TEXT("Bare @ref with no dot referenced a component name. Synthesized a get_var step and used .auto pin matching.");
+						OutNotes.Add(MoveTemp(Note));
+
+						UE_LOG(LogOlivePlanResolver, Log,
+							TEXT("ExpandComponentRefs: Synthesized get_var step '%s' for bare component ref '@%s' (referenced by step '%s')"),
+							*SynthStepId, *RefBody, *Step.StepId);
+					}
+
+					// Rewrite to @synthStep.auto (type-match the output)
+					FString SynthId = SynthesizedComponentSteps[RefBody];
+					RewrittenInputs.Add(PinName, FString::Printf(TEXT("@%s.auto"), *SynthId));
+					bExpanded = true;
+					continue;
+				}
+
+				// Check Blueprint variables (for bare @VarName refs like @MuzzlePoint)
+				if (BlueprintVariableNames.Contains(RefBody))
+				{
+					FString* ExistingSynthId = SynthesizedComponentSteps.Find(RefBody);
+					if (!ExistingSynthId)
+					{
+						FString SynthStepId = FString::Printf(TEXT("_synth_getvar_%s"), *RefBody.ToLower());
+
+						FOliveIRBlueprintPlanStep SynthStep;
+						SynthStep.StepId = SynthStepId;
+						SynthStep.Op = OlivePlanOps::GetVar;
+						SynthStep.Target = RefBody;
+
+						Inserts.Add({ MoveTemp(SynthStep), i });
+						SynthesizedComponentSteps.Add(RefBody, SynthStepId);
+						ExistingStepIds.Add(SynthStepId);
+
+						FOliveResolverNote Note;
+						Note.Field = FString::Printf(TEXT("step '%s' inputs.%s"), *Step.StepId, *PinName);
+						Note.OriginalValue = Value;
+						Note.ResolvedValue = FString::Printf(TEXT("Synthesized get_var step '%s' for variable '%s'"), *SynthStepId, *RefBody);
+						Note.Reason = TEXT("Bare @ref with no dot referenced a Blueprint variable name. Synthesized a get_var step and used .auto pin matching.");
+						OutNotes.Add(MoveTemp(Note));
+
+						UE_LOG(LogOlivePlanResolver, Log,
+							TEXT("ExpandComponentRefs: Synthesized get_var step '%s' for bare variable ref '@%s' (referenced by step '%s')"),
+							*SynthStepId, *RefBody, *Step.StepId);
+					}
+
+					FString SynthId = SynthesizedComponentSteps[RefBody];
+					RewrittenInputs.Add(PinName, FString::Printf(TEXT("@%s.auto"), *SynthId));
+					bExpanded = true;
+					continue;
+				}
+
+				// Check if it's a function input parameter (bare, no dot)
+				if (FunctionInputParams.Contains(RefBody))
+				{
+					FString* ExistingSynthId = SynthesizedComponentSteps.Find(RefBody);
+					if (!ExistingSynthId)
+					{
+						FString SynthStepId = FString::Printf(TEXT("_synth_param_%s"), *RefBody.ToLower());
+
+						FOliveIRBlueprintPlanStep SynthStep;
+						SynthStep.StepId = SynthStepId;
+						SynthStep.Op = OlivePlanOps::GetVar;
+						SynthStep.Target = RefBody;
+
+						Inserts.Add({ MoveTemp(SynthStep), i });
+						SynthesizedComponentSteps.Add(RefBody, SynthStepId);
+						ExistingStepIds.Add(SynthStepId);
+
+						FOliveResolverNote Note;
+						Note.Field = FString::Printf(TEXT("step '%s' inputs.%s"), *Step.StepId, *PinName);
+						Note.OriginalValue = Value;
+						Note.ResolvedValue = FString::Printf(TEXT("Synthesized get_var step '%s' for function param '%s'"), *SynthStepId, *RefBody);
+						Note.Reason = TEXT("Bare @ref referenced a function parameter name. Synthesized a get_var step.");
+						OutNotes.Add(MoveTemp(Note));
+					}
+
+					FString SynthId = SynthesizedComponentSteps[RefBody];
+					RewrittenInputs.Add(PinName, FString::Printf(TEXT("@%s.auto"), *SynthId));
+					bExpanded = true;
+					continue;
+				}
+			}
+		}
+
+		// Apply rewrites
+		for (const auto& Rewrite : RewrittenInputs)
+		{
+			Step.Inputs[Rewrite.Key] = Rewrite.Value;
+		}
+	}
+
+	// Insert synthesized steps (in reverse order to preserve indices)
+	// Sort inserts by insertion index descending so earlier inserts don't shift later ones
+	Inserts.Sort([](const FSyntheticStepInsert& A, const FSyntheticStepInsert& B)
+	{
+		return A.InsertBeforeIndex > B.InsertBeforeIndex;
+	});
+
+	for (const FSyntheticStepInsert& Insert : Inserts)
+	{
+		Plan.Steps.Insert(Insert.Step, Insert.InsertBeforeIndex);
+	}
+
+	if (bExpanded)
+	{
+		UE_LOG(LogOlivePlanResolver, Log,
+			TEXT("ExpandComponentRefs: Expanded %d component/param references, inserted %d synthetic steps"),
+			OutNotes.Num(), Inserts.Num());
+	}
+
+	return bExpanded;
+}
+
+// ============================================================================
 // ResolveStep — dispatcher
 // ============================================================================
 
@@ -285,11 +861,25 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 	int32 StepIndex,
 	FOliveResolvedStep& OutResolved,
 	TArray<FOliveIRBlueprintPlanError>& OutErrors,
-	TArray<FString>& OutWarnings)
+	TArray<FString>& OutWarnings,
+	const FOliveGraphContext& GraphContext)
 {
 	OutResolved.StepId = Step.StepId;
 
-	const FString& Op = Step.Op;
+	// Remap "entry" alias to "event" -- the AI may use "entry" to mean
+	// "the entry point of this graph". Not in the OlivePlanOps vocabulary,
+	// so we silently remap here for robustness.
+	FString EffectiveOp = Step.Op;
+	if (EffectiveOp == TEXT("entry"))
+	{
+		EffectiveOp = OlivePlanOps::Event;
+
+		UE_LOG(LogOlivePlanResolver, Log,
+			TEXT("  Step '%s': remapped op 'entry' -> 'event' (alias)"),
+			*Step.StepId);
+	}
+
+	const FString& Op = EffectiveOp;
 
 	UE_LOG(LogOlivePlanResolver, Log,
 		TEXT("  Resolving step %d: step_id='%s', op='%s', target='%s'"),
@@ -303,15 +893,52 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 	}
 	else if (Op == OlivePlanOps::GetVar)
 	{
-		bResult = ResolveGetVarOp(Step, Blueprint, StepIndex, OutResolved, OutErrors, OutWarnings);
+		bResult = ResolveGetVarOp(Step, Blueprint, StepIndex, OutResolved, OutErrors, OutWarnings, GraphContext);
 	}
 	else if (Op == OlivePlanOps::SetVar)
 	{
-		bResult = ResolveSetVarOp(Step, Blueprint, StepIndex, OutResolved, OutErrors, OutWarnings);
+		bResult = ResolveSetVarOp(Step, Blueprint, StepIndex, OutResolved, OutErrors, OutWarnings, GraphContext);
 	}
 	else if (Op == OlivePlanOps::Event)
 	{
-		bResult = ResolveEventOp(Step, Blueprint, StepIndex, OutResolved, OutErrors);
+		// In function graphs, "event" targeting the graph name (or generic names like "entry")
+		// maps to the FunctionEntry node, not a Blueprint event node.
+		if (GraphContext.bIsFunctionGraph)
+		{
+			// Check if the target matches the function name or is a generic entry alias
+			const bool bTargetsFunction = Step.Target.Equals(GraphContext.GraphName, ESearchCase::IgnoreCase)
+				|| Step.Target.Equals(TEXT("entry"), ESearchCase::IgnoreCase)
+				|| Step.Target.Equals(TEXT("Entry"), ESearchCase::IgnoreCase)
+				|| Step.Target.IsEmpty();
+
+			if (bTargetsFunction)
+			{
+				bResult = ResolveSimpleOp(Step, OliveNodeTypes::FunctionInput, OutResolved);
+				if (bResult)
+				{
+					OutResolved.Properties.Add(TEXT("function_name"), GraphContext.GraphName);
+
+					FOliveResolverNote Note;
+					Note.Field = TEXT("op");
+					Note.OriginalValue = FString::Printf(TEXT("event:%s"), *Step.Target);
+					Note.ResolvedValue = TEXT("FunctionInput");
+					Note.Reason = FString::Printf(
+						TEXT("Graph '%s' is a function graph. Mapped event op to FunctionEntry node."),
+						*GraphContext.GraphName);
+					OutResolved.ResolverNotes.Add(MoveTemp(Note));
+				}
+			}
+			else
+			{
+				// Target doesn't match the function name -- fall through to normal event resolution
+				// (could be a component delegate event in a function graph, though unusual)
+				bResult = ResolveEventOp(Step, Blueprint, StepIndex, OutResolved, OutErrors);
+			}
+		}
+		else
+		{
+			bResult = ResolveEventOp(Step, Blueprint, StepIndex, OutResolved, OutErrors);
+		}
 	}
 	else if (Op == OlivePlanOps::CustomEvent)
 	{
@@ -356,6 +983,10 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 	else if (Op == OlivePlanOps::Delay)
 	{
 		bResult = ResolveSimpleOp(Step, OliveNodeTypes::Delay, OutResolved);
+		if (bResult)
+		{
+			OutResolved.bIsLatent = true;
+		}
 	}
 	else if (Op == OlivePlanOps::IsValid)
 	{
@@ -408,6 +1039,10 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 			OutResolved.Properties.Add(TEXT("text"), Step.Target);
 		}
 	}
+	else if (Op == OlivePlanOps::CallDelegate)
+	{
+		bResult = ResolveCallDelegateOp(Step, Blueprint, StepIndex, OutResolved, OutErrors);
+	}
 	else
 	{
 		// Unknown op — should have been caught by schema validation, but handle gracefully
@@ -416,7 +1051,7 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 			Step.StepId,
 			FString::Printf(TEXT("/steps/%d/op"), StepIndex),
 			FString::Printf(TEXT("Unknown operation '%s'"), *Op),
-			TEXT("Use one of the recognized ops: call, get_var, set_var, branch, sequence, event, custom_event, for_loop, for_each_loop, while_loop, do_once, flip_flop, gate, delay, is_valid, print_string, spawn_actor, cast, make_struct, break_struct, return, comment"));
+			TEXT("Use one of the recognized ops: call, get_var, set_var, branch, sequence, event, custom_event, for_loop, for_each_loop, while_loop, do_once, flip_flop, gate, delay, is_valid, print_string, spawn_actor, cast, make_struct, break_struct, return, comment, call_delegate"));
 		OutErrors.Add(MoveTemp(Error));
 		return false;
 	}
@@ -425,6 +1060,17 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 	if (bResult)
 	{
 		MergeStepProperties(Step, OutResolved.Properties);
+
+		// Set purity flag for non-call ops. For 'call' ops, ResolveCallOp already
+		// sets bIsPure from the UFunction's FUNC_BlueprintPure flag.
+		if (Op != OlivePlanOps::Call)
+		{
+			OutResolved.bIsPure = (Op == OlivePlanOps::GetVar
+				|| Op == OlivePlanOps::MakeStruct
+				|| Op == OlivePlanOps::BreakStruct
+				|| Op == OlivePlanOps::IsValid
+				|| Op == OlivePlanOps::Comment);
+		}
 	}
 
 	return bResult;
@@ -473,6 +1119,8 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 			Out.Properties.Add(TEXT("target_class"), ResolvedClassName);
 		}
 		Out.ResolvedOwningClass = Match.OwningClass;
+		Out.bIsPure = Match.Function->HasAnyFunctionFlags(FUNC_BlueprintPure);
+		Out.bIsLatent = Match.Function->HasMetaData(TEXT("Latent"));
 
 		// Emit a warning if the resolution was not exact (so the AI learns the correct name)
 		if (Match.Confidence < 90)
@@ -587,11 +1235,40 @@ bool FOliveBlueprintPlanResolver::ResolveGetVarOp(
 	int32 Idx,
 	FOliveResolvedStep& Out,
 	TArray<FOliveIRBlueprintPlanError>& Errors,
-	TArray<FString>& Warnings)
+	TArray<FString>& Warnings,
+	const FOliveGraphContext& GraphContext)
 {
 	Out.NodeType = OliveNodeTypes::GetVariable;
 
 	UE_LOG(LogOlivePlanResolver, Verbose, TEXT("    ResolveGetVarOp: variable='%s'"), *Step.Target);
+
+	// If we're in a function graph, check if target matches a function input parameter
+	if (GraphContext.bIsFunctionGraph && !Step.Target.IsEmpty())
+	{
+		for (const FString& ParamName : GraphContext.InputParamNames)
+		{
+			if (ParamName.Equals(Step.Target, ESearchCase::IgnoreCase))
+			{
+				// This is a function input parameter, not a class variable
+				Out.StepId = Step.StepId;
+				Out.NodeType = OliveNodeTypes::FunctionInput;
+				Out.Properties.Add(TEXT("param_name"), ParamName);
+				Out.bIsPure = true;
+
+				Out.ResolverNotes.Add(FOliveResolverNote{
+					TEXT("target"),
+					Step.Target,
+					FString::Printf(TEXT("FunctionInput(%s)"), *ParamName),
+					TEXT("Matched function input parameter -- will map to FunctionEntry output pin")
+				});
+
+				UE_LOG(LogOlivePlanResolver, Log,
+					TEXT("    ResolveGetVarOp: '%s' matched function input param '%s'"),
+					*Step.Target, *ParamName);
+				return true;
+			}
+		}
+	}
 
 	if (Step.Target.IsEmpty())
 	{
@@ -679,11 +1356,39 @@ bool FOliveBlueprintPlanResolver::ResolveSetVarOp(
 	int32 Idx,
 	FOliveResolvedStep& Out,
 	TArray<FOliveIRBlueprintPlanError>& Errors,
-	TArray<FString>& Warnings)
+	TArray<FString>& Warnings,
+	const FOliveGraphContext& GraphContext)
 {
 	Out.NodeType = OliveNodeTypes::SetVariable;
 
 	UE_LOG(LogOlivePlanResolver, Verbose, TEXT("    ResolveSetVarOp: variable='%s'"), *Step.Target);
+
+	// If we're in a function graph, check if target matches a function output parameter
+	if (GraphContext.bIsFunctionGraph && !Step.Target.IsEmpty())
+	{
+		for (const FString& ParamName : GraphContext.OutputParamNames)
+		{
+			if (ParamName.Equals(Step.Target, ESearchCase::IgnoreCase))
+			{
+				Out.StepId = Step.StepId;
+				Out.NodeType = OliveNodeTypes::FunctionOutput;
+				Out.Properties.Add(TEXT("param_name"), ParamName);
+				Out.bIsPure = false; // FunctionResult has exec input
+
+				Out.ResolverNotes.Add(FOliveResolverNote{
+					TEXT("target"),
+					Step.Target,
+					FString::Printf(TEXT("FunctionOutput(%s)"), *ParamName),
+					TEXT("Matched function output parameter -- will map to FunctionResult input pin")
+				});
+
+				UE_LOG(LogOlivePlanResolver, Log,
+					TEXT("    ResolveSetVarOp: '%s' matched function output param '%s'"),
+					*Step.Target, *ParamName);
+				return true;
+			}
+		}
+	}
 
 	if (Step.Target.IsEmpty())
 	{
@@ -995,6 +1700,415 @@ bool FOliveBlueprintPlanResolver::ResolveStructOp(
 		*Step.StepId, *NodeType, *StructType);
 
 	return true;
+}
+
+// ============================================================================
+// ResolveCallDelegateOp
+// ============================================================================
+
+bool FOliveBlueprintPlanResolver::ResolveCallDelegateOp(
+	const FOliveIRBlueprintPlanStep& Step,
+	UBlueprint* BP,
+	int32 Idx,
+	FOliveResolvedStep& Out,
+	TArray<FOliveIRBlueprintPlanError>& Errors)
+{
+	Out.NodeType = OliveNodeTypes::CallDelegate;
+
+	UE_LOG(LogOlivePlanResolver, Log, TEXT("    ResolveCallDelegateOp: target='%s'"), *Step.Target);
+
+	if (Step.Target.IsEmpty())
+	{
+		Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+			TEXT("MISSING_TARGET"),
+			Step.StepId,
+			FString::Printf(TEXT("/steps/%d/target"), Idx),
+			TEXT("'call_delegate' op requires a 'target' specifying the event dispatcher name"),
+			TEXT("Set 'target' to the dispatcher name (e.g., \"OnFired\", \"OnDamageReceived\")")));
+		return false;
+	}
+
+	// Validate that the Blueprint has a multicast delegate variable with this name.
+	// Event dispatchers are stored in NewVariables with PinCategory == PC_MCDelegate.
+	bool bFoundDispatcher = false;
+	TArray<FString> AvailableDispatchers;
+
+	if (BP)
+	{
+		for (const FBPVariableDescription& Var : BP->NewVariables)
+		{
+			if (Var.VarType.PinCategory == UEdGraphSchema_K2::PC_MCDelegate)
+			{
+				const FString VarName = Var.VarName.ToString();
+				AvailableDispatchers.Add(VarName);
+
+				if (VarName == Step.Target)
+				{
+					bFoundDispatcher = true;
+				}
+			}
+		}
+	}
+
+	if (!bFoundDispatcher)
+	{
+		FString SuggestionText;
+		if (AvailableDispatchers.Num() > 0)
+		{
+			SuggestionText = FString::Printf(
+				TEXT("Available dispatchers on this Blueprint: %s"),
+				*FString::Join(AvailableDispatchers, TEXT(", ")));
+		}
+		else
+		{
+			SuggestionText = TEXT("This Blueprint has no event dispatchers. "
+				"Use blueprint.add_event_dispatcher to create one first.");
+		}
+
+		Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+			TEXT("DELEGATE_NOT_FOUND"),
+			Step.StepId,
+			FString::Printf(TEXT("/steps/%d/target"), Idx),
+			FString::Printf(TEXT("Event dispatcher '%s' not found on Blueprint '%s'"),
+				*Step.Target, BP ? *BP->GetName() : TEXT("null")),
+			SuggestionText));
+
+		UE_LOG(LogOlivePlanResolver, Warning,
+			TEXT("    ResolveCallDelegateOp FAILED: dispatcher '%s' not found. Available: [%s]"),
+			*Step.Target, *FString::Join(AvailableDispatchers, TEXT(", ")));
+		return false;
+	}
+
+	Out.Properties.Add(TEXT("delegate_name"), Step.Target);
+	Out.bIsPure = false; // Delegate broadcast has exec pins
+
+	UE_LOG(LogOlivePlanResolver, Log,
+		TEXT("    ResolveCallDelegateOp: '%s' resolved successfully"),
+		*Step.Target);
+
+	return true;
+}
+
+// ============================================================================
+// CollapseExecThroughPureSteps
+// ============================================================================
+
+bool FOliveBlueprintPlanResolver::CollapseExecThroughPureSteps(
+	FOliveIRBlueprintPlan& Plan,
+	const TArray<FOliveResolvedStep>& ResolvedSteps,
+	TArray<FOliveResolverNote>& OutNotes)
+{
+	// Build StepId -> bIsPure lookup
+	TSet<FString> PureStepIds;
+	for (const FOliveResolvedStep& RS : ResolvedSteps)
+	{
+		if (RS.bIsPure)
+		{
+			PureStepIds.Add(RS.StepId);
+		}
+	}
+
+	if (PureStepIds.Num() == 0)
+	{
+		return false; // No pure steps, nothing to collapse
+	}
+
+	// Check if any pure step participates in exec chains at all
+	bool bAnyPureInExecChain = false;
+	for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
+	{
+		if (PureStepIds.Contains(Step.StepId))
+		{
+			if (!Step.ExecAfter.IsEmpty() || Step.ExecOutputs.Num() > 0)
+			{
+				bAnyPureInExecChain = true;
+				break;
+			}
+		}
+		// Also check if any step references a pure step via exec_after or exec_outputs
+		if (!bAnyPureInExecChain && PureStepIds.Contains(Step.ExecAfter))
+		{
+			bAnyPureInExecChain = true;
+		}
+		if (!bAnyPureInExecChain)
+		{
+			for (const auto& ExecOut : Step.ExecOutputs)
+			{
+				if (PureStepIds.Contains(ExecOut.Value))
+				{
+					bAnyPureInExecChain = true;
+					break;
+				}
+			}
+		}
+	}
+
+	if (!bAnyPureInExecChain)
+	{
+		return false; // Pure steps exist but none are in exec chains
+	}
+
+	UE_LOG(LogOlivePlanResolver, Log,
+		TEXT("CollapseExecThroughPureSteps: %d pure step(s) found, checking exec chain participation"),
+		PureStepIds.Num());
+
+	// Build step_id -> plan step index map
+	TMap<FString, int32> StepIndexMap;
+	for (int32 i = 0; i < Plan.Steps.Num(); ++i)
+	{
+		StepIndexMap.Add(Plan.Steps[i].StepId, i);
+	}
+
+	// Build forward successor map: StepId -> [steps that have exec_after == StepId]
+	TMap<FString, TArray<FString>> ForwardSuccessors;
+	for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
+	{
+		if (!Step.ExecAfter.IsEmpty())
+		{
+			ForwardSuccessors.FindOrAdd(Step.ExecAfter).Add(Step.StepId);
+		}
+	}
+
+	// Build reverse exec_outputs map: TargetStepId -> [(SourceStepId, PinName)]
+	// Used for backward resolution when a pure step has no exec_after but is
+	// targeted by another step's exec_outputs.
+	TMap<FString, FString> ReverseExecOutputTarget; // target -> source step
+	for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
+	{
+		for (const auto& ExecOut : Step.ExecOutputs)
+		{
+			ReverseExecOutputTarget.Add(ExecOut.Value, Step.StepId);
+		}
+	}
+
+	// Lambda: check if a step is pure
+	auto IsPure = [&PureStepIds](const FString& StepId) -> bool
+	{
+		return PureStepIds.Contains(StepId);
+	};
+
+	// Resolve backward: from a pure step, find the nearest impure predecessor.
+	// Follows exec_after chain backward, falling back to reverse exec_outputs.
+	TFunction<FString(const FString&, TSet<FString>&)> ResolveBackward;
+	ResolveBackward = [&](const FString& PureStepId, TSet<FString>& Visited) -> FString
+	{
+		if (Visited.Contains(PureStepId))
+		{
+			return FString(); // Cycle protection
+		}
+		Visited.Add(PureStepId);
+
+		const int32* Idx = StepIndexMap.Find(PureStepId);
+		if (!Idx)
+		{
+			return FString();
+		}
+
+		// Try exec_after first (the step's declared predecessor)
+		const FString& PredId = Plan.Steps[*Idx].ExecAfter;
+		if (!PredId.IsEmpty())
+		{
+			if (!IsPure(PredId))
+			{
+				return PredId; // Found impure predecessor
+			}
+			return ResolveBackward(PredId, Visited);
+		}
+
+		// Fall back to reverse exec_outputs (step targeted by another step's exec_outputs)
+		const FString* SourceStepId = ReverseExecOutputTarget.Find(PureStepId);
+		if (SourceStepId && !SourceStepId->IsEmpty())
+		{
+			if (!IsPure(*SourceStepId))
+			{
+				return *SourceStepId; // Found impure source
+			}
+			return ResolveBackward(*SourceStepId, Visited);
+		}
+
+		return FString(); // No predecessor found
+	};
+
+	// Resolve forward: from a pure step, find the nearest impure successor.
+	// Follows the forward successor map (steps that have exec_after == this step).
+	TFunction<FString(const FString&, TSet<FString>&)> ResolveForward;
+	ResolveForward = [&](const FString& PureStepId, TSet<FString>& Visited) -> FString
+	{
+		if (Visited.Contains(PureStepId))
+		{
+			return FString(); // Cycle protection
+		}
+		Visited.Add(PureStepId);
+
+		// Check steps that have exec_after pointing to this pure step
+		const TArray<FString>* Successors = ForwardSuccessors.Find(PureStepId);
+		if (Successors && Successors->Num() > 0)
+		{
+			const FString& SuccId = (*Successors)[0];
+			if (!IsPure(SuccId))
+			{
+				return SuccId; // Found impure successor
+			}
+			return ResolveForward(SuccId, Visited);
+		}
+
+		// Also check the pure step's own exec_outputs (AI shouldn't write these
+		// on pure steps, but handle gracefully)
+		const int32* Idx = StepIndexMap.Find(PureStepId);
+		if (Idx)
+		{
+			for (const auto& ExecOut : Plan.Steps[*Idx].ExecOutputs)
+			{
+				if (!IsPure(ExecOut.Value))
+				{
+					return ExecOut.Value;
+				}
+				FString Result = ResolveForward(ExecOut.Value, Visited);
+				if (!Result.IsEmpty())
+				{
+					return Result;
+				}
+			}
+		}
+
+		return FString(); // No successor found
+	};
+
+	bool bAnyCollapsed = false;
+
+	// ------------------------------------------------------------------
+	// Pass 1: For each non-pure step, resolve exec references to pure steps
+	// ------------------------------------------------------------------
+	for (int32 i = 0; i < Plan.Steps.Num(); ++i)
+	{
+		FOliveIRBlueprintPlanStep& Step = Plan.Steps[i];
+
+		if (IsPure(Step.StepId))
+		{
+			continue; // Handle in pass 2
+		}
+
+		// Fix exec_after pointing to a pure step
+		if (!Step.ExecAfter.IsEmpty() && IsPure(Step.ExecAfter))
+		{
+			TSet<FString> Visited;
+			const FString NewPredecessor = ResolveBackward(Step.ExecAfter, Visited);
+
+			FOliveResolverNote Note;
+			Note.Field = FString::Printf(TEXT("step '%s' exec_after"), *Step.StepId);
+			Note.OriginalValue = Step.ExecAfter;
+			Note.ResolvedValue = NewPredecessor.IsEmpty() ? TEXT("(cleared)") : NewPredecessor;
+			Note.Reason = FString::Printf(
+				TEXT("exec_after referenced pure step '%s' which has no exec pins. "
+				     "Collapsed to nearest impure predecessor."),
+				*Step.ExecAfter);
+			OutNotes.Add(MoveTemp(Note));
+
+			UE_LOG(LogOlivePlanResolver, Log,
+				TEXT("CollapseExec: step '%s' exec_after '%s' (pure) -> '%s'"),
+				*Step.StepId, *Step.ExecAfter,
+				NewPredecessor.IsEmpty() ? TEXT("(cleared)") : *NewPredecessor);
+
+			Step.ExecAfter = NewPredecessor;
+			bAnyCollapsed = true;
+		}
+
+		// Fix exec_outputs entries pointing to pure steps
+		bool bOutputsModified = false;
+		TMap<FString, FString> NewExecOutputs;
+		for (const auto& ExecOut : Step.ExecOutputs)
+		{
+			if (IsPure(ExecOut.Value))
+			{
+				TSet<FString> Visited;
+				const FString NewSuccessor = ResolveForward(ExecOut.Value, Visited);
+
+				FOliveResolverNote Note;
+				Note.Field = FString::Printf(TEXT("step '%s' exec_outputs.%s"), *Step.StepId, *ExecOut.Key);
+				Note.OriginalValue = ExecOut.Value;
+				Note.ResolvedValue = NewSuccessor.IsEmpty() ? TEXT("(removed)") : NewSuccessor;
+				Note.Reason = FString::Printf(
+					TEXT("exec_output targeted pure step '%s' which has no exec pins. "
+					     "Collapsed to nearest impure successor."),
+					*ExecOut.Value);
+				OutNotes.Add(MoveTemp(Note));
+
+				UE_LOG(LogOlivePlanResolver, Log,
+					TEXT("CollapseExec: step '%s' exec_outputs.%s '%s' (pure) -> '%s'"),
+					*Step.StepId, *ExecOut.Key, *ExecOut.Value,
+					NewSuccessor.IsEmpty() ? TEXT("(removed)") : *NewSuccessor);
+
+				if (!NewSuccessor.IsEmpty())
+				{
+					NewExecOutputs.Add(ExecOut.Key, NewSuccessor);
+				}
+				bOutputsModified = true;
+				bAnyCollapsed = true;
+			}
+			else
+			{
+				NewExecOutputs.Add(ExecOut.Key, ExecOut.Value);
+			}
+		}
+		if (bOutputsModified)
+		{
+			Step.ExecOutputs = MoveTemp(NewExecOutputs);
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// Pass 2: Clear exec wiring on pure steps themselves
+	// ------------------------------------------------------------------
+	for (int32 i = 0; i < Plan.Steps.Num(); ++i)
+	{
+		FOliveIRBlueprintPlanStep& Step = Plan.Steps[i];
+
+		if (!IsPure(Step.StepId))
+		{
+			continue;
+		}
+
+		if (!Step.ExecAfter.IsEmpty() || Step.ExecOutputs.Num() > 0)
+		{
+			FString OrigDesc;
+			if (!Step.ExecAfter.IsEmpty())
+			{
+				OrigDesc += FString::Printf(TEXT("exec_after=%s"), *Step.ExecAfter);
+			}
+			for (const auto& ExecOut : Step.ExecOutputs)
+			{
+				if (!OrigDesc.IsEmpty())
+				{
+					OrigDesc += TEXT(", ");
+				}
+				OrigDesc += FString::Printf(TEXT("exec_outputs.%s=%s"), *ExecOut.Key, *ExecOut.Value);
+			}
+
+			FOliveResolverNote Note;
+			Note.Field = FString::Printf(TEXT("step '%s' exec wiring"), *Step.StepId);
+			Note.OriginalValue = OrigDesc;
+			Note.ResolvedValue = TEXT("(cleared)");
+			Note.Reason = TEXT("Pure node has no exec pins. Exec wiring removed; data wiring preserved.");
+			OutNotes.Add(MoveTemp(Note));
+
+			UE_LOG(LogOlivePlanResolver, Log,
+				TEXT("CollapseExec: cleared exec wiring on pure step '%s' (%s)"),
+				*Step.StepId, *OrigDesc);
+
+			Step.ExecAfter.Empty();
+			Step.ExecOutputs.Empty();
+			bAnyCollapsed = true;
+		}
+	}
+
+	if (bAnyCollapsed)
+	{
+		UE_LOG(LogOlivePlanResolver, Log,
+			TEXT("CollapseExecThroughPureSteps: collapsed %d exec reference(s)"),
+			OutNotes.Num());
+	}
+
+	return bAnyCollapsed;
 }
 
 // ============================================================================

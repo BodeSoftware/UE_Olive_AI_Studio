@@ -29,6 +29,7 @@
 #include "K2Node_Event.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_FunctionEntry.h"
+#include "K2Node_FunctionResult.h"
 #include "K2Node_VariableGet.h"
 #include "K2Node_CallFunction.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -105,7 +106,12 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::Execute(
     Context.AssetPath = AssetPath;
     Context.GraphName = GraphName;
 
-    // Collect resolved class/function names for stale error detection (T5)
+    // Collect resolved class/function/variable names for stale error detection (T5).
+    // Include the graph name itself — compile errors reference the enclosing graph.
+    if (!GraphName.IsEmpty())
+    {
+        Context.ResolvedFunctionNames.Add(GraphName);
+    }
     for (const FOliveResolvedStep& Step : ResolvedSteps)
     {
         if (const FString* FN = Step.Properties.Find(TEXT("function_name")))
@@ -115,6 +121,12 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::Execute(
         if (const FString* TC = Step.Properties.Find(TEXT("target_class")))
         {
             Context.ResolvedClassNames.Add(*TC);
+        }
+        // Variable names from get_var/set_var — compile errors may reference
+        // pin names derived from these (e.g. "Wildcard on pin bFired").
+        if (const FString* VN = Step.Properties.Find(TEXT("variable_name")))
+        {
+            Context.ResolvedFunctionNames.Add(*VN);
         }
     }
 
@@ -362,6 +374,166 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
                     continue; // Skip to next step
                 }
             }
+        }
+
+        // ----------------------------------------------------------------
+        // Virtual step: FunctionInput -- maps to existing FunctionEntry node
+        // ----------------------------------------------------------------
+        if (NodeType == OliveNodeTypes::FunctionInput)
+        {
+            UK2Node_FunctionEntry* EntryNode = nullptr;
+            for (UEdGraphNode* Node : Context.Graph->Nodes)
+            {
+                EntryNode = Cast<UK2Node_FunctionEntry>(Node);
+                if (EntryNode) break;
+            }
+
+            if (!EntryNode)
+            {
+                UE_LOG(LogOlivePlanExecutor, Error,
+                    TEXT("Phase 1 FAIL: Step '%s' (FunctionInput) -- no FunctionEntry node in graph '%s'"),
+                    *StepId, *Context.GraphName);
+
+                Context.WiringErrors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+                    TEXT("NODE_CREATION_FAILED"),
+                    StepId,
+                    FString::Printf(TEXT("/steps/%d"), i),
+                    FString::Printf(TEXT("No FunctionEntry node found in graph '%s' for FunctionInput step '%s'"),
+                        *Context.GraphName, *StepId),
+                    TEXT("Ensure this is a function graph (not EventGraph)")));
+
+                CleanupCreatedNodes();
+                return false;
+            }
+
+            const FString ReuseNodeId = EntryNode->NodeGuid.ToString();
+            FOlivePinManifest Manifest = FOlivePinManifest::Build(
+                EntryNode, StepId, ReuseNodeId, NodeType);
+
+            // Patch pin types from UserDefinedPins. Before the Blueprint is compiled,
+            // graph pins on FunctionEntry may report as Wildcard. UserDefinedPins
+            // always store the correct FEdGraphPinType regardless of compile state.
+            for (const TSharedPtr<FUserPinInfo>& UDPin : EntryNode->UserDefinedPins)
+            {
+                if (!UDPin.IsValid()) continue;
+
+                const FString PinName = UDPin->PinName.ToString();
+
+                for (FOlivePinManifestEntry& Entry : Manifest.Pins)
+                {
+                    if (Entry.PinName == PinName && Entry.IRTypeCategory == EOliveIRTypeCategory::Wildcard)
+                    {
+                        Entry.IRTypeCategory = FOlivePinManifest::ConvertPinTypeToIRCategory(UDPin->PinType);
+                        Entry.PinCategory = UDPin->PinType.PinCategory.ToString();
+                        if (UDPin->PinType.PinSubCategoryObject.IsValid())
+                        {
+                            Entry.PinSubCategory = UDPin->PinType.PinSubCategoryObject->GetName();
+                        }
+                        else if (!UDPin->PinType.PinSubCategory.IsNone())
+                        {
+                            Entry.PinSubCategory = UDPin->PinType.PinSubCategory.ToString();
+                        }
+                        Entry.TypeDisplayString = UEdGraphSchema_K2::TypeToText(UDPin->PinType).ToString();
+
+                        UE_LOG(LogOlivePlanExecutor, Log,
+                            TEXT("  -> Patched FunctionInput pin '%s' type: Wildcard -> %s (%s)"),
+                            *PinName, *Entry.TypeDisplayString, *Entry.PinCategory);
+                        break;
+                    }
+                }
+            }
+
+            Context.StepManifests.Add(StepId, MoveTemp(Manifest));
+            Context.StepToNodeMap.Add(StepId, ReuseNodeId);
+            Context.StepToNodePtr.Add(StepId, EntryNode);
+            Context.CreatedNodeCount++;
+            ReusedStepIds.Add(StepId);
+            Context.ReusedStepIds.Add(StepId);
+
+            UE_LOG(LogOlivePlanExecutor, Log,
+                TEXT("  -> Virtual FunctionInput step '%s' -> FunctionEntry node '%s'"),
+                *StepId, *ReuseNodeId);
+            continue;
+        }
+
+        // ----------------------------------------------------------------
+        // Virtual step: FunctionOutput -- maps to existing FunctionResult node
+        // ----------------------------------------------------------------
+        if (NodeType == OliveNodeTypes::FunctionOutput)
+        {
+            UK2Node_FunctionResult* ResultNode = nullptr;
+            for (UEdGraphNode* Node : Context.Graph->Nodes)
+            {
+                ResultNode = Cast<UK2Node_FunctionResult>(Node);
+                if (ResultNode) break;
+            }
+
+            if (!ResultNode)
+            {
+                UE_LOG(LogOlivePlanExecutor, Error,
+                    TEXT("Phase 1 FAIL: Step '%s' (FunctionOutput) -- no FunctionResult node in graph '%s'"),
+                    *StepId, *Context.GraphName);
+
+                Context.WiringErrors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+                    TEXT("NODE_CREATION_FAILED"),
+                    StepId,
+                    FString::Printf(TEXT("/steps/%d"), i),
+                    FString::Printf(TEXT("No FunctionResult node found in graph '%s' for FunctionOutput step '%s'"),
+                        *Context.GraphName, *StepId),
+                    TEXT("Ensure the function has return values defined")));
+
+                CleanupCreatedNodes();
+                return false;
+            }
+
+            const FString ReuseNodeId = ResultNode->NodeGuid.ToString();
+            FOlivePinManifest Manifest = FOlivePinManifest::Build(
+                ResultNode, StepId, ReuseNodeId, NodeType);
+
+            // Patch pin types from UserDefinedPins. Before the Blueprint is compiled,
+            // graph pins on FunctionResult may report as Wildcard. UserDefinedPins
+            // always store the correct FEdGraphPinType regardless of compile state.
+            for (const TSharedPtr<FUserPinInfo>& UDPin : ResultNode->UserDefinedPins)
+            {
+                if (!UDPin.IsValid()) continue;
+
+                const FString PinName = UDPin->PinName.ToString();
+
+                for (FOlivePinManifestEntry& Entry : Manifest.Pins)
+                {
+                    if (Entry.PinName == PinName && Entry.IRTypeCategory == EOliveIRTypeCategory::Wildcard)
+                    {
+                        Entry.IRTypeCategory = FOlivePinManifest::ConvertPinTypeToIRCategory(UDPin->PinType);
+                        Entry.PinCategory = UDPin->PinType.PinCategory.ToString();
+                        if (UDPin->PinType.PinSubCategoryObject.IsValid())
+                        {
+                            Entry.PinSubCategory = UDPin->PinType.PinSubCategoryObject->GetName();
+                        }
+                        else if (!UDPin->PinType.PinSubCategory.IsNone())
+                        {
+                            Entry.PinSubCategory = UDPin->PinType.PinSubCategory.ToString();
+                        }
+                        Entry.TypeDisplayString = UEdGraphSchema_K2::TypeToText(UDPin->PinType).ToString();
+
+                        UE_LOG(LogOlivePlanExecutor, Log,
+                            TEXT("  -> Patched FunctionOutput pin '%s' type: Wildcard -> %s (%s)"),
+                            *PinName, *Entry.TypeDisplayString, *Entry.PinCategory);
+                        break;
+                    }
+                }
+            }
+
+            Context.StepManifests.Add(StepId, MoveTemp(Manifest));
+            Context.StepToNodeMap.Add(StepId, ReuseNodeId);
+            Context.StepToNodePtr.Add(StepId, ResultNode);
+            Context.CreatedNodeCount++;
+            ReusedStepIds.Add(StepId);
+            Context.ReusedStepIds.Add(StepId);
+
+            UE_LOG(LogOlivePlanExecutor, Log,
+                TEXT("  -> Virtual FunctionOutput step '%s' -> FunctionResult node '%s'"),
+                *StepId, *ReuseNodeId);
+            continue;
         }
 
         // ----------------------------------------------------------------
@@ -903,6 +1075,16 @@ void FOlivePlanExecutor::PhaseWireExec(
                 continue;
             }
 
+            // Skip virtual FunctionInput/FunctionOutput steps -- they map to
+            // FunctionEntry/FunctionResult nodes, not independent exec nodes.
+            // Without this, the auto-chain picks the virtual step (same node
+            // as EntryNode) and fails to wire, blocking the real first orphan.
+            UEdGraphNode* StepNode = Context.GetNodePtr(Step.StepId);
+            if (StepNode && (Cast<UK2Node_FunctionEntry>(StepNode) || Cast<UK2Node_FunctionResult>(StepNode)))
+            {
+                continue;
+            }
+
             OrphanStep = &Step;
             break;
         }
@@ -1082,6 +1264,13 @@ void FOlivePlanExecutor::PhaseWireExec(
             // Must be impure (has exec input)
             const FOlivePinManifest* CandManifest = Context.GetManifest(Candidate.StepId);
             if (!CandManifest || CandManifest->bIsPure)
+            {
+                continue;
+            }
+
+            // Skip virtual FunctionInput/FunctionOutput steps (same fix as above)
+            UEdGraphNode* CandNode = Context.GetNodePtr(Candidate.StepId);
+            if (CandNode && (Cast<UK2Node_FunctionEntry>(CandNode) || Cast<UK2Node_FunctionResult>(CandNode)))
             {
                 continue;
             }
@@ -1364,8 +1553,19 @@ void FOlivePlanExecutor::PhaseWireData(
                 continue;
             }
 
+            // For set_var steps, UE names the data input pin after the variable
+            // (e.g., "BounceCount"), not "value". Remap the generic "value" key
+            // to the actual variable name so FindPinSmart can match it.
+            FString ResolvedPinKey = PinKey;
+            if (Step.Op == OlivePlanOps::SetVar
+                && PinKey.Equals(TEXT("value"), ESearchCase::IgnoreCase)
+                && !Step.Target.IsEmpty())
+            {
+                ResolvedPinKey = Step.Target;
+            }
+
             FOliveSmartWireResult Result = WireDataConnection(
-                Step.StepId, PinKey, PinValue, Context);
+                Step.StepId, ResolvedPinKey, PinValue, Context);
 
             if (Result.bSuccess)
             {
@@ -1476,7 +1676,8 @@ FOliveSmartWireResult FOlivePlanExecutor::WireDataConnection(
     {
         // TYPE-BASED AUTO-MATCH
         SourcePin = FindTypeCompatibleOutput(
-            *SourceManifest, TargetPin->IRTypeCategory, TargetPin->PinSubCategory);
+            *SourceManifest, TargetPin->IRTypeCategory, TargetPin->PinSubCategory,
+            TargetPin->PinName);
         SourceMatchMethod = TEXT("type_auto");
 
         if (!SourcePin)
@@ -1654,7 +1855,8 @@ FOliveSmartWireResult FOlivePlanExecutor::WireDataConnection(
 const FOlivePinManifestEntry* FOlivePlanExecutor::FindTypeCompatibleOutput(
     const FOlivePinManifest& SourceManifest,
     EOliveIRTypeCategory TargetTypeCategory,
-    const FString& TargetSubCategory)
+    const FString& TargetSubCategory,
+    const FString& TargetPinName)
 {
     TArray<const FOlivePinManifestEntry*> DataOutputs = SourceManifest.GetDataPins(false);
 
@@ -1665,6 +1867,27 @@ const FOlivePinManifestEntry* FOlivePlanExecutor::FindTypeCompatibleOutput(
         if (Pin->IRTypeCategory == TargetTypeCategory)
         {
             TypeMatches.Add(Pin);
+        }
+    }
+
+    // Wildcard fallback: if strict matching found nothing, accept Wildcard-typed pins.
+    // Wildcard pins occur when pin types haven't been resolved yet, e.g., pre-compile
+    // FunctionEntry output pins whose types are only known after compilation.
+    if (TypeMatches.Num() == 0)
+    {
+        for (const FOlivePinManifestEntry* Pin : DataOutputs)
+        {
+            if (Pin->IRTypeCategory == EOliveIRTypeCategory::Wildcard)
+            {
+                TypeMatches.Add(Pin);
+            }
+        }
+
+        if (TypeMatches.Num() > 0)
+        {
+            UE_LOG(LogOlivePlanExecutor, Log,
+                TEXT("  FindTypeCompatibleOutput: No strict match for %s, using Wildcard fallback (%d candidates)"),
+                *UEnum::GetValueAsString(TargetTypeCategory), TypeMatches.Num());
         }
     }
 
@@ -1692,6 +1915,21 @@ const FOlivePinManifestEntry* FOlivePlanExecutor::FindTypeCompatibleOutput(
 
     if (TypeMatches.Num() > 1)
     {
+        // Name-based disambiguation: if target pin name matches a source pin name, prefer it
+        if (!TargetPinName.IsEmpty())
+        {
+            for (const FOlivePinManifestEntry* Pin : TypeMatches)
+            {
+                if (Pin->PinName.Equals(TargetPinName, ESearchCase::IgnoreCase))
+                {
+                    UE_LOG(LogOlivePlanExecutor, Log,
+                        TEXT("  Name-disambiguated: picked '%s' by matching target pin name"),
+                        *Pin->PinName);
+                    return Pin;
+                }
+            }
+        }
+
         // Prefer "ReturnValue" pin if present (most common output)
         for (const FOlivePinManifestEntry* Pin : TypeMatches)
         {

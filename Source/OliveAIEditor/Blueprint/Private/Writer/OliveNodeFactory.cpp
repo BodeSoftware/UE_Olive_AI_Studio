@@ -27,15 +27,28 @@
 #include "K2Node_Knot.h"
 #include "K2Node_MacroInstance.h"
 #include "K2Node_InputKey.h"
+#include "K2Node_ComponentBoundEvent.h"
+#include "K2Node_CallDelegate.h"
 #include "EdGraphNode_Comment.h"
 #include "InputCoreTypes.h"
+
+// SCS includes (for component delegate event detection)
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
 
 // Utility includes
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Kismet/KismetMathLibrary.h"
+#include "Kismet/KismetStringLibrary.h"
 #include "Kismet/KismetArrayLibrary.h"
+#include "Kismet/GameplayStatics.h"
 #include "GameFramework/Actor.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/Character.h"
+#include "Components/SceneComponent.h"
+#include "Components/PrimitiveComponent.h"
 
 // Universal node creation includes
 #include "UObject/UObjectGlobals.h"  // For StaticLoadClass
@@ -86,8 +99,9 @@ UEdGraphNode* FOliveNodeFactory::CreateNode(
 		return nullptr;
 	}
 
-	// Validate node type and property-level resolution before attempting creation
-	if (!ValidateNodeType(NodeType, Properties))
+	// Validate node type and property-level resolution before attempting creation.
+	// Pass Blueprint so ValidateNodeType can find Blueprint-defined functions.
+	if (!ValidateNodeType(NodeType, Properties, Blueprint))
 	{
 		// LastError is already set by ValidateNodeType with a structured message
 		UE_LOG(LogOliveNodeFactory, Error, TEXT("%s"), *LastError);
@@ -148,7 +162,7 @@ TMap<FString, FString> FOliveNodeFactory::GetRequiredProperties(const FString& N
 	return TMap<FString, FString>();
 }
 
-bool FOliveNodeFactory::ValidateNodeType(const FString& NodeType, const TMap<FString, FString>& Properties) const
+bool FOliveNodeFactory::ValidateNodeType(const FString& NodeType, const TMap<FString, FString>& Properties, UBlueprint* Blueprint) const
 {
 	UE_LOG(LogOliveNodeFactory, Verbose, TEXT("ValidateNodeType: type='%s', properties=%d"), *NodeType, Properties.Num());
 
@@ -192,8 +206,11 @@ bool FOliveNodeFactory::ValidateNodeType(const FString& NodeType, const TMap<FSt
 			TargetClassName = *TargetClassPtr;
 		}
 
-		// Use the factory's own FindFunction to check resolution
-		UFunction* Function = const_cast<FOliveNodeFactory*>(this)->FindFunction(*FunctionNamePtr, TargetClassName);
+		// Use the factory's own FindFunction to check resolution.
+		// Blueprint may be nullptr for pre-pipeline checks (before asset load),
+		// in which case Blueprint-defined functions won't be found here but will
+		// be found later in CreateCallFunctionNode when Blueprint is available.
+		UFunction* Function = const_cast<FOliveNodeFactory*>(this)->FindFunction(*FunctionNamePtr, TargetClassName, Blueprint);
 		if (!Function)
 		{
 			const_cast<FOliveNodeFactory*>(this)->LastError = FString::Printf(
@@ -245,8 +262,8 @@ UK2Node* FOliveNodeFactory::CreateCallFunctionNode(
 		TargetClassName = *TargetClassPtr;
 	}
 
-	// Find the function
-	UFunction* Function = FindFunction(*FunctionNamePtr, TargetClassName);
+	// Find the function (pass Blueprint to search GeneratedClass for Blueprint-defined functions)
+	UFunction* Function = FindFunction(*FunctionNamePtr, TargetClassName, Blueprint);
 	if (!Function)
 	{
 		LastError = FString::Printf(TEXT("Function '%s' not found"), **FunctionNamePtr);
@@ -337,10 +354,90 @@ UK2Node* FOliveNodeFactory::CreateEventNode(
 	UFunction* EventFunction = Blueprint->ParentClass->FindFunctionByName(EventName);
 	if (!EventFunction)
 	{
+		// ----------------------------------------------------------------
+		// FIX RC1: Check if this is a component delegate event (e.g.,
+		// OnComponentBeginOverlap, OnComponentEndOverlap, OnComponentHit).
+		// These are bound via UK2Node_ComponentBoundEvent, not regular
+		// event override nodes. Scan SCS components for a matching
+		// multicast delegate property.
+		// ----------------------------------------------------------------
+		if (Blueprint->SimpleConstructionScript)
+		{
+			// Optional: extract component name hint from properties
+			FString ComponentNameHint;
+			if (const FString* CompName = Properties.Find(TEXT("component_name")))
+			{
+				ComponentNameHint = *CompName;
+			}
+
+			FObjectProperty* FoundComponentProp = nullptr;
+			FMulticastDelegateProperty* FoundDelegateProp = nullptr;
+			FString FoundComponentName;
+
+			TArray<USCS_Node*> AllSCSNodes = Blueprint->SimpleConstructionScript->GetAllNodes();
+			for (USCS_Node* SCSNode : AllSCSNodes)
+			{
+				if (!SCSNode || !SCSNode->ComponentClass)
+				{
+					continue;
+				}
+
+				// If a component name hint was given, only match that component
+				if (!ComponentNameHint.IsEmpty()
+					&& !SCSNode->GetVariableName().ToString().Equals(ComponentNameHint, ESearchCase::IgnoreCase))
+				{
+					continue;
+				}
+
+				// Search for a multicast delegate property matching the event name
+				for (TFieldIterator<FMulticastDelegateProperty> PropIt(SCSNode->ComponentClass); PropIt; ++PropIt)
+				{
+					FMulticastDelegateProperty* DelegateProp = *PropIt;
+					if (DelegateProp && DelegateProp->GetFName() == EventName)
+					{
+						// Find the FObjectProperty on the generated class that
+						// corresponds to this SCS component variable
+						if (Blueprint->GeneratedClass)
+						{
+							FObjectProperty* CompProp = FindFProperty<FObjectProperty>(
+								Blueprint->GeneratedClass, SCSNode->GetVariableName());
+
+							if (CompProp)
+							{
+								FoundComponentProp = CompProp;
+								FoundDelegateProp = DelegateProp;
+								FoundComponentName = SCSNode->GetVariableName().ToString();
+								break;
+							}
+						}
+					}
+				}
+
+				if (FoundDelegateProp)
+				{
+					break;
+				}
+			}
+
+			if (FoundComponentProp && FoundDelegateProp)
+			{
+				UE_LOG(LogOliveNodeFactory, Log,
+					TEXT("CreateEventNode: '%s' is a component delegate on '%s' (%s) — creating UK2Node_ComponentBoundEvent"),
+					**EventNamePtr, *FoundComponentName, *FoundComponentProp->PropertyClass->GetName());
+
+				UK2Node_ComponentBoundEvent* BoundEventNode = NewObject<UK2Node_ComponentBoundEvent>(Graph);
+				BoundEventNode->InitializeComponentBoundEventParams(FoundComponentProp, FoundDelegateProp);
+				BoundEventNode->AllocateDefaultPins();
+				Graph->AddNode(BoundEventNode, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+
+				return BoundEventNode;
+			}
+		}
+
 		UE_LOG(LogOliveNodeFactory, Warning,
-			TEXT("CreateEventNode: event '%s' not found via FindFunctionByName on '%s'. Note: only native events are supported, not Enhanced Input Actions."),
+			TEXT("CreateEventNode: event '%s' not found via FindFunctionByName on '%s' and not a component delegate. Note: only native events and component delegates are supported, not Enhanced Input Actions."),
 			**EventNamePtr, *Blueprint->ParentClass->GetName());
-		LastError = FString::Printf(TEXT("Event '%s' not found in parent class"), **EventNamePtr);
+		LastError = FString::Printf(TEXT("Event '%s' not found in parent class or as a component delegate"), **EventNamePtr);
 		return nullptr;
 	}
 
@@ -753,6 +850,101 @@ UK2Node* FOliveNodeFactory::CreateInputKeyNode(
 	return InputKeyNode;
 }
 
+UK2Node* FOliveNodeFactory::CreateCallDelegateNode(
+	UBlueprint* Blueprint,
+	UEdGraph* Graph,
+	const TMap<FString, FString>& Properties)
+{
+	const FString* DelegateNamePtr = Properties.Find(TEXT("delegate_name"));
+	if (!DelegateNamePtr || DelegateNamePtr->IsEmpty())
+	{
+		LastError = TEXT("CallDelegate node requires 'delegate_name' property");
+		return nullptr;
+	}
+
+	const FName DelegateFName(**DelegateNamePtr);
+
+	// Search for the FMulticastDelegateProperty on the Blueprint's generated class.
+	// SkeletonGeneratedClass is preferred (it may be more up-to-date if the Blueprint
+	// has not been fully compiled yet), with fallback to GeneratedClass.
+	FMulticastDelegateProperty* DelegateProp = nullptr;
+	UClass* OwnerClass = nullptr;
+
+	// Try SkeletonGeneratedClass first
+	if (Blueprint->SkeletonGeneratedClass)
+	{
+		for (TFieldIterator<FMulticastDelegateProperty> It(Blueprint->SkeletonGeneratedClass); It; ++It)
+		{
+			if (It->GetFName() == DelegateFName)
+			{
+				DelegateProp = *It;
+				OwnerClass = Blueprint->SkeletonGeneratedClass;
+				break;
+			}
+		}
+	}
+
+	// Fallback to GeneratedClass
+	if (!DelegateProp && Blueprint->GeneratedClass)
+	{
+		for (TFieldIterator<FMulticastDelegateProperty> It(Blueprint->GeneratedClass); It; ++It)
+		{
+			if (It->GetFName() == DelegateFName)
+			{
+				DelegateProp = *It;
+				OwnerClass = Blueprint->GeneratedClass;
+				break;
+			}
+		}
+	}
+
+	if (!DelegateProp)
+	{
+		// Build a list of available dispatchers for the error message
+		TArray<FString> AvailableDispatchers;
+		UClass* SearchClass = Blueprint->SkeletonGeneratedClass
+			? Blueprint->SkeletonGeneratedClass
+			: Blueprint->GeneratedClass;
+		if (SearchClass)
+		{
+			for (TFieldIterator<FMulticastDelegateProperty> It(SearchClass); It; ++It)
+			{
+				AvailableDispatchers.Add(It->GetName());
+			}
+		}
+
+		if (AvailableDispatchers.Num() > 0)
+		{
+			LastError = FString::Printf(
+				TEXT("Event dispatcher '%s' not found on Blueprint '%s'. "
+					 "Available dispatchers: %s"),
+				**DelegateNamePtr, *Blueprint->GetName(),
+				*FString::Join(AvailableDispatchers, TEXT(", ")));
+		}
+		else
+		{
+			LastError = FString::Printf(
+				TEXT("Event dispatcher '%s' not found on Blueprint '%s'. "
+					 "This Blueprint has no event dispatchers. "
+					 "Use blueprint.add_event_dispatcher to create one first."),
+				**DelegateNamePtr, *Blueprint->GetName());
+		}
+		return nullptr;
+	}
+
+	UE_LOG(LogOliveNodeFactory, Log,
+		TEXT("CreateCallDelegateNode: Found delegate '%s' on class '%s'"),
+		**DelegateNamePtr, *OwnerClass->GetName());
+
+	// Create the CallDelegate node
+	UK2Node_CallDelegate* CallDelegateNode = NewObject<UK2Node_CallDelegate>(Graph);
+	CallDelegateNode->SetFromProperty(DelegateProp, /*bSelfContext=*/true, OwnerClass);
+	CallDelegateNode->AllocateDefaultPins();
+	Graph->AddNode(CallDelegateNode, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+
+	return CallDelegateNode;
+}
+
 // ============================================================================
 // Universal Node Creation
 // ============================================================================
@@ -1056,9 +1248,9 @@ UClass* FOliveNodeFactory::FindClass(const FString& ClassName)
 	return nullptr;
 }
 
-UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FString& ClassName)
+UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FString& ClassName, UBlueprint* Blueprint)
 {
-	// If class name specified, search in that class
+	// If class name specified, search in that class first
 	if (!ClassName.IsEmpty())
 	{
 		UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s', class='%s'): searching specified class"), *FunctionName, *ClassName);
@@ -1074,11 +1266,35 @@ UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FS
 		}
 	}
 
+	// Search the Blueprint's own GeneratedClass for Blueprint-defined functions
+	// (e.g., custom functions created via add_function). GeneratedClass may be null
+	// if the Blueprint hasn't been compiled yet.
+	if (Blueprint && Blueprint->GeneratedClass)
+	{
+		UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): trying Blueprint GeneratedClass '%s'"),
+			*FunctionName, *Blueprint->GeneratedClass->GetName());
+		UFunction* Func = Blueprint->GeneratedClass->FindFunctionByName(FName(*FunctionName));
+		if (Func)
+		{
+			UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): found in Blueprint GeneratedClass '%s'"),
+				*FunctionName, *Blueprint->GeneratedClass->GetName());
+			return Func;
+		}
+	}
+
 	// Search in common library classes
 	TArray<UClass*> LibraryClasses = {
 		UKismetSystemLibrary::StaticClass(),
+		UKismetMathLibrary::StaticClass(),
+		UKismetStringLibrary::StaticClass(),
+		UKismetArrayLibrary::StaticClass(),
+		UGameplayStatics::StaticClass(),
 		UObject::StaticClass(),
 		AActor::StaticClass(),
+		USceneComponent::StaticClass(),
+		UPrimitiveComponent::StaticClass(),
+		APawn::StaticClass(),
+		ACharacter::StaticClass(),
 	};
 
 	for (UClass* LibClass : LibraryClasses)
@@ -1092,7 +1308,10 @@ UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FS
 		}
 	}
 
-	UE_LOG(LogOliveNodeFactory, Warning, TEXT("FindFunction('%s', class='%s'): FAILED — searched specified class + library classes [KismetSystemLibrary, Object, Actor]"),
+	UE_LOG(LogOliveNodeFactory, Warning,
+		TEXT("FindFunction('%s', class='%s'): FAILED -- searched specified class + Blueprint GeneratedClass + "
+			 "library classes [KismetSystemLibrary, KismetMathLibrary, KismetStringLibrary, KismetArrayLibrary, "
+			 "GameplayStatics, Object, Actor, SceneComponent, PrimitiveComponent, Pawn, Character]"),
 		*FunctionName, *ClassName);
 	return nullptr;
 }
@@ -1292,6 +1511,11 @@ void FOliveNodeFactory::InitializeNodeCreators()
 		return CreateInputKeyNode(BP, G, P);
 	});
 
+	// Delegate
+	NodeCreators.Add(OliveNodeTypes::CallDelegate, [this](UBlueprint* BP, UEdGraph* G, const TMap<FString, FString>& P) -> UEdGraphNode* {
+		return CreateCallDelegateNode(BP, G, P);
+	});
+
 	// ============================================================================
 	// Register Required Properties
 	// ============================================================================
@@ -1358,6 +1582,11 @@ void FOliveNodeFactory::InitializeNodeCreators()
 	CommentProps.Add(TEXT("width"), TEXT("Comment width in pixels (optional, default 400)"));
 	CommentProps.Add(TEXT("height"), TEXT("Comment height in pixels (optional, default 100)"));
 	RequiredPropertiesMap.Add(OliveNodeTypes::Comment, CommentProps);
+
+	// CallDelegate
+	TMap<FString, FString> CallDelegateProps;
+	CallDelegateProps.Add(TEXT("delegate_name"), TEXT("Name of the event dispatcher to broadcast (required)"));
+	RequiredPropertiesMap.Add(OliveNodeTypes::CallDelegate, CallDelegateProps);
 
 	// Nodes with no required properties get empty maps
 	RequiredPropertiesMap.Add(OliveNodeTypes::Branch, TMap<FString, FString>());

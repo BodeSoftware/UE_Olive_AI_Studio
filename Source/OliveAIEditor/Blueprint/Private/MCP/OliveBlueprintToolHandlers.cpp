@@ -5535,6 +5535,8 @@ FOliveIRType FOliveBlueprintToolHandlers::ParseTypeFromParams(const TSharedPtr<F
 		return Type;
 	}
 	CategoryString = CategoryString.ToLower();
+
+	// Alias normalization: map common variations to canonical names
 	if (CategoryString == TEXT("boolean"))
 	{
 		CategoryString = TEXT("bool");
@@ -5543,9 +5545,53 @@ FOliveIRType FOliveBlueprintToolHandlers::ParseTypeFromParams(const TSharedPtr<F
 	{
 		CategoryString = TEXT("int");
 	}
-	else if (CategoryString == TEXT("linearcolor"))
+	else if (CategoryString == TEXT("linearcolor") || CategoryString == TEXT("flinearcolor"))
 	{
 		CategoryString = TEXT("linear_color");
+	}
+	else if (CategoryString == TEXT("str") || CategoryString == TEXT("fstring"))
+	{
+		CategoryString = TEXT("string");
+	}
+	else if (CategoryString == TEXT("fname"))
+	{
+		CategoryString = TEXT("name");
+	}
+	else if (CategoryString == TEXT("ftext"))
+	{
+		CategoryString = TEXT("text");
+	}
+	else if (CategoryString == TEXT("fvector") || CategoryString == TEXT("vec") || CategoryString == TEXT("vec3"))
+	{
+		CategoryString = TEXT("vector");
+	}
+	else if (CategoryString == TEXT("frotator") || CategoryString == TEXT("rot"))
+	{
+		CategoryString = TEXT("rotator");
+	}
+	else if (CategoryString == TEXT("ftransform"))
+	{
+		CategoryString = TEXT("transform");
+	}
+	else if (CategoryString == TEXT("fcolor"))
+	{
+		CategoryString = TEXT("color");
+	}
+	else if (CategoryString == TEXT("fvector2d") || CategoryString == TEXT("vec2") || CategoryString == TEXT("vec2d"))
+	{
+		CategoryString = TEXT("vector2d");
+	}
+	else if (CategoryString == TEXT("float32"))
+	{
+		CategoryString = TEXT("float");
+	}
+	else if (CategoryString == TEXT("float64"))
+	{
+		CategoryString = TEXT("double");
+	}
+	else if (CategoryString == TEXT("uint8"))
+	{
+		CategoryString = TEXT("byte");
 	}
 
 	// Map category string to enum
@@ -6277,7 +6323,8 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 	// ------------------------------------------------------------------
 	// 7. Resolve plan
 	// ------------------------------------------------------------------
-	FOlivePlanResolveResult ResolveResult = FOliveBlueprintPlanResolver::Resolve(Plan, Blueprint);
+	FOliveGraphContext GraphContext = FOliveGraphContext::BuildFromBlueprint(Blueprint, GraphTarget);
+	FOlivePlanResolveResult ResolveResult = FOliveBlueprintPlanResolver::Resolve(Plan, Blueprint, GraphContext);
 	if (!ResolveResult.bSuccess)
 	{
 		TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
@@ -6305,12 +6352,24 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 		return Result;
 	}
 
+	// Use the expanded plan (with all resolver expansions applied) for all
+	// post-resolve processing. The original Plan must NOT be used after this
+	// point because it lacks synthetic steps from ExpandComponentRefs/etc.
+	FOliveIRBlueprintPlan& ExpandedPlan = ResolveResult.ExpandedPlan;
+
+	// Collapse exec chains through pure steps (pure nodes have no exec pins)
+	FOliveBlueprintPlanResolver::CollapseExecThroughPureSteps(
+		ExpandedPlan, ResolveResult.ResolvedSteps, ResolveResult.GlobalNotes);
+
+	// Auto-fix exec_after/exec_outputs conflicts before validation (RC5)
+	FOlivePlanValidator::AutoFixExecConflicts(ExpandedPlan, ResolveResult.GlobalNotes);
+
 	// ------------------------------------------------------------------
 	// 7b. Phase 0: Structural plan validation
 	// ------------------------------------------------------------------
 	{
 		FOlivePlanValidationResult Phase0Result = FOlivePlanValidator::Validate(
-			Plan, ResolveResult.ResolvedSteps, Blueprint);
+			ExpandedPlan, ResolveResult.ResolvedSteps, Blueprint, GraphContext);
 
 		if (!Phase0Result.bSuccess)
 		{
@@ -6329,13 +6388,13 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 	// ------------------------------------------------------------------
 	// 8. Lower (v1.0 only) or skip (v2.0)
 	// ------------------------------------------------------------------
-	const bool bIsV2Plan = (Plan.SchemaVersion == TEXT("2.0"));
+	const bool bIsV2Plan = (ExpandedPlan.SchemaVersion == TEXT("2.0"));
 
 	FOlivePlanLowerResult LowerResult;
 	if (!bIsV2Plan)
 	{
 		LowerResult = FOliveBlueprintPlanLowerer::Lower(
-			ResolveResult.ResolvedSteps, Plan, GraphTarget, AssetPath);
+			ResolveResult.ResolvedSteps, ExpandedPlan, GraphTarget, AssetPath);
 		if (!LowerResult.bSuccess)
 		{
 			TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
@@ -6353,16 +6412,16 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 	// ------------------------------------------------------------------
 	// 9. Compute fingerprint and diff
 	// ------------------------------------------------------------------
-	FString Fingerprint = FOliveBlueprintPlanResolver::ComputePlanFingerprint(CurrentGraphIR, Plan);
+	FString Fingerprint = FOliveBlueprintPlanResolver::ComputePlanFingerprint(CurrentGraphIR, ExpandedPlan);
 	TSharedPtr<FJsonObject> Diff = FOliveBlueprintPlanResolver::ComputePlanDiff(
-		CurrentGraphIR, ResolveResult.ResolvedSteps, Plan);
+		CurrentGraphIR, ResolveResult.ResolvedSteps, ExpandedPlan);
 
 	// ------------------------------------------------------------------
 	// 10. Build result
 	// ------------------------------------------------------------------
 	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
 	ResultData->SetStringField(TEXT("preview_fingerprint"), Fingerprint);
-	ResultData->SetStringField(TEXT("schema_version"), Plan.SchemaVersion);
+	ResultData->SetStringField(TEXT("schema_version"), ExpandedPlan.SchemaVersion);
 	ResultData->SetObjectField(TEXT("diff"), Diff);
 
 	if (bIsV2Plan)
@@ -6399,7 +6458,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 	else
 	{
 		// v1.0: Include lowered ops summary
-		ResultData->SetObjectField(TEXT("plan_summary"), BuildPlanSummary(Plan, LowerResult));
+		ResultData->SetObjectField(TEXT("plan_summary"), BuildPlanSummary(ExpandedPlan, LowerResult));
 		ResultData->SetNumberField(TEXT("lowered_ops_count"), LowerResult.Ops.Num());
 		ResultData->SetStringField(TEXT("execution_mode"), TEXT("lowerer_v1"));
 	}
@@ -6449,7 +6508,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 
 	UE_LOG(LogOliveBPTools, Log,
 		TEXT("Plan preview for '%s' graph '%s': %d steps, schema=%s, fingerprint=%s, new_graph=%s"),
-		*AssetPath, *GraphTarget, Plan.Steps.Num(), *Plan.SchemaVersion, *Fingerprint,
+		*AssetPath, *GraphTarget, ExpandedPlan.Steps.Num(), *ExpandedPlan.SchemaVersion, *Fingerprint,
 		bGraphWillBeCreated ? TEXT("true") : TEXT("false"));
 
 	return FOliveToolResult::Success(ResultData);
@@ -6572,41 +6631,10 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 	}
 
 	// ------------------------------------------------------------------
-	// 7. Drift detection (if fingerprint provided and graph already existed)
+	// 7. Resolve plan (always -- needed before drift detection and everything else)
 	// ------------------------------------------------------------------
-	if (!ProvidedFingerprint.IsEmpty() && !bGraphMissing)
-	{
-		FOliveGraphReader DriftReader;
-		FOliveIRGraph CurrentGraphIR = DriftReader.ReadGraph(TargetGraph, Blueprint);
-		FString CurrentFingerprint = FOliveBlueprintPlanResolver::ComputePlanFingerprint(CurrentGraphIR, Plan);
-
-		// Tolerant comparison: case-insensitive + prefix match (LLMs truncate/lowercase hex)
-		const bool bExactMatch = CurrentFingerprint.Equals(ProvidedFingerprint, ESearchCase::IgnoreCase);
-		const bool bPrefixMatch = !bExactMatch
-			&& ProvidedFingerprint.Len() >= 6
-			&& CurrentFingerprint.StartsWith(ProvidedFingerprint, ESearchCase::IgnoreCase);
-
-		if (!bExactMatch && !bPrefixMatch)
-		{
-			UE_LOG(LogOliveBPTools, Warning,
-				TEXT("apply_plan_json: fingerprint mismatch (provided='%s', current='%s'). "
-					 "Proceeding anyway — resolve+execute pipeline will validate."),
-				*ProvidedFingerprint, *CurrentFingerprint);
-		}
-		else if (bPrefixMatch)
-		{
-			UE_LOG(LogOliveBPTools, Log,
-				TEXT("apply_plan_json: fingerprint prefix match accepted (provided='%s' -> current='%s')"),
-				*ProvidedFingerprint, *CurrentFingerprint);
-		}
-	}
-
-	// ------------------------------------------------------------------
-	// 8. Resolve (always) + Lower (v1.0 only)
-	// ------------------------------------------------------------------
-	const bool bIsV2Plan = (Plan.SchemaVersion == TEXT("2.0"));
-
-	FOlivePlanResolveResult ResolveResult = FOliveBlueprintPlanResolver::Resolve(Plan, Blueprint);
+	FOliveGraphContext GraphContext = FOliveGraphContext::BuildFromBlueprint(Blueprint, GraphTarget);
+	FOlivePlanResolveResult ResolveResult = FOliveBlueprintPlanResolver::Resolve(Plan, Blueprint, GraphContext);
 	if (!ResolveResult.bSuccess)
 	{
 		TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
@@ -6634,12 +6662,60 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 		return Result;
 	}
 
+	// Use the expanded plan (with all resolver expansions applied) for all
+	// post-resolve processing. The original Plan must NOT be used after this
+	// point because it lacks synthetic steps from ExpandComponentRefs/etc.
+	FOliveIRBlueprintPlan& ExpandedPlan = ResolveResult.ExpandedPlan;
+
+	// ------------------------------------------------------------------
+	// 7b. Drift detection (if fingerprint provided and graph already existed)
+	// Uses ExpandedPlan so fingerprint matches what preview_plan_json computed.
+	// ------------------------------------------------------------------
+	if (!ProvidedFingerprint.IsEmpty() && !bGraphMissing)
+	{
+		FOliveGraphReader DriftReader;
+		FOliveIRGraph CurrentGraphIR = DriftReader.ReadGraph(TargetGraph, Blueprint);
+		FString CurrentFingerprint = FOliveBlueprintPlanResolver::ComputePlanFingerprint(CurrentGraphIR, ExpandedPlan);
+
+		// Tolerant comparison: case-insensitive + prefix match (LLMs truncate/lowercase hex)
+		const bool bExactMatch = CurrentFingerprint.Equals(ProvidedFingerprint, ESearchCase::IgnoreCase);
+		const bool bPrefixMatch = !bExactMatch
+			&& ProvidedFingerprint.Len() >= 6
+			&& CurrentFingerprint.StartsWith(ProvidedFingerprint, ESearchCase::IgnoreCase);
+
+		if (!bExactMatch && !bPrefixMatch)
+		{
+			UE_LOG(LogOliveBPTools, Warning,
+				TEXT("apply_plan_json: fingerprint mismatch (provided='%s', current='%s'). "
+					 "Proceeding anyway — resolve+execute pipeline will validate."),
+				*ProvidedFingerprint, *CurrentFingerprint);
+		}
+		else if (bPrefixMatch)
+		{
+			UE_LOG(LogOliveBPTools, Log,
+				TEXT("apply_plan_json: fingerprint prefix match accepted (provided='%s' -> current='%s')"),
+				*ProvidedFingerprint, *CurrentFingerprint);
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// 8. Post-resolve passes + Lower (v1.0 only)
+	// ------------------------------------------------------------------
+	const bool bIsV2Plan = (ExpandedPlan.SchemaVersion == TEXT("2.0"));
+
+	// Collapse exec chains through pure steps (pure nodes have no exec pins)
+	FOliveBlueprintPlanResolver::CollapseExecThroughPureSteps(
+		ExpandedPlan, ResolveResult.ResolvedSteps, ResolveResult.GlobalNotes);
+
+	// Auto-fix exec_after/exec_outputs conflicts before validation (RC5)
+	FOlivePlanValidator::AutoFixExecConflicts(ExpandedPlan, ResolveResult.GlobalNotes);
+
 	// ------------------------------------------------------------------
 	// 8b. Phase 0: Structural plan validation (before execution)
 	// ------------------------------------------------------------------
 	{
 		FOlivePlanValidationResult Phase0Result = FOlivePlanValidator::Validate(
-			Plan, ResolveResult.ResolvedSteps, Blueprint);
+			ExpandedPlan, ResolveResult.ResolvedSteps, Blueprint, GraphContext);
 
 		if (!Phase0Result.bSuccess)
 		{
@@ -6660,7 +6736,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 	if (!bIsV2Plan)
 	{
 		LowerResult = FOliveBlueprintPlanLowerer::Lower(
-			ResolveResult.ResolvedSteps, Plan, GraphTarget, AssetPath);
+			ResolveResult.ResolvedSteps, ExpandedPlan, GraphTarget, AssetPath);
 		if (!LowerResult.bSuccess)
 		{
 			TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
@@ -6685,8 +6761,8 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 	Request.TargetAsset = Blueprint;
 	Request.OperationDescription = FText::Format(
 		NSLOCTEXT("OliveBPTools", "ApplyPlanJson", "AI Agent: Apply Plan JSON ({0} steps, v{1})"),
-		FText::AsNumber(Plan.Steps.Num()),
-		FText::FromString(Plan.SchemaVersion));
+		FText::AsNumber(ExpandedPlan.Steps.Num()),
+		FText::FromString(ExpandedPlan.SchemaVersion));
 	Request.OperationCategory = TEXT("plan_apply");
 	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
 	Request.bAutoCompile = true;
@@ -6703,11 +6779,11 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 		// v2.0 PATH: FOlivePlanExecutor with pin introspection
 		// ============================================================
 
-		// Capture resolved steps, plan, and resolver notes by value for the lambda.
-		// ResolvedSteps is small (one struct per step). Plan is also small.
-		// GlobalNotes carry transparency data from ExpandPlanInputs.
+		// Capture resolved steps, expanded plan, and resolver notes by value for the lambda.
+		// ResolvedSteps is small (one struct per step). ExpandedPlan is also small.
+		// GlobalNotes carry transparency data from ExpandPlanInputs/ExpandComponentRefs.
 		TArray<FOliveResolvedStep> CapturedResolvedSteps = ResolveResult.ResolvedSteps;
-		FOliveIRBlueprintPlan CapturedPlan = Plan;
+		FOliveIRBlueprintPlan CapturedPlan = ExpandedPlan;
 		TArray<FOliveResolverNote> CapturedResolverNotes = ResolveResult.GlobalNotes;
 
 		Executor.BindLambda(
@@ -7226,7 +7302,23 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 	// If the pipeline reports compile errors, the nodes created by this plan
 	// are now zombie nodes (transaction already committed in Stage 4).
 	// Remove them so the AI can retry with a clean graph.
-	if (bIsV2Plan && !PipelineResult.bSuccess && PipelineResult.ResultData.IsValid())
+
+	// Check if this was a partial success (all nodes created, some wiring failed).
+	// Partial success should NOT be rolled back -- the nodes and successful wires
+	// persist, and the AI can fix the remaining failures with connect_pins.
+	// Rollback is only for TOTAL failure (Phase 1 node creation aborted).
+	bool bIsPartialSuccess = false;
+	if (PipelineResult.ResultData.IsValid())
+	{
+		FString Status;
+		if (PipelineResult.ResultData->TryGetStringField(TEXT("status"), Status)
+			&& Status == TEXT("partial_success"))
+		{
+			bIsPartialSuccess = true;
+		}
+	}
+
+	if (bIsV2Plan && !PipelineResult.bSuccess && !bIsPartialSuccess && PipelineResult.ResultData.IsValid())
 	{
 		bool bCompileSuccess = true;
 		const TSharedPtr<FJsonObject>* CompileResultObj = nullptr;

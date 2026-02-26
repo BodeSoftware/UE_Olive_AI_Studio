@@ -477,6 +477,23 @@ FOliveBlueprintWriteResult FOliveGraphWriter::ConnectPins(
 	}
 
 	UEdGraphPin* SourcePin = FindPin(SourceNode, SourcePinName);
+	if (!SourcePin && SourcePinName == TEXT("auto"))
+	{
+		// Resolve "auto" to first non-exec output pin (defensive fallback for v1.0 lowerer path)
+		for (UEdGraphPin* TestPin : SourceNode->Pins)
+		{
+			if (TestPin && TestPin->Direction == EGPD_Output
+				&& TestPin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec
+				&& !TestPin->bHidden)
+			{
+				SourcePin = TestPin;
+				UE_LOG(LogOliveGraphWriter, Log,
+					TEXT("Auto-resolved source pin 'auto' on node '%s' to '%s'"),
+					*SourceNodeId, *TestPin->GetName());
+				break;
+			}
+		}
+	}
 	if (!SourcePin)
 	{
 		return FOliveBlueprintWriteResult::Error(
@@ -494,6 +511,23 @@ FOliveBlueprintWriteResult FOliveGraphWriter::ConnectPins(
 	}
 
 	UEdGraphPin* TargetPin = FindPin(TargetNode, TargetPinName);
+	if (!TargetPin && TargetPinName == TEXT("auto"))
+	{
+		// Resolve "auto" to first non-exec input pin (defensive fallback for v1.0 lowerer path)
+		for (UEdGraphPin* TestPin : TargetNode->Pins)
+		{
+			if (TestPin && TestPin->Direction == EGPD_Input
+				&& TestPin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec
+				&& !TestPin->bHidden)
+			{
+				TargetPin = TestPin;
+				UE_LOG(LogOliveGraphWriter, Log,
+					TEXT("Auto-resolved target pin 'auto' on node '%s' to '%s'"),
+					*TargetNodeId, *TestPin->GetName());
+				break;
+			}
+		}
+	}
 	if (!TargetPin)
 	{
 		return FOliveBlueprintWriteResult::Error(

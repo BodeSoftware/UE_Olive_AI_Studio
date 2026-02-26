@@ -1,0 +1,119 @@
+{
+    "template_id": "projectile_patterns",
+    "template_type": "reference",
+    "display_name": "Projectile Behavior Patterns",
+
+    "catalog_description": "Common projectile behavior patterns for Blueprints created with the projectile factory template: hit response, damage application, bounce counting, homing target assignment, and auto-destroy with lifespan.",
+    "catalog_examples": "",
+
+    "tags": "projectile hit damage bounce homing lifespan destroy collision overlap apply point damage movement component",
+
+    "patterns": [
+        {
+            "name": "ProjectileHitResponse",
+            "description": "Respond when the projectile's collision sphere hits something. Uses UK2Node_ComponentBoundEvent bound to OnComponentHit on the CollisionSphere component. This is the primary pattern for projectile impact logic.",
+            "notes": "The projectile factory template names the root collision component 'CollisionSphere'. Use that as ComponentPropertyName. After the hit event fires, you typically apply damage to OtherActor, spawn effects, then destroy the projectile. The Hit output pin (FHitResult) contains impact point, normal, and bone name for precise hit handling.",
+            "steps": [
+                {
+                    "note": "Component bound events cannot be created via plan JSON ops. Use blueprint.add_node directly.",
+                    "tool": "blueprint.add_node",
+                    "class_name": "K2Node_ComponentBoundEvent",
+                    "properties": {
+                        "ComponentPropertyName": "CollisionSphere",
+                        "DelegatePropertyName": "OnComponentHit"
+                    }
+                },
+                {
+                    "note": "After placing the hit event, use plan JSON for the response logic. Output pins: HitComponent (UPrimitiveComponent), OtherActor (AActor), OtherComp (UPrimitiveComponent), NormalImpulse (FVector), Hit (FHitResult). A typical chain: check OtherActor is valid → apply damage → spawn impact VFX → DestroyActor."
+                }
+            ]
+        },
+        {
+            "name": "ApplyDamageOnHit",
+            "description": "Apply damage to the actor that the projectile hit. Uses UGameplayStatics::ApplyDamage which is the simplest damage function. Wire this after a hit event.",
+            "notes": "ApplyDamage takes: DamagedActor (wire OtherActor from hit event), BaseDamage (wire from a damage variable like BulletDamage), EventInstigator (use GetInstigatorController on self), DamageCauser (use self reference), DamageTypeClass (leave default or wire a specific UDamageType class). For directional/located damage, use ApplyPointDamage instead but note it requires HitFromDirection (FVector) to be wired — compute it from the projectile's velocity via GetVelocity or store it before impact.",
+            "steps": [
+                {
+                    "step_id": "get_damage",
+                    "op": "get_var",
+                    "target": "BulletDamage"
+                },
+                {
+                    "step_id": "get_instigator",
+                    "op": "call",
+                    "target": "GetInstigatorController"
+                },
+                {
+                    "step_id": "apply_dmg",
+                    "op": "call",
+                    "target": "ApplyDamage",
+                    "inputs": {
+                        "DamagedActor": "@hit_event.OtherActor",
+                        "BaseDamage": "@get_damage.auto",
+                        "EventInstigator": "@get_instigator.ReturnValue"
+                    },
+                    "exec_after": "get_damage"
+                }
+            ]
+        },
+        {
+            "name": "BounceCountingWithDestroy",
+            "description": "Track how many times a projectile has bounced and destroy it after a maximum number of bounces. Requires a BounceCount integer variable and a MaxBounces integer variable on the Blueprint. Uses OnProjectileBounce delegate from ProjectileMovementComponent.",
+            "notes": "OnProjectileBounce is a delegate on UProjectileMovementComponent, so it requires UK2Node_ComponentBoundEvent with ComponentPropertyName='ProjectileMovement' and DelegatePropertyName='OnProjectileBounce'. The delegate provides Hit (FHitResult) and ImpactResult (FVector) output pins. Increment BounceCount each bounce, compare against MaxBounces, and branch to DestroyActor. The projectile factory template must have should_bounce=true for this to trigger.",
+            "steps": [
+                {
+                    "note": "First add BounceCount and MaxBounces integer variables via blueprint.add_variable, then place the component bound event.",
+                    "tool": "blueprint.add_node",
+                    "class_name": "K2Node_ComponentBoundEvent",
+                    "properties": {
+                        "ComponentPropertyName": "ProjectileMovement",
+                        "DelegatePropertyName": "OnProjectileBounce"
+                    }
+                },
+                {
+                    "note": "After the bounce event, use plan JSON: get_var BounceCount → increment (Add_IntInt + 1) → set_var BounceCount → get_var MaxBounces → branch (BounceCount >= MaxBounces) → true: DestroyActor."
+                }
+            ]
+        },
+        {
+            "name": "HomingTargetAssignment",
+            "description": "Set the homing target for a projectile at runtime. The projectile factory template configures ProjectileMovementComponent with bIsHomingProjectile and HomingAccelerationMagnitude, but the actual target must be assigned at spawn time or via a setter function.",
+            "notes": "HomingTargetComponent is a TWeakObjectPtr<USceneComponent> on UProjectileMovementComponent. Set it to the root component of the target actor. Typically done from the spawning Blueprint (weapon/character) immediately after SpawnActor, not inside the projectile itself. If setting from within the projectile, use BeginPlay to find and assign the target.",
+            "steps": [
+                {
+                    "note": "From the SPAWNING Blueprint (weapon/character), after SpawnActor returns the projectile reference:",
+                    "step_id": "get_movement",
+                    "op": "call",
+                    "target": "GetComponentByClass",
+                    "inputs": {
+                        "ComponentClass": "ProjectileMovementComponent"
+                    }
+                },
+                {
+                    "note": "Then call SetHomingTargetComponent on the ProjectileMovementComponent, passing the target actor's root component. Alternatively, expose a public function on the projectile BP like 'SetTarget(AActor)' that internally does GetRootComponent + SetHomingTargetComponent."
+                }
+            ]
+        },
+        {
+            "name": "LifespanAutoDestroy",
+            "description": "Automatically destroy the projectile after a set time. Uses SetLifeSpan in BeginPlay or at spawn time. This prevents orphaned projectiles that miss everything from persisting forever.",
+            "notes": "Call SetLifeSpan with a float duration (e.g., 5.0 seconds) in the projectile's BeginPlay event, or call it from the spawner after SpawnActor. SetLifeSpan is simpler than using a timer + DestroyActor. A value of 0 means no auto-destroy. Typical values: bullets 2-3s, rockets 5-10s, grenades 3-5s.",
+            "steps": [
+                {
+                    "step_id": "evt",
+                    "op": "event",
+                    "target": "BeginPlay"
+                },
+                {
+                    "step_id": "set_life",
+                    "op": "call",
+                    "target": "SetLifeSpan",
+                    "inputs": {
+                        "InLifespan": "5.0"
+                    },
+                    "exec_after": "evt"
+                }
+            ]
+        }
+    ]
+}

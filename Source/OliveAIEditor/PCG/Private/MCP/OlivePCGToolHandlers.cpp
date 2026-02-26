@@ -182,13 +182,20 @@ bool FOlivePCGToolHandlers::LoadGraphFromParams(
 
 FOliveToolResult FOlivePCGToolHandlers::HandleCreate(const TSharedPtr<FJsonObject>& Params)
 {
-	FString Path = Params->GetStringField(TEXT("path"));
+	FString Path;
+	if (!Params->TryGetStringField(TEXT("path"), Path) || Path.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'path' is missing"),
+			TEXT("Provide 'path' as a /Game/... asset path. Example: \"/Game/PCG/PCG_MyGraph\""));
+	}
 
 	UPCGGraph* NewGraph = FOlivePCGWriter::Get().CreatePCGGraph(Path);
 	if (!NewGraph)
 	{
 		return FOliveToolResult::Error(TEXT("CREATE_FAILED"),
-			FString::Printf(TEXT("Failed to create PCG graph at '%s'"), *Path));
+			FString::Printf(TEXT("Failed to create PCG graph at '%s'"), *Path),
+			TEXT("Verify the path is a valid /Game/... asset path and the parent directory exists"));
 	}
 
 	TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
@@ -211,7 +218,8 @@ FOliveToolResult FOlivePCGToolHandlers::HandleRead(const TSharedPtr<FJsonObject>
 	TOptional<FOliveIRPCGGraph> IR = FOlivePCGReader::Get().ReadPCGGraph(Graph);
 	if (!IR.IsSet())
 	{
-		return FOliveToolResult::Error(TEXT("READ_FAILED"), TEXT("Failed to read PCG graph"));
+		return FOliveToolResult::Error(TEXT("READ_FAILED"), TEXT("Failed to read PCG graph"),
+			TEXT("The asset may be corrupted or not a valid PCG graph. Use project.search to verify."));
 	}
 
 	return FOliveToolResult::Success(IR.GetValue().ToJson());
@@ -226,7 +234,13 @@ FOliveToolResult FOlivePCGToolHandlers::HandleAddNode(const TSharedPtr<FJsonObje
 		return Error;
 	}
 
-	FString SettingsClass = Params->GetStringField(TEXT("settings_class"));
+	FString SettingsClass;
+	if (!Params->TryGetStringField(TEXT("settings_class"), SettingsClass) || SettingsClass.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'settings_class' is missing"),
+			TEXT("Provide the PCG settings class name. Example: \"SurfaceSampler\", \"StaticMeshSpawner\""));
+	}
 	int32 PosX = Params->HasField(TEXT("pos_x")) ? (int32)Params->GetNumberField(TEXT("pos_x")) : 0;
 	int32 PosY = Params->HasField(TEXT("pos_y")) ? (int32)Params->GetNumberField(TEXT("pos_y")) : 0;
 
@@ -256,7 +270,13 @@ FOliveToolResult FOlivePCGToolHandlers::HandleRemoveNode(const TSharedPtr<FJsonO
 		return Error;
 	}
 
-	FString NodeId = Params->GetStringField(TEXT("node_id"));
+	FString NodeId;
+	if (!Params->TryGetStringField(TEXT("node_id"), NodeId) || NodeId.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'node_id' is missing"),
+			TEXT("Provide the node_id of the node to remove. Use pcg.read to see node IDs."));
+	}
 
 	if (NodeId == TEXT("input") || NodeId == TEXT("output"))
 	{
@@ -289,10 +309,34 @@ FOliveToolResult FOlivePCGToolHandlers::HandleConnect(const TSharedPtr<FJsonObje
 		return Error;
 	}
 
-	FString SourceNodeId = Params->GetStringField(TEXT("source_node_id"));
-	FString SourcePin = Params->GetStringField(TEXT("source_pin"));
-	FString TargetNodeId = Params->GetStringField(TEXT("target_node_id"));
-	FString TargetPin = Params->GetStringField(TEXT("target_pin"));
+	FString SourceNodeId;
+	if (!Params->TryGetStringField(TEXT("source_node_id"), SourceNodeId) || SourceNodeId.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'source_node_id' is missing"),
+			TEXT("Provide the node_id of the source node. Use pcg.read to see node IDs."));
+	}
+	FString SourcePin;
+	if (!Params->TryGetStringField(TEXT("source_pin"), SourcePin) || SourcePin.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'source_pin' is missing"),
+			TEXT("Provide the output pin name on the source node. Use pcg.read to see pin names."));
+	}
+	FString TargetNodeId;
+	if (!Params->TryGetStringField(TEXT("target_node_id"), TargetNodeId) || TargetNodeId.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'target_node_id' is missing"),
+			TEXT("Provide the node_id of the target node. Use pcg.read to see node IDs."));
+	}
+	FString TargetPin;
+	if (!Params->TryGetStringField(TEXT("target_pin"), TargetPin) || TargetPin.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'target_pin' is missing"),
+			TEXT("Provide the input pin name on the target node. Use pcg.read to see pin names."));
+	}
 
 	bool bSuccess = FOlivePCGWriter::Get().Connect(Graph, SourceNodeId, SourcePin, TargetNodeId, TargetPin);
 	if (!bSuccess)
@@ -322,10 +366,34 @@ FOliveToolResult FOlivePCGToolHandlers::HandleDisconnect(const TSharedPtr<FJsonO
 		return Error;
 	}
 
-	FString SourceNodeId = Params->GetStringField(TEXT("source_node_id"));
-	FString SourcePin = Params->GetStringField(TEXT("source_pin"));
-	FString TargetNodeId = Params->GetStringField(TEXT("target_node_id"));
-	FString TargetPin = Params->GetStringField(TEXT("target_pin"));
+	FString SourceNodeId;
+	if (!Params->TryGetStringField(TEXT("source_node_id"), SourceNodeId) || SourceNodeId.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'source_node_id' is missing"),
+			TEXT("Provide the node_id of the source node. Use pcg.read to see node IDs."));
+	}
+	FString SourcePin;
+	if (!Params->TryGetStringField(TEXT("source_pin"), SourcePin) || SourcePin.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'source_pin' is missing"),
+			TEXT("Provide the output pin name on the source node."));
+	}
+	FString TargetNodeId;
+	if (!Params->TryGetStringField(TEXT("target_node_id"), TargetNodeId) || TargetNodeId.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'target_node_id' is missing"),
+			TEXT("Provide the node_id of the target node."));
+	}
+	FString TargetPin;
+	if (!Params->TryGetStringField(TEXT("target_pin"), TargetPin) || TargetPin.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'target_pin' is missing"),
+			TEXT("Provide the input pin name on the target node."));
+	}
 
 	bool bSuccess = FOlivePCGWriter::Get().Disconnect(Graph, SourceNodeId, SourcePin, TargetNodeId, TargetPin);
 	if (!bSuccess)
@@ -355,7 +423,13 @@ FOliveToolResult FOlivePCGToolHandlers::HandleSetSettings(const TSharedPtr<FJson
 		return Error;
 	}
 
-	FString NodeId = Params->GetStringField(TEXT("node_id"));
+	FString NodeId;
+	if (!Params->TryGetStringField(TEXT("node_id"), NodeId) || NodeId.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'node_id' is missing"),
+			TEXT("Provide the node_id of the node to configure. Use pcg.read to see node IDs."));
+	}
 
 	TMap<FString, FString> Properties;
 	const TSharedPtr<FJsonObject>* PropsJson;
@@ -399,7 +473,13 @@ FOliveToolResult FOlivePCGToolHandlers::HandleAddSubgraph(const TSharedPtr<FJson
 		return Error;
 	}
 
-	FString SubgraphPath = Params->GetStringField(TEXT("subgraph_path"));
+	FString SubgraphPath;
+	if (!Params->TryGetStringField(TEXT("subgraph_path"), SubgraphPath) || SubgraphPath.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'subgraph_path' is missing"),
+			TEXT("Provide the asset path of the subgraph to reference. Example: \"/Game/PCG/PCG_SubGraph\""));
+	}
 	int32 PosX = Params->HasField(TEXT("pos_x")) ? (int32)Params->GetNumberField(TEXT("pos_x")) : 0;
 	int32 PosY = Params->HasField(TEXT("pos_y")) ? (int32)Params->GetNumberField(TEXT("pos_y")) : 0;
 
@@ -444,6 +524,7 @@ FOliveToolResult FOlivePCGToolHandlers::HandleExecute(const TSharedPtr<FJsonObje
 	}
 	else
 	{
-		return FOliveToolResult::Error(TEXT("EXECUTE_FAILED"), ExecResult.Summary);
+		return FOliveToolResult::Error(TEXT("EXECUTE_FAILED"), ExecResult.Summary,
+			TEXT("Check the PCG graph for invalid connections or missing settings. Use pcg.read to inspect the graph."));
 	}
 }

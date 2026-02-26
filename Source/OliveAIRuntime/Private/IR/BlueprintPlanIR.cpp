@@ -22,7 +22,8 @@ namespace OlivePlanOps
 			Event, CustomEvent, ForLoop, ForEachLoop, Delay,
 			IsValid, PrintString, SpawnActor, MakeStruct,
 			BreakStruct, Return, Comment,
-			WhileLoop, DoOnce, FlipFlop, Gate
+			WhileLoop, DoOnce, FlipFlop, Gate,
+			CallDelegate
 		};
 		return Ops;
 	}

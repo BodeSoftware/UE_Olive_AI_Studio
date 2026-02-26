@@ -20,7 +20,7 @@ FOliveBlueprintWriteResult FOliveGraphBatchExecutor::DispatchWriterOp(
 		FString NodeType = OliveToolParamHelpers::GetOptionalString(OpParams, TEXT("type"));
 		if (NodeType.IsEmpty())
 		{
-			return FOliveBlueprintWriteResult::Error(TEXT("Missing required param 'type' for blueprint.add_node"));
+			return FOliveBlueprintWriteResult::Error(TEXT("Missing required param 'type' for blueprint.add_node. Provide the node type, e.g. \"PrintString\", \"Delay\", \"K2Node_IfThenElse\"."));
 		}
 
 		TMap<FString, FString> NodeProperties = OliveToolParamHelpers::ParseNodeProperties(OpParams);
@@ -36,7 +36,7 @@ FOliveBlueprintWriteResult FOliveGraphBatchExecutor::DispatchWriterOp(
 		FString Target = OliveToolParamHelpers::GetOptionalString(OpParams, TEXT("target"));
 		if (Source.IsEmpty() || Target.IsEmpty())
 		{
-			return FOliveBlueprintWriteResult::Error(TEXT("Missing required params 'source' and/or 'target' for blueprint.connect_pins"));
+			return FOliveBlueprintWriteResult::Error(TEXT("Missing required params 'source' and/or 'target' for blueprint.connect_pins. Format: \"node_id.PinName\", e.g. \"node_1.ReturnValue\" -> \"node_2.Input\"."));
 		}
 		return Writer.ConnectPins(BlueprintPath, GraphName, Source, Target);
 	}
@@ -46,7 +46,7 @@ FOliveBlueprintWriteResult FOliveGraphBatchExecutor::DispatchWriterOp(
 		FString Target = OliveToolParamHelpers::GetOptionalString(OpParams, TEXT("target"));
 		if (Source.IsEmpty() || Target.IsEmpty())
 		{
-			return FOliveBlueprintWriteResult::Error(TEXT("Missing required params 'source' and/or 'target' for blueprint.disconnect_pins"));
+			return FOliveBlueprintWriteResult::Error(TEXT("Missing required params 'source' and/or 'target' for blueprint.disconnect_pins. Format: \"node_id.PinName\"."));
 		}
 		return Writer.DisconnectPins(BlueprintPath, GraphName, Source, Target);
 	}
@@ -56,7 +56,7 @@ FOliveBlueprintWriteResult FOliveGraphBatchExecutor::DispatchWriterOp(
 		FString Value = OliveToolParamHelpers::GetOptionalString(OpParams, TEXT("value"));
 		if (Pin.IsEmpty())
 		{
-			return FOliveBlueprintWriteResult::Error(TEXT("Missing required param 'pin' for blueprint.set_pin_default"));
+			return FOliveBlueprintWriteResult::Error(TEXT("Missing required param 'pin' for blueprint.set_pin_default. Format: \"node_id.PinName\", e.g. \"node_1.Duration\"."));
 		}
 		return Writer.SetPinDefault(BlueprintPath, GraphName, Pin, Value);
 	}
@@ -67,7 +67,7 @@ FOliveBlueprintWriteResult FOliveGraphBatchExecutor::DispatchWriterOp(
 		FString PropertyValue = OliveToolParamHelpers::GetOptionalString(OpParams, TEXT("value"));
 		if (NodeId.IsEmpty() || PropertyName.IsEmpty())
 		{
-			return FOliveBlueprintWriteResult::Error(TEXT("Missing required params 'node_id' and/or 'property' for blueprint.set_node_property"));
+			return FOliveBlueprintWriteResult::Error(TEXT("Missing required params 'node_id' and/or 'property' for blueprint.set_node_property. Provide the node ID and the UPROPERTY name."));
 		}
 		return Writer.SetNodeProperty(BlueprintPath, GraphName, NodeId, PropertyName, PropertyValue);
 	}
@@ -76,7 +76,7 @@ FOliveBlueprintWriteResult FOliveGraphBatchExecutor::DispatchWriterOp(
 		FString NodeId = OliveToolParamHelpers::GetOptionalString(OpParams, TEXT("node_id"));
 		if (NodeId.IsEmpty())
 		{
-			return FOliveBlueprintWriteResult::Error(TEXT("Missing required param 'node_id' for blueprint.remove_node"));
+			return FOliveBlueprintWriteResult::Error(TEXT("Missing required param 'node_id' for blueprint.remove_node. Provide the node ID from a prior add_node or from blueprint.read_graph."));
 		}
 		return Writer.RemoveNode(BlueprintPath, GraphName, NodeId);
 	}

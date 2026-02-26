@@ -57,6 +57,13 @@ namespace OliveNodeTypes
 	const FString PrintString = TEXT("PrintString");
 	const FString Comment = TEXT("Comment");
 	const FString Reroute = TEXT("Reroute");
+
+	// Delegate
+	const FString CallDelegate = TEXT("CallDelegate");
+
+	// Function Parameter (virtual -- maps to existing FunctionEntry/FunctionResult nodes)
+	const FString FunctionInput = TEXT("FunctionInput");
+	const FString FunctionOutput = TEXT("FunctionOutput");
 }
 
 /**
@@ -143,9 +150,10 @@ public:
 	 *
 	 * @param NodeType  The type string to validate (use OliveNodeTypes constants)
 	 * @param Properties  The node properties (needed for CallFunction/Event resolution)
+	 * @param Blueprint  Optional Blueprint for searching Blueprint-defined functions (may be nullptr for pre-checks)
 	 * @return True if the node type can be created with the given properties
 	 */
-	bool ValidateNodeType(const FString& NodeType, const TMap<FString, FString>& Properties) const;
+	bool ValidateNodeType(const FString& NodeType, const TMap<FString, FString>& Properties, UBlueprint* Blueprint = nullptr) const;
 
 	/**
 	 * Create a node by resolving the type string as a UK2Node subclass name.
@@ -356,6 +364,24 @@ private:
 		const TMap<FString, FString>& Properties);
 
 	/**
+	 * Create a Call Delegate (broadcast event dispatcher) node.
+	 * Required properties: "delegate_name" -- the name of the multicast delegate
+	 * property on the Blueprint (e.g., "OnFired").
+	 * Searches SkeletonGeneratedClass (fallback GeneratedClass) for an
+	 * FMulticastDelegateProperty matching the name, then creates a
+	 * UK2Node_CallDelegate with SetFromProperty + AllocateDefaultPins.
+	 *
+	 * @param Blueprint The Blueprint containing the graph
+	 * @param Graph The target graph
+	 * @param Properties Must contain "delegate_name"
+	 * @return The created CallDelegate node, or nullptr if the delegate was not found
+	 */
+	UK2Node* CreateCallDelegateNode(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		const TMap<FString, FString>& Properties);
+
+	/**
 	 * Create a macro instance node from the StandardMacros library
 	 * @param Blueprint The Blueprint containing the graph
 	 * @param Graph The target graph
@@ -417,12 +443,14 @@ private:
 	UClass* FindClass(const FString& ClassName);
 
 	/**
-	 * Find a function by name, optionally within a specific class
+	 * Find a function by name, optionally within a specific class.
+	 * Searches: specified class -> Blueprint's GeneratedClass -> common library classes.
 	 * @param FunctionName Name of the function to find
-	 * @param ClassName Optional class to search in
+	 * @param ClassName Optional class to search in first
+	 * @param Blueprint Optional Blueprint whose GeneratedClass is searched for Blueprint-defined functions
 	 * @return The function if found, nullptr otherwise
 	 */
-	UFunction* FindFunction(const FString& FunctionName, const FString& ClassName = TEXT(""));
+	UFunction* FindFunction(const FString& FunctionName, const FString& ClassName = TEXT(""), UBlueprint* Blueprint = nullptr);
 
 	/**
 	 * Find a struct by name or path

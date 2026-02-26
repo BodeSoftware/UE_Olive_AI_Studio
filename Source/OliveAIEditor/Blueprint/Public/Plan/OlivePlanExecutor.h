@@ -313,7 +313,8 @@ private:
     const FOlivePinManifestEntry* FindTypeCompatibleOutput(
         const FOlivePinManifest& SourceManifest,
         EOliveIRTypeCategory TargetTypeCategory,
-        const FString& TargetSubCategory);
+        const FString& TargetSubCategory,
+        const FString& TargetPinName = FString());
 
     /** Parse "@stepId.pinHint" into components */
     bool ParseDataRef(

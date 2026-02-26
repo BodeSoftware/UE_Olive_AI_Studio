@@ -16,7 +16,8 @@ DEFINE_LOG_CATEGORY(LogOlivePlanValidator);
 FOlivePlanValidationResult FOlivePlanValidator::Validate(
 	const FOliveIRBlueprintPlan& Plan,
 	const TArray<FOliveResolvedStep>& ResolvedSteps,
-	UBlueprint* Blueprint)
+	UBlueprint* Blueprint,
+	const FOliveGraphContext& GraphContext)
 {
 	FOlivePlanValidationResult Result;
 
@@ -39,6 +40,7 @@ FOlivePlanValidationResult FOlivePlanValidator::Validate(
 	// Run all checks
 	CheckComponentFunctionTargets(Context, Result);
 	CheckExecWiringConflicts(Context, Result);
+	CheckLatentInFunctionGraph(Context, ResolvedSteps, GraphContext, Result);
 
 	if (Result.Errors.Num() > 0)
 	{
@@ -51,6 +53,67 @@ FOlivePlanValidationResult FOlivePlanValidator::Validate(
 		Result.Errors.Num(), Result.Warnings.Num());
 
 	return Result;
+}
+
+// ============================================================================
+// AutoFixExecConflicts
+// ============================================================================
+
+bool FOlivePlanValidator::AutoFixExecConflicts(
+	FOliveIRBlueprintPlan& Plan,
+	TArray<FOliveResolverNote>& OutNotes)
+{
+	// Build set of steps that have exec_outputs (multi-output wiring).
+	TSet<FString> StepsWithExecOutputs;
+	for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
+	{
+		if (Step.ExecOutputs.Num() > 0)
+		{
+			StepsWithExecOutputs.Add(Step.StepId);
+		}
+	}
+
+	if (StepsWithExecOutputs.Num() == 0)
+	{
+		return false;
+	}
+
+	bool bFixed = false;
+
+	for (FOliveIRBlueprintPlanStep& Step : Plan.Steps)
+	{
+		if (Step.ExecAfter.IsEmpty())
+		{
+			continue;
+		}
+
+		if (!StepsWithExecOutputs.Contains(Step.ExecAfter))
+		{
+			continue;
+		}
+
+		// Conflict found: exec_after targets a step that uses exec_outputs.
+		// FIX RC5: Remove the redundant exec_after. The step should be wired
+		// via exec_outputs on the target step instead.
+		FOliveResolverNote Note;
+		Note.Field = FString::Printf(TEXT("step '%s' exec_after"), *Step.StepId);
+		Note.OriginalValue = Step.ExecAfter;
+		Note.ResolvedValue = TEXT("(removed)");
+		Note.Reason = FString::Printf(
+			TEXT("exec_after:'%s' conflicts with '%s'.exec_outputs. "
+			     "Removed redundant exec_after to prevent double-claiming the exec output pin."),
+			*Step.ExecAfter, *Step.ExecAfter);
+		OutNotes.Add(MoveTemp(Note));
+
+		UE_LOG(LogOlivePlanValidator, Log,
+			TEXT("AutoFixExecConflicts: Removed exec_after:'%s' from step '%s' (conflicted with exec_outputs)"),
+			*Step.ExecAfter, *Step.StepId);
+
+		Step.ExecAfter.Empty();
+		bFixed = true;
+	}
+
+	return bFixed;
 }
 
 // ============================================================================
@@ -284,5 +347,60 @@ void FOlivePlanValidator::CheckExecWiringConflicts(
 		UE_LOG(LogOlivePlanValidator, Warning,
 			TEXT("Phase 0: Step '%s' exec_after conflicts with '%s' exec_outputs (%s)"),
 			*Step.StepId, *ConflictStep.StepId, *ExecOutputsDesc);
+	}
+}
+
+// ============================================================================
+// Check 3: Latent-in-Function-Graph Guard
+// ============================================================================
+
+void FOlivePlanValidator::CheckLatentInFunctionGraph(
+	const FOlivePlanValidationContext& Context,
+	const TArray<FOliveResolvedStep>& ResolvedSteps,
+	const FOliveGraphContext& GraphContext,
+	FOlivePlanValidationResult& Result)
+{
+	if (!GraphContext.bIsFunctionGraph)
+	{
+		return; // Only relevant for function graphs
+	}
+
+	for (int32 i = 0; i < ResolvedSteps.Num(); ++i)
+	{
+		if (!ResolvedSteps[i].bIsLatent)
+		{
+			continue;
+		}
+
+		const FString& StepId = Context.Plan.Steps.IsValidIndex(i)
+			? Context.Plan.Steps[i].StepId
+			: ResolvedSteps[i].StepId;
+
+		// Determine the latent function name for the error message
+		FString LatentName = TEXT("latent action");
+		if (Context.Plan.Steps.IsValidIndex(i)
+			&& Context.Plan.Steps[i].Op == OlivePlanOps::Delay)
+		{
+			LatentName = TEXT("Delay");
+		}
+		else if (const FString* FN = ResolvedSteps[i].Properties.Find(TEXT("function_name")))
+		{
+			LatentName = *FN;
+		}
+
+		Result.Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+			TEXT("LATENT_IN_FUNCTION"),
+			StepId,
+			FString::Printf(TEXT("/steps/%d"), i),
+			FString::Printf(
+				TEXT("Step '%s' uses latent function '%s' which cannot be used in function graph '%s'. "
+					 "Latent calls (Delay, AI MoveTo, etc.) are only allowed in EventGraph. "
+					 "If you need latent behavior, use a Custom Event in EventGraph instead of a function."),
+				*StepId, *LatentName, *GraphContext.GraphName),
+			TEXT("Move this logic to a custom_event in EventGraph, or use SetTimerByFunction as a non-latent alternative.")));
+
+		UE_LOG(LogOlivePlanValidator, Warning,
+			TEXT("Phase 0: LATENT_IN_FUNCTION -- step '%s' uses '%s' in function graph '%s'"),
+			*StepId, *LatentName, *GraphContext.GraphName);
 	}
 }

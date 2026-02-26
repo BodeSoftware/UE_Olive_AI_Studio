@@ -196,7 +196,13 @@ void FOliveCppToolHandlers::RegisterWriteTools()
 
 FOliveToolResult FOliveCppToolHandlers::HandleReadClass(const TSharedPtr<FJsonObject>& Params)
 {
-	FString ClassName = Params->GetStringField(TEXT("class_name"));
+	FString ClassName;
+	if (!Params->TryGetStringField(TEXT("class_name"), ClassName) || ClassName.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'class_name' is missing"),
+			TEXT("Provide the UE class name. Example: \"ACharacter\", \"UActorComponent\""));
+	}
 	bool bIncludeInherited = false;
 	Params->TryGetBoolField(TEXT("include_inherited"), bIncludeInherited);
 	bool bIncludeFunctions = true;
@@ -218,7 +224,13 @@ FOliveToolResult FOliveCppToolHandlers::HandleReadClass(const TSharedPtr<FJsonOb
 
 FOliveToolResult FOliveCppToolHandlers::HandleListBlueprintCallable(const TSharedPtr<FJsonObject>& Params)
 {
-	FString ClassName = Params->GetStringField(TEXT("class_name"));
+	FString ClassName;
+	if (!Params->TryGetStringField(TEXT("class_name"), ClassName) || ClassName.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'class_name' is missing"),
+			TEXT("Provide the UE class name. Example: \"ACharacter\", \"APawn\""));
+	}
 	bool bIncludeInherited = true;
 	Params->TryGetBoolField(TEXT("include_inherited"), bIncludeInherited);
 
@@ -247,7 +259,13 @@ FOliveToolResult FOliveCppToolHandlers::HandleListBlueprintCallable(const TShare
 
 FOliveToolResult FOliveCppToolHandlers::HandleListOverridable(const TSharedPtr<FJsonObject>& Params)
 {
-	FString ClassName = Params->GetStringField(TEXT("class_name"));
+	FString ClassName;
+	if (!Params->TryGetStringField(TEXT("class_name"), ClassName) || ClassName.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'class_name' is missing"),
+			TEXT("Provide the UE class name. Example: \"ACharacter\", \"AActor\""));
+	}
 
 	UClass* Class = FOliveCppReflectionReader::FindClassByName(ClassName);
 	if (!Class)
@@ -274,7 +292,13 @@ FOliveToolResult FOliveCppToolHandlers::HandleListOverridable(const TSharedPtr<F
 
 FOliveToolResult FOliveCppToolHandlers::HandleReadEnum(const TSharedPtr<FJsonObject>& Params)
 {
-	FString EnumName = Params->GetStringField(TEXT("enum_name"));
+	FString EnumName;
+	if (!Params->TryGetStringField(TEXT("enum_name"), EnumName) || EnumName.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'enum_name' is missing"),
+			TEXT("Provide the enum name. Example: \"ECollisionChannel\", \"EMovementMode\""));
+	}
 
 	TOptional<FOliveIRCppEnum> EnumIR = FOliveCppReflectionReader::ReadEnum(EnumName);
 
@@ -290,7 +314,13 @@ FOliveToolResult FOliveCppToolHandlers::HandleReadEnum(const TSharedPtr<FJsonObj
 
 FOliveToolResult FOliveCppToolHandlers::HandleReadStruct(const TSharedPtr<FJsonObject>& Params)
 {
-	FString StructName = Params->GetStringField(TEXT("struct_name"));
+	FString StructName;
+	if (!Params->TryGetStringField(TEXT("struct_name"), StructName) || StructName.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'struct_name' is missing"),
+			TEXT("Provide the struct name. Example: \"FVector\", \"FHitResult\""));
+	}
 	bool bIncludeInherited = false;
 	Params->TryGetBoolField(TEXT("include_inherited"), bIncludeInherited);
 
@@ -312,7 +342,13 @@ FOliveToolResult FOliveCppToolHandlers::HandleReadStruct(const TSharedPtr<FJsonO
 
 FOliveToolResult FOliveCppToolHandlers::HandleReadHeader(const TSharedPtr<FJsonObject>& Params)
 {
-	FString FilePath = Params->GetStringField(TEXT("file_path"));
+	FString FilePath;
+	if (!Params->TryGetStringField(TEXT("file_path"), FilePath) || FilePath.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'file_path' is missing"),
+			TEXT("Provide the header file path relative to the project Source/ directory. Example: \"MyProject/Public/MyActor.h\""));
+	}
 	int32 StartLine = 0;
 	int32 EndLine = 0;
 	if (Params->HasField(TEXT("start_line")))
@@ -337,7 +373,13 @@ FOliveToolResult FOliveCppToolHandlers::HandleReadHeader(const TSharedPtr<FJsonO
 
 FOliveToolResult FOliveCppToolHandlers::HandleReadSource(const TSharedPtr<FJsonObject>& Params)
 {
-	FString FilePath = Params->GetStringField(TEXT("file_path"));
+	FString FilePath;
+	if (!Params->TryGetStringField(TEXT("file_path"), FilePath) || FilePath.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'file_path' is missing"),
+			TEXT("Provide the source file path relative to the project Source/ directory. Example: \"MyProject/Private/MyActor.cpp\""));
+	}
 	int32 StartLine = 0;
 	int32 EndLine = 0;
 	if (Params->HasField(TEXT("start_line")))
@@ -391,9 +433,27 @@ FOliveToolResult FOliveCppToolHandlers::HandleListProjectClasses(const TSharedPt
 
 FOliveToolResult FOliveCppToolHandlers::HandleCreateClass(const TSharedPtr<FJsonObject>& Params)
 {
-	FString ClassName = Params->GetStringField(TEXT("class_name"));
-	FString ParentClass = Params->GetStringField(TEXT("parent_class"));
-	FString ModuleName = Params->GetStringField(TEXT("module_name"));
+	FString ClassName;
+	if (!Params->TryGetStringField(TEXT("class_name"), ClassName) || ClassName.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'class_name' is missing"),
+			TEXT("Provide the new class name without prefix. Example: \"MyCharacter\""));
+	}
+	FString ParentClass;
+	if (!Params->TryGetStringField(TEXT("parent_class"), ParentClass) || ParentClass.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'parent_class' is missing"),
+			TEXT("Provide the parent class name. Example: \"ACharacter\", \"AActor\", \"UActorComponent\""));
+	}
+	FString ModuleName;
+	if (!Params->TryGetStringField(TEXT("module_name"), ModuleName) || ModuleName.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'module_name' is missing"),
+			TEXT("Provide the target module name. Use cpp.list_project_classes to see available modules."));
+	}
 
 	FString SubPath;
 	Params->TryGetStringField(TEXT("path"), SubPath);
@@ -413,9 +473,27 @@ FOliveToolResult FOliveCppToolHandlers::HandleCreateClass(const TSharedPtr<FJson
 
 FOliveToolResult FOliveCppToolHandlers::HandleAddProperty(const TSharedPtr<FJsonObject>& Params)
 {
-	FString FilePath = Params->GetStringField(TEXT("file_path"));
-	FString PropertyName = Params->GetStringField(TEXT("property_name"));
-	FString PropertyType = Params->GetStringField(TEXT("property_type"));
+	FString FilePath;
+	if (!Params->TryGetStringField(TEXT("file_path"), FilePath) || FilePath.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'file_path' is missing"),
+			TEXT("Provide the header file path. Example: \"MyProject/Public/MyActor.h\""));
+	}
+	FString PropertyName;
+	if (!Params->TryGetStringField(TEXT("property_name"), PropertyName) || PropertyName.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'property_name' is missing"),
+			TEXT("Provide the property name. Example: \"MaxHealth\", \"MoveSpeed\""));
+	}
+	FString PropertyType;
+	if (!Params->TryGetStringField(TEXT("property_type"), PropertyType) || PropertyType.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'property_type' is missing"),
+			TEXT("Provide the C++ type. Example: \"float\", \"int32\", \"FVector\", \"TArray<FString>\""));
+	}
 
 	FString Category;
 	Params->TryGetStringField(TEXT("category"), Category);
@@ -438,8 +516,20 @@ FOliveToolResult FOliveCppToolHandlers::HandleAddProperty(const TSharedPtr<FJson
 
 FOliveToolResult FOliveCppToolHandlers::HandleAddFunction(const TSharedPtr<FJsonObject>& Params)
 {
-	FString FilePath = Params->GetStringField(TEXT("file_path"));
-	FString FunctionName = Params->GetStringField(TEXT("function_name"));
+	FString FilePath;
+	if (!Params->TryGetStringField(TEXT("file_path"), FilePath) || FilePath.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'file_path' is missing"),
+			TEXT("Provide the header file path. Example: \"MyProject/Public/MyActor.h\""));
+	}
+	FString FunctionName;
+	if (!Params->TryGetStringField(TEXT("function_name"), FunctionName) || FunctionName.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'function_name' is missing"),
+			TEXT("Provide the function name. Example: \"TakeDamage\", \"GetHealth\""));
+	}
 
 	FString ReturnType;
 	Params->TryGetStringField(TEXT("return_type"), ReturnType);
@@ -486,9 +576,27 @@ FOliveToolResult FOliveCppToolHandlers::HandleCompile(const TSharedPtr<FJsonObje
 
 FOliveToolResult FOliveCppToolHandlers::HandleModifySource(const TSharedPtr<FJsonObject>& Params)
 {
-	FString FilePath = Params->GetStringField(TEXT("file_path"));
-	FString AnchorText = Params->GetStringField(TEXT("anchor_text"));
-	FString Operation = Params->GetStringField(TEXT("operation"));
+	FString FilePath;
+	if (!Params->TryGetStringField(TEXT("file_path"), FilePath) || FilePath.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'file_path' is missing"),
+			TEXT("Provide the source or header file path. Example: \"MyProject/Private/MyActor.cpp\""));
+	}
+	FString AnchorText;
+	if (!Params->TryGetStringField(TEXT("anchor_text"), AnchorText) || AnchorText.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'anchor_text' is missing"),
+			TEXT("Provide the text to search for as the anchor point for the edit."));
+	}
+	FString Operation;
+	if (!Params->TryGetStringField(TEXT("operation"), Operation) || Operation.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'operation' is missing"),
+			TEXT("Provide the operation: \"replace\", \"insert_before\", \"insert_after\", or \"delete\""));
+	}
 
 	FString ReplacementText;
 	Params->TryGetStringField(TEXT("replacement_text"), ReplacementText);

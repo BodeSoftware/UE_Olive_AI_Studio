@@ -644,7 +644,8 @@ namespace
 			TEXT("cast"),
 			TEXT("spawn_actor"),
 			TEXT("make_struct"),
-			TEXT("break_struct")
+			TEXT("break_struct"),
+			TEXT("call_delegate")
 		};
 		return Ops;
 	}
@@ -951,14 +952,13 @@ FOliveIRResult FOliveIRValidator::ValidateBlueprintPlanJson(
 						int32 DotIndex = INDEX_NONE;
 						if (!RefBody.FindChar(TEXT('.'), DotIndex) || DotIndex == 0 || DotIndex == RefBody.Len() - 1)
 						{
-							AddError(
-								TEXT("PLAN_INVALID_REF_FORMAT"),
-								StepLocation + TEXT("/inputs/") + PinName,
-								FString::Printf(TEXT("Step %d ('%s'): input '%s' has malformed @ref '%s' — @ref must reference a step_id from this plan, not a component, variable, or actor name"),
-									i, *StepId, *PinName, *Value),
-								TEXT("@ref format is \"@step_id.pin_name\" (e.g., \"@s1.ReturnValue\"). "
-									 "To access a component, add a 'call' step targeting GetComponentByClass and reference that step's output. "
-									 "To access a variable, add a 'get_var' step and reference its output."));
+							// FIX RC2: Dotless @refs (e.g., "@InteractionSphere") may be
+							// component or variable names that the plan resolver will
+							// auto-expand into get_var steps. Only warn, don't hard-reject.
+							// The resolver's ExpandComponentRefs pass handles these.
+							UE_LOG(LogOliveIRSchema, Log,
+								TEXT("Step %d ('%s'): input '%s' has dotless @ref '%s' — will be treated as component/variable reference by resolver"),
+								i, *StepId, *PinName, *Value);
 							continue;
 						}
 
@@ -986,16 +986,13 @@ FOliveIRResult FOliveIRValidator::ValidateBlueprintPlanJson(
 
 							if (!DeclaredStepIds.Contains(RefStepId))
 							{
-								AddError(
-									TEXT("PLAN_INVALID_INPUT_REF"),
-									StepLocation + TEXT("/inputs/") + PinName,
-									FString::Printf(TEXT("Step %d ('%s'): input '%s' references unknown step '%s'"), i, *StepId, *PinName, *RefStepId),
-									TEXT("@ref must reference a step_id that exists in the steps array and is declared before this step"));
-
-								FString DeclaredList = FString::Join(DeclaredStepIds.Array(), TEXT(", "));
-								UE_LOG(LogOliveIRSchema, Warning,
-									TEXT("  Declared step_ids at this point: [%s]. Ref '@%s.%s' references unknown step '%s'"),
-									*DeclaredList, *RefStepId, *RefPinHint, *RefStepId);
+								// FIX RC2/RC3: Unknown step refs may be component names
+								// or function parameter names that the resolver's
+								// ExpandComponentRefs pass will synthesize get_var steps
+								// for. Only log, don't hard-reject.
+								UE_LOG(LogOliveIRSchema, Log,
+									TEXT("Step %d ('%s'): input '%s' ref '@%s.%s' references unknown step '%s' — may be component/param name (resolver will handle)"),
+									i, *StepId, *PinName, *RefStepId, *RefPinHint, *RefStepId);
 							}
 							else
 							{

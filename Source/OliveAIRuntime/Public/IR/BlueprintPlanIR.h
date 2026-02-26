@@ -80,6 +80,9 @@ namespace OlivePlanOps
 	/** Gate (open/close to control execution flow) */
 	const FString Gate = TEXT("gate");
 
+	/** Call (broadcast) an event dispatcher (multicast delegate) */
+	const FString CallDelegate = TEXT("call_delegate");
+
 	/**
 	 * Check whether a given op string is in the closed vocabulary.
 	 * @param Op The operation string to validate
