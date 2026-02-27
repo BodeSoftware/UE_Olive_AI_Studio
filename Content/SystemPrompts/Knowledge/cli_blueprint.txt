@@ -8,19 +8,18 @@ CREATE new Blueprint:
 
 MODIFY existing Blueprint:
 1. project.search (find exact path) → 2. blueprint.read (understand current state) → 3. add_variable/add_component → 4. blueprint.apply_plan_json
-For MODIFY: always search for the asset path first — never guess paths.
+For MODIFY: search for the asset path first rather than guessing paths.
 
 SMALL EDIT (1-2 nodes on existing graph):
 1. blueprint.read_event_graph → 2. blueprint.add_node + blueprint.connect_pins
 
 MULTI-ASSET (2+ Blueprints needed, e.g. "gun and bullet"):
-1. Complete ONE asset fully before starting the next:
+Completing one asset at a time tends to work better:
    a. Create structure: blueprint.create (or create_from_template) + add_component + add_variable + add_function
-   b. Wire ALL functions: get_recipe + preview + apply plan_json for each function
+   b. Wire functions: get_recipe + apply plan_json for each function
    c. Compile once after all functions are wired
    d. Fix any compile errors before moving on
-2. Then create and wire the next asset the same way.
-3. Why: deferring all wiring until after all scaffolding creates an impossible planning cliff and causes stalls.
+Then create and wire the next asset the same way.
 
 ## Plan JSON (v2.0)
 ```json
@@ -67,7 +66,7 @@ Enum: {"category":"byte","enum_name":"ECollisionChannel"}
 Before creating a Blueprint from scratch, check if an available template matches.
 - blueprint.create_from_template(template_id, preset, asset_path) creates the Blueprint STRUCTURE in one call.
 - Templates create: components, variables, event dispatchers, and empty function stubs (with correct signatures).
-- After template creation, write plan_json for EACH function listed in the result. Call olive.get_recipe first for each.
+- After template creation, write plan_json for EACH function listed in the result. Call olive.get_recipe before your first plan_json for each function -- it has tested wiring patterns.
 - Do NOT call blueprint.read or read_function after template creation -- the functions are empty stubs.
 - Use a preset name if one matches (e.g., "Bullet", "Rocket" for projectile template).
 - Call list_templates ONCE per task. Call get_template only for templates you plan to use.
@@ -79,8 +78,7 @@ Before creating a Blueprint from scratch, check if an available template matches
 - Self-correct on errors. If an operation fails, analyze the error and fix it — don't skip it.
 - Asset paths MUST end with asset name: /Game/Blueprints/BP_Gun (NOT /Game/Blueprints/)
 - For EXISTING assets, use project.search to find exact paths. For NEW assets, choose the path directly.
-- Use apply_plan_json for 3+ nodes. For 1-2 nodes, add_node + connect_pins is fine.
-- Do not re-preview an unchanged plan. If preview succeeds, apply immediately in the next turn. If you revise the plan after seeing issues, preview the revised version.
+- Prefer apply_plan_json for 3+ nodes. For 1-2 nodes, add_node + connect_pins is fine.
 - If apply_plan_json returns wiring errors (partial success), fix remaining issues with granular connect_pins/set_pin_default rather than re-planning from scratch.
 - STEP ORDER: data-provider steps (get_var, pure calls) BEFORE steps that reference them via @ref.
 - If add_variable fails, do NOT reference that variable in subsequent plan_json calls.

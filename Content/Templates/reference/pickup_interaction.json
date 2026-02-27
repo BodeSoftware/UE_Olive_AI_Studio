@@ -10,56 +10,38 @@
 
     "patterns": [
         {
-            "name": "ArchitectureOverview",
-            "description": "Pickup systems require modifications to BOTH the item AND the player character. A Blueprint Interface (BPI_Interactable) decouples them.",
-            "notes": "CRITICAL RULES: (1) This is a TWO-BLUEPRINT task — you MUST modify both the item and the player character. (2) Input handling (E key) belongs on the player character, NEVER on the item. (3) The item needs a collision component for overlap detection. (4) Complete one Blueprint fully before moving to the next. (5) If the user asks to 'make X a pickup item', that means BOTH the item BP and the player character need changes.",
-            "blueprints_involved": [
-                "BPI_Interactable (BlueprintInterface) — defines the Interact(InteractingActor:Actor) function signature",
-                "Item Blueprint (e.g., BP_Gun) — implements interface, has SphereCollision for overlap, contains Pickup/Drop logic",
-                "Player Character Blueprint — handles E-key input, finds nearby interactable actors, calls Interact on them"
-            ]
-        },
-        {
-            "name": "ItemSetup",
-            "description": "The item Blueprint needs: SphereCollision (bGenerateOverlapEvents=true), variables (bIsEquipped:Bool, OwnerRef:Actor), BPI_Interactable interface implementation, and Pickup/Drop functions.",
-            "notes": "The Interact function (from the interface) branches on bIsEquipped: if false call Pickup(InteractingActor), if true call Drop(). Pickup attaches to player mesh via K2_AttachToComponent (SnapToTarget), sets bIsEquipped=true, disables collision. Drop detaches via K2_DetachFromActor (KeepWorld), sets bIsEquipped=false, re-enables collision. Keep each function under 10 plan_json steps.",
+            "name": "PickupSystemSetup",
+            "description": "A pickup system uses a Blueprint Interface (BPI_Interactable) to decouple the item from the player character. The item implements the interface and handles attach/detach logic. The player character handles input and calls the interface function on overlapping actors.",
+            "notes": "This is a two-Blueprint plus one interface task. The interface must be created first because both Blueprints reference it. The item needs a SphereComponent for overlap detection. Input handling (E key) belongs on the player character, not the item.",
             "steps": [
                 {
-                    "note": "Add SphereComponent for interaction detection, then add bIsEquipped and OwnerRef variables.",
-                    "tools": ["blueprint.add_component (SphereComponent, InteractionSphere)", "blueprint.add_variable (bIsEquipped:Boolean)", "blueprint.add_variable (OwnerRef:Actor)"]
+                    "tool": "blueprint.create",
+                    "note": "START HERE. Create BPI_Interactable (type: BlueprintInterface). Add an Interact function with an InteractingActor:Actor input parameter."
                 },
                 {
-                    "note": "Implement BPI_Interactable interface, then add Pickup(NewOwner:Actor) and Drop() functions. Implement each function ONE AT A TIME with get_recipe + preview_plan_json + apply_plan_json.",
-                    "tools": ["blueprint.add_interface_implementation", "blueprint.add_function (Pickup)", "blueprint.add_function (Drop)"]
-                }
-            ]
-        },
-        {
-            "name": "PlayerCharacterSetup",
-            "description": "The player character handles E-key input and calls Interact on nearby actors that implement BPI_Interactable.",
-            "notes": "Add an EquippedItem:Actor variable. In EventGraph: IA_Interact (Enhanced Input) or InputAction E event → GetOverlappingActors → ForEach loop → DoesImplementInterface check for BPI_Interactable → Branch → call Interact message on the actor, passing self as InteractingActor. The interface message call uses op:call with target:Interact — the resolver handles interface dispatch.",
-            "steps": [
-                {
-                    "note": "Add EquippedItem variable to track held item.",
-                    "tools": ["blueprint.add_variable (EquippedItem:Actor)"]
+                    "tool": "blueprint.add_component + blueprint.add_variable",
+                    "note": "On the item BP: add SphereComponent (InteractionSphere), bIsEquipped:Boolean, and OwnerRef:Actor variables."
                 },
                 {
-                    "note": "Implement interaction logic in EventGraph with plan_json. Use IA_Interact for the input event (Enhanced Input Action).",
-                    "tools": ["blueprint.preview_plan_json (EventGraph)", "blueprint.apply_plan_json (EventGraph)"]
+                    "tool": "blueprint.add_interface_implementation + blueprint.add_function",
+                    "note": "Implement BPI_Interactable on the item BP. Add Pickup(NewOwner:Actor) and Drop() functions."
+                },
+                {
+                    "tool": "olive.get_recipe + blueprint.apply_plan_json",
+                    "note": "Implement each item function one at a time. Get the recipe first, then write the plan_json."
+                },
+                {
+                    "tool": "blueprint.compile",
+                    "note": "Compile the item BP. Fix any errors before moving to the player character."
+                },
+                {
+                    "tool": "blueprint.add_variable + blueprint.apply_plan_json",
+                    "note": "On the player character: add EquippedItem:Actor variable. Then write EventGraph plan_json for E-key input, GetOverlappingActors, DoesImplementInterface check, and Interact call."
+                },
+                {
+                    "tool": "blueprint.compile",
+                    "note": "Compile the player character BP. Both Blueprints should have 0 errors."
                 }
-            ]
-        },
-        {
-            "name": "ToolCallSequence",
-            "description": "Complete step-by-step order. Finish each Blueprint fully before moving to the next.",
-            "sequence": [
-                "1. Create BPI_Interactable interface (blueprint.create type=BlueprintInterface + add_function Interact)",
-                "2. Modify item BP — add SphereComponent, variables, implement interface, add Pickup/Drop functions",
-                "3. Implement item functions ONE AT A TIME (get_recipe → preview → apply for each)",
-                "4. Compile item BP",
-                "5. Read player character BP (to see existing structure)",
-                "6. Add EquippedItem variable, then implement E-key interaction logic in EventGraph via plan_json",
-                "7. Compile player character BP"
             ]
         }
     ]

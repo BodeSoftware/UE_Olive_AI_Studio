@@ -36,12 +36,19 @@ namespace
 	 *  run has done scaffolding work or multiple recipe lookups (complex planning). */
 	constexpr double CLI_IDLE_TIMEOUT_SECONDS = 120.0;
 
-	/** Extended idle timeout for complex planning scenarios.
+	/** Extended idle timeout for complex planning scenarios (180s).
 	 *  Activated when the run has performed scaffolding ops (add_component,
 	 *  add_variable, modify_component, create_from_template) or looked up
 	 *  multiple recipes (get_recipe >= 2), indicating imminent multi-function
 	 *  graph planning that needs sustained thinking time. */
 	constexpr double CLI_EXTENDED_IDLE_TIMEOUT_SECONDS = 180.0;
+
+	/** Output-stall timeout (90s).
+	 *  Fires when the AI has started producing output (> 100 stdout chars received)
+	 *  but then goes silent — no new chars AND no MCP tool calls — for this duration.
+	 *  Catches the "wrote one sentence then froze" pattern. Triggers auto-continue
+	 *  with an explicit nudge rather than the post-read idle timeout path. */
+	constexpr double CLI_OUTPUT_STALL_TIMEOUT_SECONDS = 90.0;
 
 	/** Determine tool prefixes needed for a given user message.
 	 *  Used in autonomous mode to filter tools/list to only relevant domains. */
@@ -373,16 +380,11 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 	ClaudeMd += TEXT("- Use ONLY the MCP tools to create and edit game assets.\n");
 	ClaudeMd += TEXT("- All asset paths should be under `/Game/` (the project's Content directory).\n");
 	ClaudeMd += TEXT("- When creating Blueprints, use `blueprint.create` or `blueprint.create_from_template` -- never try to create .uasset files manually.\n");
-	ClaudeMd += TEXT("- Always preview before applying plan JSON: call `blueprint.preview_plan_json` first, then `blueprint.apply_plan_json` in a separate turn.\n");
-	ClaudeMd += TEXT("- Do not re-preview an unchanged plan. If preview succeeds, apply in the next turn. Revising and re-previewing is fine.\n");
 	ClaudeMd += TEXT("- Complete the FULL task: create structures, wire graph logic, compile, and verify. Do not stop partway.\n");
 	ClaudeMd += TEXT("- Once ALL Blueprints compile with 0 errors and 0 warnings, the task is COMPLETE. Immediately stop and report what you built.\n");
 	ClaudeMd += TEXT("- Before writing your first plan_json for each function, call olive.get_recipe to look up the correct wiring pattern. This includes functions created by templates -- templates create empty stubs, you write the logic.\n");
 	ClaudeMd += TEXT("- Use schema_version \"2.0\" for all plan_json calls (v2.0 has automatic pin resolution).\n");
-	ClaudeMd += TEXT("- After `create_from_template`, check the result for the list of created functions. Write plan_json for EACH function -- they are empty stubs. Do NOT call blueprint.read or read_function after template creation.\n");
-	ClaudeMd += TEXT("- Multi-asset tasks: complete ONE Blueprint fully (structure + plan_json + compile) before starting the next. Do NOT scaffold all assets first then wire later -- this causes stalls.\n");
-	ClaudeMd += TEXT("- If `apply_plan_json` fails, re-read the graph, fix the plan, and retry once. Fall back to add_node/connect_pins only after a second failure.\n\n");
-	ClaudeMd += TEXT("- After adding a function to a Blueprint, write plan_json for that function before creating the next function or asset. Compile once per asset after all its functions are wired.\n");
+	ClaudeMd += TEXT("- After `create_from_template`, check the result for the list of created functions. Write plan_json for EACH function -- they are empty stubs. Do NOT call blueprint.read or read_function after template creation.\n\n");
 
 	// Append the full AGENTS.md content which has workflow patterns, plan JSON format, etc.
 	if (!AgentsContent.IsEmpty())
@@ -491,6 +493,7 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 	LastRunContext.OriginalMessage = UserMessage;
 	bLastRunTimedOut = false;
 	bLastRunWasRuntimeLimit = false;
+	bLastRunWasOutputStall = false;
 
 	// Set tool filter based on message content (autonomous mode only).
 	// Uses the original user message (not continuation prompt) for consistent filtering.
@@ -721,6 +724,7 @@ void FOliveCLIProviderBase::LaunchCLIProcess(
 		FString OutputBuffer;
 		double LastOutputTime = FPlatformTime::Seconds();
 		const double ProcessStartTime = FPlatformTime::Seconds();
+		int32 AccumulatedOutputChars = 0; // All stdout chars received this run
 
 		// Read max runtime from settings (0 = no limit). This is primarily a cost-control
 		// safety net for autonomous mode, but applies universally since orchestrated turns
@@ -734,6 +738,7 @@ void FOliveCLIProviderBase::LaunchCLIProcess(
 			if (!Chunk.IsEmpty())
 			{
 				LastOutputTime = FPlatformTime::Seconds();
+				AccumulatedOutputChars += Chunk.Len();
 				OutputBuffer += Chunk;
 
 				// Process complete lines
@@ -758,6 +763,29 @@ void FOliveCLIProviderBase::LaunchCLIProcess(
 			}
 			else
 			{
+				// Output-stall detection: AI started a response then froze.
+				// Fires when stdout chars have been received (AI began output) but
+				// neither new chars nor MCP tool calls have arrived in 90s.
+				// This catches "wrote one sentence then froze" — the activity timer
+				// doesn't catch it because stdout IS flowing (idle timeout won't fire
+				// early), but text generation stalled waiting on the API.
+				const double LastActivity = FMath::Max(LastOutputTime, LastToolCallTimestamp.load());
+				if (AccumulatedOutputChars > 100
+					&& (FPlatformTime::Seconds() - LastActivity) > CLI_OUTPUT_STALL_TIMEOUT_SECONDS)
+				{
+					UE_LOG(LogOliveCLIProvider, Warning,
+						TEXT("%s process output stall: %d chars received, no activity for %.0fs - nudging"),
+						*CLIName, AccumulatedOutputChars, CLI_OUTPUT_STALL_TIMEOUT_SECONDS);
+					bLastRunTimedOut = true;
+					bLastRunWasOutputStall = true;
+					bStopReading = true;
+					if (*Guard)
+					{
+						FPlatformProcess::TerminateProc(ProcessHandle, true);
+					}
+					break;
+				}
+
 				// Adaptive idle timeout: extend when complexity signals are present.
 				// Scaffolding ops (add_component, add_variable, etc.) or multiple
 				// recipe lookups indicate imminent complex graph planning.
@@ -934,9 +962,12 @@ void FOliveCLIProviderBase::HandleResponseCompleteAutonomous(int32 ReturnCode)
 	LastRunContext.bValid = true;
 	if (bLastRunTimedOut)
 	{
-		LastRunContext.Outcome = bLastRunWasRuntimeLimit
-			? FAutonomousRunContext::EOutcome::RuntimeLimit
-			: FAutonomousRunContext::EOutcome::IdleTimeout;
+		if (bLastRunWasRuntimeLimit)
+			LastRunContext.Outcome = FAutonomousRunContext::EOutcome::RuntimeLimit;
+		else if (bLastRunWasOutputStall)
+			LastRunContext.Outcome = FAutonomousRunContext::EOutcome::OutputStall;
+		else
+			LastRunContext.Outcome = FAutonomousRunContext::EOutcome::IdleTimeout;
 	}
 	// else stays Completed (the default set in Reset())
 
@@ -991,6 +1022,40 @@ void FOliveCLIProviderBase::HandleResponseCompleteAutonomous(int32 ReturnCode)
 			// Build continuation prompt ON the game thread (safe for UObject loading in BuildAssetStateSummary)
 			FString ContinuationPrompt = BuildContinuationPrompt(TEXT("continue"));
 			SendMessageAutonomous(ContinuationPrompt, SavedOnChunk, SavedOnComplete, SavedOnError);
+		});
+
+		return; // Skip normal completion callback
+	}
+	else if (bLastRunTimedOut
+		&& LastRunContext.Outcome == FAutonomousRunContext::EOutcome::OutputStall
+		&& AutoContinueCount < MaxAutoContinues)
+	{
+		// AI gathered context, started a text response, then froze before calling any tools.
+		// Nudge it: relaunch with explicit directive to skip re-reading and start writing.
+		AutoContinueCount++;
+
+		UE_LOG(LogOliveCLIProvider, Log,
+			TEXT("Output stall detected (attempt %d/%d): AI wrote partial response then froze — nudging to act"),
+			AutoContinueCount, MaxAutoContinues);
+
+		bIsBusy = false;
+
+		FOnOliveStreamChunk SavedOnChunk = CurrentOnChunk;
+		FOnOliveComplete SavedOnComplete = CurrentOnComplete;
+		FOnOliveError SavedOnError = CurrentOnError;
+
+		bIsAutoContinuation = true;
+
+		AsyncTask(ENamedThreads::GameThread, [this,
+			SavedOnChunk, SavedOnComplete, SavedOnError]()
+		{
+			if (!(*AliveGuard))
+			{
+				return;
+			}
+
+			FString NudgePrompt = BuildContinuationPrompt(TEXT("nudge"));
+			SendMessageAutonomous(NudgePrompt, SavedOnChunk, SavedOnComplete, SavedOnError);
 		});
 
 		return; // Skip normal completion callback
@@ -1132,6 +1197,11 @@ FString FOliveCLIProviderBase::BuildContinuationPrompt(const FString& UserMessag
 	case FAutonomousRunContext::EOutcome::RuntimeLimit:
 		Prompt += TEXT("The previous run hit the runtime limit. The task is incomplete.\n");
 		break;
+	case FAutonomousRunContext::EOutcome::OutputStall:
+		Prompt += TEXT("The previous run FROZE: you gathered all context and began writing a response, ");
+		Prompt += TEXT("then stopped before calling any tools. Do NOT re-read anything — you already have ");
+		Prompt += TEXT("everything you need. Start your FIRST tool call immediately. No preamble.\n");
+		break;
 	case FAutonomousRunContext::EOutcome::Completed:
 		Prompt += TEXT("The previous run completed normally. ");
 		Prompt += TEXT("The user wants you to continue or finish remaining work.\n");
@@ -1161,12 +1231,14 @@ FString FOliveCLIProviderBase::BuildContinuationPrompt(const FString& UserMessag
 		Prompt += TEXT("2. Complete the remaining work.\n");
 	}
 
-	// Include the user's continuation message if it has additional context
+	// Include the user's continuation message if it has additional context.
+	// "nudge" is an internal token (not a user message) — never emit it as instructions.
 	FString Trimmed = UserMessage.TrimStartAndEnd();
 	if (!Trimmed.Equals(TEXT("continue"), ESearchCase::IgnoreCase) &&
 		!Trimmed.Equals(TEXT("keep going"), ESearchCase::IgnoreCase) &&
 		!Trimmed.Equals(TEXT("finish"), ESearchCase::IgnoreCase) &&
-		!Trimmed.Equals(TEXT("resume"), ESearchCase::IgnoreCase))
+		!Trimmed.Equals(TEXT("resume"), ESearchCase::IgnoreCase) &&
+		!Trimmed.Equals(TEXT("nudge"), ESearchCase::IgnoreCase))
 	{
 		Prompt += TEXT("\n### Additional Instructions\n");
 		Prompt += Trimmed;

@@ -46,3 +46,11 @@
 - **Fix 4 (component event notes)**: Component bound events already work end-to-end (ResolveEventOp passes through to CreateEventNode which does SCS scan). Only change: better error suggestion text + resolver note for non-EventNameMap events.
 - **Fix 5 (auto-read small BPs)**: `AUTO_FULL_READ_NODE_THRESHOLD = 50`. In HandleBlueprintRead, count nodes via UBlueprint graph arrays before calling Reader. Below threshold: auto-upgrade summary to full read. Adds `read_mode: "auto_full"` hint to result JSON.
 - **All fixes independent** -- can fully parallelize. Total ~4.5 hours.
+
+## Idle-After-Read Nudge + Template Rewrite - Feb 2026
+- `plans/idle-nudge-template-fix.md` -- 2 fixes for autonomous pickup task idle timeout
+- **Root cause**: AI reads pickup_interaction template, sees complex multi-asset plan with CRITICAL RULES, stalls 180s reasoning, gets killed with zero writes.
+- **Fix 1 (read-nudge)**: New `IsReadOperation()` helper + `BuildReadNudgePrompt()` method on CLIProviderBase. When idle timeout fires after a read op (get_template, get_recipe, search, etc.), auto-continue with targeted nudge instead of reporting to user. Shares `AutoContinueCount` budget (max 3) with write-stall auto-continue.
+- **Fix 1 timeouts lowered**: `CLI_IDLE_TIMEOUT_SECONDS` 120->90, `CLI_EXTENDED_IDLE_TIMEOUT_SECONDS` 180->150, `AutonomousIdleToolSeconds` default 240->120.
+- **Fix 1 key insight**: The existing `HandleResponseCompleteAutonomous` had a branch at line 993 that explicitly logged "reporting to user instead of auto-continuing" for read-op stalls. This was the wrong policy -- the AI needed a push, not a death sentence.
+- **Fix 2 (template rewrite)**: `pickup_interaction.json` rewritten from 4 patterns + CRITICAL RULES to 1 pattern with 7 sequential steps. 66 lines, no MUST/NEVER language. Preserves metadata fields for catalog compatibility.

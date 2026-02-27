@@ -177,11 +177,12 @@ public:
 		meta=(DisplayName="Autonomous Tool Idle Timeout (seconds)", ClampMin=0, ClampMax=600))
 	int32 AutonomousIdleToolSeconds = 240;
 
-	/** Maximum turns for autonomous CLI mode. Safety ceiling, not orchestration.
-	 *  Each MCP tools/call counts as one turn. Complex tasks may need 40-60. */
+	/** Crash-only safety ceiling for autonomous CLI mode — not a task budget.
+	 *  Loop detection handles stuck runs; raise this only if legitimate tasks are being cut short.
+	 *  Each MCP tools/call counts as one turn. */
 	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
-		meta=(DisplayName="Autonomous Max Turns", ClampMin=1, ClampMax=200))
-	int32 AutonomousMaxTurns = 50;
+		meta=(DisplayName="Autonomous Max Turns", ClampMin=1, ClampMax=1000))
+	int32 AutonomousMaxTurns = 500;
 
 	// ==========================================
 	// MCP Server Settings

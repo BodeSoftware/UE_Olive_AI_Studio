@@ -41,14 +41,8 @@ FOliveCorrectionDecision FOliveSelfCorrectionPolicy::Evaluate(
 
 				Decision.Action = EOliveCorrectionAction::FeedBackErrors;
 				Decision.EnrichedMessage = FString::Printf(
-					TEXT("[IDENTICAL PLAN - Seen %d time(s)] Your plan is identical to a "
-						 "previous submission that failed. Previous error: %s %s\n\n"
-						 "You MUST change the failing step's approach. Specifically:\n"
-						 "- If a function wasn't found, use blueprint.search_nodes first\n"
-						 "- If pin connection failed, use @step.auto instead of exact names\n"
-						 "- If component Target was missing, add a get_var step and wire it\n"
-						 "- Consider using olive.get_recipe for the correct pattern\n"
-						 "Do NOT resubmit the same plan."),
+					TEXT("[IDENTICAL PLAN - Seen %d time(s)] Previous error: %s %s\n"
+						 "Change the failing step's approach or call olive.get_recipe for the correct pattern."),
 					SubmitCount, *ErrorCode, *ErrorMessage);
 
 				UE_LOG(LogOliveAI, Warning,

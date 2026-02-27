@@ -91,8 +91,9 @@ struct FAutonomousRunContext
 	enum class EOutcome : uint8
 	{
 		Completed,    // Process exited normally
-		IdleTimeout,  // Killed by idle timeout (no tool calls for N seconds)
-		RuntimeLimit  // Killed by total runtime limit
+		IdleTimeout,  // Killed by idle timeout (no stdout for N seconds)
+		RuntimeLimit, // Killed by total runtime limit
+		OutputStall   // AI started a text response then froze (no chars + no tool calls for 90s)
 	};
 	EOutcome Outcome = EOutcome::Completed;
 
@@ -468,6 +469,12 @@ protected:
 	 *  Set on the background thread alongside bLastRunTimedOut. Used to distinguish
 	 *  idle stalls (auto-continuable) from runtime limit hits (not auto-continuable). */
 	bool bLastRunWasRuntimeLimit = false;
+
+	/** Whether the last timeout was an output stall: AI started a text response but froze
+	 *  (no new stdout chars AND no MCP tool calls for CLI_OUTPUT_STALL_TIMEOUT_SECONDS).
+	 *  Distinct from IdleTimeout (which fires on total stdout silence from the start).
+	 *  Set on background thread in LaunchCLIProcess, read on game thread in HandleResponseCompleteAutonomous. */
+	bool bLastRunWasOutputStall = false;
 
 	/** Number of automatic continuations since last user-initiated message.
 	 *  Reset to 0 on each non-continuation SendMessageAutonomous call. */
