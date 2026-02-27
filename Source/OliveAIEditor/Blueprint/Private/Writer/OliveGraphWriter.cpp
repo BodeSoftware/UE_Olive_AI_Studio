@@ -1058,6 +1058,27 @@ UEdGraphPin* FOliveGraphWriter::FindPin(UEdGraphNode* Node, const FString& PinNa
 		}
 	}
 
+	// Space-stripped match (AI sends PascalCase, UE pins may have spaces)
+	{
+		FString StrippedPinName = PinName.Replace(TEXT(" "), TEXT("")).ToLower();
+		for (UEdGraphPin* TestPin : Node->Pins)
+		{
+			if (TestPin)
+			{
+				FString StrippedName = TestPin->GetName().Replace(TEXT(" "), TEXT("")).ToLower();
+				if (StrippedName == StrippedPinName)
+				{
+					return TestPin;
+				}
+				FString StrippedDisplay = TestPin->GetDisplayName().ToString().Replace(TEXT(" "), TEXT("")).ToLower();
+				if (StrippedDisplay == StrippedPinName)
+				{
+					return TestPin;
+				}
+			}
+		}
+	}
+
 	// Try partial match for common pin names (e.g., "execute" for "execute " or " execute")
 	FString TrimmedPinName = PinName.TrimStartAndEnd();
 	for (UEdGraphPin* TestPin : Node->Pins)

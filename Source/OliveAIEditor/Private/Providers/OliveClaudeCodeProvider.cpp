@@ -224,7 +224,7 @@ FString FOliveClaudeCodeProvider::GetCLIArgumentsAutonomous() const
 	// - --max-turns N: safety ceiling from settings, NOT orchestration. Each MCP tools/call
 	//   counts as a turn. Complex multi-asset tasks easily need 40-60 tool calls.
 	const UOliveAISettings* Settings = UOliveAISettings::Get();
-	const int32 MaxTurns = Settings ? Settings->AutonomousMaxTurns : 50;
+	const int32 MaxTurns = Settings ? Settings->AutonomousMaxTurns : 500;
 
 	return FString::Printf(TEXT("--print --output-format stream-json --verbose --dangerously-skip-permissions --max-turns %d"), MaxTurns);
 }

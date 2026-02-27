@@ -1,12 +1,7 @@
 TAGS: multi asset multiple blueprint cross dependency
 ---
 MULTI-ASSET workflow (e.g. gun + bullet, spawner + enemy):
-1. Create ALL asset structures FIRST (blueprint.create + add_component + add_variable for EVERY asset)
-2. Wire graph logic for Asset A (apply_plan_json)
-3. Wire graph logic for Asset B (apply_plan_json)
-4. Fix wiring errors for both if needed
-
-Create all structures before any graph logic so cross-references work
-(BP_Gun can reference BP_Bullet_C as a type).
+Complete ONE asset fully before starting the next.
+Cross-references (e.g., SpawnActor for BP_Bullet) resolve as long as the referenced asset exists.
+If Asset B needs to reference Asset A's class, create Asset A's structure first (just blueprint.create is enough).
 Blueprint class refs append _C: "BP_Bullet_C" not "BP_Bullet".
-ITERATION BUDGET: never spend more than 5 turns on one asset when 2+ are needed.
