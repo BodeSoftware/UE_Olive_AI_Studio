@@ -432,25 +432,6 @@ const FOlivePinManifestEntry* FOlivePinManifest::FindPinSmart(
 	}
 
 	// ================================================================
-	// Stage 3.5: SPACE-STRIPPED MATCH
-	// AI sends PascalCase ("AsPlayerController"), UE pins have spaces
-	// ("AsPlayer Controller"). Strip spaces from both and compare.
-	// ================================================================
-	{
-		FString StrippedHint = Hint.Replace(TEXT(" "), TEXT("")).ToLower();
-		for (const FOlivePinManifestEntry* Entry : Candidates)
-		{
-			FString StrippedPin = Entry->PinName.Replace(TEXT(" "), TEXT("")).ToLower();
-			FString StrippedDisplay = Entry->DisplayName.Replace(TEXT(" "), TEXT("")).ToLower();
-			if (StrippedPin == StrippedHint || StrippedDisplay == StrippedHint)
-			{
-				if (OutMatchMethod) *OutMatchMethod = TEXT("space_stripped");
-				return Entry;
-			}
-		}
-	}
-
-	// ================================================================
 	// Stage 4: FUZZY MATCH (Levenshtein distance + substring)
 	// ================================================================
 	{

@@ -78,7 +78,7 @@ protected:
 	/**
 	 * Builds Claude-specific CLI arguments for autonomous MCP mode.
 	 * No --strict-mcp-config (Claude discovers tools via MCP), no --append-system-prompt
-	 * (AGENTS.md provides context), --max-turns N as a crash-only safety ceiling.
+	 * (AGENTS.md provides context), --max-turns 50 as a safety ceiling.
 	 * @return Argument string for autonomous execution
 	 */
 	virtual FString GetCLIArgumentsAutonomous() const override;

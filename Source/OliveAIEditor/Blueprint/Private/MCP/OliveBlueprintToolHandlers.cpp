@@ -27,7 +27,6 @@
 #include "K2Node_CustomEvent.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
-#include "K2Node_FunctionTerminator.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
@@ -3207,28 +3206,15 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddFunction(const T
 		{
 			if (FuncGraph)
 			{
-				// Skip system-generated graphs
-				FString GraphName = FuncGraph->GetName();
-				if (GraphName == TEXT("EventGraph") || GraphName == TEXT("ConstructionScript"))
+				// Entry + Return = 2 nodes. Anything <= 2 means empty stub.
+				if (FuncGraph->Nodes.Num() <= 2)
 				{
-					continue;
-				}
-
-				// Count user-created nodes only.
-				// UK2Node_FunctionTerminator is the base class for both
-				// FunctionEntry and FunctionResult, so this one check skips all system nodes.
-				int32 UserNodeCount = 0;
-				for (UEdGraphNode* Node : FuncGraph->Nodes)
-				{
-					if (Node && !Node->IsA<UK2Node_FunctionTerminator>())
+					// Skip system-generated graphs (EventGraph, ConstructionScript)
+					FString GraphName = FuncGraph->GetName();
+					if (GraphName != TEXT("EventGraph") && GraphName != TEXT("ConstructionScript"))
 					{
-						UserNodeCount++;
+						EmptyFunctions.Add(GraphName);
 					}
-				}
-
-				if (UserNodeCount == 0)
-				{
-					EmptyFunctions.Add(GraphName);
 				}
 			}
 		}
