@@ -109,7 +109,11 @@ public class OliveAIEditor : ModuleRules
 			// C++ Integration
 			"GameProjectGeneration",
 			"LiveCoding",
-			"SourceCodeAccess"
+			"SourceCodeAccess",
+
+			// Enhanced Input
+			"EnhancedInput",
+			"InputBlueprintNodes"
 		});
 	}
 }

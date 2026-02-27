@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - UBT log: `C:/Users/<User>/AppData/Local/UnrealBuildTool/Log.txt`
 
 **Tests:** UE Automation Framework, filter by `OliveAI.*` in Session Frontend > Automation.
-Tests live in `Source/OliveAIEditor/Private/Tests/` (subdirs: `Brain/`, `Conversation/`, `EdgeCases/`, `FocusProfiles/`, `Integration/`, `Providers/`).
+Tests live in `Source/OliveAIEditor/Private/Tests/` (subdirs: `Brain/`, `Conversation/`, `FocusProfiles/`, `Providers/`).
 
 ---
 
@@ -243,13 +243,13 @@ Tool packs (`Config/OliveToolPacks.json`) define named sets: `read_pack`, `write
 
 Intent-level graph editing system where the AI describes "what" it wants (e.g., "call SetActorLocation") and the plan resolver translates to concrete Blueprint nodes. Has its own preview/apply cycle with fingerprint verification.
 
-- **IR:** `BlueprintPlanIR.h` defines `OlivePlanOps` namespace with closed vocabulary (`call`, `get_var`, `set_var`, `branch`, `sequence`, `cast`, `event`, `custom_event`, `for_loop`, etc.)
+- **IR:** `BlueprintPlanIR.h` defines `OlivePlanOps` namespace with closed vocabulary (`call`, `get_var`, `set_var`, `branch`, `sequence`, `cast`, `event`, `custom_event`, `for_loop`, `for_each_loop`, `while_loop`, `do_once`, `flip_flop`, `gate`, `delay`, `is_valid`, `print_string`, `spawn_actor`, `make_struct`, `break_struct`, `return`, `comment`)
 - **Tools:** `blueprint.preview_plan_json` (preview) → `blueprint.apply_plan_json` (apply with fingerprint)
 - **Code:** `Blueprint/Public/Plan/` and `Blueprint/Private/Plan/`
 - **Settings:** `bEnableBlueprintPlanJsonTools`, `PlanJsonMaxSteps = 128`, `bPlanJsonRequirePreviewForApply`, `bEnforcePlanFirstGraphRouting`, `PlanFirstGraphRoutingThreshold = 3`
 
 **Plan Pipeline (resolver → validator → executor):**
-1. `FOliveBlueprintPlanResolver::Resolve()` — alias resolution, SCS component variable recognition, pure-node collapse, `ExpandPlanInputs()` for auto-synthesis
+1. `FOliveBlueprintPlanResolver::Resolve()` — alias resolution, SCS component variable recognition (`BlueprintHasVariable` checks both `NewVariables` and SCS nodes — components ARE variables), pure-node collapse, `ExpandPlanInputs()` for auto-synthesis, `ExpandMissingComponentTargets()` for auto-injecting get_var steps when Target is unambiguous
 2. `FOlivePlanValidator::Validate()` — Phase 0 structural checks: `COMPONENT_FUNCTION_ON_ACTOR` (unwired Target on Actor BP) and `EXEC_WIRING_CONFLICT` (exec_after targeting a step with exec_outputs)
 3. `FOlivePlanExecutor::Execute()` — 7 phases: CreateNodes → AutoWireComponents (Phase 1.5) → WireExec → WireData → SetDefaults → PreCompileValidation (Phase 5.5) → AutoLayout. `FOlivePlanExecutionContext` carries `AutoFixCount`, `PreCompileIssues`, `NodeIdToStepId`.
 
@@ -258,10 +258,17 @@ Intent-level graph editing system where the AI describes "what" it wants (e.g., 
 Factory templates create complete Blueprints from parameterized JSON. Reference templates provide pattern documentation the AI can read before writing plans.
 
 - **Tools:** `blueprint.create_from_template`, `blueprint.get_template`, `blueprint.list_templates` (all in `RegisterTemplateTools()`)
-- **Templates:** `Content/Templates/factory/` (e.g., `stat_component.json`) and `Content/Templates/reference/` (e.g., `component_patterns.json`, `ue_events.json`)
+- **Templates:** `Content/Templates/factory/` (e.g., `stat_component.json`, `gun.json`, `projectile.json`) and `Content/Templates/reference/` (e.g., `component_patterns.json`, `ue_events.json`, `projectile_patterns.json`, `pickup_interaction.json`)
 - **Template format:** JSON with `template_id`, `template_type`, `parameters` (with defaults), optional `presets`, `blueprint` section (type, variables, event_dispatchers, functions with embedded plan JSON), `catalog_description`
 - **Parameter substitution:** `${param_name}` tokens, supports bool ternary conditionals like `${start_full} ? ${max_value} : 0`
 - **Catalog injection:** `FOliveTemplateSystem::GetCatalogBlock()` is appended to capability knowledge by `FOlivePromptAssembler::GetCapabilityKnowledge()` so AI agents always see available templates
+
+**Reference template rules (MUST follow):**
+- Target **60–120 lines** total. Existing templates: `component_patterns.json` (73), `ue_events.json` (113), `projectile_patterns.json` (119), `pickup_interaction.json`. A new reference template exceeding 150 lines is wrong.
+- Do **NOT** embed full `plan_json_example` blocks in reference templates — the AI gets plan_json from `olive.get_recipe`. A reference template teaches *architecture* and *tool sequence*, not step-by-step wiring.
+- Each pattern: 1-2 sentence `description`, concise `notes` (2–4 sentences max), optional short `steps` array with tool name + a one-line note per step. No inline params blocks.
+- If a pattern needs more than ~10 lines, split it or cut it. The AI reads the whole template in one `get_template` call — token budget matters.
+- Reference templates that violate these rules must be rewritten before merging.
 
 ### Safety Presets
 
@@ -305,15 +312,14 @@ This project uses specialized subagents. USE THEM — do not try to do everythin
 | "Where is X defined?" / file lookups | `explorer` (fast, cheap) |
 | UE API research, protocol specs | `researcher` |
 | New module or feature design | `architect` (design before code, always) |
-| Writing .h / .cpp files, Slate widgets | `coder` |
-| Compilation errors, crashes | `debugger` |
+| Writing .h / .cpp files, Slate widgets | `coder` (opus) or `coder_sonnet` (lighter tasks) |
 
 ### Feature Implementation Workflow
 
 1. **Research** (if needed) → `researcher` subagent
 2. **Design** → `architect` subagent → produces `plans/{module}-design.md` → **wait for user approval**
 3. **Implement** → `coder` subagent (follows architect's design)
-4. **Debug** (if needed) → `debugger` subagent (minimal fixes only)
+4. **Debug** (if needed) → `coder` subagent with explicit "fix only, no refactoring" instruction
 5. **Review** (optional) → `architect` subagent
 
 ### Rules
@@ -321,8 +327,7 @@ This project uses specialized subagents. USE THEM — do not try to do everythin
 - **Never skip the architect for new modules.**
 - **One explorer at a time. NEVER spawn multiple.** Give it ALL questions in one invocation.
 - The coder follows the architect's design. Gaps get `// DESIGN NOTE` comments, not ad-hoc decisions.
-- The debugger does minimal fixes — no refactoring.
-- Architectural decisions go in `docs/design/decisions.md`.
+- Design documents and architectural decisions go in `plans/` (e.g., `plans/{module}-design.md`).
 
 ---
 

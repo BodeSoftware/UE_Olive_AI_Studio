@@ -4,6 +4,7 @@
 #include "Chat/OliveMessageQueue.h"
 #include "Chat/OlivePromptAssembler.h"
 #include "Providers/OliveProviderRetryManager.h"
+#include "Providers/OliveCLIProviderBase.h"
 #include "MCP/OliveToolRegistry.h"
 #include "MCP/OliveMCPServer.h"
 #include "Index/OliveProjectIndex.h"
@@ -361,7 +362,18 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 		}
 	});
 
-	// 7. Launch autonomous provider -- tools are discovered via MCP, no orchestration
+	// 7. Pass @-mentioned asset context to the CLI provider for initial prompt enrichment.
+	//    This injects a pre-read asset state summary so the AI doesn't waste turns
+	//    re-reading assets the user has already pointed at via @-mentions.
+	if (ActiveContextPaths.Num() > 0)
+	{
+		// IOliveAIProvider has no SetInitialContextAssets -- it lives on the CLI base class.
+		// Use static_cast since IsAutonomousProvider() already confirmed this is a CLI provider.
+		FOliveCLIProviderBase* CLIProvider = static_cast<FOliveCLIProviderBase*>(Provider.Get());
+		CLIProvider->SetInitialContextAssets(ActiveContextPaths);
+	}
+
+	// 8. Launch autonomous provider -- tools are discovered via MCP, no orchestration
 	UE_LOG(LogOliveAI, Log, TEXT("Launching autonomous Claude Code run for message: %.80s%s"),
 		*Message.Left(80), Message.Len() > 80 ? TEXT("...") : TEXT(""));
 

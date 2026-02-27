@@ -331,16 +331,27 @@ protected:
 	FString BuildContinuationPrompt(const FString& UserMessage) const;
 
 	/**
-	 * Build a compact summary of current state for each modified asset.
+	 * Build a compact summary of current state for each asset in the given set.
 	 * Loads each UBlueprint and formats components, variables, functions (with
 	 * node counts), event dispatchers, and compile status. Non-Blueprint assets
 	 * get a one-line note.
 	 *
 	 * MUST be called on the game thread (loads UObject packages).
 	 *
+	 * @param AssetPaths  Set of asset paths to summarize
+	 * @return Formatted summary for injection into prompts
+	 */
+	FString BuildAssetStateSummary(const TArray<FString>& AssetPaths) const;
+
+	/**
+	 * Build a compact summary of current state for each modified asset from the last run.
+	 * Convenience overload that reads from LastRunContext.ModifiedAssetPaths.
+	 *
+	 * MUST be called on the game thread (loads UObject packages).
+	 *
 	 * @return Formatted summary for injection into continuation prompts
 	 */
-	FString BuildAssetStateSummary() const;
+	FString BuildAssetStateSummary() const { return BuildAssetStateSummary(LastRunContext.ModifiedAssetPaths); }
 
 	/**
 	 * Kill the running CLI process and clean up all resources.
@@ -471,4 +482,21 @@ protected:
 
 	/** Maximum automatic continuations before giving up and reporting to user */
 	static constexpr int32 MaxAutoContinues = 3;
+
+	/**
+	 * Asset paths from @-mentions in the chat UI, set before the initial autonomous run.
+	 * Consumed (emptied) in SendMessageAutonomous after building the asset state summary.
+	 * This allows the AI to see the current state of mentioned assets without re-reading them.
+	 */
+	TArray<FString> InitialContextAssetPaths;
+
+public:
+	/**
+	 * Set initial context asset paths for the next autonomous run.
+	 * Called by ConversationManager before SendMessageAutonomous with the
+	 * @-mentioned asset paths from the chat context bar.
+	 *
+	 * @param AssetPaths  Array of asset paths (e.g., "/Game/Blueprints/BP_Gun")
+	 */
+	void SetInitialContextAssets(const TArray<FString>& AssetPaths) { InitialContextAssetPaths = AssetPaths; }
 };

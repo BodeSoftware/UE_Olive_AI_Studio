@@ -3197,6 +3197,43 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddFunction(const T
 		);
 	}
 
+	// Guard: block adding functions when the same BP has empty function stubs.
+	// This prevents the AI from batching multiple add_function calls before implementing any of them.
+	// Per-blueprint check only — adding functions to different BPs in the same turn is allowed.
+	{
+		TArray<FString> EmptyFunctions;
+		for (UEdGraph* FuncGraph : Blueprint->FunctionGraphs)
+		{
+			if (FuncGraph)
+			{
+				// Entry + Return = 2 nodes. Anything <= 2 means empty stub.
+				if (FuncGraph->Nodes.Num() <= 2)
+				{
+					// Skip system-generated graphs (EventGraph, ConstructionScript)
+					FString GraphName = FuncGraph->GetName();
+					if (GraphName != TEXT("EventGraph") && GraphName != TEXT("ConstructionScript"))
+					{
+						EmptyFunctions.Add(GraphName);
+					}
+				}
+			}
+		}
+
+		if (EmptyFunctions.Num() > 0)
+		{
+			FString EmptyList = FString::Join(EmptyFunctions, TEXT(", "));
+			return FOliveToolResult::Error(
+				TEXT("GUARD_EMPTY_FUNCTIONS_EXIST"),
+				FString::Printf(TEXT("Cannot add function '%s' — this Blueprint already has empty function stub(s): [%s]. "
+					"Implement existing functions first with olive.get_recipe + blueprint.preview_plan_json + "
+					"blueprint.apply_plan_json before adding new ones."),
+					*Signature.Name, *EmptyList),
+				FString::Printf(TEXT("Implement '%s' first, then add '%s'"),
+					*EmptyFunctions[0], *Signature.Name)
+			);
+		}
+	}
+
 	// Build write request for pipeline
 	FOliveWriteRequest Request;
 	Request.ToolName = TEXT("blueprint.add_function");
@@ -3295,6 +3332,41 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveFunction(cons
 			FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
 			TEXT("Verify the asset path is correct and the asset exists")
 		);
+	}
+
+	// Guard: block removal if the function graph has significant logic unless 'force': true is passed
+	{
+		bool bForce = false;
+		Params->TryGetBoolField(TEXT("force"), bForce);
+
+		if (!bForce)
+		{
+			for (UEdGraph* FuncGraph : Blueprint->FunctionGraphs)
+			{
+				if (FuncGraph && FuncGraph->GetFName() == FName(*FunctionName))
+				{
+					const int32 NodeCount = FuncGraph->Nodes.Num();
+					if (NodeCount > 2) // Entry node + return node = 2; anything beyond that is real logic
+					{
+						UE_LOG(LogOliveBPTools, Warning,
+							TEXT("HandleBlueprintRemoveFunction: Blocked removal of '%s' — has %d nodes of graph logic"),
+							*FunctionName, NodeCount);
+						return FOliveToolResult::Error(
+							TEXT("GUARD_FUNCTION_HAS_LOGIC"),
+							FString::Printf(
+								TEXT("Function '%s' has %d nodes of working graph logic. "
+									"Removing it will destroy existing work. To modify an existing function, "
+									"use blueprint.preview_plan_json + blueprint.apply_plan_json on the existing "
+									"function graph instead of removing and recreating it."),
+								*FunctionName, NodeCount),
+							TEXT("Use blueprint.preview_plan_json to modify the existing function, "
+								"or pass 'force': true to override this safety check")
+						);
+					}
+					break;
+				}
+			}
+		}
 	}
 
 	// Build write request for pipeline

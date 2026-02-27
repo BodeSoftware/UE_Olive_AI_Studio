@@ -36,6 +36,11 @@
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
 
+// Enhanced Input includes (for UK2Node_EnhancedInputAction + UInputAction)
+#include "K2Node_EnhancedInputAction.h"
+#include "InputAction.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+
 // Utility includes
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -434,10 +439,53 @@ UK2Node* FOliveNodeFactory::CreateEventNode(
 			}
 		}
 
+		// ----------------------------------------------------------------
+		// Check 3: Enhanced Input Action event (e.g., "IA_Interact", "IA_Jump")
+		// Creates a UK2Node_EnhancedInputAction for player input handling.
+		// ----------------------------------------------------------------
+		{
+			FString InputActionName = *EventNamePtr;
+
+			// Normalize: strip "IA_" prefix to get the action base name,
+			// or if the name doesn't have it, use as-is for searching.
+			// We always search for the asset with IA_ prefix.
+			if (!InputActionName.StartsWith(TEXT("IA_")))
+			{
+				InputActionName = FString::Printf(TEXT("IA_%s"), **EventNamePtr);
+			}
+
+			// Delegate to the dedicated creator method
+			TMap<FString, FString> InputActionProps;
+			InputActionProps.Add(TEXT("input_action_name"), InputActionName);
+			UK2Node* InputActionNode = CreateEnhancedInputActionNode(Blueprint, Graph, InputActionProps);
+			if (InputActionNode)
+			{
+				UE_LOG(LogOliveNodeFactory, Log,
+					TEXT("CreateEventNode: '%s' resolved as Enhanced Input Action '%s'"),
+					**EventNamePtr, *InputActionName);
+				return InputActionNode;
+			}
+			// If we tried to find an IA_ asset and failed, check if the original
+			// event name was IA_ prefixed. If so, give a specific error about
+			// missing Input Action assets rather than falling through to the
+			// generic "not found" error.
+			if (EventNamePtr->StartsWith(TEXT("IA_")))
+			{
+				// LastError is already set by CreateEnhancedInputActionNode
+				return nullptr;
+			}
+		}
+
 		UE_LOG(LogOliveNodeFactory, Warning,
-			TEXT("CreateEventNode: event '%s' not found via FindFunctionByName on '%s' and not a component delegate. Note: only native events and component delegates are supported, not Enhanced Input Actions."),
+			TEXT("CreateEventNode: event '%s' not found via FindFunctionByName on '%s', "
+				 "not a component delegate, and not an Enhanced Input Action."),
 			**EventNamePtr, *Blueprint->ParentClass->GetName());
-		LastError = FString::Printf(TEXT("Event '%s' not found in parent class or as a component delegate"), **EventNamePtr);
+		LastError = FString::Printf(
+			TEXT("Event '%s' not found in parent class, as a component delegate, "
+				 "or as an Enhanced Input Action (IA_ asset). "
+				 "Verify the event name or use project.search with type 'InputAction' "
+				 "to find available Input Action assets."),
+			**EventNamePtr);
 		return nullptr;
 	}
 
@@ -943,6 +991,162 @@ UK2Node* FOliveNodeFactory::CreateCallDelegateNode(
 	Graph->AddNode(CallDelegateNode, /*bFromUI=*/false, /*bSelectNewNode=*/false);
 
 	return CallDelegateNode;
+}
+
+UK2Node* FOliveNodeFactory::CreateEnhancedInputActionNode(
+	UBlueprint* Blueprint,
+	UEdGraph* Graph,
+	const TMap<FString, FString>& Properties)
+{
+	const FString* ActionNamePtr = Properties.Find(TEXT("input_action_name"));
+	if (!ActionNamePtr || ActionNamePtr->IsEmpty())
+	{
+		LastError = TEXT("EnhancedInputAction node requires 'input_action_name' property "
+			"(e.g., \"IA_Interact\", \"IA_Jump\", \"IA_Fire\")");
+		return nullptr;
+	}
+
+	const FString& InputActionName = *ActionNamePtr;
+
+	// Try to find the UInputAction asset via asset registry search.
+	// Input Actions are UDataAsset subclasses stored anywhere in the project.
+	UInputAction* FoundAction = nullptr;
+
+	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(
+		TEXT("AssetRegistry")).Get();
+
+	TArray<FAssetData> AssetResults;
+	AssetRegistry.GetAssetsByClass(UInputAction::StaticClass()->GetClassPathName(), AssetResults);
+
+	// Strategy 1: exact name match
+	for (const FAssetData& Asset : AssetResults)
+	{
+		if (Asset.AssetName.ToString().Equals(InputActionName, ESearchCase::IgnoreCase))
+		{
+			FoundAction = Cast<UInputAction>(Asset.GetAsset());
+			if (FoundAction)
+			{
+				break;
+			}
+		}
+	}
+
+	// Strategy 2: if the name has IA_ prefix, also try without it (and vice versa)
+	if (!FoundAction)
+	{
+		FString AlternateName;
+		if (InputActionName.StartsWith(TEXT("IA_")))
+		{
+			AlternateName = InputActionName.Mid(3); // Strip IA_ prefix
+		}
+		else
+		{
+			AlternateName = FString::Printf(TEXT("IA_%s"), *InputActionName);
+		}
+
+		for (const FAssetData& Asset : AssetResults)
+		{
+			if (Asset.AssetName.ToString().Equals(AlternateName, ESearchCase::IgnoreCase))
+			{
+				FoundAction = Cast<UInputAction>(Asset.GetAsset());
+				if (FoundAction)
+				{
+					break;
+				}
+			}
+		}
+	}
+
+	// Strategy 3: direct LoadObject with common project paths
+	if (!FoundAction)
+	{
+		const TArray<FString> SearchPaths = {
+			FString::Printf(TEXT("/Game/Input/Actions/%s.%s"), *InputActionName, *InputActionName),
+			FString::Printf(TEXT("/Game/Input/%s.%s"), *InputActionName, *InputActionName),
+			FString::Printf(TEXT("/Game/%s.%s"), *InputActionName, *InputActionName),
+		};
+
+		for (const FString& Path : SearchPaths)
+		{
+			FoundAction = LoadObject<UInputAction>(nullptr, *Path);
+			if (FoundAction)
+			{
+				break;
+			}
+		}
+	}
+
+	if (!FoundAction)
+	{
+		// Build a helpful error with available Input Actions
+		TArray<FString> AvailableActions;
+		for (const FAssetData& Asset : AssetResults)
+		{
+			AvailableActions.Add(Asset.AssetName.ToString());
+		}
+
+		if (AvailableActions.Num() > 0)
+		{
+			AvailableActions.Sort();
+			// Cap the list at 20 entries to avoid huge error messages
+			const int32 MaxToShow = FMath::Min(AvailableActions.Num(), 20);
+			TArray<FString> DisplayActions(AvailableActions.GetData(), MaxToShow);
+			FString AvailableStr = FString::Join(DisplayActions, TEXT(", "));
+			if (AvailableActions.Num() > MaxToShow)
+			{
+				AvailableStr += FString::Printf(TEXT(" ... and %d more"), AvailableActions.Num() - MaxToShow);
+			}
+
+			LastError = FString::Printf(
+				TEXT("Enhanced Input Action '%s' not found. "
+					 "Available Input Actions in project: [%s]. "
+					 "Ensure the Input Action asset exists, or use project.search "
+					 "with type filter 'InputAction' to locate it."),
+				*InputActionName, *AvailableStr);
+		}
+		else
+		{
+			LastError = FString::Printf(
+				TEXT("Enhanced Input Action '%s' not found, and no Input Action assets "
+					 "exist in this project. Create an Input Action asset first "
+					 "(Content Browser > Right-click > Input > Input Action), "
+					 "then reference it in a plan step."),
+				*InputActionName);
+		}
+		return nullptr;
+	}
+
+	// Check for duplicate: only one UK2Node_EnhancedInputAction per InputAction per graph
+	for (UEdGraphNode* ExistingNode : Graph->Nodes)
+	{
+		if (UK2Node_EnhancedInputAction* ExistingIA = Cast<UK2Node_EnhancedInputAction>(ExistingNode))
+		{
+			if (ExistingIA->InputAction == FoundAction)
+			{
+				UE_LOG(LogOliveNodeFactory, Warning,
+					TEXT("CreateEnhancedInputActionNode: Enhanced Input Action '%s' "
+						 "already exists in graph at (%d, %d)"),
+					*InputActionName, ExistingIA->NodePosX, ExistingIA->NodePosY);
+				LastError = FString::Printf(
+					TEXT("Enhanced Input Action '%s' already exists in this graph "
+						 "(node at %d, %d). Each Input Action event can only appear once per graph."),
+					*InputActionName, ExistingIA->NodePosX, ExistingIA->NodePosY);
+				return nullptr;
+			}
+		}
+	}
+
+	// Create the Enhanced Input Action node
+	UK2Node_EnhancedInputAction* InputNode = NewObject<UK2Node_EnhancedInputAction>(Graph);
+	InputNode->InputAction = FoundAction;
+	InputNode->AllocateDefaultPins();
+	Graph->AddNode(InputNode, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+
+	UE_LOG(LogOliveNodeFactory, Log,
+		TEXT("CreateEnhancedInputActionNode: Created node for '%s' (asset: %s) with %d pins"),
+		*InputActionName, *FoundAction->GetPathName(), InputNode->Pins.Num());
+
+	return InputNode;
 }
 
 // ============================================================================
@@ -1511,6 +1715,10 @@ void FOliveNodeFactory::InitializeNodeCreators()
 		return CreateInputKeyNode(BP, G, P);
 	});
 
+	NodeCreators.Add(OliveNodeTypes::EnhancedInputAction, [this](UBlueprint* BP, UEdGraph* G, const TMap<FString, FString>& P) -> UEdGraphNode* {
+		return CreateEnhancedInputActionNode(BP, G, P);
+	});
+
 	// Delegate
 	NodeCreators.Add(OliveNodeTypes::CallDelegate, [this](UBlueprint* BP, UEdGraph* G, const TMap<FString, FString>& P) -> UEdGraphNode* {
 		return CreateCallDelegateNode(BP, G, P);
@@ -1575,6 +1783,11 @@ void FOliveNodeFactory::InitializeNodeCreators()
 	TMap<FString, FString> InputKeyProps;
 	InputKeyProps.Add(TEXT("key"), TEXT("Key name to bind (required, e.g., \"E\", \"SpaceBar\", \"Gamepad_FaceButton_Bottom\")"));
 	RequiredPropertiesMap.Add(OliveNodeTypes::InputKey, InputKeyProps);
+
+	// EnhancedInputAction
+	TMap<FString, FString> EnhancedInputActionProps;
+	EnhancedInputActionProps.Add(TEXT("input_action_name"), TEXT("Name of the UInputAction asset (required, e.g., \"IA_Interact\", \"IA_Jump\")"));
+	RequiredPropertiesMap.Add(OliveNodeTypes::EnhancedInputAction, EnhancedInputActionProps);
 
 	// Comment
 	TMap<FString, FString> CommentProps;

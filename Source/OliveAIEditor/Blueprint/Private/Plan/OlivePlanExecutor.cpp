@@ -28,6 +28,8 @@
 #include "EdGraphSchema_K2.h"
 #include "K2Node_Event.h"
 #include "K2Node_CustomEvent.h"
+#include "K2Node_EnhancedInputAction.h"
+#include "InputAction.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
 #include "K2Node_VariableGet.h"
@@ -311,6 +313,8 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
             TargetDesc = *FnName;
         else if (const FString* EvName = Resolved.Properties.Find(TEXT("event_name")))
             TargetDesc = *EvName;
+        else if (const FString* IAName = Resolved.Properties.Find(TEXT("input_action_name")))
+            TargetDesc = *IAName;
         else if (const FString* VarName = Resolved.Properties.Find(TEXT("variable_name")))
             TargetDesc = *VarName;
         else if (const FString* ClassN = Resolved.Properties.Find(TEXT("actor_class")))
@@ -327,6 +331,7 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
         // ----------------------------------------------------------------
         const bool bIsEventOp = (NodeType == OliveNodeTypes::Event);
         const bool bIsCustomEventOp = (NodeType == OliveNodeTypes::CustomEvent);
+        const bool bIsEnhancedInputOp = (NodeType == OliveNodeTypes::EnhancedInputAction);
 
         if (bIsEventOp || bIsCustomEventOp)
         {
@@ -368,6 +373,44 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
                         TEXT("Reused existing %s node '%s' for step '%s'"),
                         bIsCustomEventOp ? TEXT("custom event") : TEXT("event"),
                         *EventName, *StepId);
+
+                    ReusedStepIds.Add(StepId);
+                    Context.ReusedStepIds.Add(StepId);
+                    continue; // Skip to next step
+                }
+            }
+        }
+
+        // ----------------------------------------------------------------
+        // Enhanced Input Action reuse check
+        // ----------------------------------------------------------------
+        if (bIsEnhancedInputOp)
+        {
+            const FString* ActionNamePtr = Resolved.Properties.Find(TEXT("input_action_name"));
+            if (ActionNamePtr && !ActionNamePtr->IsEmpty())
+            {
+                UEdGraphNode* ExistingNode = FindExistingEnhancedInputNode(
+                    Context.Graph, *ActionNamePtr);
+
+                if (ExistingNode)
+                {
+                    const FString ReuseNodeId = ExistingNode->NodeGuid.ToString();
+
+                    FOlivePinManifest Manifest = FOlivePinManifest::Build(
+                        ExistingNode, StepId, ReuseNodeId, NodeType);
+
+                    Context.StepManifests.Add(StepId, MoveTemp(Manifest));
+                    Context.StepToNodeMap.Add(StepId, ReuseNodeId);
+                    Context.StepToNodePtr.Add(StepId, ExistingNode);
+                    Context.CreatedNodeCount++;
+
+                    Context.Warnings.Add(FString::Printf(
+                        TEXT("Step '%s': Enhanced Input Action '%s' already exists in graph, reusing existing node"),
+                        *StepId, **ActionNamePtr));
+
+                    UE_LOG(LogOlivePlanExecutor, Log,
+                        TEXT("Reused existing Enhanced Input Action node '%s' for step '%s'"),
+                        **ActionNamePtr, *StepId);
 
                     ReusedStepIds.Add(StepId);
                     Context.ReusedStepIds.Add(StepId);
@@ -657,6 +700,35 @@ UEdGraphNode* FOlivePlanExecutor::FindExistingEventNode(
             if (ExistingEvent && ExistingEvent->GetGraph() == Graph)
             {
                 return ExistingEvent;
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+// ============================================================================
+// FindExistingEnhancedInputNode
+// ============================================================================
+
+UEdGraphNode* FOlivePlanExecutor::FindExistingEnhancedInputNode(
+    UEdGraph* Graph,
+    const FString& InputActionName)
+{
+    if (!Graph)
+    {
+        return nullptr;
+    }
+
+    for (UEdGraphNode* Node : Graph->Nodes)
+    {
+        UK2Node_EnhancedInputAction* IANode = Cast<UK2Node_EnhancedInputAction>(Node);
+        if (IANode && IANode->InputAction)
+        {
+            // Match by asset name (case-insensitive)
+            if (IANode->InputAction->GetName().Equals(InputActionName, ESearchCase::IgnoreCase))
+            {
+                return IANode;
             }
         }
     }

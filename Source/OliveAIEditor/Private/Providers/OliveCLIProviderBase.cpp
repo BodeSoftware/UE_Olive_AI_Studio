@@ -467,6 +467,25 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 			LastRunContext.ModifiedAssetPaths.Num());
 	}
 
+	// Inject @-mentioned asset state into the initial prompt so the AI
+	// doesn't need to re-read assets it's already been pointed at.
+	// Must run on the game thread (BuildAssetStateSummary loads UObjects).
+	if (InitialContextAssetPaths.Num() > 0 && !IsContinuationMessage(UserMessage))
+	{
+		FString AssetState = BuildAssetStateSummary(InitialContextAssetPaths);
+		if (!AssetState.IsEmpty())
+		{
+			EffectiveMessage += TEXT("\n\n");
+			EffectiveMessage += AssetState;
+			EffectiveMessage += TEXT("\n**Do NOT re-read these assets** -- their current state is shown above. Focus on making the requested changes.\n");
+
+			UE_LOG(LogOliveCLIProvider, Log,
+				TEXT("Injected @-mention asset state for %d assets into initial prompt"),
+				InitialContextAssetPaths.Num());
+		}
+		InitialContextAssetPaths.Empty(); // Consume -- only inject once per user message
+	}
+
 	// Initialize run context tracking for this new run
 	LastRunContext.Reset();
 	LastRunContext.OriginalMessage = UserMessage;
@@ -1157,11 +1176,11 @@ FString FOliveCLIProviderBase::BuildContinuationPrompt(const FString& UserMessag
 	return Prompt;
 }
 
-FString FOliveCLIProviderBase::BuildAssetStateSummary() const
+FString FOliveCLIProviderBase::BuildAssetStateSummary(const TArray<FString>& AssetPaths) const
 {
 	check(IsInGameThread());
 
-	if (LastRunContext.ModifiedAssetPaths.Num() == 0)
+	if (AssetPaths.Num() == 0)
 	{
 		return FString();
 	}
@@ -1169,7 +1188,7 @@ FString FOliveCLIProviderBase::BuildAssetStateSummary() const
 	FString Summary;
 	Summary += TEXT("### Current Asset State\n");
 
-	for (const FString& AssetPath : LastRunContext.ModifiedAssetPaths)
+	for (const FString& AssetPath : AssetPaths)
 	{
 		UObject* Asset = StaticLoadObject(UObject::StaticClass(), nullptr, *AssetPath);
 		UBlueprint* Blueprint = Cast<UBlueprint>(Asset);

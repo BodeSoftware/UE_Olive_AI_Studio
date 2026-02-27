@@ -458,6 +458,25 @@ FOliveFunctionMatch FOliveFunctionResolver::TryCatalogMatch(const FString& Funct
             return Result;
         }
 
+        // Space-stripped display name match: handles AI using PascalCase
+        // ("LineTraceByChannel") when UE display names use spaces ("Line Trace By Channel")
+        {
+            FString StrippedDisplay = Info.DisplayName.Replace(TEXT(" "), TEXT(""));
+            if (StrippedDisplay.Equals(FunctionName, ESearchCase::IgnoreCase))
+            {
+                Result.Function = Found;
+                Result.OwningClass = FuncClass;
+                Result.MatchMethod = FOliveFunctionMatch::EMatchMethod::CatalogExact;
+                Result.Confidence = 78;
+                Result.DisplayName = Info.DisplayName;
+
+                UE_LOG(LogOliveFunctionResolver, Log,
+                    TEXT("Catalog space-stripped display match: '%s' -> %s::%s"),
+                    *FunctionName, *Info.FunctionClass, *Info.FunctionName);
+                return Result;
+            }
+        }
+
         // Fuzzy match: accept if score >= MinFuzzyScore
         if (Score >= MinFuzzyScore && !Result.IsValid())
         {

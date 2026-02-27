@@ -329,6 +329,17 @@ private:
         const FString& EventName,
         bool bIsCustomEvent);
 
+    /**
+     * Find existing UK2Node_EnhancedInputAction in graph for reuse.
+     * Matches by UInputAction asset name (case-insensitive).
+     * @param Graph The graph to search
+     * @param InputActionName The IA_ name to search for (e.g., "IA_Interact")
+     * @return The existing node, or nullptr if not found
+     */
+    UEdGraphNode* FindExistingEnhancedInputNode(
+        UEdGraph* Graph,
+        const FString& InputActionName);
+
     /** Build human-readable list of available pins for error messages */
     FString BuildPinSuggestionList(
         const FOlivePinManifest& Manifest,

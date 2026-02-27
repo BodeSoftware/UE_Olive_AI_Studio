@@ -1556,7 +1556,7 @@ bool FOliveBlueprintPlanResolver::ResolveEventOp(
 			Step.StepId,
 			FString::Printf(TEXT("/steps/%d/target"), Idx),
 			TEXT("'event' op requires a 'target' specifying the event name"),
-			TEXT("Set 'target' to the event name (e.g., \"BeginPlay\", \"Tick\", \"ActorBeginOverlap\", \"OnComponentBeginOverlap\", \"OnComponentHit\")")));
+			TEXT("Set 'target' to the event name (e.g., \"BeginPlay\", \"Tick\", \"ActorBeginOverlap\", \"OnComponentBeginOverlap\", \"OnComponentHit\", \"IA_Interact\")")));
 
 		UE_LOG(LogOlivePlanResolver, Warning,
 			TEXT("    ResolveEventOp FAILED: event '%s' not mapped. Parent class: '%s'"),
@@ -1581,6 +1581,34 @@ bool FOliveBlueprintPlanResolver::ResolveEventOp(
 		{ TEXT("RadialDamage"),       TEXT("ReceiveRadialDamage") },
 		{ TEXT("Destroyed"),          TEXT("ReceiveDestroyed") },
 	};
+
+	// ----------------------------------------------------------------
+	// Enhanced Input Action detection: targets starting with "IA_"
+	// resolve to UK2Node_EnhancedInputAction instead of UK2Node_Event.
+	// This avoids the NodeFactory fallback path and gives the executor
+	// the correct node type for reuse checks and pin manifests.
+	// ----------------------------------------------------------------
+	if (Step.Target.StartsWith(TEXT("IA_")))
+	{
+		Out.NodeType = OliveNodeTypes::EnhancedInputAction;
+		Out.Properties.Add(TEXT("input_action_name"), Step.Target);
+
+		FOliveResolverNote Note;
+		Note.Field = TEXT("node_type");
+		Note.OriginalValue = TEXT("Event");
+		Note.ResolvedValue = OliveNodeTypes::EnhancedInputAction;
+		Note.Reason = FString::Printf(
+			TEXT("Target '%s' starts with 'IA_', resolved as Enhanced Input Action event."),
+			*Step.Target);
+		Out.ResolverNotes.Add(MoveTemp(Note));
+
+		UE_LOG(LogOlivePlanResolver, Log,
+			TEXT("Step '%s': Enhanced Input Action detected — target='%s', "
+				 "resolving as EnhancedInputAction node type"),
+			*Step.StepId, *Step.Target);
+
+		return true;
+	}
 
 	FString ResolvedEventName = Step.Target;
 	const bool bIsNativeEvent = EventNameMap.Contains(Step.Target);

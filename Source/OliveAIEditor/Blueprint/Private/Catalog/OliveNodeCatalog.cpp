@@ -238,6 +238,21 @@ int32 FOliveNodeTypeInfo::MatchScore(const FString& Query) const
 		Score = 50;
 	}
 
+	// Space-stripped comparison: handles AI using PascalCase ("LineTraceByChannel")
+	// when UE display names use spaces ("Line Trace By Channel")
+	{
+		FString StrippedQuery = LowerQuery.Replace(TEXT(" "), TEXT(""));
+		FString StrippedDisplay = LowerDisplayName.Replace(TEXT(" "), TEXT(""));
+		if (StrippedDisplay == StrippedQuery)
+		{
+			Score = FMath::Max(Score, 900); // Near-exact match
+		}
+		else if (StrippedDisplay.Contains(StrippedQuery))
+		{
+			Score = FMath::Max(Score, 180);
+		}
+	}
+
 	// Keyword matches
 	for (const FString& Keyword : Keywords)
 	{

@@ -52,6 +52,7 @@ namespace OliveNodeTypes
 
 	// Input
 	const FString InputKey = TEXT("InputKey");
+	const FString EnhancedInputAction = TEXT("EnhancedInputAction");
 
 	// Utility
 	const FString PrintString = TEXT("PrintString");
@@ -377,6 +378,24 @@ private:
 	 * @return The created CallDelegate node, or nullptr if the delegate was not found
 	 */
 	UK2Node* CreateCallDelegateNode(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		const TMap<FString, FString>& Properties);
+
+	/**
+	 * Create an Enhanced Input Action event node (UK2Node_EnhancedInputAction).
+	 * Required properties: "input_action_name" -- the name of the UInputAction asset
+	 * (e.g., "IA_Interact", "IA_Jump", "IA_Fire").
+	 * Searches the project asset registry for a matching UInputAction data asset,
+	 * creates the K2Node, sets the InputAction property, then allocates pins
+	 * (Triggered, Started, Completed, Canceled, Ongoing, plus ActionValue).
+	 *
+	 * @param Blueprint The Blueprint containing the graph
+	 * @param Graph The target graph
+	 * @param Properties Must contain "input_action_name"
+	 * @return The created EnhancedInputAction node, or nullptr if the asset was not found
+	 */
+	UK2Node* CreateEnhancedInputActionNode(
 		UBlueprint* Blueprint,
 		UEdGraph* Graph,
 		const TMap<FString, FString>& Properties);

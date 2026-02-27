@@ -65,6 +65,7 @@
   - `BuildContinuationPrompt` now calls `BuildAssetStateSummary()` (loads UBlueprints on game thread) to inject asset state (components, variables, functions with node counts, compile status)
   - BuildContinuationPrompt called INSIDE the AsyncTask lambda (game thread safe for UObject loading)
 - **Tool filtering**: `FOliveMCPServer::SetToolFilter(TSet<FString>)` / `ClearToolFilter()` restrict `HandleToolsList` by prefix. `DetermineToolPrefixes()` in anonymous namespace infers domain from user message. Set before LaunchCLIProcess, cleared in HandleResponseCompleteAutonomous and CancelRequest. `HandleToolsCall` is NOT filtered (any tool still callable).
+- **@-mention asset state injection**: `SetInitialContextAssets()` (public) sets `InitialContextAssetPaths` on the provider. `SendMessageAutonomous()` calls `BuildAssetStateSummary(InitialContextAssetPaths)` to inject pre-read state into initial prompt. ConversationManager calls `SetInitialContextAssets(ActiveContextPaths)` via `static_cast<FOliveCLIProviderBase*>` (safe: IsAutonomousProvider() gates entry). `BuildAssetStateSummary(const TArray<FString>&)` is the primary overload; no-arg version is inline wrapper reading `LastRunContext.ModifiedAssetPaths`.
 
 ## UE 5.5 API Quirks
 - **Float/Double PinType**: In UE 5.5, `PC_Float` and `PC_Double` must NOT be used as `PinCategory`. Instead use `PinCategory = PC_Real` with `PinSubCategory = PC_Float` (or `PC_Double`). Using `PC_Float` directly as category causes "Can't parse default value" compile warnings because the engine can't resolve an FProperty from a bare `PC_Float` category.
@@ -174,6 +175,19 @@
 - **B1**: `ResolveStep()` remaps `op: "entry"` -> `op: "event"` early (alias handling). Event dispatch in function graphs checks if target matches function name / "entry" / empty and maps to `FunctionInput` instead of `ResolveEventOp`.
 - **B2**: `ExpandComponentRefs()` now builds `BlueprintVariableNames` set from `Blueprint->NewVariables`. Bare `@VarName` and dotted `@VarName.hint` refs matching BP variables synthesize `_synth_getvar_xxx` get_var steps. Priority: step ID > function param > SCS component > BP variable.
 - **B3**: `ExpandBranchConditions()` new static resolver pass, called after `ExpandPlanInputs` in `Resolve()`. Detects branch steps where Condition `@ref` points to a get_var of non-boolean variable. Synthesizes `Greater_IntInt` (int) or `Greater_DoubleDouble` (float/real) comparison step. UE 5.5 pin category for float/double is `"real"` (not "float"/"double").
+
+## Enhanced Input Action Support (K2Node_EnhancedInputAction)
+- `OliveNodeTypes::EnhancedInputAction = "EnhancedInputAction"` added to OliveNodeFactory.h
+- `CreateEnhancedInputActionNode()` on FOliveNodeFactory: searches AssetRegistry for UInputAction by name, creates UK2Node_EnhancedInputAction
+- Property: `TObjectPtr<const UInputAction> InputAction` (set BEFORE AllocateDefaultPins)
+- Headers: `K2Node_EnhancedInputAction.h` (from InputBlueprintNodes module), `InputAction.h` (from EnhancedInput module)
+- Build.cs deps: `EnhancedInput`, `InputBlueprintNodes`; uplugin dep: `EnhancedInput` plugin
+- Three-path resolution in CreateEventNode: (1) native function override, (2) component delegate, (3) Enhanced Input Action (IA_ prefix)
+- Plan resolver: `ResolveEventOp` detects `IA_` prefix targets, sets NodeType to EnhancedInputAction + `input_action_name` property
+- Plan executor: `FindExistingEnhancedInputNode()` for reuse detection (matches by UInputAction asset name)
+- Asset search: AssetRegistry by class -> direct LoadObject with common paths (/Game/Input/Actions/, /Game/Input/, /Game/)
+- Duplicate detection: only one UK2Node_EnhancedInputAction per UInputAction per graph
+- Auto-chain in PhaseWireExec works because Plan.Steps[].Op is still "event" (resolver only changes NodeType, not Op)
 
 ## ExpandedPlan Fix (Round 2 Task 2)
 - `FOlivePlanResolveResult` now carries `ExpandedPlan` field -- the plan after all pre-processing (ExpandComponentRefs, ExpandPlanInputs, ExpandBranchConditions)
