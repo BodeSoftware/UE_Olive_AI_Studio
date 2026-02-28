@@ -124,6 +124,14 @@ struct OLIVEAIEDITOR_API FOliveResolvedStep
 	 * Used by Phase 0 validation to check class hierarchy.
 	 */
 	UClass* ResolvedOwningClass = nullptr;
+
+	/**
+	 * Whether this call step resolved to an interface function.
+	 * When true, the executor should create a UK2Node_Message (interface
+	 * message call) instead of a regular UK2Node_CallFunction.
+	 * Set by ResolveCallOp when FindFunction matches via InterfaceSearch.
+	 */
+	bool bIsInterfaceCall = false;
 };
 
 /**
@@ -396,6 +404,19 @@ private:
 	 * FOliveNodeFactory::CreateCallDelegateNode.
 	 */
 	static bool ResolveCallDelegateOp(
+		const FOliveIRBlueprintPlanStep& Step,
+		UBlueprint* BP,
+		int32 Idx,
+		FOliveResolvedStep& Out,
+		TArray<FOliveIRBlueprintPlanError>& Errors);
+
+	/**
+	 * Resolve a "bind_dispatcher" op -- bind a custom event to an event dispatcher.
+	 * Validates that the target names a multicast delegate (PC_MCDelegate)
+	 * variable on the Blueprint and sets up properties for
+	 * FOliveNodeFactory::CreateBindDelegateNode.
+	 */
+	static bool ResolveBindDelegateOp(
 		const FOliveIRBlueprintPlanStep& Step,
 		UBlueprint* BP,
 		int32 Idx,

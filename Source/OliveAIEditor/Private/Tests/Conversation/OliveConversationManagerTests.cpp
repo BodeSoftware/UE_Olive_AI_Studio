@@ -5,7 +5,6 @@
 #include "Chat/OliveConversationManager.h"
 #include "MCP/OliveToolRegistry.h"
 #include "Profiles/OliveFocusProfileManager.h"
-#include "Brain/OliveToolPackManager.h"
 
 namespace OliveConversationManagerTests
 {
@@ -92,9 +91,8 @@ bool FOliveConversationConfirmationReplayTest::RunTest(const FString& Parameters
 {
 	using namespace OliveConversationManagerTests;
 
-	// Ensure profiles/tools/packs initialized.
+	// Ensure profiles initialized.
 	FOliveFocusProfileManager::Get().Initialize();
-	FOliveToolPackManager::Get().Initialize();
 
 	// Register a temporary tool that requires confirmation unless confirmation_token is present.
 	static const FString ToolName = TEXT("test.requires_confirm");
@@ -192,7 +190,6 @@ bool FOliveConversationToolPackPolicyTest::RunTest(const FString& Parameters)
 	using namespace OliveConversationManagerTests;
 
 	FOliveFocusProfileManager::Get().Initialize();
-	FOliveToolPackManager::Get().Initialize();
 
 	TSharedPtr<FOliveConversationManager> Manager = MakeShared<FOliveConversationManager>();
 	TSharedPtr<FFakeProvider> Provider = MakeShared<FFakeProvider>();
@@ -205,17 +202,23 @@ bool FOliveConversationToolPackPolicyTest::RunTest(const FString& Parameters)
 		OnComplete.ExecuteIfBound(TEXT(""), Usage);
 	});
 
-	// Read-only intent: should not include write packs (best-effort, based on heuristic).
+	// After AI Freedom update: tool pack filtering is removed. Both read-only and
+	// write-intent messages should receive the SAME set of profile-filtered tools.
+	// All tools are sent on every iteration so the AI can discover and plan freely.
+
 	Manager->StartNewSession();
 	Manager->SendUserMessage(TEXT("read the blueprint structure"));
 	const int32 ReadToolCount = Provider->ToolsSeen.Num();
-	TestTrue(TEXT("Should send some tools"), ReadToolCount > 0);
+	TestTrue(TEXT("Should send some tools for read-only message"), ReadToolCount > 0);
 
-	// Write intent: should generally include more tools than read-only (write packs added).
 	Manager->StartNewSession();
 	Manager->SendUserMessage(TEXT("add a variable to the blueprint"));
 	const int32 WriteToolCount = Provider->ToolsSeen.Num();
-	TestTrue(TEXT("Write intent should not reduce tools vs read intent"), WriteToolCount >= ReadToolCount);
+	TestTrue(TEXT("Should send some tools for write-intent message"), WriteToolCount > 0);
+
+	// With tool pack filtering removed, both intents should get identical tool counts
+	TestEqual(TEXT("Read and write intent should get identical tool counts (no pack filtering)"),
+		ReadToolCount, WriteToolCount);
 
 	return true;
 }

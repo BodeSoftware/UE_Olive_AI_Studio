@@ -197,14 +197,16 @@ void FOliveValidationEngine::RegisterCoreRules()
 {
 	RegisterRule(MakeShared<FOlivePIEProtectionRule>());
 	RegisterRule(MakeShared<FOliveSchemaValidationRule>());
-	RegisterRule(MakeShared<FOliveAssetExistsRule>());
+	// Removed in AI Freedom update — redundant with handler-level checks
+	// RegisterRule(MakeShared<FOliveAssetExistsRule>());
 	RegisterRule(MakeShared<FOliveWriteRateLimitRule>());
 }
 
 void FOliveValidationEngine::RegisterBlueprintRules()
 {
 	RegisterRule(MakeShared<FOliveBPAssetTypeRule>());
-	RegisterRule(MakeShared<FOliveBPNodeIdFormatRule>());
+	// Removed in AI Freedom update — handler errors are better and more contextual
+	// RegisterRule(MakeShared<FOliveBPNodeIdFormatRule>());
 	RegisterRule(MakeShared<FOliveBPNamingRule>());
 
 	UE_LOG(LogOliveAI, Log, TEXT("Registered Blueprint validation rules"));
@@ -259,7 +261,8 @@ FOliveValidationResult FOlivePIEProtectionRule::Validate(
 		// Only block write operations
 		static TArray<FString> ReadOnlyTools = {
 			TEXT("blueprint.read"),
-			TEXT("blueprint.read_function"),
+			TEXT("blueprint.get_node_pins"),
+			TEXT("blueprint.describe_node_type"),
 			TEXT("project.search"),
 			TEXT("project.get_info"),
 			TEXT("behaviortree.read"),
@@ -763,6 +766,9 @@ FOliveValidationResult FOliveBTNodeExistsRule::Validate(
 	}
 
 	// Validate node class parameters for add operations
+	// Relaxed in AI Freedom update — class resolution downgraded to warning.
+	// Blueprint-only BT node classes may not be loaded when this rule runs.
+	// Let the handler attempt creation; if UE5 rejects, it returns UE5's error.
 	if (ToolName == TEXT("behaviortree.add_task"))
 	{
 		FString TaskClass;
@@ -770,9 +776,9 @@ FOliveValidationResult FOliveBTNodeExistsRule::Validate(
 		if (!TaskClass.IsEmpty() &&
 			!FOliveBTNodeFactory::Get().ResolveNodeClass(TaskClass, UBTTaskNode::StaticClass()))
 		{
-			Result.AddError(
+			Result.AddWarning(
 				TEXT("TASK_CLASS_NOT_FOUND"),
-				FString::Printf(TEXT("Task class '%s' was not found"), *TaskClass),
+				FString::Printf(TEXT("Task class '%s' was not found. It may not be loaded yet."), *TaskClass),
 				TEXT("Use resource olive://behaviortree/node-catalog/search?q=<query> to discover available classes")
 			);
 		}
@@ -784,9 +790,9 @@ FOliveValidationResult FOliveBTNodeExistsRule::Validate(
 		if (!DecoratorClass.IsEmpty() &&
 			!FOliveBTNodeFactory::Get().ResolveNodeClass(DecoratorClass, UBTDecorator::StaticClass()))
 		{
-			Result.AddError(
+			Result.AddWarning(
 				TEXT("DECORATOR_CLASS_NOT_FOUND"),
-				FString::Printf(TEXT("Decorator class '%s' was not found"), *DecoratorClass),
+				FString::Printf(TEXT("Decorator class '%s' was not found. It may not be loaded yet."), *DecoratorClass),
 				TEXT("Use resource olive://behaviortree/node-catalog/search?q=<query> to discover available classes")
 			);
 		}
@@ -798,9 +804,9 @@ FOliveValidationResult FOliveBTNodeExistsRule::Validate(
 		if (!ServiceClass.IsEmpty() &&
 			!FOliveBTNodeFactory::Get().ResolveNodeClass(ServiceClass, UBTService::StaticClass()))
 		{
-			Result.AddError(
+			Result.AddWarning(
 				TEXT("SERVICE_CLASS_NOT_FOUND"),
-				FString::Printf(TEXT("Service class '%s' was not found"), *ServiceClass),
+				FString::Printf(TEXT("Service class '%s' was not found. It may not be loaded yet."), *ServiceClass),
 				TEXT("Use resource olive://behaviortree/node-catalog/search?q=<query> to discover available classes")
 			);
 		}
@@ -1293,7 +1299,8 @@ void FOliveValidationEngine::RegisterCrossSystemRules()
 	RegisterRule(MakeShared<FOliveBulkReadLimitRule>());
 	RegisterRule(MakeShared<FOliveSnapshotExistsRule>());
 	RegisterRule(MakeShared<FOliveRefactorSafetyRule>());
-	RegisterRule(MakeShared<FOliveCppOnlyModeRule>());
+	// Removed in AI Freedom update — dead code, preferred_layer is never set
+	// RegisterRule(MakeShared<FOliveCppOnlyModeRule>());
 	RegisterRule(MakeShared<FOliveDuplicateLayerRule>());
 
 	UE_LOG(LogOliveAI, Log, TEXT("Registered Cross-System validation rules"));
@@ -1610,33 +1617,33 @@ FOliveValidationResult FOliveDuplicateLayerRule::Validate(
 
 		const bool bIsAddFunction = (ToolName == TEXT("blueprint.add_function"));
 		const bool bIsAddVariable = (ToolName == TEXT("blueprint.add_variable"));
-		const bool bIsAddDispatcher = (ToolName == TEXT("blueprint.add_event_dispatcher"));
-		const bool bIsOverrideFunction = (ToolName == TEXT("blueprint.override_function"));
 
-		if (bIsAddFunction && !bIsOverrideFunction)
+		// Determine function_type for unified blueprint.add_function tool
+		FString FunctionType;
+		if (bIsAddFunction)
+		{
+			Params->TryGetStringField(TEXT("function_type"), FunctionType);
+			if (FunctionType.IsEmpty()) { FunctionType = TEXT("function"); }
+		}
+
+		const bool bIsOverrideFunction = (bIsAddFunction && FunctionType == TEXT("override"));
+		const bool bIsAddDispatcher = (bIsAddFunction && FunctionType == TEXT("event_dispatcher"));
+		const bool bIsAddRegularFunction = (bIsAddFunction && !bIsOverrideFunction && !bIsAddDispatcher);
+
+		if (bIsAddRegularFunction)
 		{
 			// Check if parent C++ class has a UFUNCTION with this name
 			UFunction* ExistingFunc = ParentClass->FindFunctionByName(FName(*Name));
 			if (ExistingFunc && ExistingFunc->HasAnyFunctionFlags(FUNC_Native))
 			{
-				if (!bAllowDuplicate)
-				{
-					Result.AddError(
-						TEXT("DUPLICATE_LAYER_BLOCKED"),
-						FString::Printf(TEXT("C++ parent class '%s' already has a native function '%s'. Creating a Blueprint function with the same name is blocked to prevent shadowing."),
-							*ParentClass->GetName(), *Name),
-						FString::Printf(TEXT("Use blueprint.override_function for '%s' if you intend to override it, or choose a different function name. You can bypass by setting allow_duplicate=true."), *Name)
-					);
-				}
-				else
-				{
-					Result.AddWarning(
-						TEXT("DUPLICATE_LAYER"),
-						FString::Printf(TEXT("C++ parent class '%s' already has a native function '%s'. Creating a Blueprint version may cause confusion or shadowing."),
-							*ParentClass->GetName(), *Name),
-						FString::Printf(TEXT("Prefer blueprint.override_function for '%s' if overriding is intended."), *Name)
-					);
-				}
+				// Relaxed in AI Freedom update — always warn, never block.
+				// bAllowDuplicate kept for backward compat but is a no-op for error/warning decision.
+				Result.AddWarning(
+					TEXT("DUPLICATE_LAYER"),
+					FString::Printf(TEXT("C++ parent class '%s' already has a native function '%s'. Creating a Blueprint version may cause confusion or shadowing."),
+						*ParentClass->GetName(), *Name),
+					FString::Printf(TEXT("Prefer blueprint.add_function with function_type='override' for '%s' if overriding is intended."), *Name)
+				);
 			}
 		}
 		else if (bIsAddVariable || bIsAddDispatcher)
@@ -1645,24 +1652,14 @@ FOliveValidationResult FOliveDuplicateLayerRule::Validate(
 			FProperty* ExistingProp = ParentClass->FindPropertyByName(FName(*Name));
 			if (ExistingProp)
 			{
-				if (!bAllowDuplicate)
-				{
-					Result.AddError(
-						TEXT("DUPLICATE_LAYER_BLOCKED"),
-						FString::Printf(TEXT("C++ parent class '%s' already has a property '%s'. Creating a Blueprint member with the same name is blocked to prevent shadowing."),
-							*ParentClass->GetName(), *Name),
-						TEXT("Use the existing C++ property directly, or choose a different name. You can bypass by setting allow_duplicate=true.")
-					);
-				}
-				else
-				{
-					Result.AddWarning(
-						TEXT("DUPLICATE_LAYER"),
-						FString::Printf(TEXT("C++ parent class '%s' already has a property '%s'. Creating a Blueprint member with the same name may shadow it."),
-							*ParentClass->GetName(), *Name),
-						TEXT("Choose a different name to avoid shadowing, or use the existing C++ property.")
-					);
-				}
+				// Relaxed in AI Freedom update — always warn, never block.
+				// bAllowDuplicate kept for backward compat but is a no-op for error/warning decision.
+				Result.AddWarning(
+					TEXT("DUPLICATE_LAYER"),
+					FString::Printf(TEXT("C++ parent class '%s' already has a property '%s'. Creating a Blueprint member with the same name may shadow it."),
+						*ParentClass->GetName(), *Name),
+					TEXT("Choose a different name to avoid shadowing, or use the existing C++ property.")
+				);
 			}
 		}
 	}
@@ -1727,24 +1724,14 @@ FOliveValidationResult FOliveDuplicateLayerRule::Validate(
 				UFunction* BPFunc = Derived->FindFunctionByName(FName(*MemberName), EIncludeSuperFlag::ExcludeSuper);
 				if (BPFunc && !BPFunc->HasAnyFunctionFlags(FUNC_Native))
 				{
-					if (!bAllowDuplicate)
-					{
-						Result.AddError(
-							TEXT("DUPLICATE_LAYER_BLOCKED"),
-							FString::Printf(TEXT("Blueprint '%s' (derived from '%s') already defines function '%s'. Adding a C++ function with the same name is blocked to prevent conflicts."),
-								*Derived->GetName(), *ClassName, *MemberName),
-							TEXT("Rename the new C++ function, or remove/convert the Blueprint function first. You can bypass by setting allow_duplicate=true.")
-						);
-					}
-					else
-					{
-						Result.AddWarning(
-							TEXT("DUPLICATE_LAYER"),
-							FString::Printf(TEXT("Blueprint '%s' (derived from '%s') already defines function '%s'. Adding it to C++ may create a conflict."),
-								*Derived->GetName(), *ClassName, *MemberName),
-							TEXT("Prefer renaming or migrating the Blueprint implementation to an override.")
-						);
-					}
+					// Relaxed in AI Freedom update — always warn, never block.
+					// bAllowDuplicate kept for backward compat but is a no-op for error/warning decision.
+					Result.AddWarning(
+						TEXT("DUPLICATE_LAYER"),
+						FString::Printf(TEXT("Blueprint '%s' (derived from '%s') already defines function '%s'. Adding it to C++ may create a conflict."),
+							*Derived->GetName(), *ClassName, *MemberName),
+						TEXT("Prefer renaming or migrating the Blueprint implementation to an override.")
+					);
 					break;
 				}
 			}
@@ -1753,24 +1740,14 @@ FOliveValidationResult FOliveDuplicateLayerRule::Validate(
 				FProperty* BPProp = Derived->FindPropertyByName(FName(*MemberName));
 				if (BPProp)
 				{
-					if (!bAllowDuplicate)
-					{
-						Result.AddError(
-							TEXT("DUPLICATE_LAYER_BLOCKED"),
-							FString::Printf(TEXT("Blueprint '%s' (derived from '%s') already defines property '%s'. Adding a C++ property with the same name is blocked to prevent shadowing."),
-								*Derived->GetName(), *ClassName, *MemberName),
-							TEXT("Rename the new C++ property, or remove/migrate the Blueprint variable first. You can bypass by setting allow_duplicate=true.")
-						);
-					}
-					else
-					{
-						Result.AddWarning(
-							TEXT("DUPLICATE_LAYER"),
-							FString::Printf(TEXT("Blueprint '%s' (derived from '%s') already defines property '%s'. Adding it to C++ may create shadowing/confusion."),
-								*Derived->GetName(), *ClassName, *MemberName),
-							TEXT("Prefer renaming or migrating the Blueprint variable.")
-						);
-					}
+					// Relaxed in AI Freedom update — always warn, never block.
+					// bAllowDuplicate kept for backward compat but is a no-op for error/warning decision.
+					Result.AddWarning(
+						TEXT("DUPLICATE_LAYER"),
+						FString::Printf(TEXT("Blueprint '%s' (derived from '%s') already defines property '%s'. Adding it to C++ may create shadowing/confusion."),
+							*Derived->GetName(), *ClassName, *MemberName),
+						TEXT("Prefer renaming or migrating the Blueprint variable.")
+					);
 					break;
 				}
 			}
@@ -1802,12 +1779,30 @@ FOliveValidationResult FOliveBPAssetTypeRule::Validate(
 	UBlueprint* Blueprint = Cast<UBlueprint>(TargetAsset);
 	if (!Blueprint)
 	{
-		Result.AddError(
-			TEXT("WRONG_ASSET_TYPE"),
-			FString::Printf(TEXT("Tool '%s' requires a Blueprint asset, but got '%s'"),
-				*ToolName, *TargetAsset->GetClass()->GetName()),
-			TEXT("Check the asset path points to a Blueprint (.uasset created from a Blueprint class)")
-		);
+		// Relaxed in AI Freedom update — read tools get a warning, write tools get an error.
+		// Reading a non-Blueprint asset should return "not a Blueprint" data, not block entirely.
+		const bool bIsReadTool = ToolName.StartsWith(TEXT("blueprint.read"))
+			|| ToolName.StartsWith(TEXT("blueprint.get_"))
+			|| ToolName.StartsWith(TEXT("blueprint.list_"));
+
+		if (bIsReadTool)
+		{
+			Result.AddWarning(
+				TEXT("WRONG_ASSET_TYPE"),
+				FString::Printf(TEXT("Tool '%s' expects a Blueprint asset, but got '%s'"),
+					*ToolName, *TargetAsset->GetClass()->GetName()),
+				TEXT("Check the asset path points to a Blueprint (.uasset created from a Blueprint class)")
+			);
+		}
+		else
+		{
+			Result.AddError(
+				TEXT("WRONG_ASSET_TYPE"),
+				FString::Printf(TEXT("Tool '%s' requires a Blueprint asset, but got '%s'"),
+					*ToolName, *TargetAsset->GetClass()->GetName()),
+				TEXT("Check the asset path points to a Blueprint (.uasset created from a Blueprint class)")
+			);
+		}
 	}
 
 	return Result;
@@ -1930,13 +1925,8 @@ FOliveValidationResult FOliveBPNamingRule::Validate(
 			TEXT("Start names with a letter or underscore"));
 	}
 
-	// Warn if name is very short
-	if (Name.Len() < 2)
-	{
-		Result.AddWarning(TEXT("SHORT_NAME"),
-			FString::Printf(TEXT("Name '%s' is very short"), *Name),
-			TEXT("Consider using a more descriptive name"));
-	}
+	// Removed in AI Freedom update — single-char names like X, Y, Z are valid
+	// in math-heavy Blueprints. No short-name warning.
 
 	return Result;
 }

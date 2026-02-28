@@ -11,7 +11,7 @@ Use these Blueprint creation/editing reliability rules:
 - Never use wildcard/exec as variable types.
 
 3. Delegates and dispatchers:
-- For multicast events, use blueprint.add_event_dispatcher (do not model dispatchers as raw variables).
+- For multicast events, use blueprint.add_function with function_type="event_dispatcher" (do not model dispatchers as raw variables).
 - Avoid creating single-cast delegate member variables unless explicit tool support exists.
 
 4. Graph edits:
@@ -28,14 +28,7 @@ Use these Blueprint creation/editing reliability rules:
 - Follow project naming conventions and existing patterns in the target asset.
 - Avoid destructive changes unless explicitly requested.
 
-7. Batch-first graph editing:
-- For graph work involving 3+ operations, prefer plan_json or project.batch_write
-- Structure with op IDs so connect_pins can reference add_node results via ${opId.node_id}
-- Set auto_compile=true
-- Read back the graph summary after batch to confirm wiring
-- Do not claim nodes exist unless batch result or read-back confirms it
-
-8. No fake success:
+7. No fake success:
 - If batch_write returns an error, report what failed truthfully
 - Do not summarize partial failures as successes
 - If you cannot verify, say so explicitly

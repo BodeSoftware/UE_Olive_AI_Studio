@@ -23,14 +23,16 @@ namespace OliveBTSchemas
 	/** Schema for blackboard.read: {path: string, include_inherited?: bool} */
 	TSharedPtr<FJsonObject> BlackboardRead();
 
-	/** Schema for blackboard.add_key: {path, name, key_type, base_class?, enum_type?, instance_synced?, description?} */
+	/**
+	 * Schema for blackboard.add_key (upsert): {path, name, key_type, base_class?, enum_type?,
+	 * instance_synced?, description?, new_name?}
+	 * If the key already exists, modifies it instead of erroring.
+	 * new_name is accepted for rename-on-modify (forwarded from old blackboard.modify_key).
+	 */
 	TSharedPtr<FJsonObject> BlackboardAddKey();
 
 	/** Schema for blackboard.remove_key: {path: string, name: string} */
 	TSharedPtr<FJsonObject> BlackboardRemoveKey();
-
-	/** Schema for blackboard.modify_key: {path, name, new_name?, instance_synced?, description?} */
-	TSharedPtr<FJsonObject> BlackboardModifyKey();
 
 	/** Schema for blackboard.set_parent: {path: string, parent_path: string} */
 	TSharedPtr<FJsonObject> BlackboardSetParent();
@@ -48,17 +50,12 @@ namespace OliveBTSchemas
 	/** Schema for behaviortree.set_blackboard: {path: string, blackboard: string} */
 	TSharedPtr<FJsonObject> BehaviorTreeSetBlackboard();
 
-	/** Schema for behaviortree.add_composite: {path, parent_node_id, composite_type, child_index?} */
-	TSharedPtr<FJsonObject> BehaviorTreeAddComposite();
-
-	/** Schema for behaviortree.add_task: {path, parent_node_id, task_class, child_index?, properties?} */
-	TSharedPtr<FJsonObject> BehaviorTreeAddTask();
-
-	/** Schema for behaviortree.add_decorator: {path, node_id, decorator_class, properties?} */
-	TSharedPtr<FJsonObject> BehaviorTreeAddDecorator();
-
-	/** Schema for behaviortree.add_service: {path, node_id, service_class, properties?} */
-	TSharedPtr<FJsonObject> BehaviorTreeAddService();
+	/**
+	 * Schema for behaviortree.add_node: unified tool for adding any BT node type.
+	 * {path, node_kind, parent_node_id?, node_id?, class?, composite_type?, child_index?, properties?}
+	 * node_kind routes to composite/task/decorator/service logic.
+	 */
+	TSharedPtr<FJsonObject> BehaviorTreeAddNode();
 
 	/** Schema for behaviortree.remove_node: {path: string, node_id: string} */
 	TSharedPtr<FJsonObject> BehaviorTreeRemoveNode();

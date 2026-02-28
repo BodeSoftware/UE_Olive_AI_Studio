@@ -295,11 +295,10 @@ public:
 	virtual TArray<FString> GetApplicableTools() const override
 	{
 		return {
-			TEXT("blueprint.add_variable"), TEXT("blueprint.remove_variable"), TEXT("blueprint.modify_variable"),
+			TEXT("blueprint.add_variable"), TEXT("blueprint.remove_variable"),
 			TEXT("blueprint.add_component"), TEXT("blueprint.remove_component"), TEXT("blueprint.modify_component"),
 			TEXT("blueprint.reparent_component"),
 			TEXT("blueprint.add_function"), TEXT("blueprint.remove_function"), TEXT("blueprint.modify_function_signature"),
-			TEXT("blueprint.add_event_dispatcher"), TEXT("blueprint.override_function"), TEXT("blueprint.add_custom_event"),
 			TEXT("blueprint.add_node"), TEXT("blueprint.remove_node"),
 			TEXT("blueprint.connect_pins"), TEXT("blueprint.disconnect_pins"),
 			TEXT("blueprint.set_pin_default"), TEXT("blueprint.set_node_property"),
@@ -340,9 +339,8 @@ public:
 	virtual TArray<FString> GetApplicableTools() const override
 	{
 		return {
-			TEXT("blueprint.add_variable"), TEXT("blueprint.modify_variable"),
-			TEXT("blueprint.add_function"), TEXT("blueprint.modify_function_signature"),
-			TEXT("blueprint.add_event_dispatcher"), TEXT("blueprint.add_custom_event")
+			TEXT("blueprint.add_variable"),
+			TEXT("blueprint.add_function"), TEXT("blueprint.modify_function_signature")
 		};
 	}
 	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
@@ -547,7 +545,7 @@ public:
 			TEXT("blueprint.add_node"), TEXT("blueprint.remove_variable"), TEXT("blueprint.remove_component"),
 			TEXT("blueprint.remove_function"), TEXT("blueprint.remove_node"),
 			TEXT("blueprint.create"), TEXT("blueprint.set_parent_class"),
-			TEXT("blueprint.modify_variable"), TEXT("blueprint.modify_function"),
+			TEXT("blueprint.add_variable"), TEXT("blueprint.modify_function"),
 			TEXT("blueprint.connect_pins"), TEXT("blueprint.disconnect_pins"),
 			TEXT("blueprint.set_defaults"), TEXT("blueprint.move_node"),
 			TEXT("behaviortree.create"), TEXT("behaviortree.add_node"), TEXT("behaviortree.remove_node"),
@@ -601,8 +599,7 @@ public:
 	virtual TArray<FString> GetApplicableTools() const override
 	{
 		return {
-			TEXT("blueprint.add_function"), TEXT("blueprint.add_custom_event"),
-			TEXT("blueprint.override_function"), TEXT("blueprint.add_variable"),
+			TEXT("blueprint.add_function"), TEXT("blueprint.add_variable"),
 			TEXT("cpp.add_function"), TEXT("cpp.add_property")
 		};
 	}

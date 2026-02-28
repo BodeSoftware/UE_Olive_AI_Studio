@@ -186,3 +186,15 @@
 - Layout engine: `Source/OliveAIEditor/Blueprint/Public/Plan/OliveGraphLayoutEngine.h`
 - Class resolver: `Source/OliveAIEditor/Blueprint/Public/OliveClassResolver.h`
 - Template system: `Source/OliveAIEditor/Blueprint/Public/Template/OliveTemplateSystem.h`
+
+### AI Freedom Design - Feb 2026
+- `plans/ai-freedom-design.md` -- 3-phase design: Unblock (5 false negatives), Simplify (111->76 tools), Discover (enhanced reads + describe_node_type)
+- **Phase 1 (5 false negatives)**: FN-1 OverrideFunction interface search, FN-2 FindInterfaceClass asset registry fallback, FN-3 EventTick alias additions, FN-4 FindFunction interface search + UK2Node_Message, FN-5 FunctionGraphs scan for uncompiled user functions
+- **Validation audit**: KEEP 4 (PIE, CppCompile, PathSafety, RateLimit), RELAX 4 (DuplicateLayer->warning, BTNodeExists class->warning, BPNaming short->remove, BPAssetType read->warning), REMOVE 3 (AssetExists, CppOnlyMode, BPNodeIdFormat)
+- **Tool pack system removed**: FOliveToolPackManager deprecated. Focus profiles handle domain filtering. Claude Code MCP Tool Search handles token concerns.
+- **Phase 2 tool consolidation**: 7 BP read tools -> 1 with `section` param. 4 function creation tools -> 1 with `function_type` param. 4 BT add tools -> 1 with `node_kind` param. Tool alias map in FOliveToolRegistry for backward compat (one release cycle).
+- **Phase 2 removals**: batch_write (plan-JSON handles), create_ai_character, move_to_cpp, index_build, index_status, get_config, get_dependencies (in get_asset_info), get_referencers (in get_asset_info)
+- **Recipe mandate removed**: olive.get_recipe becomes advisory, not mandatory. 12-step cap removed (real limit is PlanJsonMaxSteps=128).
+- **Phase 3 discovery**: FOliveIRGraphSummary (name + node_count) per function. CompileErrors array on FOliveIRBlueprint. New blueprint.describe_node_type tool. FOliveFunctionSearchResult struct replacing bare UFunction* return.
+- **New error code**: `INTERFACE_FUNCTION_FOUND` (info)
+- **New enum value**: `EMatchMethod::InterfaceSearch`

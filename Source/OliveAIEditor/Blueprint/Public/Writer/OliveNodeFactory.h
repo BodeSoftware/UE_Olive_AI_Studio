@@ -15,6 +15,33 @@ class UClass;
 class UScriptStruct;
 
 /**
+ * How a function was matched during FindFunction() resolution.
+ * Used by the resolver to determine if a UK2Node_Message (interface call)
+ * should be created instead of a regular UK2Node_CallFunction.
+ */
+enum class EOliveFunctionMatchMethod : uint8
+{
+	/** Not yet matched or match failed */
+	None,
+	/** Direct name match on a class (exact or K2_ prefix) */
+	ExactName,
+	/** Matched via the alias map */
+	AliasMap,
+	/** Found in the Blueprint's GeneratedClass */
+	GeneratedClass,
+	/** Found via Blueprint FunctionGraphs + SkeletonGeneratedClass */
+	FunctionGraph,
+	/** Found in a parent class in the hierarchy */
+	ParentClassSearch,
+	/** Found on an SCS component class */
+	ComponentClassSearch,
+	/** Found on an implemented interface class -- requires UK2Node_Message */
+	InterfaceSearch,
+	/** Found in a common library class (KismetSystemLibrary, GameplayStatics, etc.) */
+	LibrarySearch,
+};
+
+/**
  * Standard node type names for Blueprint graph nodes.
  * Use these constants when creating nodes via OliveNodeFactory.
  */
@@ -61,11 +88,44 @@ namespace OliveNodeTypes
 
 	// Delegate
 	const FString CallDelegate = TEXT("CallDelegate");
+	const FString BindDelegate = TEXT("BindDelegate");
 
 	// Function Parameter (virtual -- maps to existing FunctionEntry/FunctionResult nodes)
 	const FString FunctionInput = TEXT("FunctionInput");
 	const FString FunctionOutput = TEXT("FunctionOutput");
 }
+
+/**
+ * Extended result from FindFunction with search history for error messages.
+ * When FindFunction fails, this struct provides a human-readable trail of
+ * every location that was searched, enabling actionable error messages.
+ */
+struct FOliveFunctionSearchResult
+{
+	/** The resolved function, or nullptr if not found */
+	UFunction* Function = nullptr;
+
+	/** How the function was matched (None if not found) */
+	EOliveFunctionMatchMethod MatchMethod = EOliveFunctionMatchMethod::None;
+
+	/** Name of the class where the function was found (empty if not found) */
+	FString MatchedClassName;
+
+	/** Human-readable descriptions of every location searched (populated only on failure) */
+	TArray<FString> SearchedLocations;
+
+	/** Whether the function was found */
+	bool IsValid() const { return Function != nullptr; }
+
+	/**
+	 * Build a comma-separated string of all searched locations for error messages.
+	 * @return Joined string of SearchedLocations
+	 */
+	FString BuildSearchedLocationsString() const
+	{
+		return FString::Join(SearchedLocations, TEXT(", "));
+	}
+};
 
 /**
  * FOliveNodeFactory
@@ -185,14 +245,31 @@ public:
 	/**
 	 * Find a function by name, optionally within a specific class.
 	 * Searches (in order): alias map -> specified class -> Blueprint's GeneratedClass ->
-	 * Blueprint parent class hierarchy -> Blueprint SCS component classes -> common library classes.
+	 * Blueprint's FunctionGraphs via SkeletonGeneratedClass (catches uncompiled user functions) ->
+	 * Blueprint parent class hierarchy -> Blueprint SCS component classes ->
+	 * Blueprint implemented interfaces -> common library classes.
 	 * Each class is tried with exact name first, then K2_ prefix variant.
 	 * @param FunctionName Name of the function to find (may be an alias or approximate name)
 	 * @param ClassName Optional class to search in first
-	 * @param Blueprint Optional Blueprint for class hierarchy, SCS, and GeneratedClass search
+	 * @param Blueprint Optional Blueprint for class hierarchy, SCS, FunctionGraphs, interfaces, and GeneratedClass search
+	 * @param OutMatchMethod Optional output: how the function was matched (for interface call detection)
 	 * @return The function if found, nullptr otherwise
 	 */
-	UFunction* FindFunction(const FString& FunctionName, const FString& ClassName = TEXT(""), UBlueprint* Blueprint = nullptr);
+	UFunction* FindFunction(const FString& FunctionName, const FString& ClassName = TEXT(""), UBlueprint* Blueprint = nullptr, EOliveFunctionMatchMethod* OutMatchMethod = nullptr);
+
+	/**
+	 * Extended FindFunction that collects search history for error messages.
+	 * Returns the same result as FindFunction, plus a list of every location
+	 * searched (populated only when the function is NOT found).
+	 * @param FunctionName Name of the function to find (may be an alias or approximate name)
+	 * @param ClassName Optional class to search in first
+	 * @param Blueprint Optional Blueprint for class hierarchy, SCS, FunctionGraphs, interfaces, and GeneratedClass search
+	 * @return FOliveFunctionSearchResult with Function, MatchMethod, MatchedClassName, and SearchedLocations
+	 */
+	FOliveFunctionSearchResult FindFunctionEx(
+		const FString& FunctionName,
+		const FString& ClassName = TEXT(""),
+		UBlueprint* Blueprint = nullptr);
 
 	/**
 	 * Get the last error message from a failed operation
@@ -398,6 +475,25 @@ private:
 	 * @return The created CallDelegate node, or nullptr if the delegate was not found
 	 */
 	UK2Node* CreateCallDelegateNode(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		const TMap<FString, FString>& Properties);
+
+	/**
+	 * Create a Bind Delegate (bind event to dispatcher) node.
+	 * Required properties: "delegate_name" -- the name of the multicast delegate
+	 * property on the Blueprint (e.g., "OnFired").
+	 * Creates a UK2Node_AddDelegate that binds a custom event to the dispatcher.
+	 * Searches SkeletonGeneratedClass (fallback GeneratedClass) for an
+	 * FMulticastDelegateProperty matching the name, then creates a
+	 * UK2Node_AddDelegate with SetFromProperty + AllocateDefaultPins.
+	 *
+	 * @param Blueprint The Blueprint containing the graph
+	 * @param Graph The target graph
+	 * @param Properties Must contain "delegate_name"
+	 * @return The created AddDelegate node, or nullptr if the delegate was not found
+	 */
+	UK2Node* CreateBindDelegateNode(
 		UBlueprint* Blueprint,
 		UEdGraph* Graph,
 		const TMap<FString, FString>& Properties);

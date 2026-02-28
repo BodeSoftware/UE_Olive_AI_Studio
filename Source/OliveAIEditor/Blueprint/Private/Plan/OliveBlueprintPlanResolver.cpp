@@ -1038,9 +1038,13 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 			OutResolved.Properties.Add(TEXT("text"), Step.Target);
 		}
 	}
-	else if (Op == OlivePlanOps::CallDelegate)
+	else if (Op == OlivePlanOps::CallDelegate || Op == OlivePlanOps::CallDispatcher)
 	{
 		bResult = ResolveCallDelegateOp(Step, Blueprint, StepIndex, OutResolved, OutErrors);
+	}
+	else if (Op == OlivePlanOps::BindDispatcher)
+	{
+		bResult = ResolveBindDelegateOp(Step, Blueprint, StepIndex, OutResolved, OutErrors);
 	}
 	else
 	{
@@ -1050,7 +1054,7 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 			Step.StepId,
 			FString::Printf(TEXT("/steps/%d/op"), StepIndex),
 			FString::Printf(TEXT("Unknown operation '%s'"), *Op),
-			TEXT("Use one of the recognized ops: call, get_var, set_var, branch, sequence, event, custom_event, for_loop, for_each_loop, while_loop, do_once, flip_flop, gate, delay, is_valid, print_string, spawn_actor, cast, make_struct, break_struct, return, comment, call_delegate"));
+			TEXT("Use one of the recognized ops: call, get_var, set_var, branch, sequence, event, custom_event, for_loop, for_each_loop, while_loop, do_once, flip_flop, gate, delay, is_valid, print_string, spawn_actor, cast, make_struct, break_struct, return, comment, call_delegate, call_dispatcher, bind_dispatcher"));
 		OutErrors.Add(MoveTemp(Error));
 		return false;
 	}
@@ -1102,13 +1106,17 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 		return false;
 	}
 
-	// --- Direct function resolution via FOliveNodeFactory::FindFunction ---
-	// FindFunction handles: alias lookup, K2 prefix, specified class, GeneratedClass,
-	// parent class hierarchy, SCS component classes, and common library classes.
-	UFunction* Function = FOliveNodeFactory::Get().FindFunction(Step.Target, Step.TargetClass, BP);
+	// --- Direct function resolution via FOliveNodeFactory::FindFunctionEx ---
+	// FindFunctionEx handles: alias lookup, K2 prefix, specified class, GeneratedClass,
+	// parent class hierarchy, SCS component classes, implemented interfaces,
+	// and common library classes. On failure it also collects search history.
+	FOliveFunctionSearchResult SearchResult = FOliveNodeFactory::Get().FindFunctionEx(Step.Target, Step.TargetClass, BP);
 
-	if (Function)
+	if (SearchResult.IsValid())
 	{
+		UFunction* Function = SearchResult.Function;
+		EOliveFunctionMatchMethod MatchMethod = SearchResult.MatchMethod;
+
 		// Found a concrete UFunction* -- use its canonical name and owning class
 		const FString ResolvedFunctionName = Function->GetName();
 		UClass* OwningClass = Function->GetOwnerClass();
@@ -1122,6 +1130,24 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 		Out.ResolvedOwningClass = OwningClass;
 		Out.bIsPure = Function->HasAnyFunctionFlags(FUNC_BlueprintPure);
 		Out.bIsLatent = Function->HasMetaData(TEXT("Latent"));
+
+		// Mark interface calls so the executor creates UK2Node_Message
+		if (MatchMethod == EOliveFunctionMatchMethod::InterfaceSearch)
+		{
+			Out.bIsInterfaceCall = true;
+			Out.Properties.Add(TEXT("is_interface_call"), TEXT("true"));
+
+			Out.ResolverNotes.Add(FOliveResolverNote{
+				TEXT("match_method"),
+				TEXT("standard_call"),
+				TEXT("interface_message"),
+				FString::Printf(TEXT("Function '%s' found on implemented interface '%s' -- will create interface message call node"),
+					*ResolvedFunctionName, *ResolvedClassName)
+			});
+
+			// Interface message calls are never pure (UK2Node_Message::IsNodePure returns false)
+			Out.bIsPure = false;
+		}
 
 		// Emit a resolver note if the canonical name differs from what the AI provided
 		if (!ResolvedFunctionName.Equals(Step.Target, ESearchCase::IgnoreCase))
@@ -1146,9 +1172,7 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 		return true;
 	}
 
-	// --- Function NOT found -- error unconditionally ---
-	// No more "accepted as-is" path. If FindFunction can't find it, the function
-	// does not exist and creating a node will fail. Fail early with suggestions.
+	// --- Function NOT found -- error with search history and suggestions ---
 	TArray<FString> Alternatives;
 
 	// Use catalog fuzzy match for "did you mean?" suggestions
@@ -1162,24 +1186,45 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 		}
 	}
 
-	FString ErrorMessage = Step.TargetClass.IsEmpty()
-		? FString::Printf(TEXT("Function '%s' not found in any searched class"), *Step.Target)
-		: FString::Printf(TEXT("Function '%s' not found on class '%s'"), *Step.Target, *Step.TargetClass);
+	// Build detailed error message including search trail
+	FString ErrorMessage = FString::Printf(
+		TEXT("Function '%s' not found. Searched: %s."),
+		*Step.Target, *SearchResult.BuildSearchedLocationsString());
+
+	// Build actionable suggestion
+	FString Suggestion;
+	if (Alternatives.Num() > 0)
+	{
+		Suggestion = FString::Printf(
+			TEXT("Did you mean: %s."),
+			*FString::Join(Alternatives, TEXT(", ")));
+	}
+
+	if (!Step.TargetClass.IsEmpty())
+	{
+		Suggestion += Suggestion.IsEmpty() ? TEXT("") : TEXT(" ");
+		Suggestion += FString::Printf(
+			TEXT("Check if '%s' is the correct target_class, or omit it to search all scopes."),
+			*Step.TargetClass);
+	}
+	else
+	{
+		Suggestion += Suggestion.IsEmpty() ? TEXT("") : TEXT(" ");
+		Suggestion += TEXT("Specify target_class to narrow the search, or use blueprint.search_nodes to find available functions.");
+	}
 
 	FOliveIRBlueprintPlanError Error = FOliveIRBlueprintPlanError::MakeStepError(
 		TEXT("FUNCTION_NOT_FOUND"),
 		Step.StepId,
 		FString::Printf(TEXT("/steps/%d/target"), Idx),
 		ErrorMessage,
-		Alternatives.Num() > 0
-			? FString::Printf(TEXT("Did you mean: %s. Use blueprint.search_nodes to find the correct function name."), *FString::Join(Alternatives, TEXT(", ")))
-			: TEXT("Use blueprint.search_nodes to find available functions, or check the function name spelling"));
+		Suggestion);
 	Error.Alternatives = MoveTemp(Alternatives);
 	Errors.Add(MoveTemp(Error));
 
 	UE_LOG(LogOlivePlanResolver, Warning,
-		TEXT("    ResolveCallOp FAILED: function '%s' could not be resolved (target_class='%s')"),
-		*Step.Target, *Step.TargetClass);
+		TEXT("    ResolveCallOp FAILED: function '%s' could not be resolved (target_class='%s'). Searched: %s"),
+		*Step.Target, *Step.TargetClass, *SearchResult.BuildSearchedLocationsString());
 
 	return false;
 }
@@ -1539,6 +1584,25 @@ bool FOliveBlueprintPlanResolver::ResolveEventOp(
 		{ TEXT("PointDamage"),        TEXT("ReceivePointDamage") },
 		{ TEXT("RadialDamage"),       TEXT("ReceiveRadialDamage") },
 		{ TEXT("Destroyed"),          TEXT("ReceiveDestroyed") },
+
+		// Display-name aliases (how events appear in the Blueprint editor)
+		{ TEXT("EventTick"),               TEXT("ReceiveTick") },
+		{ TEXT("EventBeginPlay"),          TEXT("ReceiveBeginPlay") },
+		{ TEXT("EventEndPlay"),            TEXT("ReceiveEndPlay") },
+		{ TEXT("EventAnyDamage"),          TEXT("ReceiveAnyDamage") },
+		{ TEXT("EventHit"),                TEXT("ReceiveHit") },
+		{ TEXT("EventActorBeginOverlap"),  TEXT("ReceiveActorBeginOverlap") },
+		{ TEXT("EventActorEndOverlap"),    TEXT("ReceiveActorEndOverlap") },
+
+		// Space variants (common AI patterns)
+		{ TEXT("Event BeginPlay"),         TEXT("ReceiveBeginPlay") },
+		{ TEXT("Event Tick"),              TEXT("ReceiveTick") },
+		{ TEXT("Event End Play"),          TEXT("ReceiveEndPlay") },
+
+		// Pass-through (AI sometimes uses the internal name directly)
+		{ TEXT("ReceiveBeginPlay"),        TEXT("ReceiveBeginPlay") },
+		{ TEXT("ReceiveTick"),             TEXT("ReceiveTick") },
+		{ TEXT("ReceiveEndPlay"),          TEXT("ReceiveEndPlay") },
 	};
 
 	// ----------------------------------------------------------------
@@ -1768,7 +1832,7 @@ bool FOliveBlueprintPlanResolver::ResolveCallDelegateOp(
 		else
 		{
 			SuggestionText = TEXT("This Blueprint has no event dispatchers. "
-				"Use blueprint.add_event_dispatcher to create one first.");
+				"Use blueprint.add_function with function_type='event_dispatcher' to create one first.");
 		}
 
 		Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
@@ -1790,6 +1854,93 @@ bool FOliveBlueprintPlanResolver::ResolveCallDelegateOp(
 
 	UE_LOG(LogOlivePlanResolver, Log,
 		TEXT("    ResolveCallDelegateOp: '%s' resolved successfully"),
+		*Step.Target);
+
+	return true;
+}
+
+// ============================================================================
+// ResolveBindDelegateOp
+// ============================================================================
+
+bool FOliveBlueprintPlanResolver::ResolveBindDelegateOp(
+	const FOliveIRBlueprintPlanStep& Step,
+	UBlueprint* BP,
+	int32 Idx,
+	FOliveResolvedStep& Out,
+	TArray<FOliveIRBlueprintPlanError>& Errors)
+{
+	Out.NodeType = OliveNodeTypes::BindDelegate;
+
+	UE_LOG(LogOlivePlanResolver, Log, TEXT("    ResolveBindDelegateOp: target='%s'"), *Step.Target);
+
+	if (Step.Target.IsEmpty())
+	{
+		Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+			TEXT("MISSING_TARGET"),
+			Step.StepId,
+			FString::Printf(TEXT("/steps/%d/target"), Idx),
+			TEXT("'bind_dispatcher' op requires a 'target' specifying the event dispatcher name"),
+			TEXT("Set 'target' to the dispatcher name (e.g., \"OnFired\", \"OnDamageReceived\")")));
+		return false;
+	}
+
+	// Validate that the Blueprint has a multicast delegate variable with this name.
+	// Event dispatchers are stored in NewVariables with PinCategory == PC_MCDelegate.
+	bool bFoundDispatcher = false;
+	TArray<FString> AvailableDispatchers;
+
+	if (BP)
+	{
+		for (const FBPVariableDescription& Var : BP->NewVariables)
+		{
+			if (Var.VarType.PinCategory == UEdGraphSchema_K2::PC_MCDelegate)
+			{
+				const FString VarName = Var.VarName.ToString();
+				AvailableDispatchers.Add(VarName);
+
+				if (VarName == Step.Target)
+				{
+					bFoundDispatcher = true;
+				}
+			}
+		}
+	}
+
+	if (!bFoundDispatcher)
+	{
+		FString SuggestionText;
+		if (AvailableDispatchers.Num() > 0)
+		{
+			SuggestionText = FString::Printf(
+				TEXT("Available dispatchers on this Blueprint: %s"),
+				*FString::Join(AvailableDispatchers, TEXT(", ")));
+		}
+		else
+		{
+			SuggestionText = TEXT("This Blueprint has no event dispatchers. "
+				"Use blueprint.add_function with function_type='event_dispatcher' to create one first.");
+		}
+
+		Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+			TEXT("DELEGATE_NOT_FOUND"),
+			Step.StepId,
+			FString::Printf(TEXT("/steps/%d/target"), Idx),
+			FString::Printf(TEXT("Event dispatcher '%s' not found on Blueprint '%s'"),
+				*Step.Target, BP ? *BP->GetName() : TEXT("null")),
+			SuggestionText));
+
+		UE_LOG(LogOlivePlanResolver, Warning,
+			TEXT("    ResolveBindDelegateOp FAILED: dispatcher '%s' not found. Available: [%s]"),
+			*Step.Target, *FString::Join(AvailableDispatchers, TEXT(", ")));
+		return false;
+	}
+
+	Out.Properties.Add(TEXT("delegate_name"), Step.Target);
+	Out.bIsPure = false; // Bind delegate has exec pins
+
+	UE_LOG(LogOlivePlanResolver, Log,
+		TEXT("    ResolveBindDelegateOp: '%s' resolved successfully"),
 		*Step.Target);
 
 	return true;

@@ -19,10 +19,14 @@ DECLARE_LOG_CATEGORY_EXTERN(LogOliveBTTools, Log, All);
  * reader/writer infrastructure.
  *
  * Tool Categories:
- * - Blackboard: blackboard.create, read, add_key, remove_key, modify_key, set_parent
- * - BehaviorTree: behaviortree.create, read, set_blackboard, add_composite,
- *                 add_task, add_decorator, add_service, remove_node, move_node,
- *                 set_node_property
+ * - Blackboard: blackboard.create, read, add_key (upsert), remove_key, set_parent
+ * - BehaviorTree: behaviortree.create, read, set_blackboard, add_node (unified),
+ *                 remove_node, move_node, set_node_property
+ *
+ * AI Freedom Phase 2 changes:
+ * - behaviortree.add_composite/add_task/add_decorator/add_service consolidated
+ *   into behaviortree.add_node with node_kind parameter
+ * - blackboard.modify_key merged into blackboard.add_key (upsert semantics)
  */
 class OLIVEAIEDITOR_API FOliveBTToolHandlers
 {
@@ -58,10 +62,16 @@ private:
 	FOliveToolResult HandleBehaviorTreeCreate(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBehaviorTreeRead(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBehaviorTreeSetBlackboard(const TSharedPtr<FJsonObject>& Params);
+
+	/** Unified add_node handler. Routes to the appropriate internal handler based on node_kind. */
+	FOliveToolResult HandleBehaviorTreeAddNode(const TSharedPtr<FJsonObject>& Params);
+
+	// Internal add helpers (used by HandleBehaviorTreeAddNode)
 	FOliveToolResult HandleBehaviorTreeAddComposite(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBehaviorTreeAddTask(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBehaviorTreeAddDecorator(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBehaviorTreeAddService(const TSharedPtr<FJsonObject>& Params);
+
 	FOliveToolResult HandleBehaviorTreeRemoveNode(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBehaviorTreeMoveNode(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBehaviorTreeSetNodeProperty(const TSharedPtr<FJsonObject>& Params);

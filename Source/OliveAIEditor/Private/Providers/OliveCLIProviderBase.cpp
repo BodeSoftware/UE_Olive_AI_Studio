@@ -363,13 +363,13 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 	ClaudeMd += TEXT("- You are NOT a plugin developer. Do NOT modify plugin source code.\n");
 	ClaudeMd += TEXT("- Use ONLY the MCP tools to create and edit game assets.\n");
 	ClaudeMd += TEXT("- All asset paths should be under `/Game/` (the project's Content directory).\n");
-	ClaudeMd += TEXT("- When creating Blueprints, use `blueprint.create` or `blueprint.create_from_template` -- never try to create .uasset files manually.\n");
+	ClaudeMd += TEXT("- When creating Blueprints, use `blueprint.create` (with optional template_id for templates) -- never try to create .uasset files manually.\n");
 	ClaudeMd += TEXT("- Complete the FULL task: create structures, wire graph logic, compile, and verify. Do not stop partway.\n");
 	ClaudeMd += TEXT("- Once ALL Blueprints compile with 0 errors and 0 warnings, the task is COMPLETE. Immediately stop and report what you built.\n");
-	ClaudeMd += TEXT("- Before writing your first plan_json for each function, call olive.get_recipe to look up the correct wiring pattern. This includes functions created by templates -- templates create empty stubs, you write the logic.\n");
+	ClaudeMd += TEXT("- olive.get_recipe has tested wiring patterns. Call it for unfamiliar or complex patterns. Skip it for straightforward operations you already know.\n");
 	ClaudeMd += TEXT("- Use schema_version \"2.0\" for all plan_json calls (v2.0 has automatic pin resolution).\n");
 	ClaudeMd += TEXT("- Before implementing behavior on an existing Blueprint, call `blueprint.list_templates` to check for matching reference templates. If one matches, call `blueprint.get_template` to read the pattern before writing plan_json.\n");
-	ClaudeMd += TEXT("- After `create_from_template`, check the result for the list of created functions. Write plan_json for EACH function -- they are empty stubs. Do NOT call blueprint.read or read_function after template creation.\n\n");
+	ClaudeMd += TEXT("- After creating from a template (blueprint.create with template_id), check the result for the list of created functions. Write plan_json for EACH function -- they are empty stubs. Do NOT call blueprint.read or read_function after template creation.\n\n");
 
 	// Append the full AGENTS.md content which has workflow patterns, plan JSON format, etc.
 	if (!AgentsContent.IsEmpty())
@@ -1091,11 +1091,11 @@ FString FOliveCLIProviderBase::BuildContinuationPrompt(const FString& UserMessag
 		Prompt += TEXT("No tool calls were recorded from the previous run.\n");
 	}
 
-	// Re-fetch directive: tell the new run to immediately re-acquire recipe/template content
+	// Note previously fetched resources for context (not mandated)
 	if (LastRunContext.FetchedRecipeNames.Num() > 0 || LastRunContext.FetchedTemplateIds.Num() > 0)
 	{
-		Prompt += TEXT("\n### Re-fetch Immediately\n");
-		Prompt += TEXT("The previous run read these resources. Call them again first — they contain the implementation patterns you need:\n");
+		Prompt += TEXT("\n### Previously Fetched Resources\n");
+		Prompt += TEXT("The previous run read these resources. Re-fetch only if you need them:\n");
 		for (const FString& Name : LastRunContext.FetchedRecipeNames)
 		{
 			Prompt += FString::Printf(TEXT("- `olive.get_recipe` name=\"%s\"\n"), *Name);
@@ -1140,7 +1140,7 @@ FString FOliveCLIProviderBase::BuildContinuationPrompt(const FString& UserMessag
 	if (LastRunContext.ModifiedAssetPaths.Num() > 0)
 	{
 		Prompt += TEXT("**Do NOT re-read these assets** -- their current state is shown above.\n");
-		Prompt += TEXT("1. For each function with 0-1 nodes (EMPTY stubs), call `olive.get_recipe` then `blueprint.apply_plan_json`.\n");
+		Prompt += TEXT("1. Implement the remaining empty functions (0-1 nodes = empty stubs) using `blueprint.apply_plan_json`.\n");
 		Prompt += TEXT("2. Wire event graph logic if needed.\n");
 		Prompt += TEXT("3. Compile each Blueprint and verify 0 errors.\n");
 	}
@@ -1364,7 +1364,7 @@ FString FOliveCLIProviderBase::BuildConversationPrompt(const TArray<FOliveChatMe
 	if (UserMessageCount == 1 && ToolResultCount == 0)
 	{
 		Prompt += TEXT("- Respond ONLY with <tool_call> blocks. Do NOT respond with explanation text.\n");
-		Prompt += TEXT("- If the task is creating NEW Blueprints, check if a template fits first (blueprint.create_from_template). Otherwise use blueprint.create.\n");
+		Prompt += TEXT("- If the task is creating NEW Blueprints, check if a template fits first (blueprint.create with template_id). Otherwise use blueprint.create with parent_class.\n");
 		Prompt += TEXT("- If the task is modifying EXISTING assets, start with project.search to find exact paths.\n");
 		Prompt += TEXT("- Batch only independent calls (e.g., create + add_component + add_variable).\n");
 		Prompt += TEXT("- Do NOT batch blueprint.preview_plan_json and blueprint.apply_plan_json in the same response.\n\n");

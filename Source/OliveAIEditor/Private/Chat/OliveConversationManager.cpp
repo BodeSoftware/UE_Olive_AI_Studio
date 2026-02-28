@@ -734,30 +734,12 @@ void FOliveConversationManager::SendToProvider()
 		}
 	}
 
-	// Get available tools via Tool Pack Manager (if initialized) for reduced schema cost
-	TArray<FOliveToolDefinition> Tools;
-	if (FOliveToolPackManager::Get().IsInitialized())
-	{
-		TArray<EOliveToolPack> Packs;
-		Packs.Add(EOliveToolPack::ReadPack);
-
-		if (CurrentToolIteration > 0 || bTurnHasExplicitWriteIntent)
-		{
-			Packs.Add(EOliveToolPack::WritePackBasic);
-			Packs.Add(EOliveToolPack::WritePackGraph);
-		}
-
-		if (bTurnHasDangerIntent)
-		{
-			Packs.Add(EOliveToolPack::DangerPack);
-		}
-
-		Tools = FOliveToolPackManager::Get().GetCombinedPackTools(Packs, ActiveFocusProfile);
-	}
-	else
-	{
-		Tools = GetAvailableTools();
-	}
+	// Get available tools filtered by focus profile.
+	// Tool pack gating was removed in the AI Freedom update -- all tools allowed
+	// by the active focus profile are now sent on every iteration. This lets the
+	// AI discover and plan with write tools from the first turn without waiting
+	// for intent classification.
+	TArray<FOliveToolDefinition> Tools = GetAvailableTools();
 
 	// Create callbacks (capture shared this)
 	TWeakPtr<FOliveConversationManager> WeakSelf = AsShared();

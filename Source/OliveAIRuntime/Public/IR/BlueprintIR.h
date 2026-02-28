@@ -219,6 +219,13 @@ struct OLIVEAIRUNTIME_API FOliveIRBlueprint
 	UPROPERTY()
 	TArray<FString> MacroNames;
 
+	/** Graph summaries with node counts (richer than name-only arrays) */
+	UPROPERTY()
+	TArray<FOliveIRGraphSummary> EventGraphSummaries;
+
+	UPROPERTY()
+	TArray<FOliveIRGraphSummary> FunctionSummaries;
+
 	/** Event dispatchers */
 	UPROPERTY()
 	TArray<FOliveIREventDispatcher> EventDispatchers;

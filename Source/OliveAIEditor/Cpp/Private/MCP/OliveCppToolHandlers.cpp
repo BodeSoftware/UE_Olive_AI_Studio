@@ -59,25 +59,27 @@ void FOliveCppToolHandlers::RegisterReflectionTools()
 	);
 	RegisteredToolNames.Add(TEXT("cpp.read_class"));
 
-	Registry.RegisterTool(
-		TEXT("cpp.list_blueprint_callable"),
-		TEXT("List all BlueprintCallable and BlueprintPure functions on a class"),
-		OliveCppSchemas::CppListBlueprintCallable(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCppToolHandlers::HandleListBlueprintCallable),
-		{TEXT("cpp"), TEXT("read")},
-		TEXT("cpp")
-	);
-	RegisteredToolNames.Add(TEXT("cpp.list_blueprint_callable"));
+	// Removed in AI Freedom Phase 2 — merged into cpp.read_class with include="callable"
+	// Registry.RegisterTool(
+	// 	TEXT("cpp.list_blueprint_callable"),
+	// 	TEXT("List all BlueprintCallable and BlueprintPure functions on a class"),
+	// 	OliveCppSchemas::CppListBlueprintCallable(),
+	// 	FOliveToolHandler::CreateRaw(this, &FOliveCppToolHandlers::HandleListBlueprintCallable),
+	// 	{TEXT("cpp"), TEXT("read")},
+	// 	TEXT("cpp")
+	// );
+	// RegisteredToolNames.Add(TEXT("cpp.list_blueprint_callable"));
 
-	Registry.RegisterTool(
-		TEXT("cpp.list_overridable"),
-		TEXT("List overridable functions (BlueprintImplementableEvent, BlueprintNativeEvent)"),
-		OliveCppSchemas::CppListOverridable(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCppToolHandlers::HandleListOverridable),
-		{TEXT("cpp"), TEXT("read")},
-		TEXT("cpp")
-	);
-	RegisteredToolNames.Add(TEXT("cpp.list_overridable"));
+	// Removed in AI Freedom Phase 2 — merged into cpp.read_class with include="overridable"
+	// Registry.RegisterTool(
+	// 	TEXT("cpp.list_overridable"),
+	// 	TEXT("List overridable functions (BlueprintImplementableEvent, BlueprintNativeEvent)"),
+	// 	OliveCppSchemas::CppListOverridable(),
+	// 	FOliveToolHandler::CreateRaw(this, &FOliveCppToolHandlers::HandleListOverridable),
+	// 	{TEXT("cpp"), TEXT("read")},
+	// 	TEXT("cpp")
+	// );
+	// RegisteredToolNames.Add(TEXT("cpp.list_overridable"));
 
 	Registry.RegisterTool(
 		TEXT("cpp.read_enum"),
@@ -203,8 +205,73 @@ FOliveToolResult FOliveCppToolHandlers::HandleReadClass(const TSharedPtr<FJsonOb
 			TEXT("Required parameter 'class_name' is missing"),
 			TEXT("Provide the UE class name. Example: \"ACharacter\", \"UActorComponent\""));
 	}
+
+	// Determine read mode: "all" (default), "callable", or "overridable"
+	FString IncludeMode = TEXT("all");
+	Params->TryGetStringField(TEXT("include"), IncludeMode);
+
 	bool bIncludeInherited = false;
 	Params->TryGetBoolField(TEXT("include_inherited"), bIncludeInherited);
+
+	// --- Filtered mode: callable ---
+	if (IncludeMode.Equals(TEXT("callable"), ESearchCase::IgnoreCase))
+	{
+		// Default include_inherited to true for callable mode (matches old list_blueprint_callable behavior)
+		if (!Params->HasField(TEXT("include_inherited")))
+		{
+			bIncludeInherited = true;
+		}
+
+		UClass* Class = FOliveCppReflectionReader::FindClassByName(ClassName);
+		if (!Class)
+		{
+			return FOliveToolResult::Error(TEXT("CLASS_NOT_FOUND"),
+				FString::Printf(TEXT("Class '%s' not found"), *ClassName),
+				TEXT("Check the class name. Try with or without A/U prefix."));
+		}
+
+		TArray<FOliveIRCppFunction> Functions = FOliveCppReflectionReader::ListBlueprintCallable(ClassName, bIncludeInherited);
+
+		TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
+		ResultData->SetStringField(TEXT("class_name"), Class->GetName());
+		TArray<TSharedPtr<FJsonValue>> FuncsArray;
+		for (const FOliveIRCppFunction& Func : Functions)
+		{
+			FuncsArray.Add(MakeShared<FJsonValueObject>(Func.ToJson()));
+		}
+		ResultData->SetArrayField(TEXT("functions"), FuncsArray);
+		ResultData->SetNumberField(TEXT("count"), Functions.Num());
+
+		return FOliveToolResult::Success(ResultData);
+	}
+
+	// --- Filtered mode: overridable ---
+	if (IncludeMode.Equals(TEXT("overridable"), ESearchCase::IgnoreCase))
+	{
+		UClass* Class = FOliveCppReflectionReader::FindClassByName(ClassName);
+		if (!Class)
+		{
+			return FOliveToolResult::Error(TEXT("CLASS_NOT_FOUND"),
+				FString::Printf(TEXT("Class '%s' not found"), *ClassName),
+				TEXT("Check the class name. Try with or without A/U prefix."));
+		}
+
+		TArray<FOliveIRCppFunction> Functions = FOliveCppReflectionReader::ListOverridable(ClassName);
+
+		TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
+		ResultData->SetStringField(TEXT("class_name"), Class->GetName());
+		TArray<TSharedPtr<FJsonValue>> FuncsArray;
+		for (const FOliveIRCppFunction& Func : Functions)
+		{
+			FuncsArray.Add(MakeShared<FJsonValueObject>(Func.ToJson()));
+		}
+		ResultData->SetArrayField(TEXT("functions"), FuncsArray);
+		ResultData->SetNumberField(TEXT("count"), Functions.Num());
+
+		return FOliveToolResult::Success(ResultData);
+	}
+
+	// --- Default mode: all (full reflection dump) ---
 	bool bIncludeFunctions = true;
 	Params->TryGetBoolField(TEXT("include_functions"), bIncludeFunctions);
 	bool bIncludeProperties = true;

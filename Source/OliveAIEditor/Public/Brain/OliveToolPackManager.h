@@ -1,4 +1,9 @@
 // Copyright Bode Software. All Rights Reserved.
+//
+// DEPRECATED: Tool pack filtering removed in AI Freedom update. This class is
+// retained for one release cycle. All tool visibility is now handled by Focus
+// Profiles (FOliveFocusProfileManager) and the tool registry directly.
+// Do NOT add new callers. Remove this file after the deprecation period.
 
 #pragma once
 
@@ -7,6 +12,7 @@
 
 /**
  * Tool pack identifiers
+ * DEPRECATED: See file-level comment.
  */
 enum class EOliveToolPack : uint8
 {
@@ -19,9 +25,13 @@ enum class EOliveToolPack : uint8
 /**
  * Tool Pack Manager
  *
- * Manages config-driven tool subsets that reduce per-call schema token cost.
- * Tool packs layer on top of Focus Profiles: profiles are the upper bound
- * (permission boundary), packs are the per-call subset.
+ * DEPRECATED: Tool pack filtering removed in AI Freedom update. This class is
+ * retained for one release cycle. All tool visibility is now handled by Focus
+ * Profiles (FOliveFocusProfileManager) and the tool registry directly.
+ *
+ * Previously managed config-driven tool subsets that reduced per-call schema
+ * token cost. Tool packs layered on top of Focus Profiles: profiles were the
+ * upper bound (permission boundary), packs were the per-call subset.
  */
 class OLIVEAIEDITOR_API FOliveToolPackManager
 {

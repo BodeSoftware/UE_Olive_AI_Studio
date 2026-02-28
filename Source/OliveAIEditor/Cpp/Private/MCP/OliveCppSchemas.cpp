@@ -41,12 +41,16 @@ namespace OliveCppSchemas
 
 		Props->SetObjectField(TEXT("class_name"),
 			OliveBlueprintSchemas::StringProp(TEXT("Class name to inspect (e.g., ACharacter, UActorComponent). Prefix (A/U/F) is optional.")));
+		Props->SetObjectField(TEXT("include"),
+			OliveBlueprintSchemas::EnumProp(
+				TEXT("What to include: 'all' = full reflection dump (default), 'callable' = BlueprintCallable/BlueprintPure functions only, 'overridable' = BlueprintImplementableEvent/BlueprintNativeEvent functions only"),
+				{ TEXT("all"), TEXT("callable"), TEXT("overridable") }));
 		Props->SetObjectField(TEXT("include_inherited"),
 			OliveBlueprintSchemas::BoolProp(TEXT("Include properties/functions from parent classes"), false));
 		Props->SetObjectField(TEXT("include_functions"),
-			OliveBlueprintSchemas::BoolProp(TEXT("Include function list"), true));
+			OliveBlueprintSchemas::BoolProp(TEXT("Include function list (only used when include='all')"), true));
 		Props->SetObjectField(TEXT("include_properties"),
-			OliveBlueprintSchemas::BoolProp(TEXT("Include property list"), true));
+			OliveBlueprintSchemas::BoolProp(TEXT("Include property list (only used when include='all')"), true));
 
 		Schema->SetObjectField(TEXT("properties"), Props);
 		AddRequired(Schema, { TEXT("class_name") });

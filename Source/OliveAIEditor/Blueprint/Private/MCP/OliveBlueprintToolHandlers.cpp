@@ -27,6 +27,7 @@
 #include "K2Node_CustomEvent.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
+#include "K2Node_CallFunction.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
@@ -475,82 +476,19 @@ void FOliveBlueprintToolHandlers::RegisterReaderTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
-	// blueprint.read
+	// blueprint.read (unified reader — routes via 'section' param)
+	// Old tools (blueprint.read_function, read_event_graph, read_variables,
+	// read_components, read_hierarchy, list_overridable_functions) are now
+	// aliases in the tool alias map that redirect here with appropriate section.
 	Registry.RegisterTool(
 		TEXT("blueprint.read"),
-		TEXT("Read Blueprint structure with optional mode (summary or full with all graph data)"),
+		TEXT("Read any aspect of a Blueprint: overview, specific graph, variables, components, hierarchy, or overridable functions"),
 		OliveBlueprintSchemas::BlueprintRead(),
 		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintRead),
 		{TEXT("blueprint"), TEXT("read")},
 		TEXT("blueprint")
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.read"));
-
-	// blueprint.read_function
-	Registry.RegisterTool(
-		TEXT("blueprint.read_function"),
-		TEXT("Read a single function graph from a Blueprint"),
-		OliveBlueprintSchemas::BlueprintReadFunction(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintReadFunction),
-		{TEXT("blueprint"), TEXT("read")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.read_function"));
-
-	// blueprint.read_event_graph
-	Registry.RegisterTool(
-		TEXT("blueprint.read_event_graph"),
-		TEXT("Read an event graph from a Blueprint"),
-		OliveBlueprintSchemas::BlueprintReadEventGraph(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintReadEventGraph),
-		{TEXT("blueprint"), TEXT("read")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.read_event_graph"));
-
-	// blueprint.read_variables
-	Registry.RegisterTool(
-		TEXT("blueprint.read_variables"),
-		TEXT("Read all variables from a Blueprint"),
-		OliveBlueprintSchemas::BlueprintReadVariables(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintReadVariables),
-		{TEXT("blueprint"), TEXT("read")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.read_variables"));
-
-	// blueprint.read_components
-	Registry.RegisterTool(
-		TEXT("blueprint.read_components"),
-		TEXT("Read component hierarchy from a Blueprint"),
-		OliveBlueprintSchemas::BlueprintReadComponents(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintReadComponents),
-		{TEXT("blueprint"), TEXT("read")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.read_components"));
-
-	// blueprint.read_hierarchy
-	Registry.RegisterTool(
-		TEXT("blueprint.read_hierarchy"),
-		TEXT("Read class hierarchy from a Blueprint (parent chain)"),
-		OliveBlueprintSchemas::BlueprintReadHierarchy(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintReadHierarchy),
-		{TEXT("blueprint"), TEXT("read")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.read_hierarchy"));
-
-	// blueprint.list_overridable_functions
-	Registry.RegisterTool(
-		TEXT("blueprint.list_overridable_functions"),
-		TEXT("List all functions from parent classes that can be overridden"),
-		OliveBlueprintSchemas::BlueprintListOverridableFunctions(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintListOverridableFunctions),
-		{TEXT("blueprint"), TEXT("read")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.list_overridable_functions"));
 
 	// blueprint.get_node_pins
 	Registry.RegisterTool(
@@ -563,7 +501,18 @@ void FOliveBlueprintToolHandlers::RegisterReaderTools()
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.get_node_pins"));
 
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered %d reader tools"), 8);
+	// blueprint.describe_node_type
+	Registry.RegisterTool(
+		TEXT("blueprint.describe_node_type"),
+		TEXT("Describe a Blueprint node type: its pins, properties, and behavior. Use to plan before creating nodes."),
+		OliveBlueprintSchemas::BlueprintDescribeNodeType(),
+		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleDescribeNodeType),
+		{TEXT("blueprint"), TEXT("read"), TEXT("discovery")},
+		TEXT("blueprint")
+	);
+	RegisteredToolNames.Add(TEXT("blueprint.describe_node_type"));
+
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered %d reader tools"), 3);
 }
 
 // ============================================================================
@@ -574,13 +523,15 @@ void FOliveBlueprintToolHandlers::RegisterAssetWriterTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
-	// blueprint.create
+	// blueprint.create (also handles template creation when template_id is set)
 	Registry.RegisterTool(
 		TEXT("blueprint.create"),
-		TEXT("Create a new Blueprint asset"),
+		TEXT("Create a new Blueprint asset. When template_id is provided, creates from a factory template "
+			"with parameterized, pre-wired logic. Without template_id, creates an empty Blueprint. "
+			"Use blueprint.list_templates to discover available factory templates."),
 		OliveBlueprintSchemas::BlueprintCreate(),
 		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintCreate),
-		{TEXT("blueprint"), TEXT("write"), TEXT("create")},
+		{TEXT("blueprint"), TEXT("write"), TEXT("create"), TEXT("template")},
 		TEXT("blueprint")
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.create"));
@@ -647,10 +598,11 @@ void FOliveBlueprintToolHandlers::RegisterVariableWriterTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
-	// blueprint.add_variable
+	// blueprint.add_variable (upsert: creates if missing, updates if present)
 	Registry.RegisterTool(
 		TEXT("blueprint.add_variable"),
-		TEXT("Add a variable to a Blueprint"),
+		TEXT("Add or update a variable (upsert). If the variable already exists, modifies it in-place. "
+			"Set modify_only=true to require the variable to already exist."),
 		OliveBlueprintSchemas::BlueprintAddVariable(),
 		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintAddVariable),
 		{TEXT("blueprint"), TEXT("write"), TEXT("variable")},
@@ -669,18 +621,10 @@ void FOliveBlueprintToolHandlers::RegisterVariableWriterTools()
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.remove_variable"));
 
-	// blueprint.modify_variable
-	Registry.RegisterTool(
-		TEXT("blueprint.modify_variable"),
-		TEXT("Modify an existing variable's properties"),
-		OliveBlueprintSchemas::BlueprintModifyVariable(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintModifyVariable),
-		{TEXT("blueprint"), TEXT("write"), TEXT("variable")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.modify_variable"));
+	// NOTE: blueprint.modify_variable is now an alias that redirects to blueprint.add_variable (upsert).
+	// It is no longer registered as a separate tool.
 
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered 3 variable writer tools"));
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered 2 variable writer tools"));
 }
 
 void FOliveBlueprintToolHandlers::RegisterComponentWriterTools()
@@ -738,10 +682,13 @@ void FOliveBlueprintToolHandlers::RegisterFunctionWriterTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
-	// blueprint.add_function
+	// blueprint.add_function (unified — routes by function_type param)
+	// Old tools (blueprint.add_custom_event, blueprint.add_event_dispatcher,
+	// blueprint.override_function) are now aliases in the tool alias map
+	// that redirect here with appropriate function_type.
 	Registry.RegisterTool(
 		TEXT("blueprint.add_function"),
-		TEXT("Add a user-defined function to a Blueprint with specified signature"),
+		TEXT("Add a function, custom event, event dispatcher, or override to a Blueprint"),
 		OliveBlueprintSchemas::BlueprintAddFunction(),
 		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintAddFunction),
 		{TEXT("blueprint"), TEXT("write"), TEXT("function")},
@@ -771,40 +718,7 @@ void FOliveBlueprintToolHandlers::RegisterFunctionWriterTools()
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.modify_function_signature"));
 
-	// blueprint.add_event_dispatcher
-	Registry.RegisterTool(
-		TEXT("blueprint.add_event_dispatcher"),
-		TEXT("Add an event dispatcher (multicast delegate) to a Blueprint"),
-		OliveBlueprintSchemas::BlueprintAddEventDispatcher(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintAddEventDispatcher),
-		{TEXT("blueprint"), TEXT("write"), TEXT("function")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.add_event_dispatcher"));
-
-	// blueprint.override_function
-	Registry.RegisterTool(
-		TEXT("blueprint.override_function"),
-		TEXT("Override a parent class function in the Blueprint"),
-		OliveBlueprintSchemas::BlueprintOverrideFunction(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintOverrideFunction),
-		{TEXT("blueprint"), TEXT("write"), TEXT("function")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.override_function"));
-
-	// blueprint.add_custom_event
-	Registry.RegisterTool(
-		TEXT("blueprint.add_custom_event"),
-		TEXT("Add a custom event to the Blueprint's event graph"),
-		OliveBlueprintSchemas::BlueprintAddCustomEvent(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintAddCustomEvent),
-		{TEXT("blueprint"), TEXT("write"), TEXT("function")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.add_custom_event"));
-
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered 6 function writer tools"));
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered 3 function writer tools"));
 }
 
 void FOliveBlueprintToolHandlers::RegisterGraphWriterTools()
@@ -999,7 +913,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRead(const TSharedP
 		);
 	}
 
-	// Extract path
+	// Extract path (required by all sections)
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
 	{
@@ -1011,17 +925,73 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRead(const TSharedP
 		);
 	}
 
+	// Extract section (default to "all" for backward compatibility)
+	FString Section = TEXT("all");
+	Params->TryGetStringField(TEXT("section"), Section);
+
+	// Route to section-specific handler
+	if (Section == TEXT("all") || Section == TEXT("summary"))
+	{
+		return HandleReadSectionAll(Params);
+	}
+	else if (Section == TEXT("graph"))
+	{
+		return HandleReadSectionGraph(Params);
+	}
+	else if (Section == TEXT("variables"))
+	{
+		return HandleReadSectionVariables(Params);
+	}
+	else if (Section == TEXT("components"))
+	{
+		return HandleReadSectionComponents(Params);
+	}
+	else if (Section == TEXT("hierarchy"))
+	{
+		return HandleReadSectionHierarchy(Params);
+	}
+	else if (Section == TEXT("overridable_functions"))
+	{
+		return HandleReadSectionOverridableFunctions(Params);
+	}
+	else
+	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintRead: Invalid section '%s' for path='%s'"), *Section, *AssetPath);
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_VALUE"),
+			FString::Printf(TEXT("Invalid section '%s'. Must be one of: all, summary, graph, variables, components, hierarchy, overridable_functions"), *Section),
+			TEXT("Use section='all' for a full overview, or section='graph' with graph_name to read a specific graph")
+		);
+	}
+}
+
+FOliveToolResult FOliveBlueprintToolHandlers::HandleReadSectionAll(const TSharedPtr<FJsonObject>& Params)
+{
+	// Params already validated by HandleBlueprintRead (path presence checked there)
+	FString AssetPath;
+	Params->TryGetStringField(TEXT("path"), AssetPath);
+
+	// Extract section to differentiate "summary" from "all"
+	FString Section = TEXT("all");
+	Params->TryGetStringField(TEXT("section"), Section);
+
 	// Extract mode (default to summary)
 	FString Mode = TEXT("summary");
 	Params->TryGetStringField(TEXT("mode"), Mode);
 
-	// Validate mode
-	if (Mode != TEXT("summary") && Mode != TEXT("full"))
+	// For section="summary", force summary mode regardless of mode param
+	if (Section == TEXT("summary"))
 	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintRead: Invalid mode '%s' for path='%s'"), *Mode, *AssetPath);
+		Mode = TEXT("summary");
+	}
+
+	// Validate mode
+	if (Mode != TEXT("summary") && Mode != TEXT("full") && Mode != TEXT("auto"))
+	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleReadSectionAll: Invalid mode '%s' for path='%s'"), *Mode, *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_VALUE"),
-			FString::Printf(TEXT("Invalid mode '%s'. Must be 'summary' or 'full'"), *Mode),
+			FString::Printf(TEXT("Invalid mode '%s'. Must be 'summary', 'full', or 'auto'"), *Mode),
 			TEXT("Use 'summary' for structure only, or 'full' for complete graph data")
 		);
 	}
@@ -1030,7 +1000,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRead(const TSharedP
 	FOliveAssetResolveInfo ResolveInfo = FOliveAssetResolver::Get().ResolveByPath(AssetPath);
 	if (!ResolveInfo.IsSuccess())
 	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintRead: Asset not found at path='%s'"), *AssetPath);
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleReadSectionAll: Asset not found at path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Failed to resolve asset at path '%s'"), *AssetPath),
@@ -1071,11 +1041,11 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRead(const TSharedP
 				if (Graph) { TotalNodeCount += Graph->Nodes.Num(); }
 			}
 
-			if (TotalNodeCount <= AUTO_FULL_READ_NODE_THRESHOLD)
+			if (TotalNodeCount <= AUTO_FULL_READ_NODE_THRESHOLD && Section != TEXT("summary"))
 			{
 				bAutoFull = true;
 				UE_LOG(LogOliveBPTools, Log,
-					TEXT("HandleBlueprintRead: auto-upgrade to full read (%d nodes <= %d threshold)"),
+					TEXT("HandleReadSectionAll: auto-upgrade to full read (%d nodes <= %d threshold)"),
 					TotalNodeCount, AUTO_FULL_READ_NODE_THRESHOLD);
 			}
 		}
@@ -1114,134 +1084,40 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRead(const TSharedP
 		ResultData->SetStringField(TEXT("read_mode"), TEXT("auto_full"));
 		ResultData->SetStringField(TEXT("read_mode_note"),
 			TEXT("Blueprint is small enough that full graph data was included automatically. "
-				 "No need to call read_function or read_event_graph."));
+				 "No need to use section='graph' for individual graphs."));
 	}
 
 	return FOliveToolResult::Success(ResultData);
 }
 
-FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadFunction(const TSharedPtr<FJsonObject>& Params)
+FOliveToolResult FOliveBlueprintToolHandlers::HandleReadSectionGraph(const TSharedPtr<FJsonObject>& Params)
 {
-	// Validate parameters
-	if (!Params.IsValid())
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadFunction: Params object is null"));
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_INVALID_PARAMS"),
-			TEXT("Parameters object is null"),
-			TEXT("Provide a valid parameters object")
-		);
-	}
-
-	// Extract path
+	// Params already validated by HandleBlueprintRead (path presence checked there)
 	FString AssetPath;
-	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadFunction: Missing required param 'path'"));
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'path' is missing or empty"),
-			TEXT("Provide the Blueprint asset path")
-		);
-	}
+	Params->TryGetStringField(TEXT("path"), AssetPath);
 
-	// Extract function_name
-	FString FunctionName;
-	if (!Params->TryGetStringField(TEXT("function_name"), FunctionName) || FunctionName.IsEmpty())
+	// Extract graph_name (required for section="graph")
+	FString GraphName;
+	if (!Params->TryGetStringField(TEXT("graph_name"), GraphName) || GraphName.IsEmpty())
 	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadFunction: Missing required param 'function_name' for path='%s'"), *AssetPath);
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'function_name' is missing or empty"),
-			TEXT("Provide the name of the function to read")
-		);
-	}
-
-	// Resolve asset path (follows redirectors, checks existence)
-	FOliveAssetResolveInfo ResolveInfo = FOliveAssetResolver::Get().ResolveByPath(AssetPath);
-	if (!ResolveInfo.IsSuccess())
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadFunction: Asset not found at path='%s'"), *AssetPath);
-		return FOliveToolResult::Error(
-			TEXT("ASSET_NOT_FOUND"),
-			FString::Printf(TEXT("Failed to resolve asset at path '%s'"), *AssetPath),
-			TEXT("Verify the asset path is correct and the asset exists")
-		);
-	}
-	FString ResolvedPath = ResolveInfo.ResolvedPath;
-
-	// Load the Blueprint to access raw graph for large-graph detection
-	FOliveBlueprintReader& Reader = FOliveBlueprintReader::Get();
-	UBlueprint* Blueprint = Reader.LoadBlueprint(ResolvedPath);
-	if (!Blueprint)
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadFunction: Failed to load Blueprint at path='%s'"), *ResolvedPath);
-		return FOliveToolResult::Error(
-			TEXT("ASSET_NOT_FOUND"),
-			FString::Printf(TEXT("Failed to load Blueprint at path '%s'"), *ResolvedPath),
-			TEXT("Verify the asset path is correct and the asset exists")
-		);
-	}
-
-	// Find the function graph by name
-	UEdGraph* TargetGraph = nullptr;
-	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
-	{
-		if (Graph && Graph->GetName() == FunctionName)
+		// Also check function_name for backward compat (alias map copies function_name -> graph_name,
+		// but direct callers might still use function_name)
+		if (!Params->TryGetStringField(TEXT("function_name"), GraphName) || GraphName.IsEmpty())
 		{
-			TargetGraph = Graph;
-			break;
+			UE_LOG(LogOliveBPTools, Warning, TEXT("HandleReadSectionGraph: Missing required param 'graph_name' for path='%s'"), *AssetPath);
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_MISSING_PARAM"),
+				TEXT("Required parameter 'graph_name' is missing or empty when section='graph'"),
+				TEXT("Provide the graph name (e.g., 'EventGraph' or a function name like 'MyFunction')")
+			);
 		}
 	}
 
-	if (!TargetGraph)
-	{
-		return FOliveToolResult::Error(
-			TEXT("GRAPH_NOT_FOUND"),
-			FString::Printf(TEXT("Function '%s' not found in Blueprint '%s'"), *FunctionName, *AssetPath),
-			TEXT("Verify the function name is correct and exists in the Blueprint")
-		);
-	}
-
-	// Delegate to the paging-aware graph read helper
-	TSharedPtr<FOliveGraphReader> GraphReader = Reader.GetGraphReader();
-	return HandleGraphReadWithPaging(TargetGraph, Blueprint, GraphReader, Params, ResolveInfo);
-}
-
-FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadEventGraph(const TSharedPtr<FJsonObject>& Params)
-{
-	// Validate parameters
-	if (!Params.IsValid())
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadEventGraph: Params object is null"));
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_INVALID_PARAMS"),
-			TEXT("Parameters object is null"),
-			TEXT("Provide a valid parameters object")
-		);
-	}
-
-	// Extract path
-	FString AssetPath;
-	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadEventGraph: Missing required param 'path'"));
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'path' is missing or empty"),
-			TEXT("Provide the Blueprint asset path")
-		);
-	}
-
-	// Extract graph_name (optional, defaults to "EventGraph")
-	FString GraphName = TEXT("EventGraph");
-	Params->TryGetStringField(TEXT("graph_name"), GraphName);
-
 	// Resolve asset path (follows redirectors, checks existence)
 	FOliveAssetResolveInfo ResolveInfo = FOliveAssetResolver::Get().ResolveByPath(AssetPath);
 	if (!ResolveInfo.IsSuccess())
 	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadEventGraph: Asset not found at path='%s'"), *AssetPath);
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleReadSectionGraph: Asset not found at path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Failed to resolve asset at path '%s'"), *AssetPath),
@@ -1250,12 +1126,12 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadEventGraph(cons
 	}
 	FString ResolvedPath = ResolveInfo.ResolvedPath;
 
-	// Load the Blueprint to access raw graph for large-graph detection
+	// Load the Blueprint to access raw graphs
 	FOliveBlueprintReader& Reader = FOliveBlueprintReader::Get();
 	UBlueprint* Blueprint = Reader.LoadBlueprint(ResolvedPath);
 	if (!Blueprint)
 	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadEventGraph: Failed to load Blueprint at path='%s'"), *ResolvedPath);
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleReadSectionGraph: Failed to load Blueprint at path='%s'"), *ResolvedPath);
 		return FOliveToolResult::Error(
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Failed to load Blueprint at path '%s'"), *ResolvedPath),
@@ -1263,8 +1139,10 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadEventGraph(cons
 		);
 	}
 
-	// Find the event graph by name
+	// Search all graph collections for the named graph
 	UEdGraph* TargetGraph = nullptr;
+
+	// 1. Search UbergraphPages (event graphs)
 	for (UEdGraph* Graph : Blueprint->UbergraphPages)
 	{
 		if (Graph && Graph->GetName() == GraphName)
@@ -1274,7 +1152,33 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadEventGraph(cons
 		}
 	}
 
-	// Fallback: if "EventGraph" was requested and not found by name, use first Ubergraph
+	// 2. Search FunctionGraphs
+	if (!TargetGraph)
+	{
+		for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+		{
+			if (Graph && Graph->GetName() == GraphName)
+			{
+				TargetGraph = Graph;
+				break;
+			}
+		}
+	}
+
+	// 3. Search MacroGraphs
+	if (!TargetGraph)
+	{
+		for (UEdGraph* Graph : Blueprint->MacroGraphs)
+		{
+			if (Graph && Graph->GetName() == GraphName)
+			{
+				TargetGraph = Graph;
+				break;
+			}
+		}
+	}
+
+	// 4. Fallback: if "EventGraph" was requested and not found by name, use first Ubergraph
 	if (!TargetGraph && GraphName == TEXT("EventGraph") && Blueprint->UbergraphPages.Num() > 0)
 	{
 		TargetGraph = Blueprint->UbergraphPages[0];
@@ -1282,11 +1186,28 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadEventGraph(cons
 
 	if (!TargetGraph)
 	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadEventGraph: Graph '%s' not found in Blueprint '%s'"), *GraphName, *AssetPath);
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleReadSectionGraph: Graph '%s' not found in Blueprint '%s'"), *GraphName, *AssetPath);
+
+		// Build a helpful list of available graphs
+		TArray<FString> AvailableGraphs;
+		for (UEdGraph* Graph : Blueprint->UbergraphPages)
+		{
+			if (Graph) { AvailableGraphs.Add(Graph->GetName()); }
+		}
+		for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+		{
+			if (Graph) { AvailableGraphs.Add(Graph->GetName()); }
+		}
+		for (UEdGraph* Graph : Blueprint->MacroGraphs)
+		{
+			if (Graph) { AvailableGraphs.Add(Graph->GetName()); }
+		}
+
 		return FOliveToolResult::Error(
 			TEXT("GRAPH_NOT_FOUND"),
-			FString::Printf(TEXT("Event graph '%s' not found in Blueprint '%s'"), *GraphName, *AssetPath),
-			TEXT("Verify the graph name is correct. Most Blueprints have an 'EventGraph'")
+			FString::Printf(TEXT("Graph '%s' not found in Blueprint '%s'. Available graphs: %s"),
+				*GraphName, *AssetPath, *FString::Join(AvailableGraphs, TEXT(", "))),
+			TEXT("Verify the graph name. Use section='all' to see all graphs in the Blueprint")
 		);
 	}
 
@@ -1295,30 +1216,11 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadEventGraph(cons
 	return HandleGraphReadWithPaging(TargetGraph, Blueprint, GraphReader, Params, ResolveInfo);
 }
 
-FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadVariables(const TSharedPtr<FJsonObject>& Params)
+FOliveToolResult FOliveBlueprintToolHandlers::HandleReadSectionVariables(const TSharedPtr<FJsonObject>& Params)
 {
-	// Validate parameters
-	if (!Params.IsValid())
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadVariables: Params object is null"));
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_INVALID_PARAMS"),
-			TEXT("Parameters object is null"),
-			TEXT("Provide a valid parameters object")
-		);
-	}
-
-	// Extract path
+	// Params already validated by HandleBlueprintRead (path presence checked there)
 	FString AssetPath;
-	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintReadVariables: Missing required param 'path'"));
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'path' is missing or empty"),
-			TEXT("Provide the Blueprint asset path")
-		);
-	}
+	Params->TryGetStringField(TEXT("path"), AssetPath);
 
 	// Resolve asset path (follows redirectors, checks existence)
 	FOliveAssetResolveInfo ResolveInfo = FOliveAssetResolver::Get().ResolveByPath(AssetPath);
@@ -1357,28 +1259,11 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadVariables(const
 	return FOliveToolResult::Success(ResultData);
 }
 
-FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadComponents(const TSharedPtr<FJsonObject>& Params)
+FOliveToolResult FOliveBlueprintToolHandlers::HandleReadSectionComponents(const TSharedPtr<FJsonObject>& Params)
 {
-	// Validate parameters
-	if (!Params.IsValid())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_INVALID_PARAMS"),
-			TEXT("Parameters object is null"),
-			TEXT("Provide a valid parameters object")
-		);
-	}
-
-	// Extract path
+	// Params already validated by HandleBlueprintRead (path presence checked there)
 	FString AssetPath;
-	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'path' is missing or empty"),
-			TEXT("Provide the Blueprint asset path")
-		);
-	}
+	Params->TryGetStringField(TEXT("path"), AssetPath);
 
 	// Resolve asset path (follows redirectors, checks existence)
 	FOliveAssetResolveInfo ResolveInfo = FOliveAssetResolver::Get().ResolveByPath(AssetPath);
@@ -1426,28 +1311,11 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadComponents(cons
 	return FOliveToolResult::Success(ResultData);
 }
 
-FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadHierarchy(const TSharedPtr<FJsonObject>& Params)
+FOliveToolResult FOliveBlueprintToolHandlers::HandleReadSectionHierarchy(const TSharedPtr<FJsonObject>& Params)
 {
-	// Validate parameters
-	if (!Params.IsValid())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_INVALID_PARAMS"),
-			TEXT("Parameters object is null"),
-			TEXT("Provide a valid parameters object")
-		);
-	}
-
-	// Extract path
+	// Params already validated by HandleBlueprintRead (path presence checked there)
 	FString AssetPath;
-	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'path' is missing or empty"),
-			TEXT("Provide the Blueprint asset path")
-		);
-	}
+	Params->TryGetStringField(TEXT("path"), AssetPath);
 
 	// Resolve asset path (follows redirectors, checks existence)
 	FOliveAssetResolveInfo ResolveInfo = FOliveAssetResolver::Get().ResolveByPath(AssetPath);
@@ -1486,28 +1354,11 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReadHierarchy(const
 	return FOliveToolResult::Success(ResultData);
 }
 
-FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintListOverridableFunctions(const TSharedPtr<FJsonObject>& Params)
+FOliveToolResult FOliveBlueprintToolHandlers::HandleReadSectionOverridableFunctions(const TSharedPtr<FJsonObject>& Params)
 {
-	// Validate parameters
-	if (!Params.IsValid())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_INVALID_PARAMS"),
-			TEXT("Parameters object is null"),
-			TEXT("Provide a valid parameters object")
-		);
-	}
-
-	// Extract path
+	// Params already validated by HandleBlueprintRead (path presence checked there)
 	FString AssetPath;
-	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'path' is missing or empty"),
-			TEXT("Provide the Blueprint asset path")
-		);
-	}
+	Params->TryGetStringField(TEXT("path"), AssetPath);
 
 	FOliveAssetResolveInfo ResolveInfo = FOliveAssetResolver::Get().ResolveByPath(AssetPath);
 	if (!ResolveInfo.IsSuccess())
@@ -1643,6 +1494,209 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintGetNodePins(const T
 	return FOliveToolResult::Success(ResultData);
 }
 
+FOliveToolResult FOliveBlueprintToolHandlers::HandleDescribeNodeType(const TSharedPtr<FJsonObject>& Params)
+{
+	// Validate parameters
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a valid parameters object with 'type' field")
+		);
+	}
+
+	FString TypeName;
+	if (!Params->TryGetStringField(TEXT("type"), TypeName) || TypeName.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'type' is missing or empty"),
+			TEXT("Provide a node type name like 'Branch', 'ForEachLoop', or 'K2Node_CallFunction'")
+		);
+	}
+
+	// Short-name to K2Node class name mapping for common types
+	static const TMap<FString, FString> ShortNameMap = {
+		// Control flow
+		{ TEXT("branch"),              TEXT("K2Node_IfThenElse") },
+		{ TEXT("sequence"),            TEXT("K2Node_ExecutionSequence") },
+		{ TEXT("delay"),               TEXT("K2Node_CallFunction") },
+		{ TEXT("select"),              TEXT("K2Node_Select") },
+		{ TEXT("switchonint"),         TEXT("K2Node_SwitchInteger") },
+		{ TEXT("switchonstring"),      TEXT("K2Node_SwitchString") },
+		{ TEXT("switchonenum"),        TEXT("K2Node_SwitchEnum") },
+		// Loops (MacroInstance types -- these require property context; we can describe the K2Node classes instead)
+		{ TEXT("forloop"),             TEXT("K2Node_ForEachElementInEnum") },
+		{ TEXT("foreachloop"),         TEXT("K2Node_ForEachElementInEnum") },
+		// Function/Event
+		{ TEXT("callfunction"),        TEXT("K2Node_CallFunction") },
+		{ TEXT("event"),               TEXT("K2Node_Event") },
+		{ TEXT("customevent"),         TEXT("K2Node_CustomEvent") },
+		{ TEXT("componentboundevent"), TEXT("K2Node_ComponentBoundEvent") },
+		{ TEXT("functionentry"),       TEXT("K2Node_FunctionEntry") },
+		{ TEXT("functionresult"),      TEXT("K2Node_FunctionResult") },
+		{ TEXT("return"),              TEXT("K2Node_FunctionResult") },
+		// Variables
+		{ TEXT("getvariable"),         TEXT("K2Node_VariableGet") },
+		{ TEXT("setvariable"),         TEXT("K2Node_VariableSet") },
+		{ TEXT("getvar"),              TEXT("K2Node_VariableGet") },
+		{ TEXT("setvar"),              TEXT("K2Node_VariableSet") },
+		// Casting
+		{ TEXT("cast"),                TEXT("K2Node_DynamicCast") },
+		{ TEXT("castto"),              TEXT("K2Node_DynamicCast") },
+		// Object creation
+		{ TEXT("spawnactor"),          TEXT("K2Node_SpawnActorFromClass") },
+		// Struct operations
+		{ TEXT("makestruct"),          TEXT("K2Node_MakeStruct") },
+		{ TEXT("breakstruct"),         TEXT("K2Node_BreakStruct") },
+		{ TEXT("makearray"),           TEXT("K2Node_MakeArray") },
+	};
+
+	// Resolve the type name: check short name map (case-insensitive)
+	FString ResolvedClassName = TypeName;
+	{
+		FString LowerTypeName = TypeName.ToLower();
+		if (const FString* Mapped = ShortNameMap.Find(LowerTypeName))
+		{
+			ResolvedClassName = *Mapped;
+		}
+	}
+
+	// Try to find the UClass for the node
+	UClass* NodeClass = nullptr;
+
+	// Strategy 1: StaticFindFirstObject with exact resolved name (with U prefix)
+	FString ClassNameWithU = ResolvedClassName;
+	if (!ClassNameWithU.StartsWith(TEXT("U")))
+	{
+		ClassNameWithU = TEXT("U") + ClassNameWithU;
+	}
+	NodeClass = Cast<UClass>(StaticFindFirstObject(
+		UClass::StaticClass(), *ClassNameWithU,
+		EFindFirstObjectOptions::NativeFirst, ELogVerbosity::NoLogging,
+		TEXT("HandleDescribeNodeType")));
+
+	// Strategy 2: Try without U prefix (bare name)
+	if (!NodeClass)
+	{
+		NodeClass = Cast<UClass>(StaticFindFirstObject(
+			UClass::StaticClass(), *ResolvedClassName,
+			EFindFirstObjectOptions::NativeFirst, ELogVerbosity::NoLogging,
+			TEXT("HandleDescribeNodeType")));
+	}
+
+	// Strategy 3: Try with UK2Node_ prefix
+	if (!NodeClass && !ResolvedClassName.StartsWith(TEXT("K2Node_")) && !ResolvedClassName.StartsWith(TEXT("UK2Node_")))
+	{
+		NodeClass = Cast<UClass>(StaticFindFirstObject(
+			UClass::StaticClass(), *(TEXT("UK2Node_") + ResolvedClassName),
+			EFindFirstObjectOptions::NativeFirst, ELogVerbosity::NoLogging,
+			TEXT("HandleDescribeNodeType")));
+	}
+
+	// Strategy 4: If user passed K2Node_X, try UK2Node_X
+	if (!NodeClass && ResolvedClassName.StartsWith(TEXT("K2Node_")))
+	{
+		NodeClass = Cast<UClass>(StaticFindFirstObject(
+			UClass::StaticClass(), *(TEXT("U") + ResolvedClassName),
+			EFindFirstObjectOptions::NativeFirst, ELogVerbosity::NoLogging,
+			TEXT("HandleDescribeNodeType")));
+	}
+
+	// Validate it is a UK2Node subclass
+	if (!NodeClass || !NodeClass->IsChildOf(UK2Node::StaticClass()))
+	{
+		// Try the node catalog for fuzzy suggestions
+		FString SuggestionStr = TEXT("Use short names like 'Branch', 'Sequence', 'Delay', 'CustomEvent', or full class names like 'K2Node_IfThenElse'.");
+
+		if (FOliveNodeCatalog::Get().IsInitialized())
+		{
+			TArray<FOliveNodeSuggestion> Suggestions = FOliveNodeCatalog::Get().FuzzyMatch(TypeName, 3);
+			if (Suggestions.Num() > 0)
+			{
+				TArray<FString> SuggestionNames;
+				for (const auto& S : Suggestions)
+				{
+					SuggestionNames.Add(S.DisplayName);
+				}
+				SuggestionStr = FString::Printf(TEXT("Did you mean: %s?"), *FString::Join(SuggestionNames, TEXT(", ")));
+			}
+		}
+
+		return FOliveToolResult::Error(
+			TEXT("NODE_TYPE_NOT_FOUND"),
+			FString::Printf(TEXT("Node type '%s' not found (resolved to '%s')"), *TypeName, *ResolvedClassName),
+			SuggestionStr
+		);
+	}
+
+	// Create a temporary graph and node for pin introspection
+	UEdGraph* TempGraph = NewObject<UEdGraph>(GetTransientPackage(), NAME_None, RF_Transient);
+	TempGraph->Schema = UEdGraphSchema_K2::StaticClass();
+
+	UK2Node* TempNode = NewObject<UK2Node>(TempGraph, NodeClass, NAME_None, RF_Transient);
+	if (!TempNode)
+	{
+		return FOliveToolResult::Error(
+			TEXT("NODE_CREATION_FAILED"),
+			FString::Printf(TEXT("Failed to create temporary node of type '%s'"), *ResolvedClassName),
+			TEXT("This node type may require special initialization or a specific graph context")
+		);
+	}
+
+	TempGraph->AddNode(TempNode, /*bUserAction=*/false, /*bSelectNewNode=*/false);
+	TempNode->AllocateDefaultPins();
+
+	// Build response using the existing BuildPinManifest helper for consistency
+	TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
+	ResultData->SetStringField(TEXT("type"), NodeClass->GetName());
+
+	// If user's short name differs from the resolved class, note it
+	if (!TypeName.Equals(NodeClass->GetName(), ESearchCase::IgnoreCase)
+		&& !TypeName.Equals(ResolvedClassName, ESearchCase::IgnoreCase))
+	{
+		ResultData->SetStringField(TEXT("resolved_from"), TypeName);
+	}
+
+	ResultData->SetStringField(TEXT("display_name"),
+		TempNode->GetNodeTitle(ENodeTitleType::FullTitle).ToString());
+	ResultData->SetStringField(TEXT("description"),
+		TempNode->GetTooltipText().ToString());
+
+	// Serialize pins using the same format as get_node_pins
+	TSharedPtr<FJsonObject> PinsData = BuildPinManifest(TempNode);
+	ResultData->SetObjectField(TEXT("pins"), PinsData);
+
+	// Behavior flags
+	ResultData->SetBoolField(TEXT("is_pure"), TempNode->IsNodePure());
+
+	// Check latent flag: for CallFunction nodes, inspect the underlying UFunction metadata
+	bool bIsLatent = false;
+	if (UK2Node_CallFunction* CallNode = Cast<UK2Node_CallFunction>(TempNode))
+	{
+		if (UFunction* Func = CallNode->GetTargetFunction())
+		{
+			bIsLatent = Func->HasMetaData(FBlueprintMetadata::MD_Latent);
+		}
+	}
+	ResultData->SetBoolField(TEXT("is_latent"), bIsLatent);
+
+	// Notes about pin accuracy
+	ResultData->SetStringField(TEXT("notes"),
+		TEXT("Pin layout shown is for default configuration. Actual pins may vary based on "
+			 "node properties (e.g., function_name for CallFunction). Use blueprint.get_node_pins "
+			 "after adding the node to see exact pins in context."));
+
+	// Cleanup -- remove from graph to avoid dangling references
+	TempGraph->RemoveNode(TempNode);
+
+	UE_LOG(LogOliveBPTools, Verbose, TEXT("HandleDescribeNodeType: Described node type '%s' (class: %s)"),
+		*TypeName, *NodeClass->GetName());
+
+	return FOliveToolResult::Success(ResultData);
+}
+
 // ============================================================================
 // Asset Writer Tool Handlers
 // ============================================================================
@@ -1708,14 +1762,22 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 		}
 	}
 
-	// Extract parent_class
+	// Check for template_id — if set, delegate to template creation
+	FString TemplateId;
+	if (Params->TryGetStringField(TEXT("template_id"), TemplateId) && !TemplateId.IsEmpty())
+	{
+		UE_LOG(LogOliveBPTools, Log, TEXT("blueprint.create: template_id='%s' detected, delegating to template system"), *TemplateId);
+		return HandleBlueprintCreateFromTemplate(TemplateId, AssetPath, Params);
+	}
+
+	// Extract parent_class (required when not using a template)
 	FString ParentClass;
 	if (!Params->TryGetStringField(TEXT("parent_class"), ParentClass) || ParentClass.IsEmpty())
 	{
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'parent_class' is missing or empty"),
-			TEXT("Provide the parent class name (e.g., 'Actor', 'Character', '/Game/BP_Base')")
+			TEXT("Required parameter 'parent_class' is missing or empty. Either provide parent_class for a blank Blueprint, or provide template_id to create from a template."),
+			TEXT("Provide the parent class name (e.g., 'Actor', 'Character', '/Game/BP_Base') or use template_id")
 		);
 	}
 
@@ -2257,6 +2319,114 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 		);
 	}
 
+	// Check for modify_only flag
+	bool bModifyOnly = false;
+	Params->TryGetBoolField(TEXT("modify_only"), bModifyOnly);
+
+	// Detect modify_variable alias format: {path, name, changes} — no 'variable' object
+	const TSharedPtr<FJsonObject>* ChangesJsonPtr = nullptr;
+	bool bIsModifyFormat = false;
+	FString ModifyVariableName;
+	if (Params->TryGetObjectField(TEXT("changes"), ChangesJsonPtr) && ChangesJsonPtr && (*ChangesJsonPtr).IsValid())
+	{
+		if (Params->TryGetStringField(TEXT("name"), ModifyVariableName) && !ModifyVariableName.IsEmpty())
+		{
+			bIsModifyFormat = true;
+			bModifyOnly = true; // Implicit: modify_variable format always requires existence
+			UE_LOG(LogOliveBPTools, Log, TEXT("add_variable: Detected modify_variable alias format (name='%s')"), *ModifyVariableName);
+		}
+	}
+
+	// If this is a pure modify_variable format, delegate to the modify path directly
+	if (bIsModifyFormat)
+	{
+		// Parse changes into a modifications map
+		TSharedPtr<FJsonObject> ChangesJson = *ChangesJsonPtr;
+		TMap<FString, FString> Modifications;
+		FString TempValue;
+		bool TempBool;
+
+		if (ChangesJson->TryGetStringField(TEXT("default_value"), TempValue))
+			Modifications.Add(TEXT("DefaultValue"), TempValue);
+		if (ChangesJson->TryGetStringField(TEXT("category"), TempValue))
+			Modifications.Add(TEXT("Category"), TempValue);
+		if (ChangesJson->TryGetStringField(TEXT("description"), TempValue))
+			Modifications.Add(TEXT("Description"), TempValue);
+		if (ChangesJson->TryGetBoolField(TEXT("blueprint_read_write"), TempBool))
+			Modifications.Add(TEXT("bBlueprintReadWrite"), TempBool ? TEXT("true") : TEXT("false"));
+		if (ChangesJson->TryGetBoolField(TEXT("expose_on_spawn"), TempBool))
+			Modifications.Add(TEXT("bExposeOnSpawn"), TempBool ? TEXT("true") : TEXT("false"));
+		if (ChangesJson->TryGetBoolField(TEXT("replicated"), TempBool))
+			Modifications.Add(TEXT("bReplicated"), TempBool ? TEXT("true") : TEXT("false"));
+		if (ChangesJson->TryGetBoolField(TEXT("save_game"), TempBool))
+			Modifications.Add(TEXT("bSaveGame"), TempBool ? TEXT("true") : TEXT("false"));
+		if (ChangesJson->TryGetBoolField(TEXT("edit_anywhere"), TempBool))
+			Modifications.Add(TEXT("bEditAnywhere"), TempBool ? TEXT("true") : TEXT("false"));
+		if (ChangesJson->TryGetBoolField(TEXT("blueprint_visible"), TempBool))
+			Modifications.Add(TEXT("bBlueprintVisible"), TempBool ? TEXT("true") : TEXT("false"));
+
+		if (Modifications.Num() == 0)
+		{
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_NO_CHANGES"),
+				TEXT("No valid modifications found in 'changes' object"),
+				TEXT("Provide at least one property to modify (e.g., default_value, category, description, flags)")
+			);
+		}
+
+		UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+		if (!Blueprint)
+		{
+			return FOliveToolResult::Error(
+				TEXT("ASSET_NOT_FOUND"),
+				FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
+				TEXT("Verify the asset path is correct and the asset exists")
+			);
+		}
+
+		FOliveWriteRequest Request;
+		Request.ToolName = TEXT("blueprint.add_variable");
+		Request.Params = Params;
+		Request.AssetPath = AssetPath;
+		Request.TargetAsset = Blueprint;
+		Request.OperationDescription = FText::FromString(
+			FString::Printf(TEXT("Modify variable '%s' in '%s'"), *ModifyVariableName, *AssetPath));
+		Request.OperationCategory = TEXT("variable");
+		Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
+		Request.bAutoCompile = false;
+		Request.bSkipVerification = false;
+
+		FOliveWriteExecutor Executor;
+		Executor.BindLambda([AssetPath, ModifyVariableName, Modifications](const FOliveWriteRequest& Req, UObject* Target) -> FOliveWriteResult
+		{
+			FOliveBlueprintWriter& Writer = FOliveBlueprintWriter::Get();
+			FOliveBlueprintWriteResult WriteResult = Writer.ModifyVariable(AssetPath, ModifyVariableName, Modifications);
+
+			if (!WriteResult.bSuccess)
+			{
+				FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+				return FOliveWriteResult::ExecutionError(
+					TEXT("BP_MODIFY_VARIABLE_FAILED"),
+					ErrorMsg,
+					TEXT("Verify the variable exists and the modifications are valid")
+				);
+			}
+
+			TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
+			ResultData->SetStringField(TEXT("asset_path"), WriteResult.AssetPath);
+			ResultData->SetStringField(TEXT("variable_name"), ModifyVariableName);
+			ResultData->SetNumberField(TEXT("modified_properties_count"), Modifications.Num());
+
+			return FOliveWriteResult::Success(ResultData);
+		});
+
+		FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
+		FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
+		return Result.ToToolResult();
+	}
+
+	// Standard add_variable path (with upsert support)
+
 	// Extract variable object — accept both nested and flat formats
 	const TSharedPtr<FJsonObject>* VariableJsonPtr;
 	TSharedPtr<FJsonObject> WrappedVariable; // Prevent dangling — must outlive VariableJsonPtr
@@ -2318,16 +2488,6 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 		);
 	}
 
-	if (Variable.Type.Category == EOliveIRTypeCategory::Unknown)
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddVariable: Variable 'type' is Unknown for variable='%s' path='%s'"), *Variable.Name, *AssetPath);
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_FIELD"),
-			TEXT("Variable 'type' field is required and must be valid"),
-			TEXT("Provide a valid type specification with a category")
-		);
-	}
-
 	// Load Blueprint for target asset
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
 	if (!Blueprint)
@@ -2337,6 +2497,104 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 			TEXT("ASSET_NOT_FOUND"),
 			FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
 			TEXT("Verify the asset path is correct and the asset exists")
+		);
+	}
+
+	// Check if variable already exists — upsert behavior
+	bool bVariableExists = false;
+	for (const FBPVariableDescription& VarDesc : Blueprint->NewVariables)
+	{
+		if (VarDesc.VarName.ToString() == Variable.Name)
+		{
+			bVariableExists = true;
+			break;
+		}
+	}
+
+	if (bVariableExists)
+	{
+		// Variable already exists: modify it in-place
+		UE_LOG(LogOliveBPTools, Log, TEXT("add_variable: Variable '%s' already exists in '%s', upserting (modifying in-place)"),
+			*Variable.Name, *AssetPath);
+
+		// Build modifications map from the variable IR
+		TMap<FString, FString> Modifications;
+		if (!Variable.DefaultValue.IsEmpty())
+			Modifications.Add(TEXT("DefaultValue"), Variable.DefaultValue);
+		if (!Variable.Category.IsEmpty())
+			Modifications.Add(TEXT("Category"), Variable.Category);
+		if (!Variable.Description.IsEmpty())
+			Modifications.Add(TEXT("Description"), Variable.Description);
+		// Always apply flag values from the variable spec
+		Modifications.Add(TEXT("bBlueprintReadWrite"), Variable.bBlueprintReadWrite ? TEXT("true") : TEXT("false"));
+		Modifications.Add(TEXT("bExposeOnSpawn"), Variable.bExposeOnSpawn ? TEXT("true") : TEXT("false"));
+		Modifications.Add(TEXT("bReplicated"), Variable.bReplicated ? TEXT("true") : TEXT("false"));
+		Modifications.Add(TEXT("bSaveGame"), Variable.bSaveGame ? TEXT("true") : TEXT("false"));
+
+		FOliveWriteRequest Request;
+		Request.ToolName = TEXT("blueprint.add_variable");
+		Request.Params = Params;
+		Request.AssetPath = AssetPath;
+		Request.TargetAsset = Blueprint;
+		Request.OperationDescription = FText::FromString(
+			FString::Printf(TEXT("Update variable '%s' in '%s'"), *Variable.Name, *AssetPath));
+		Request.OperationCategory = TEXT("variable");
+		Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
+		Request.bAutoCompile = false;
+		Request.bSkipVerification = false;
+
+		FString VarName = Variable.Name;
+		FOliveWriteExecutor Executor;
+		Executor.BindLambda([AssetPath, VarName, Modifications](const FOliveWriteRequest& Req, UObject* Target) -> FOliveWriteResult
+		{
+			FOliveBlueprintWriter& Writer = FOliveBlueprintWriter::Get();
+			FOliveBlueprintWriteResult WriteResult = Writer.ModifyVariable(AssetPath, VarName, Modifications);
+
+			if (!WriteResult.bSuccess)
+			{
+				FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+				return FOliveWriteResult::ExecutionError(
+					TEXT("BP_MODIFY_VARIABLE_FAILED"),
+					ErrorMsg,
+					TEXT("Verify the variable exists and the modifications are valid")
+				);
+			}
+
+			TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
+			ResultData->SetStringField(TEXT("asset_path"), WriteResult.AssetPath);
+			ResultData->SetStringField(TEXT("variable_name"), VarName);
+			ResultData->SetStringField(TEXT("action"), TEXT("updated"));
+			ResultData->SetNumberField(TEXT("modified_properties_count"), Modifications.Num());
+
+			return FOliveWriteResult::Success(ResultData);
+		});
+
+		FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
+		FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
+		return Result.ToToolResult();
+	}
+
+	// Variable does not exist
+
+	if (bModifyOnly)
+	{
+		// modify_only=true requires the variable to already exist
+		return FOliveToolResult::Error(
+			TEXT("VARIABLE_NOT_FOUND"),
+			FString::Printf(TEXT("Variable '%s' does not exist in Blueprint '%s' and modify_only=true"),
+				*Variable.Name, *AssetPath),
+			TEXT("Set modify_only=false or omit it to allow creation, or verify the variable name")
+		);
+	}
+
+	// Type is required for creation
+	if (Variable.Type.Category == EOliveIRTypeCategory::Unknown)
+	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddVariable: Variable 'type' is Unknown for variable='%s' path='%s'"), *Variable.Name, *AssetPath);
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_FIELD"),
+			TEXT("Variable 'type' field is required and must be valid for creation"),
+			TEXT("Provide a valid type specification with a category")
 		);
 	}
 
@@ -2376,6 +2634,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 		ResultData->SetStringField(TEXT("asset_path"), WriteResult.AssetPath);
 		ResultData->SetStringField(TEXT("variable_name"), Variable.Name);
 		ResultData->SetStringField(TEXT("variable_type"), Variable.Type.GetDisplayName());
+		ResultData->SetStringField(TEXT("action"), TEXT("created"));
 
 		FOliveWriteResult Result = FOliveWriteResult::Success(ResultData);
 		Result.CreatedItem = Variable.Name;
@@ -2484,171 +2743,9 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveVariable(cons
 	return Result.ToToolResult();
 }
 
-FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintModifyVariable(const TSharedPtr<FJsonObject>& Params)
-{
-	// Validate parameters
-	if (!Params.IsValid())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_INVALID_PARAMS"),
-			TEXT("Parameters object is null"),
-			TEXT("Provide a valid parameters object with 'path', 'name', and 'changes' fields")
-		);
-	}
-
-	// Extract path
-	FString AssetPath;
-	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'path' is missing or empty"),
-			TEXT("Provide the Blueprint asset path")
-		);
-	}
-
-	// Extract variable name
-	FString VariableName;
-	if (!Params->TryGetStringField(TEXT("name"), VariableName) || VariableName.IsEmpty())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'name' is missing or empty"),
-			TEXT("Provide the name of the variable to modify")
-		);
-	}
-
-	// Extract changes object
-	const TSharedPtr<FJsonObject>* ChangesJsonPtr;
-	if (!Params->TryGetObjectField(TEXT("changes"), ChangesJsonPtr) || !ChangesJsonPtr->IsValid())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'changes' is missing or invalid"),
-			TEXT("Provide a changes object with properties to modify")
-		);
-	}
-
-	TSharedPtr<FJsonObject> ChangesJson = *ChangesJsonPtr;
-
-	// Parse changes into a map
-	TMap<FString, FString> Modifications;
-
-	// Extract all possible change fields
-	FString TempValue;
-	bool TempBool;
-
-	if (ChangesJson->TryGetStringField(TEXT("default_value"), TempValue))
-	{
-		Modifications.Add(TEXT("DefaultValue"), TempValue);
-	}
-
-	if (ChangesJson->TryGetStringField(TEXT("category"), TempValue))
-	{
-		Modifications.Add(TEXT("Category"), TempValue);
-	}
-
-	if (ChangesJson->TryGetStringField(TEXT("description"), TempValue))
-	{
-		Modifications.Add(TEXT("Description"), TempValue);
-	}
-
-	if (ChangesJson->TryGetBoolField(TEXT("blueprint_read_write"), TempBool))
-	{
-		Modifications.Add(TEXT("bBlueprintReadWrite"), TempBool ? TEXT("true") : TEXT("false"));
-	}
-
-	if (ChangesJson->TryGetBoolField(TEXT("expose_on_spawn"), TempBool))
-	{
-		Modifications.Add(TEXT("bExposeOnSpawn"), TempBool ? TEXT("true") : TEXT("false"));
-	}
-
-	if (ChangesJson->TryGetBoolField(TEXT("replicated"), TempBool))
-	{
-		Modifications.Add(TEXT("bReplicated"), TempBool ? TEXT("true") : TEXT("false"));
-	}
-
-	if (ChangesJson->TryGetBoolField(TEXT("save_game"), TempBool))
-	{
-		Modifications.Add(TEXT("bSaveGame"), TempBool ? TEXT("true") : TEXT("false"));
-	}
-
-	if (ChangesJson->TryGetBoolField(TEXT("edit_anywhere"), TempBool))
-	{
-		Modifications.Add(TEXT("bEditAnywhere"), TempBool ? TEXT("true") : TEXT("false"));
-	}
-
-	if (ChangesJson->TryGetBoolField(TEXT("blueprint_visible"), TempBool))
-	{
-		Modifications.Add(TEXT("bBlueprintVisible"), TempBool ? TEXT("true") : TEXT("false"));
-	}
-
-	if (Modifications.Num() == 0)
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_NO_CHANGES"),
-			TEXT("No valid modifications found in 'changes' object"),
-			TEXT("Provide at least one property to modify (e.g., default_value, category, description, flags)")
-		);
-	}
-
-	// Load Blueprint for target asset
-	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
-	if (!Blueprint)
-	{
-		return FOliveToolResult::Error(
-			TEXT("ASSET_NOT_FOUND"),
-			FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
-			TEXT("Verify the asset path is correct and the asset exists")
-		);
-	}
-
-	// Build write request for pipeline
-	FOliveWriteRequest Request;
-	Request.ToolName = TEXT("blueprint.modify_variable");
-	Request.Params = Params;
-	Request.AssetPath = AssetPath;
-	Request.TargetAsset = Blueprint;
-	Request.OperationDescription = FText::FromString(
-		FString::Printf(TEXT("Modify variable '%s' in '%s'"), *VariableName, *AssetPath)
-	);
-	Request.OperationCategory = TEXT("variable"); // Tier 1
-	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
-	Request.bAutoCompile = false;
-	Request.bSkipVerification = false;
-
-	// Create executor
-	FOliveWriteExecutor Executor;
-	Executor.BindLambda([AssetPath, VariableName, Modifications](const FOliveWriteRequest& Req, UObject* Target) -> FOliveWriteResult
-	{
-		FOliveBlueprintWriter& Writer = FOliveBlueprintWriter::Get();
-		FOliveBlueprintWriteResult WriteResult = Writer.ModifyVariable(AssetPath, VariableName, Modifications);
-
-		if (!WriteResult.bSuccess)
-		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
-			return FOliveWriteResult::ExecutionError(
-				TEXT("BP_MODIFY_VARIABLE_FAILED"),
-				ErrorMsg,
-				TEXT("Verify the variable exists and the modifications are valid")
-			);
-		}
-
-		// Success - build result data
-		TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
-		ResultData->SetStringField(TEXT("asset_path"), WriteResult.AssetPath);
-		ResultData->SetStringField(TEXT("variable_name"), VariableName);
-		ResultData->SetNumberField(TEXT("modified_properties_count"), Modifications.Num());
-
-		return FOliveWriteResult::Success(ResultData);
-	});
-
-	// Execute through pipeline
-	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
-
-	return Result.ToToolResult();
-}
+// NOTE: HandleBlueprintModifyVariable has been consolidated into HandleBlueprintAddVariable (upsert).
+// The old blueprint.modify_variable tool name is an alias that redirects to blueprint.add_variable.
+// HandleBlueprintAddVariable detects the {name, changes} format and routes appropriately.
 
 // ============================================================================
 // Component Writer Tool Handler Stubs
@@ -3135,6 +3232,9 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReparentComponent(c
 
 FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddFunction(const TSharedPtr<FJsonObject>& Params)
 {
+	// Unified handler — routes by function_type param to type-specific helpers.
+	// function_type values: "function" (default), "custom_event", "event_dispatcher", "override"
+
 	// Validate parameters
 	if (!Params.IsValid())
 	{
@@ -3142,11 +3242,11 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddFunction(const T
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_PARAMS"),
 			TEXT("Parameters object is null"),
-			TEXT("Provide a valid parameters object with 'path' and 'signature' fields")
+			TEXT("Provide a valid parameters object with 'path' field")
 		);
 	}
 
-	// Extract path
+	// Extract path (required for all function_types)
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
 	{
@@ -3158,11 +3258,67 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddFunction(const T
 		);
 	}
 
-	// Extract signature object
+	// Load Blueprint (common to all types)
+	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+	if (!Blueprint)
+	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddFunction: Blueprint not found at path='%s'"), *AssetPath);
+		return FOliveToolResult::Error(
+			TEXT("ASSET_NOT_FOUND"),
+			FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
+			TEXT("Verify the asset path is correct and the asset exists")
+		);
+	}
+
+	// Determine function_type — defaults to "function"
+	FString FunctionType;
+	if (!Params->TryGetStringField(TEXT("function_type"), FunctionType) || FunctionType.IsEmpty())
+	{
+		FunctionType = TEXT("function");
+	}
+
+	// Route to type-specific helper
+	if (FunctionType == TEXT("custom_event"))
+	{
+		return HandleAddFunctionType_CustomEvent(Params, AssetPath, Blueprint);
+	}
+	else if (FunctionType == TEXT("event_dispatcher"))
+	{
+		return HandleAddFunctionType_EventDispatcher(Params, AssetPath, Blueprint);
+	}
+	else if (FunctionType == TEXT("override"))
+	{
+		return HandleAddFunctionType_Override(Params, AssetPath, Blueprint);
+	}
+	else if (FunctionType == TEXT("function"))
+	{
+		return HandleAddFunctionType_Function(Params, AssetPath, Blueprint);
+	}
+	else
+	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddFunction: Unknown function_type='%s'"), *FunctionType);
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAM"),
+			FString::Printf(TEXT("Unknown function_type '%s'"), *FunctionType),
+			TEXT("Use one of: 'function', 'custom_event', 'event_dispatcher', 'override'")
+		);
+	}
+}
+
+// ============================================================================
+// function_type='function' — Add a user-defined function with signature
+// ============================================================================
+
+FOliveToolResult FOliveBlueprintToolHandlers::HandleAddFunctionType_Function(
+	const TSharedPtr<FJsonObject>& Params,
+	const FString& AssetPath,
+	UBlueprint* Blueprint)
+{
+	// Extract signature object (required for function type)
 	const TSharedPtr<FJsonObject>* SignatureJsonPtr;
 	if (!Params->TryGetObjectField(TEXT("signature"), SignatureJsonPtr) || !SignatureJsonPtr->IsValid())
 	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddFunction: Missing required param 'signature' for path='%s'"), *AssetPath);
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleAddFunctionType_Function: Missing required param 'signature' for path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
 			TEXT("Required parameter 'signature' is missing or invalid"),
@@ -3173,26 +3329,28 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddFunction(const T
 	// Parse function signature from JSON to IR
 	FOliveIRFunctionSignature Signature = ParseFunctionSignatureFromParams(*SignatureJsonPtr);
 
+	// If signature.name is empty, try top-level 'name' or 'function_name' as fallback
+	if (Signature.Name.IsEmpty())
+	{
+		FString TopLevelName;
+		if (Params->TryGetStringField(TEXT("name"), TopLevelName) && !TopLevelName.IsEmpty())
+		{
+			Signature.Name = TopLevelName;
+		}
+		else if (Params->TryGetStringField(TEXT("function_name"), TopLevelName) && !TopLevelName.IsEmpty())
+		{
+			Signature.Name = TopLevelName;
+		}
+	}
+
 	// Validate signature has required fields
 	if (Signature.Name.IsEmpty())
 	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddFunction: Function 'name' field is empty for path='%s'"), *AssetPath);
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleAddFunctionType_Function: Function 'name' field is empty for path='%s'"), *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_FIELD"),
-			TEXT("Function 'name' field is required"),
+			TEXT("Function 'name' field is required (in signature or top-level 'name')"),
 			TEXT("Provide a name for the function")
-		);
-	}
-
-	// Load Blueprint for target asset
-	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
-	if (!Blueprint)
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintAddFunction: Blueprint not found at path='%s'"), *AssetPath);
-		return FOliveToolResult::Error(
-			TEXT("ASSET_NOT_FOUND"),
-			FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
-			TEXT("Verify the asset path is correct and the asset exists")
 		);
 	}
 
@@ -3237,6 +3395,266 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddFunction(const T
 				 "blueprint.preview_plan_json + blueprint.apply_plan_json to implement it. "
 				 "Do NOT add another function until this one has graph logic."),
 			*WriteResult.CreatedItemName));
+
+		return FOliveWriteResult::Success(ResultData);
+	});
+
+	// Execute through pipeline
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
+
+	return Result.ToToolResult();
+}
+
+// ============================================================================
+// function_type='custom_event' — Add a custom event to the event graph
+// ============================================================================
+
+FOliveToolResult FOliveBlueprintToolHandlers::HandleAddFunctionType_CustomEvent(
+	const TSharedPtr<FJsonObject>& Params,
+	const FString& AssetPath,
+	UBlueprint* Blueprint)
+{
+	// Extract event name — try 'name' first, then 'function_name' (set by normalizer)
+	FString EventName;
+	if (!Params->TryGetStringField(TEXT("name"), EventName) || EventName.IsEmpty())
+	{
+		if (!Params->TryGetStringField(TEXT("function_name"), EventName) || EventName.IsEmpty())
+		{
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_MISSING_PARAM"),
+				TEXT("Required parameter 'name' is missing or empty"),
+				TEXT("Provide the name of the custom event to create")
+			);
+		}
+	}
+
+	// Extract optional params array
+	TArray<FOliveIRFunctionParam> EventParams;
+	const TArray<TSharedPtr<FJsonValue>>* ParamsArray;
+	if (Params->TryGetArrayField(TEXT("params"), ParamsArray))
+	{
+		for (const TSharedPtr<FJsonValue>& ParamValue : *ParamsArray)
+		{
+			if (ParamValue->Type == EJson::Object)
+			{
+				TSharedPtr<FJsonObject> ParamObj = ParamValue->AsObject();
+				FOliveIRFunctionParam Param;
+
+				ParamObj->TryGetStringField(TEXT("name"), Param.Name);
+
+				// Parse type
+				const TSharedPtr<FJsonObject>* TypeJsonPtr;
+				if (ParamObj->TryGetObjectField(TEXT("type"), TypeJsonPtr))
+				{
+					Param.Type = ParseTypeFromParams(*TypeJsonPtr);
+				}
+
+				EventParams.Add(Param);
+			}
+		}
+	}
+
+	// Build write request for pipeline
+	FOliveWriteRequest Request;
+	Request.ToolName = TEXT("blueprint.add_function");
+	Request.Params = Params;
+	Request.AssetPath = AssetPath;
+	Request.TargetAsset = Blueprint;
+	Request.OperationDescription = FText::FromString(
+		FString::Printf(TEXT("Add custom event '%s' to '%s'"), *EventName, *AssetPath)
+	);
+	Request.OperationCategory = TEXT("variable"); // Tier 1 - custom events are low risk
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
+	Request.bAutoCompile = false;
+	Request.bSkipVerification = false;
+
+	// Create executor
+	FOliveWriteExecutor Executor;
+	Executor.BindLambda([AssetPath, EventName, EventParams](const FOliveWriteRequest& Req, UObject* Target) -> FOliveWriteResult
+	{
+		FOliveBlueprintWriter& Writer = FOliveBlueprintWriter::Get();
+		FOliveBlueprintWriteResult WriteResult = Writer.AddCustomEvent(AssetPath, EventName, EventParams);
+
+		if (!WriteResult.bSuccess)
+		{
+			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			return FOliveWriteResult::ExecutionError(
+				TEXT("BP_ADD_CUSTOM_EVENT_FAILED"),
+				ErrorMsg,
+				TEXT("Verify the event name is unique")
+			);
+		}
+
+		// Success - build result data
+		TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
+		ResultData->SetStringField(TEXT("asset_path"), WriteResult.AssetPath);
+		ResultData->SetStringField(TEXT("event_name"), WriteResult.CreatedItemName);
+		ResultData->SetStringField(TEXT("message"), FString::Printf(TEXT("Successfully added custom event '%s'"), *WriteResult.CreatedItemName));
+
+		return FOliveWriteResult::Success(ResultData);
+	});
+
+	// Execute through pipeline
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
+
+	return Result.ToToolResult();
+}
+
+// ============================================================================
+// function_type='event_dispatcher' — Add an event dispatcher (multicast delegate)
+// ============================================================================
+
+FOliveToolResult FOliveBlueprintToolHandlers::HandleAddFunctionType_EventDispatcher(
+	const TSharedPtr<FJsonObject>& Params,
+	const FString& AssetPath,
+	UBlueprint* Blueprint)
+{
+	// Extract dispatcher name — try 'name' first, then 'function_name' (set by normalizer)
+	FString DispatcherName;
+	if (!Params->TryGetStringField(TEXT("name"), DispatcherName) || DispatcherName.IsEmpty())
+	{
+		if (!Params->TryGetStringField(TEXT("function_name"), DispatcherName) || DispatcherName.IsEmpty())
+		{
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_MISSING_PARAM"),
+				TEXT("Required parameter 'name' is missing or empty"),
+				TEXT("Provide the name of the event dispatcher to create")
+			);
+		}
+	}
+
+	// Extract optional params array
+	TArray<FOliveIRFunctionParam> DispatcherParams;
+	const TArray<TSharedPtr<FJsonValue>>* ParamsArray;
+	if (Params->TryGetArrayField(TEXT("params"), ParamsArray))
+	{
+		for (const TSharedPtr<FJsonValue>& ParamValue : *ParamsArray)
+		{
+			if (ParamValue->Type == EJson::Object)
+			{
+				TSharedPtr<FJsonObject> ParamObj = ParamValue->AsObject();
+				FOliveIRFunctionParam Param;
+
+				ParamObj->TryGetStringField(TEXT("name"), Param.Name);
+
+				// Parse type
+				const TSharedPtr<FJsonObject>* TypeJsonPtr;
+				if (ParamObj->TryGetObjectField(TEXT("type"), TypeJsonPtr))
+				{
+					Param.Type = ParseTypeFromParams(*TypeJsonPtr);
+				}
+
+				DispatcherParams.Add(Param);
+			}
+		}
+	}
+
+	// Build write request for pipeline
+	FOliveWriteRequest Request;
+	Request.ToolName = TEXT("blueprint.add_function");
+	Request.Params = Params;
+	Request.AssetPath = AssetPath;
+	Request.TargetAsset = Blueprint;
+	Request.OperationDescription = FText::FromString(
+		FString::Printf(TEXT("Add event dispatcher '%s' to '%s'"), *DispatcherName, *AssetPath)
+	);
+	Request.OperationCategory = TEXT("variable"); // Tier 1 - dispatchers are like variables
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
+	Request.bAutoCompile = false;
+	Request.bSkipVerification = false;
+
+	// Create executor
+	FOliveWriteExecutor Executor;
+	Executor.BindLambda([AssetPath, DispatcherName, DispatcherParams](const FOliveWriteRequest& Req, UObject* Target) -> FOliveWriteResult
+	{
+		FOliveBlueprintWriter& Writer = FOliveBlueprintWriter::Get();
+		FOliveBlueprintWriteResult WriteResult = Writer.AddEventDispatcher(AssetPath, DispatcherName, DispatcherParams);
+
+		if (!WriteResult.bSuccess)
+		{
+			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			return FOliveWriteResult::ExecutionError(
+				TEXT("BP_ADD_DISPATCHER_FAILED"),
+				ErrorMsg,
+				TEXT("Verify the dispatcher name is unique")
+			);
+		}
+
+		// Success - build result data
+		TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
+		ResultData->SetStringField(TEXT("asset_path"), WriteResult.AssetPath);
+		ResultData->SetStringField(TEXT("dispatcher_name"), WriteResult.CreatedItemName);
+		ResultData->SetStringField(TEXT("message"), FString::Printf(TEXT("Successfully added event dispatcher '%s'"), *WriteResult.CreatedItemName));
+
+		return FOliveWriteResult::Success(ResultData);
+	});
+
+	// Execute through pipeline
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
+
+	return Result.ToToolResult();
+}
+
+// ============================================================================
+// function_type='override' — Override a parent class or interface function
+// ============================================================================
+
+FOliveToolResult FOliveBlueprintToolHandlers::HandleAddFunctionType_Override(
+	const TSharedPtr<FJsonObject>& Params,
+	const FString& AssetPath,
+	UBlueprint* Blueprint)
+{
+	// Extract function name — try 'function_name' first, then 'name'
+	FString FunctionName;
+	if (!Params->TryGetStringField(TEXT("function_name"), FunctionName) || FunctionName.IsEmpty())
+	{
+		if (!Params->TryGetStringField(TEXT("name"), FunctionName) || FunctionName.IsEmpty())
+		{
+			UE_LOG(LogOliveBPTools, Warning, TEXT("HandleAddFunctionType_Override: Missing required param 'function_name' for path='%s'"), *AssetPath);
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_MISSING_PARAM"),
+				TEXT("Required parameter 'function_name' (or 'name') is missing or empty"),
+				TEXT("Provide the name of the parent function to override")
+			);
+		}
+	}
+
+	// Build write request for pipeline
+	FOliveWriteRequest Request;
+	Request.ToolName = TEXT("blueprint.add_function");
+	Request.Params = Params;
+	Request.AssetPath = AssetPath;
+	Request.TargetAsset = Blueprint;
+	Request.OperationDescription = FText::FromString(
+		FString::Printf(TEXT("Override function '%s' in '%s'"), *FunctionName, *AssetPath)
+	);
+	Request.OperationCategory = TEXT("function_creation"); // Tier 2
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
+	Request.bAutoCompile = false;
+	Request.bSkipVerification = false;
+
+	// Create executor
+	FOliveWriteExecutor Executor;
+	Executor.BindLambda([AssetPath, FunctionName](const FOliveWriteRequest& Req, UObject* Target) -> FOliveWriteResult
+	{
+		FOliveBlueprintWriter& Writer = FOliveBlueprintWriter::Get();
+		FOliveBlueprintWriteResult WriteResult = Writer.OverrideFunction(AssetPath, FunctionName);
+
+		if (!WriteResult.bSuccess)
+		{
+			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			return FOliveWriteResult::ExecutionError(
+				TEXT("BP_OVERRIDE_FUNCTION_FAILED"),
+				ErrorMsg,
+				TEXT("Verify the function exists in a parent class or implemented interface and is overridable")
+			);
+		}
+
+		// Success - build result data
+		TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
+		ResultData->SetStringField(TEXT("asset_path"), WriteResult.AssetPath);
+		ResultData->SetStringField(TEXT("function_name"), WriteResult.CreatedItemName);
+		ResultData->SetStringField(TEXT("message"), FString::Printf(TEXT("Successfully overridden function '%s'"), *WriteResult.CreatedItemName));
 
 		return FOliveWriteResult::Success(ResultData);
 	});
@@ -3480,335 +3898,6 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintModifyFunctionSigna
 			TEXT("Modifying function signatures requires recreating the function"),
 			TEXT("Use blueprint.remove_function followed by blueprint.add_function with new signature for now")
 		);
-	});
-
-	// Execute through pipeline
-	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
-
-	return Result.ToToolResult();
-}
-
-FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddEventDispatcher(const TSharedPtr<FJsonObject>& Params)
-{
-	// Validate parameters
-	if (!Params.IsValid())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_INVALID_PARAMS"),
-			TEXT("Parameters object is null"),
-			TEXT("Provide a valid parameters object with 'path' and 'name' fields")
-		);
-	}
-
-	// Extract path
-	FString AssetPath;
-	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'path' is missing or empty"),
-			TEXT("Provide the Blueprint asset path")
-		);
-	}
-
-	// Extract dispatcher name
-	FString DispatcherName;
-	if (!Params->TryGetStringField(TEXT("name"), DispatcherName) || DispatcherName.IsEmpty())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'name' is missing or empty"),
-			TEXT("Provide the name of the event dispatcher to create")
-		);
-	}
-
-	// Extract optional params array
-	TArray<FOliveIRFunctionParam> DispatcherParams;
-	const TArray<TSharedPtr<FJsonValue>>* ParamsArray;
-	if (Params->TryGetArrayField(TEXT("params"), ParamsArray))
-	{
-		for (const TSharedPtr<FJsonValue>& ParamValue : *ParamsArray)
-		{
-			if (ParamValue->Type == EJson::Object)
-			{
-				TSharedPtr<FJsonObject> ParamObj = ParamValue->AsObject();
-				FOliveIRFunctionParam Param;
-
-				ParamObj->TryGetStringField(TEXT("name"), Param.Name);
-
-				// Parse type
-				const TSharedPtr<FJsonObject>* TypeJsonPtr;
-				if (ParamObj->TryGetObjectField(TEXT("type"), TypeJsonPtr))
-				{
-					Param.Type = ParseTypeFromParams(*TypeJsonPtr);
-				}
-
-				DispatcherParams.Add(Param);
-			}
-		}
-	}
-
-	// Load Blueprint for target asset
-	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
-	if (!Blueprint)
-	{
-		return FOliveToolResult::Error(
-			TEXT("ASSET_NOT_FOUND"),
-			FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
-			TEXT("Verify the asset path is correct and the asset exists")
-		);
-	}
-
-	// Build write request for pipeline
-	FOliveWriteRequest Request;
-	Request.ToolName = TEXT("blueprint.add_event_dispatcher");
-	Request.Params = Params;
-	Request.AssetPath = AssetPath;
-	Request.TargetAsset = Blueprint;
-	Request.OperationDescription = FText::FromString(
-		FString::Printf(TEXT("Add event dispatcher '%s' to '%s'"), *DispatcherName, *AssetPath)
-	);
-	Request.OperationCategory = TEXT("variable"); // Tier 1 - dispatchers are like variables
-	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
-	Request.bAutoCompile = false;
-	Request.bSkipVerification = false;
-
-	// Create executor
-	FOliveWriteExecutor Executor;
-	Executor.BindLambda([AssetPath, DispatcherName, DispatcherParams](const FOliveWriteRequest& Req, UObject* Target) -> FOliveWriteResult
-	{
-		FOliveBlueprintWriter& Writer = FOliveBlueprintWriter::Get();
-		FOliveBlueprintWriteResult WriteResult = Writer.AddEventDispatcher(AssetPath, DispatcherName, DispatcherParams);
-
-		if (!WriteResult.bSuccess)
-		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
-			return FOliveWriteResult::ExecutionError(
-				TEXT("BP_ADD_DISPATCHER_FAILED"),
-				ErrorMsg,
-				TEXT("Verify the dispatcher name is unique")
-			);
-		}
-
-		// Success - build result data
-		TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
-		ResultData->SetStringField(TEXT("asset_path"), WriteResult.AssetPath);
-		ResultData->SetStringField(TEXT("dispatcher_name"), WriteResult.CreatedItemName);
-		ResultData->SetStringField(TEXT("message"), FString::Printf(TEXT("Successfully added event dispatcher '%s'"), *WriteResult.CreatedItemName));
-
-		return FOliveWriteResult::Success(ResultData);
-	});
-
-	// Execute through pipeline
-	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
-
-	return Result.ToToolResult();
-}
-
-FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintOverrideFunction(const TSharedPtr<FJsonObject>& Params)
-{
-	// Validate parameters
-	if (!Params.IsValid())
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintOverrideFunction: Params object is null"));
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_INVALID_PARAMS"),
-			TEXT("Parameters object is null"),
-			TEXT("Provide a valid parameters object with 'path' and 'function_name' fields")
-		);
-	}
-
-	// Extract path
-	FString AssetPath;
-	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintOverrideFunction: Missing required param 'path'"));
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'path' is missing or empty"),
-			TEXT("Provide the Blueprint asset path")
-		);
-	}
-
-	// Extract function name
-	FString FunctionName;
-	if (!Params->TryGetStringField(TEXT("function_name"), FunctionName) || FunctionName.IsEmpty())
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintOverrideFunction: Missing required param 'function_name' for path='%s'"), *AssetPath);
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'function_name' is missing or empty"),
-			TEXT("Provide the name of the parent function to override")
-		);
-	}
-
-	// Load Blueprint for target asset
-	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
-	if (!Blueprint)
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintOverrideFunction: Blueprint not found at path='%s'"), *AssetPath);
-		return FOliveToolResult::Error(
-			TEXT("ASSET_NOT_FOUND"),
-			FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
-			TEXT("Verify the asset path is correct and the asset exists")
-		);
-	}
-
-	// Build write request for pipeline
-	FOliveWriteRequest Request;
-	Request.ToolName = TEXT("blueprint.override_function");
-	Request.Params = Params;
-	Request.AssetPath = AssetPath;
-	Request.TargetAsset = Blueprint;
-	Request.OperationDescription = FText::FromString(
-		FString::Printf(TEXT("Override function '%s' in '%s'"), *FunctionName, *AssetPath)
-	);
-	Request.OperationCategory = TEXT("function_creation"); // Tier 2
-	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
-	Request.bAutoCompile = false;
-	Request.bSkipVerification = false;
-
-	// Create executor
-	FOliveWriteExecutor Executor;
-	Executor.BindLambda([AssetPath, FunctionName](const FOliveWriteRequest& Req, UObject* Target) -> FOliveWriteResult
-	{
-		FOliveBlueprintWriter& Writer = FOliveBlueprintWriter::Get();
-		FOliveBlueprintWriteResult WriteResult = Writer.OverrideFunction(AssetPath, FunctionName);
-
-		if (!WriteResult.bSuccess)
-		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
-			return FOliveWriteResult::ExecutionError(
-				TEXT("BP_OVERRIDE_FUNCTION_FAILED"),
-				ErrorMsg,
-				TEXT("Verify the function exists in a parent class and is overridable")
-			);
-		}
-
-		// Success - build result data
-		TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
-		ResultData->SetStringField(TEXT("asset_path"), WriteResult.AssetPath);
-		ResultData->SetStringField(TEXT("function_name"), WriteResult.CreatedItemName);
-		ResultData->SetStringField(TEXT("message"), FString::Printf(TEXT("Successfully overridden function '%s'"), *WriteResult.CreatedItemName));
-
-		return FOliveWriteResult::Success(ResultData);
-	});
-
-	// Execute through pipeline
-	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
-
-	return Result.ToToolResult();
-}
-
-FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddCustomEvent(const TSharedPtr<FJsonObject>& Params)
-{
-	// Validate parameters
-	if (!Params.IsValid())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_INVALID_PARAMS"),
-			TEXT("Parameters object is null"),
-			TEXT("Provide a valid parameters object with 'path' and 'name' fields")
-		);
-	}
-
-	// Extract path
-	FString AssetPath;
-	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'path' is missing or empty"),
-			TEXT("Provide the Blueprint asset path")
-		);
-	}
-
-	// Extract event name
-	FString EventName;
-	if (!Params->TryGetStringField(TEXT("name"), EventName) || EventName.IsEmpty())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'name' is missing or empty"),
-			TEXT("Provide the name of the custom event to create")
-		);
-	}
-
-	// Extract optional params array
-	TArray<FOliveIRFunctionParam> EventParams;
-	const TArray<TSharedPtr<FJsonValue>>* ParamsArray;
-	if (Params->TryGetArrayField(TEXT("params"), ParamsArray))
-	{
-		for (const TSharedPtr<FJsonValue>& ParamValue : *ParamsArray)
-		{
-			if (ParamValue->Type == EJson::Object)
-			{
-				TSharedPtr<FJsonObject> ParamObj = ParamValue->AsObject();
-				FOliveIRFunctionParam Param;
-
-				ParamObj->TryGetStringField(TEXT("name"), Param.Name);
-
-				// Parse type
-				const TSharedPtr<FJsonObject>* TypeJsonPtr;
-				if (ParamObj->TryGetObjectField(TEXT("type"), TypeJsonPtr))
-				{
-					Param.Type = ParseTypeFromParams(*TypeJsonPtr);
-				}
-
-				EventParams.Add(Param);
-			}
-		}
-	}
-
-	// Load Blueprint for target asset
-	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
-	if (!Blueprint)
-	{
-		return FOliveToolResult::Error(
-			TEXT("ASSET_NOT_FOUND"),
-			FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
-			TEXT("Verify the asset path is correct and the asset exists")
-		);
-	}
-
-	// Build write request for pipeline
-	FOliveWriteRequest Request;
-	Request.ToolName = TEXT("blueprint.add_custom_event");
-	Request.Params = Params;
-	Request.AssetPath = AssetPath;
-	Request.TargetAsset = Blueprint;
-	Request.OperationDescription = FText::FromString(
-		FString::Printf(TEXT("Add custom event '%s' to '%s'"), *EventName, *AssetPath)
-	);
-	Request.OperationCategory = TEXT("variable"); // Tier 1 - custom events are low risk
-	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
-	Request.bAutoCompile = false;
-	Request.bSkipVerification = false;
-
-	// Create executor
-	FOliveWriteExecutor Executor;
-	Executor.BindLambda([AssetPath, EventName, EventParams](const FOliveWriteRequest& Req, UObject* Target) -> FOliveWriteResult
-	{
-		FOliveBlueprintWriter& Writer = FOliveBlueprintWriter::Get();
-		FOliveBlueprintWriteResult WriteResult = Writer.AddCustomEvent(AssetPath, EventName, EventParams);
-
-		if (!WriteResult.bSuccess)
-		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
-			return FOliveWriteResult::ExecutionError(
-				TEXT("BP_ADD_CUSTOM_EVENT_FAILED"),
-				ErrorMsg,
-				TEXT("Verify the event name is unique")
-			);
-		}
-
-		// Success - build result data
-		TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
-		ResultData->SetStringField(TEXT("asset_path"), WriteResult.AssetPath);
-		ResultData->SetStringField(TEXT("event_name"), WriteResult.CreatedItemName);
-		ResultData->SetStringField(TEXT("message"), FString::Printf(TEXT("Successfully added custom event '%s'"), *WriteResult.CreatedItemName));
-
-		return FOliveWriteResult::Success(ResultData);
 	});
 
 	// Execute through pipeline
@@ -6693,13 +6782,30 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 	}
 
 	// ------------------------------------------------------------------
-	// 5. Check preview requirement
+	// 5. Check preview requirement / auto-preview
 	// ------------------------------------------------------------------
+	// When no fingerprint is provided and bPlanJsonRequirePreviewForApply is
+	// true, we run an implicit "auto-preview" — the same resolve + validate
+	// pipeline that preview_plan_json uses. This saves the AI a round-trip
+	// (no need to call preview_plan_json first). The result is tagged with
+	// "auto_preview": true so the caller knows preview was inlined.
+	const bool bRequirePreview = Settings && Settings->bPlanJsonRequirePreviewForApply;
+	const bool bAutoPreview = ProvidedFingerprint.IsEmpty() && bRequirePreview;
+
 	if (ProvidedFingerprint.IsEmpty())
 	{
-		UE_LOG(LogOliveBPTools, Log,
-			TEXT("apply_plan_json: no preview_fingerprint provided — skipping drift check, "
-				 "proceeding with resolve+execute validation."));
+		if (bAutoPreview)
+		{
+			UE_LOG(LogOliveBPTools, Log,
+				TEXT("apply_plan_json: no preview_fingerprint provided — running automatic preview "
+					 "(bPlanJsonRequirePreviewForApply=true). Resolve+validate will run inline."));
+		}
+		else
+		{
+			UE_LOG(LogOliveBPTools, Log,
+				TEXT("apply_plan_json: no preview_fingerprint provided — skipping drift check, "
+					 "proceeding with resolve+execute (bPlanJsonRequirePreviewForApply=false)."));
+		}
 	}
 
 	// ------------------------------------------------------------------
@@ -7454,10 +7560,18 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 		}
 	}
 
+	// ------------------------------------------------------------------
+	// 13. Tag auto-preview in result (so caller knows preview was inlined)
+	// ------------------------------------------------------------------
+	if (bAutoPreview && ToolResult.Data.IsValid())
+	{
+		ToolResult.Data->SetBoolField(TEXT("auto_preview"), true);
+	}
+
 	UE_LOG(LogOliveBPTools, Log,
-		TEXT("Plan apply for '%s' graph '%s': success=%s, schema_version=%s"),
+		TEXT("Plan apply for '%s' graph '%s': success=%s, schema_version=%s, auto_preview=%s"),
 		*AssetPath, *GraphTarget, PipelineResult.bSuccess ? TEXT("true") : TEXT("false"),
-		*Plan.SchemaVersion);
+		*Plan.SchemaVersion, bAutoPreview ? TEXT("true") : TEXT("false"));
 
 	return ToolResult;
 }
@@ -7470,18 +7584,8 @@ void FOliveBlueprintToolHandlers::RegisterTemplateTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
-	Registry.RegisterTool(
-		TEXT("blueprint.create_from_template"),
-		TEXT("Create a complete Blueprint from a factory template. "
-			"Templates provide parameterized, pre-wired Blueprints for common patterns "
-			"(health, projectile, trigger, door, spawner). "
-			"Use blueprint.list_templates or the catalog in context to discover available templates."),
-		OliveBlueprintSchemas::BlueprintCreateFromTemplate(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintCreateFromTemplate),
-		{TEXT("blueprint"), TEXT("write"), TEXT("template")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.create_from_template"));
+	// NOTE: blueprint.create_from_template is now an alias that redirects to blueprint.create (with template_id).
+	// It is no longer registered as a separate tool.
 
 	Registry.RegisterTool(
 		TEXT("blueprint.get_template"),
@@ -7504,7 +7608,7 @@ void FOliveBlueprintToolHandlers::RegisterTemplateTools()
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.list_templates"));
 
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered template tools (create_from_template, get_template, list_templates)"));
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered template tools (get_template, list_templates)"));
 }
 
 FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintListTemplates(const TSharedPtr<FJsonObject>& Params)
@@ -7588,44 +7692,29 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintGetTemplate(const T
 	return FOliveToolResult::Success(ResultData);
 }
 
-FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreateFromTemplate(const TSharedPtr<FJsonObject>& Params)
+FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreateFromTemplate(
+	const FString& TemplateId,
+	const FString& AssetPath,
+	const TSharedPtr<FJsonObject>& Params)
 {
-	if (!Params.IsValid())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_INVALID_PARAMS"),
-			TEXT("Parameters object is null"),
-			TEXT("Provide 'template_id' and 'asset_path'")
-		);
-	}
-
-	FString TemplateId;
-	if (!Params->TryGetStringField(TEXT("template_id"), TemplateId) || TemplateId.IsEmpty())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'template_id' is missing"),
-			TEXT("Provide template_id")
-		);
-	}
-
-	FString AssetPath;
-	if (!Params->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'asset_path' is missing"),
-			TEXT("Provide asset_path (e.g., /Game/Blueprints/BP_Health)")
-		);
-	}
-
 	FString PresetName;
-	Params->TryGetStringField(TEXT("preset"), PresetName);
+	if (Params.IsValid())
+	{
+		Params->TryGetStringField(TEXT("preset"), PresetName);
+	}
 
-	// Extract parameters object
+	// Extract template parameters — accept both "template_params" and "parameters" (alias from old tool)
 	TMap<FString, FString> UserParams;
 	const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
-	if (Params->TryGetObjectField(TEXT("parameters"), ParamsObj) && ParamsObj && (*ParamsObj).IsValid())
+	if (Params.IsValid())
+	{
+		if (!(Params->TryGetObjectField(TEXT("template_params"), ParamsObj) && ParamsObj && (*ParamsObj).IsValid()))
+		{
+			// Fallback: accept "parameters" for backward compatibility with old create_from_template format
+			Params->TryGetObjectField(TEXT("parameters"), ParamsObj);
+		}
+	}
+	if (ParamsObj && (*ParamsObj).IsValid())
 	{
 		for (const auto& KV : (*ParamsObj)->Values)
 		{

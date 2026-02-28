@@ -32,8 +32,9 @@ Then create and wire the next asset the same way.
 ```
 
 ## Ops
-event, custom_event, call, call_delegate, get_var, set_var, branch, sequence, cast, for_loop, for_each_loop, while_loop, do_once, flip_flop, gate, delay, is_valid, print_string, spawn_actor, make_struct, break_struct, return, comment
-- call_delegate: broadcasts an event dispatcher. Use for dispatchers created via blueprint.add_event_dispatcher. Target = dispatcher name (e.g., "OnFired").
+event, custom_event, call, call_delegate, call_dispatcher, bind_dispatcher, get_var, set_var, branch, sequence, cast, for_loop, for_each_loop, while_loop, do_once, flip_flop, gate, delay, is_valid, print_string, spawn_actor, make_struct, break_struct, return, comment
+- call_delegate / call_dispatcher: broadcasts an event dispatcher. Use for dispatchers created via blueprint.add_function with function_type="event_dispatcher". Target = dispatcher name (e.g., "OnFired").
+- bind_dispatcher: binds a custom event to an event dispatcher. Target = dispatcher name. Wire the "Delegate" pin from a custom_event step to connect the handler. Example: {"step_id":"bind","op":"bind_dispatcher","target":"OnFired","inputs":{"Delegate":"@handler.auto"},"exec_after":"evt"}
 
 ## Wires
 Data: @step.auto (type-match, use ~80%), @step.~hint (fuzzy), @step.PinName (exact)

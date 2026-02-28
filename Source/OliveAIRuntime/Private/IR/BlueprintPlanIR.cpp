@@ -23,7 +23,7 @@ namespace OlivePlanOps
 			IsValid, PrintString, SpawnActor, MakeStruct,
 			BreakStruct, Return, Comment,
 			WhileLoop, DoOnce, FlipFlop, Gate,
-			CallDelegate
+			CallDelegate, CallDispatcher, BindDispatcher
 		};
 		return Ops;
 	}

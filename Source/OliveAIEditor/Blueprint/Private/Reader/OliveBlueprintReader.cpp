@@ -876,27 +876,95 @@ void FOliveBlueprintReader::ReadCompilationStatus(const UBlueprint* Blueprint, F
 		break;
 	}
 
-	// Provide basic compile status messages based on Blueprint status.
-	// PHASE2_DEFERRED: Full compile message extraction requires hooking into
-	// FKismetCompilerContext or capturing the message log during compilation.
-	// For now, provide summary messages based on the compile status enum.
-	if (Blueprint->Status == BS_Error)
+	// Extract actual compile error/warning messages from node annotations.
+	// UEdGraphNode stores bHasCompilerMessage, ErrorType (EMessageSeverity), and ErrorMsg
+	// after compilation. We walk all graphs and collect these messages.
+	if (Blueprint->Status == BS_Error || Blueprint->Status == BS_UpToDateWithWarnings)
 	{
-		FOliveIRMessage ErrorMsg;
-		ErrorMsg.Severity = EOliveIRSeverity::Error;
-		ErrorMsg.Code = TEXT("COMPILE_ERROR");
-		ErrorMsg.Message = TEXT("Blueprint has compile errors. Open in Blueprint editor to see details.");
-		ErrorMsg.Details.Add(TEXT("phase2_deferred"), TEXT("true"));
-		OutIR.CompileMessages.Add(ErrorMsg);
-	}
-	else if (Blueprint->Status == BS_UpToDateWithWarnings)
-	{
-		FOliveIRMessage WarnMsg;
-		WarnMsg.Severity = EOliveIRSeverity::Warning;
-		WarnMsg.Code = TEXT("COMPILE_WARNING");
-		WarnMsg.Message = TEXT("Blueprint compiled with warnings. Open in Blueprint editor to see details.");
-		WarnMsg.Details.Add(TEXT("phase2_deferred"), TEXT("true"));
-		OutIR.CompileMessages.Add(WarnMsg);
+		const int32 MaxMessages = 10;
+		int32 MessageCount = 0;
+
+		TArray<UEdGraph*> AllGraphs;
+		Blueprint->GetAllGraphs(AllGraphs);
+
+		for (const UEdGraph* Graph : AllGraphs)
+		{
+			if (!Graph || MessageCount >= MaxMessages)
+			{
+				break;
+			}
+
+			for (const UEdGraphNode* Node : Graph->Nodes)
+			{
+				if (!Node || MessageCount >= MaxMessages)
+				{
+					break;
+				}
+
+				if (!Node->bHasCompilerMessage || Node->ErrorMsg.IsEmpty())
+				{
+					continue;
+				}
+
+				FOliveIRMessage Msg;
+
+				// EMessageSeverity::Error = 1, PerformanceWarning = 2, Warning = 3, Info = 4
+				// Lower values are more severe. Treat Error and below as errors, rest as warnings.
+				if (Node->ErrorType <= EMessageSeverity::Error)
+				{
+					Msg.Severity = EOliveIRSeverity::Error;
+					Msg.Code = TEXT("COMPILE_ERROR");
+				}
+				else if (Node->ErrorType <= EMessageSeverity::Warning)
+				{
+					Msg.Severity = EOliveIRSeverity::Warning;
+					Msg.Code = TEXT("COMPILE_WARNING");
+				}
+				else
+				{
+					Msg.Severity = EOliveIRSeverity::Info;
+					Msg.Code = TEXT("COMPILE_INFO");
+				}
+
+				// Format: [GraphName] NodeTitle: ErrorMsg
+				const FString NodeTitle = Node->GetNodeTitle(ENodeTitleType::ListView).ToString();
+				Msg.Message = FString::Printf(TEXT("[%s] %s: %s"),
+					*Graph->GetName(),
+					*NodeTitle,
+					*Node->ErrorMsg);
+
+				// Add graph and node details for programmatic access
+				Msg.Details.Add(TEXT("graph"), Graph->GetName());
+				Msg.Details.Add(TEXT("node_title"), NodeTitle);
+				Msg.Details.Add(TEXT("node_class"), Node->GetClass()->GetName());
+
+				OutIR.CompileMessages.Add(MoveTemp(Msg));
+				MessageCount++;
+			}
+		}
+
+		// If no node-level messages were found but status indicates errors/warnings,
+		// add a fallback message. This can happen if errors are graph-level or if
+		// the compile state was set externally without annotating nodes.
+		if (MessageCount == 0)
+		{
+			FOliveIRMessage FallbackMsg;
+			if (Blueprint->Status == BS_Error)
+			{
+				FallbackMsg.Severity = EOliveIRSeverity::Error;
+				FallbackMsg.Code = TEXT("COMPILE_ERROR");
+				FallbackMsg.Message = TEXT("Blueprint has compile errors but no node-level error annotations were found.");
+				FallbackMsg.Suggestion = TEXT("Run blueprint.compile to trigger a fresh compilation with full diagnostics.");
+			}
+			else
+			{
+				FallbackMsg.Severity = EOliveIRSeverity::Warning;
+				FallbackMsg.Code = TEXT("COMPILE_WARNING");
+				FallbackMsg.Message = TEXT("Blueprint compiled with warnings but no node-level warning annotations were found.");
+				FallbackMsg.Suggestion = TEXT("Run blueprint.compile to trigger a fresh compilation with full diagnostics.");
+			}
+			OutIR.CompileMessages.Add(MoveTemp(FallbackMsg));
+		}
 	}
 }
 
@@ -967,6 +1035,11 @@ void FOliveBlueprintReader::ReadGraphNames(const UBlueprint* Blueprint, FOliveIR
 		if (Graph)
 		{
 			OutIR.EventGraphNames.Add(Graph->GetName());
+
+			FOliveIRGraphSummary Summary;
+			Summary.Name = Graph->GetName();
+			Summary.NodeCount = Graph->Nodes.Num();
+			OutIR.EventGraphSummaries.Add(MoveTemp(Summary));
 		}
 	}
 
@@ -976,6 +1049,11 @@ void FOliveBlueprintReader::ReadGraphNames(const UBlueprint* Blueprint, FOliveIR
 		if (Graph)
 		{
 			OutIR.FunctionNames.Add(Graph->GetName());
+
+			FOliveIRGraphSummary Summary;
+			Summary.Name = Graph->GetName();
+			Summary.NodeCount = Graph->Nodes.Num();
+			OutIR.FunctionSummaries.Add(MoveTemp(Summary));
 		}
 	}
 

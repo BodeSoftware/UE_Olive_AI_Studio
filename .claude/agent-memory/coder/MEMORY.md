@@ -35,112 +35,34 @@
 
 ## Phase D: Graph Layout Engine
 - `OliveGraphLayoutEngine.h/cpp` at `Blueprint/Public/Plan/` and `Blueprint/Private/Plan/`
-- Stateless static utility class (same pattern as FOliveFunctionResolver)
-- `ComputeLayout(Plan, Context)` -> `TMap<FString, FOliveLayoutEntry>`; `ApplyLayout(Layout, Context)` -> void
-- Internal phases: BuildExecGraph -> AssignColumns (BFS) -> AssignRows (branch-aware) -> PlacePureNodes (consumer-relative) -> ComputePositions (multi-chain stacking)
-- Constants: HORIZONTAL_SPACING=350, VERTICAL_SPACING=200, BRANCH_OFFSET=250, PURE_NODE_OFFSET_Y=-120, CHAIN_GAP_ROWS=2
+- Stateless static utility class; `ComputeLayout()` -> `TMap<FString, FOliveLayoutEntry>`; `ApplyLayout()` -> void
 - Log category: LogOliveGraphLayout
-- BuildConsumerMap scans inputs for @stepId refs to identify pure-node consumers
 
 ## CLI Provider Base Class (NeoStack T4 Refactored)
 - `FOliveCLIProviderBase` at `Public/Providers/OliveCLIProviderBase.h` / `Private/Providers/OliveCLIProviderBase.cpp`
 - Abstract base for CLI providers; inherits IOliveAIProvider
-- Virtual hooks: `GetExecutablePath()`, `GetCLIArguments()`, `GetCLIArgumentsAutonomous()`, `ParseOutputLine()`, `GetWorkingDirectory()`, `RequiresNodeRunner()`, `GetCLIName()`
-- Error string "process exited with code" preserved in BOTH HandleResponseComplete and HandleResponseCompleteAutonomous
-- Log category: `LogOliveCLIProvider` (base), `LogOliveClaudeCode` (Claude-specific)
-- **LaunchCLIProcess()**: extracted shared process lifecycle (spawn, stdin, read loop, exit) used by both SendMessage and SendMessageAutonomous
-  - Callers set bIsBusy/callbacks/generation BEFORE calling; LaunchCLIProcess captures current generation for staleness checks
-  - `OnProcessExit` TFunction called on game thread inside Guard+Generation+Lock checks
-  - `MoveTemp(OnProcessExit)` into background lambda; copied into completion game-thread lambda
-- **SendMessage()** (orchestrated): builds prompts on game thread, escapes system prompt, calls LaunchCLIProcess with HandleResponseComplete
-- **SendMessageAutonomous()** (autonomous/MCP): no prompt building, no tool schema serialization, calls LaunchCLIProcess with HandleResponseCompleteAutonomous
-- **HandleResponseCompleteAutonomous()**: emits AccumulatedResponse via OnComplete, no tool_call parsing (tools go through MCP)
-- **Generation counter**: `std::atomic<uint32> RequestGeneration` prevents stale async completions
-  - Incremented in `SendMessage()`/`SendMessageAutonomous()` (start) and `CancelRequest()` (invalidate)
-  - `LaunchCLIProcess` reads it via `.load()` and checks in all 3 game-thread dispatches (line-parse, buffer-flush, completion)
-- **Idle timeout**: Single flat `CLI_IDLE_TIMEOUT_SECONDS = 600.0` in anonymous namespace; resets on any stdout output; kills hung processes. `AutonomousIdleToolSeconds = 240` (setting) for activity-based tool timeout. No adaptive/extended timeouts or output-stall detection.
-- **Auto-continue**: Unified handler: any `bLastRunTimedOut` + `AutoContinueCount < MaxAutoContinues (1)` -> relaunch with decomposition nudge. Uses AsyncTask to avoid re-entrancy. `bLastRunWasRuntimeLimit` flag is still tracked but no longer gates auto-continue (unified handler fires on any timeout).
-  - `bIsAutoContinuation` flag: set before AsyncTask dispatch, consumed at top of SendMessageAutonomous. Prevents counter reset on auto-continue calls.
-  - `BuildContinuationPrompt` calls `BuildAssetStateSummary()` (loads UBlueprints on game thread) to inject asset state
-  - BuildContinuationPrompt called INSIDE the AsyncTask lambda (game thread safe for UObject loading)
-  - `bLastRunWasOutputStall` REMOVED; `EOutcome::OutputStall` enum value retained but never set (dead code).
-- **Tool filtering**: `FOliveMCPServer::SetToolFilter(TSet<FString>)` / `ClearToolFilter()` restrict `HandleToolsList` by prefix. `DetermineToolPrefixes()` in anonymous namespace infers domain from user message. Set before LaunchCLIProcess, cleared in HandleResponseCompleteAutonomous and CancelRequest. `HandleToolsCall` is NOT filtered (any tool still callable).
-- **@-mention asset state injection**: `SetInitialContextAssets()` (public) sets `InitialContextAssetPaths` on the provider. `SendMessageAutonomous()` calls `BuildAssetStateSummary(InitialContextAssetPaths)` to inject pre-read state into initial prompt. ConversationManager calls `SetInitialContextAssets(ActiveContextPaths)` via `static_cast<FOliveCLIProviderBase*>` (safe: IsAutonomousProvider() gates entry). `BuildAssetStateSummary(const TArray<FString>&)` is the primary overload; no-arg version is inline wrapper reading `LastRunContext.ModifiedAssetPaths`.
+- Two paths: Orchestrated (SendMessage, per-turn) and Autonomous (SendMessageAutonomous, MCP)
+- `LaunchCLIProcess()`: shared process lifecycle used by both paths
+- `RequestGeneration` counter prevents stale async completions; `AliveGuard` prevents use-after-free
+- Tool filtering: `SetToolFilter()`/`ClearToolFilter()` on MCPServer; `HandleToolsCall` NOT filtered
+- See CLAUDE.md for full details on prompt routing, auto-continue, asset state injection
 
 ## UE 5.5 API Quirks
 - **Float/Double PinType**: In UE 5.5, `PC_Float` and `PC_Double` must NOT be used as `PinCategory`. Instead use `PinCategory = PC_Real` with `PinSubCategory = PC_Float` (or `PC_Double`). Using `PC_Float` directly as category causes "Can't parse default value" compile warnings because the engine can't resolve an FProperty from a bare `PC_Float` category.
 - Source: `EdGraphSchema_K2.cpp` lines 3503-3512 (ConvertPropertyToPinType sets PC_Real+subcategory for both FFloatProperty and FDoubleProperty)
 
-## Phase 3: Error Recovery, Loop Prevention & Context Injection (Completed)
-- **Task 1 (3.3)**: Updated stale guidance strings in `BuildToolErrorMessage()`:
-  - PLAN_RESOLVE_FAILED: "get_var for a component" -> "set_var on a component"
-  - PLAN_VALIDATION_FAILED: mentions auto-wiring for single components instead of GetComponentByClass
-- **Task 2 (3.2)**: Progressive error disclosure in `BuildToolErrorMessage()`:
-  - Attempt 1: short header (code only) + guidance
-  - Attempt 2: full header (code + message) + guidance
-  - Attempt 3+: full header + guidance + ESCALATION block
-- **Task 3 (3.1)**: Plan content deduplication:
-  - `FOliveLoopDetector::HashString()` moved from private to public
-  - `FOliveSelfCorrectionPolicy::Evaluate()` got new `ToolCallArgs` param (optional, default nullptr)
-  - `BuildPlanHash()` hashes tool+asset_path+graph_name+condensed_plan_JSON
-  - `PreviousPlanHashes` TMap tracks submission counts; >1 = FeedBackErrors, >=3 = StopWorker
-  - `OliveConversationManager.cpp` passes `ActiveToolCallArgs[ToolCallId]` to Evaluate
-- **Task 4 (3.4)**: Blueprint context injection in prompts:
-  - `BuildBlueprintContextBlock()` on FOlivePromptAssembler: loads BP, iterates SCS nodes + NewVariables
-  - Called from `GetActiveContext()` when `AssetInfo->bIsBlueprint`
-  - Token budget in GetActiveContext naturally handles large BPs
-  - Includes: `Engine/Blueprint.h`, `Engine/SimpleConstructionScript.h`, `Engine/SCS_Node.h`
+## Phase 3: Error Recovery (Completed)
+- Progressive error disclosure, plan dedup, blueprint context injection in prompts
+- See `plans/` for full design details
 
-## Priority 0 Task 4: Universal add_node (Implemented)
-- `CreateNodeByClass()` public method on FOliveNodeFactory: resolves any UK2Node subclass, sets properties via reflection BEFORE AllocateDefaultPins, then ReconstructNode
-- `FindK2NodeClass()` const private: multi-strategy lookup (FindFirstObject -> K2Node_/UK2Node_ prefix -> U-strip -> StaticLoadClass across 6 engine packages)
-- `SetNodePropertiesViaReflection()` private: type-specific fast paths (bool/int/float/double/string/name/text/object) + ImportText_Direct fallback
-- `ValidateNodeType()` now falls back to FindK2NodeClass when type not in NodeCreators map
-- `CreateNode()` uses `NodeCreators.Find()` instead of `NodeCreators[]`; else-branch calls CreateNodeByClass
-- Curated NodeCreators always checked FIRST; universal fallback only for types NOT in the map
-- Position set uniformly by existing SetNodePosition in CreateNode -- NOT in CreateNodeByClass
-- Node factory: `Source/OliveAIEditor/Blueprint/Public/Writer/OliveNodeFactory.h` / `Private/Writer/OliveNodeFactory.cpp`
+## Phase 4: Template System (Completed)
+- `FOliveTemplateSystem` singleton at `Blueprint/Public/Template/` and `Blueprint/Private/Template/`
+- Factory templates create BPs; reference templates provide pattern docs
+- `ApplyTemplate()` instantiates factory templates; `GetTemplateContent()` reads reference/factory content
 
-## Phase 4: Template System (In Progress)
-- `OliveTemplateSystem.h` at `Blueprint/Public/Template/` and `OliveTemplateSystem.cpp` at `Blueprint/Private/Template/`
-- Singleton with `Get()`, standard static-local pattern
-- Log category: `LogOliveTemplates`
-- `FOliveTemplateInfo` struct: TemplateId, TemplateType, DisplayName, CatalogDescription, CatalogExamples, Tags, FilePath, FullJson
-- GetTemplatesDirectory(): `FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("UE_Olive_AI_Studio/Content/Templates"))`
-- ScanDirectory uses `IPlatformFile::IterateDirectoryRecursively()` with lambda visitor `(const TCHAR*, bool) -> bool`
-- LoadTemplateFile: required fields = template_id, template_type, catalog_description
-- RebuildCatalog: groups by factory/reference, builds `[AVAILABLE BLUEPRINT TEMPLATES]` block
-- SubstituteParameters: `${key}` token replacement with warning for unresolved tokens
-- EvaluateConditionals: bool ternary `"true ? val : val"` / `"false ? val : val"` pattern
-- MergeParameters: defaults -> preset (by name, case-insensitive) -> user overrides
-- ApplyTemplate and GetTemplateContent: STUBS for Task 4
-- Task 1 complete; remaining: Task 2 (JSON files), Task 3 (tool handlers), Task 4 (executor), Task 5 (prompt injection), Task 6 (startup integration)
-
-## Pipeline Reliability Phase 1: Granular Fallback + Retry Policy (Completed)
-- `FOliveRetryPolicy.MaxCorrectionCyclesPerWorker` raised from 5 to 20 (hard backstop)
-- `FOliveRetryPolicy.bAllowGranularFallback = true` flag added
-- `FOliveSelfCorrectionPolicy` new fields: `bIsInGranularFallback`, `LastPlanFailureReason` (reset in `Reset()`)
-- `HasCompileFailure()` now takes `int32& OutRolledBackNodeCount` out-param; extracts from `data.rolled_back_nodes`
-- Loop detection split: `IsLooping||IsOscillating` separate from `IsBudgetExhausted` (hard backstop)
-- Granular fallback: on loop detection, if not already in fallback mode, resets loop detector & switches to step-by-step
-- `BuildRollbackAwareMessage()`: tells AI to resubmit corrected plan, warns about deleted node IDs
-- `BuildGranularFallbackMessage()`: forces AI to use add_node/connect_pins/set_pin_default instead of plan_json
-- Tool failure branch also extracts `rolled_back_nodes` via JSON parse + applies same granular fallback pattern
-- Template system: `compile_result` JSON object added to ResultData; `FOliveIRMessage` with COMPILE_FAILED code added to Result.Messages when compile fails
-- `FOliveToolResult::Success()` takes only `TSharedPtr<FJsonObject>` -- no message param. Use `Result.Messages.Add()` for warnings.
-
-## Pipeline Reliability Phase 2: Graph Context Threading (Completed)
-- `FOliveGraphContext` struct in `OliveBlueprintPlanResolver.h`: GraphName, bIsFunctionGraph, bIsMacroGraph, InputParamNames, OutputParamNames, Graph*
-- `BuildFromBlueprint()` searches UbergraphPages, FunctionGraphs, MacroGraphs; extracts UserDefinedPins from UK2Node_FunctionEntry/Result
-- `bIsLatent` on `FOliveResolvedStep`: set from `UFunction::HasMetaData("Latent")` in ResolveCallOp, or explicitly for Delay op
-- GraphContext threaded through: `Resolve()`, `ResolveStep()`, `ResolveGetVarOp()`, `ResolveSetVarOp()`, `Validate()`
-- Function param detection: get_var matching InputParamNames -> FunctionInput type; set_var matching OutputParamNames -> FunctionOutput type
-- `OliveNodeTypes::FunctionInput` / `FunctionOutput` are virtual types (no actual node creation; reuse FunctionEntry/Result)
-- `CheckLatentInFunctionGraph()` in validator: rejects latent steps in function graphs with `LATENT_IN_FUNCTION` error code
-- Executor: FunctionInput/FunctionOutput virtual steps find existing FunctionEntry/FunctionResult nodes, add to ReusedStepIds
-- `OlivePlanValidator.h` includes `OliveBlueprintPlanResolver.h` (needed for FOliveGraphContext default parameter)
-- All callers updated: 4 in OliveBlueprintToolHandlers.cpp (preview+apply: Resolve+Validate), 2 in OliveTemplateSystem.cpp (func+EG Resolve)
-- Variable name in tool handlers: `GraphTarget` (not `GraphName`)
+## Pipeline Reliability (Completed)
+- Phase 1: Granular fallback + retry policy (max 20 correction cycles, loop detection -> step-by-step fallback)
+- Phase 2: Graph context threading (FOliveGraphContext, function params, latent-in-function detection)
 
 ## Phase 2 Task 6 (Large-Graph Read Mode)
 - Constants: `OLIVE_LARGE_GRAPH_THRESHOLD = 500`, `OLIVE_GRAPH_PAGE_SIZE = 100` in OliveGraphReader.h
@@ -161,13 +83,17 @@
 - **0D**: Suggestion strings added to all bare errors in `OliveGraphBatchExecutor.cpp` and non-blueprint handlers
 - Note: `FOliveBlueprintWriteResult::Error()` takes only message+path (no suggestion param), so batch executor errors embed suggestions in the message itself
 
-## call_delegate Op (Round 2 Task 1)
-- `OlivePlanOps::CallDelegate = "call_delegate"` added to BlueprintPlanIR.h vocabulary
-- `OliveNodeTypes::CallDelegate = "CallDelegate"` in OliveNodeFactory.h
-- `ResolveCallDelegateOp()`: validates target against BP's NewVariables with `PC_MCDelegate` category
+## Delegate Ops (call_delegate, call_dispatcher, bind_dispatcher)
+- `OlivePlanOps::CallDelegate = "call_delegate"` and `CallDispatcher = "call_dispatcher"` (alias) in BlueprintPlanIR.h
+- `OlivePlanOps::BindDispatcher = "bind_dispatcher"` in BlueprintPlanIR.h
+- `OliveNodeTypes::CallDelegate = "CallDelegate"` and `BindDelegate = "BindDelegate"` in OliveNodeFactory.h
+- `ResolveCallDelegateOp()`: validates target against BP's NewVariables with `PC_MCDelegate` category; handles both call_delegate and call_dispatcher ops
+- `ResolveBindDelegateOp()`: same validation as call_delegate, sets NodeType to BindDelegate
 - `CreateCallDelegateNode()`: finds `FMulticastDelegateProperty` on SkeletonGeneratedClass (fallback GeneratedClass), uses `UK2Node_CallDelegate` + `SetFromProperty(DelegateProp, true, OwnerClass)`
-- Include: `K2Node_CallDelegate.h` (from BlueprintGraph module, also has `K2Node_BaseMCDelegate.h`)
-- `bIsPure = false` (delegate broadcasts have exec pins)
+- `CreateBindDelegateNode()`: same property lookup, uses `UK2Node_AddDelegate` instead of `UK2Node_CallDelegate`
+- Includes: `K2Node_CallDelegate.h`, `K2Node_AddDelegate.h` (from BlueprintGraph module)
+- Both ops: `bIsPure = false` (delegate ops have exec pins)
+- UK2Node_AddDelegate has a "Delegate" pin (friendly name "Event") for wiring to custom events
 - gun.json template: dispatcher steps use `call_delegate` instead of `call`; timer uses `SetTimerByFunctionName` instead of `K2_SetTimerDelegate`
 
 ## Timeout & Plan Reliability Fixes (Partial - C1, B1-B3)
@@ -191,19 +117,76 @@
 
 ## Resolver Removal: FOliveFunctionResolver Bypassed (Completed)
 - `FOliveFunctionResolver` is now dead code (kept for one release cycle, not called)
-- `ResolveCallOp()` in OliveBlueprintPlanResolver.cpp calls `FOliveNodeFactory::Get().FindFunction()` directly
+- `ResolveCallOp()` in OliveBlueprintPlanResolver.cpp calls `FOliveNodeFactory::Get().FindFunctionEx()` directly
 - `FindFunction()` is now PUBLIC on FOliveNodeFactory (was private)
-- `FindFunction()` enhanced search order: alias map -> specified class -> GeneratedClass -> parent class hierarchy -> SCS component classes -> library classes
+- `FindFunctionEx()` wraps FindFunction + collects SearchedLocations on failure for detailed error messages
+- `FOliveFunctionSearchResult` struct: Function, MatchMethod, MatchedClassName, SearchedLocations, BuildSearchedLocationsString()
+- `FindFunction()` enhanced search order: alias map -> specified class -> GeneratedClass -> FunctionGraphs -> parent class hierarchy -> SCS component classes -> implemented interfaces -> library classes
 - Each class tried with exact name first, then K2_ prefix variant (inline lambda `TryClassWithK2`)
 - `GetAliasMap()` static public method on FOliveNodeFactory (copied verbatim from OliveFunctionResolver)
 - No more "accepted as-is" fallback path -- unknown functions fail at resolution with FUNCTION_NOT_FOUND error
 - `ResolvedOwningClass`, `bIsPure`, `bIsLatent` still populated from `UFunction*` introspection
-- Includes removed: `Plan/OliveFunctionResolver.h` from OliveBlueprintPlanResolver.cpp and OliveBlueprintToolHandlers.cpp
+
+## FN-4: Interface Message Call Support (Completed)
+- `EOliveFunctionMatchMethod` enum in OliveNodeFactory.h: None, ExactName, AliasMap, GeneratedClass, FunctionGraph, ParentClassSearch, ComponentClassSearch, InterfaceSearch, LibrarySearch
+- `FindFunction()` has optional `EOliveFunctionMatchMethod* OutMatchMethod` out-param
+- Step 4b in FindFunction: iterates `Blueprint->ImplementedInterfaces`, tries each InterfaceDesc.Interface
+- InterfaceSearch always reported as InterfaceSearch (even if alias was used, since node type depends on it)
+- `CreateCallFunctionNode()`: when MatchMethod==InterfaceSearch, creates `UK2Node_Message` instead of `UK2Node_CallFunction`
+- UK2Node_Message setup: `FunctionReference.SetFromField<UFunction>(Function, false)` (bIsConsideredSelfContext=false preserves interface as MemberParent)
+- `FOliveResolvedStep.bIsInterfaceCall` flag set by ResolveCallOp, propagated via `is_interface_call` property
+- Interface message calls forced `bIsPure = false` (UK2Node_Message::IsNodePure returns false)
+- Include: `K2Node_Message.h` in OliveNodeFactory.cpp
 
 ## ExpandedPlan Fix (Round 2 Task 2)
-- `FOlivePlanResolveResult` now carries `ExpandedPlan` field -- the plan after all pre-processing (ExpandComponentRefs, ExpandPlanInputs, ExpandBranchConditions)
+- `FOlivePlanResolveResult` now carries `ExpandedPlan` field -- the plan after all pre-processing
 - All post-resolve code MUST use `ResolveResult.ExpandedPlan` instead of the original `Plan` variable
-- Apply handler: drift detection moved AFTER Resolve() so fingerprint matches preview's expanded-plan fingerprint
-- Tool handlers pattern: `FOliveIRBlueprintPlan& ExpandedPlan = ResolveResult.ExpandedPlan;` alias after Resolve
-- Template system: both function graph and event graph executor calls use `ResolveResult.ExpandedPlan`
-- Lambda capture in apply handler: `FOliveIRBlueprintPlan CapturedPlan = ExpandedPlan;` (not original Plan)
+
+## Phase 2: Tool Alias Map (P2-1, Completed)
+- `FOliveToolAlias` struct + `GetToolAliases()` in OliveToolRegistry.cpp; `ResolveAlias()`/`IsToolAlias()` public
+- Aliases never appear in tools/list; `ExecuteTool()` resolves aliases before normalize+lookup
+
+## P2-2: Blueprint Read Tool Consolidation (Completed)
+- 7 tools merged into 1 unified `blueprint.read` with `section` param
+- `section` values: `all` (default), `summary`, `graph`, `variables`, `components`, `hierarchy`, `overridable_functions`
+- `graph_name` required when section="graph"; searches UbergraphPages + FunctionGraphs + MacroGraphs
+- Old tools (`read_function`, `read_event_graph`, `read_variables`, `read_components`, `read_hierarchy`, `list_overridable_functions`) redirect via alias map
+- Handler method names: `HandleBlueprintRead` (router) -> `HandleReadSectionAll`, `HandleReadSectionGraph`, etc.
+- Only 2 reader tools registered: `blueprint.read`, `blueprint.get_node_pins`
+- Updated: tool packs (OliveToolPacks.json + OliveToolPackManager.cpp fallback), PIE whitelist (OliveValidationEngine.cpp)
+
+## P2-3: Function Tool Consolidation (Completed)
+- `blueprint.add_function`: unified handler with `function_type` enum (function/custom_event/event_dispatcher/override)
+  - `HandleBlueprintAddFunction` validates path+BP, routes to `HandleAddFunctionType_*` helpers
+  - Old tools (add_custom_event, add_event_dispatcher, override_function) removed from registration
+  - Old tool names still work via redirect aliases in OliveToolRegistry.cpp (set function_type)
+  - Schema: path required, function_type optional (default "function"), accepts signature/name/params/function_name
+  - Validation engine updated: checks `function_type` param instead of old tool names for duplicate-layer rule
+  - Tool packs (OliveToolPacks.json + OliveToolPackManager.cpp) cleaned of old tool names
+  - System prompts updated to reference `function_type=` syntax
+
+## P2-4: Variable Upsert + Template Merge (Completed)
+- `blueprint.add_variable` is now upsert: creates if missing, updates if present
+  - Detects modify_variable alias format ({name, changes}) and routes to ModifyVariable writer
+  - `modify_only` bool param: when true, errors if variable doesn't exist
+  - When variable exists via standard format, extracts modifications from FOliveIRVariable fields
+  - `blueprint.modify_variable` registration REMOVED (alias in OliveToolRegistry redirects)
+  - `BlueprintModifyVariable` schema REMOVED from OliveBlueprintSchemas
+- `blueprint.create` now accepts optional `template_id` + `template_params` + `preset`
+  - When `template_id` set, delegates to `HandleBlueprintCreateFromTemplate(TemplateId, AssetPath, Params)`
+  - `parent_class` only required when NOT using template
+  - `blueprint.create_from_template` registration REMOVED (alias redirects)
+  - `BlueprintCreateFromTemplate` schema REMOVED
+  - `HandleBlueprintCreateFromTemplate` signature changed: takes (TemplateId, AssetPath, Params) not (Params)
+  - Accepts both `template_params` and `parameters` keys for backward compat
+- Updated: OliveToolPacks.json, OliveValidationEngine.h, OliveCLIProviderBase.cpp, OliveTemplateSystem.cpp
+
+## P2-5: BT/Blackboard Tool Consolidation (Completed)
+- `behaviortree.add_node`: unified handler with `node_kind` enum (composite/task/decorator/service)
+  - `HandleBehaviorTreeAddNode` routes to internal handlers; maps `class` -> kind-specific class param
+  - Old tools (add_composite, add_task, add_decorator, add_service) removed from registration
+  - Old tool names still work via redirect aliases in OliveToolRegistry.cpp
+- `blackboard.add_key` upsert: checks if key exists, delegates to `HandleBlackboardModifyKey` on match
+  - `blackboard.modify_key` registration removed; handler kept as private internal helper
+  - Schema adds `new_name` field for rename-on-modify; `key_type` required only for new keys
+- Files: `BehaviorTree/Public/MCP/OliveBTToolHandlers.h`, `BehaviorTree/Private/MCP/OliveBTToolHandlers.cpp`, `BehaviorTree/Public/MCP/OliveBTSchemas.h`, `BehaviorTree/Private/MCP/OliveBTSchemas.cpp`

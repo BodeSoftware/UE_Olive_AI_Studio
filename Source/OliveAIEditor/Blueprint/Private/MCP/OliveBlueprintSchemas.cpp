@@ -307,128 +307,37 @@ namespace OliveBlueprintSchemas
 		Properties->SetObjectField(TEXT("path"),
 			StringProp(TEXT("Blueprint asset path (e.g., '/Game/Blueprints/BP_Player')")));
 
-		Properties->SetObjectField(TEXT("mode"),
-			EnumProp(TEXT("Read mode: 'summary' for structure only, 'full' for complete graph data"),
-			{TEXT("summary"), TEXT("full")}));
-
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Read Blueprint structure and optionally full graph data"));
-		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("path")});
-
-		return Schema;
-	}
-
-	TSharedPtr<FJsonObject> BlueprintReadFunction()
-	{
-		TSharedPtr<FJsonObject> Properties = MakeProperties();
-
-		Properties->SetObjectField(TEXT("path"),
-			StringProp(TEXT("Blueprint asset path")));
-
-		Properties->SetObjectField(TEXT("function_name"),
-			StringProp(TEXT("Function name to read")));
-
-		Properties->SetObjectField(TEXT("page"),
-			IntProp(TEXT("Page number (0-based) for large graphs. If omitted and graph is large, returns summary instead of full data."), 0, INT32_MAX));
-
-		Properties->SetObjectField(TEXT("page_size"),
-			IntProp(TEXT("Nodes per page (default 100, max 200). Only used with 'page' parameter."), 10, 200));
-
-		Properties->SetObjectField(TEXT("mode"),
-			EnumProp(TEXT("Read mode: 'full' forces complete read even for large graphs. Default auto-detects."),
-			{TEXT("auto"), TEXT("full")}));
-
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Read a single function graph from a Blueprint. Large graphs (500+ nodes) auto-return a summary with paging info unless 'mode' is 'full' or 'page' is specified."));
-		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("path"), TEXT("function_name")});
-
-		return Schema;
-	}
-
-	TSharedPtr<FJsonObject> BlueprintReadEventGraph()
-	{
-		TSharedPtr<FJsonObject> Properties = MakeProperties();
-
-		Properties->SetObjectField(TEXT("path"),
-			StringProp(TEXT("Blueprint asset path")));
+		Properties->SetObjectField(TEXT("section"),
+			EnumProp(TEXT("What to read. 'all' (default) returns summary/full overview. "
+				"'summary' returns structure only (no graph data). "
+				"'graph' returns a single graph (requires graph_name). "
+				"'variables' returns variables only. "
+				"'components' returns component hierarchy. "
+				"'hierarchy' returns class inheritance chain. "
+				"'overridable_functions' lists parent functions that can be overridden."),
+			{TEXT("all"), TEXT("summary"), TEXT("graph"), TEXT("variables"),
+			 TEXT("components"), TEXT("hierarchy"), TEXT("overridable_functions")}));
 
 		Properties->SetObjectField(TEXT("graph_name"),
-			StringProp(TEXT("Event graph name (defaults to 'EventGraph' if not specified)")));
+			StringProp(TEXT("Graph name (required when section='graph'). Use a function name or 'EventGraph'.")));
+
+		Properties->SetObjectField(TEXT("mode"),
+			EnumProp(TEXT("Read mode for section='all': 'summary' or 'full'. "
+				"For section='graph': 'auto' (default, large graphs return summary) or 'full' (force complete read)."),
+			{TEXT("summary"), TEXT("full"), TEXT("auto")}));
 
 		Properties->SetObjectField(TEXT("page"),
-			IntProp(TEXT("Page number (0-based) for large graphs. If omitted and graph is large, returns summary instead of full data."), 0, INT32_MAX));
+			IntProp(TEXT("Page number (0-based) for large graphs (section='graph' or 'all' with mode='full'). "
+				"If omitted and graph is large, returns summary with paging info."), 0, INT32_MAX));
 
 		Properties->SetObjectField(TEXT("page_size"),
 			IntProp(TEXT("Nodes per page (default 100, max 200). Only used with 'page' parameter."), 10, 200));
 
-		Properties->SetObjectField(TEXT("mode"),
-			EnumProp(TEXT("Read mode: 'full' forces complete read even for large graphs. Default auto-detects."),
-			{TEXT("auto"), TEXT("full")}));
-
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Read an event graph from a Blueprint. Large graphs (500+ nodes) auto-return a summary with paging info unless 'mode' is 'full' or 'page' is specified."));
-		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("path")});
-
-		return Schema;
-	}
-
-	TSharedPtr<FJsonObject> BlueprintReadVariables()
-	{
-		TSharedPtr<FJsonObject> Properties = MakeProperties();
-
-		Properties->SetObjectField(TEXT("path"),
-			StringProp(TEXT("Blueprint asset path")));
-
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Read all variables from a Blueprint"));
-		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("path")});
-
-		return Schema;
-	}
-
-	TSharedPtr<FJsonObject> BlueprintReadComponents()
-	{
-		TSharedPtr<FJsonObject> Properties = MakeProperties();
-
-		Properties->SetObjectField(TEXT("path"),
-			StringProp(TEXT("Blueprint asset path")));
-
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Read component hierarchy from a Blueprint"));
-		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("path")});
-
-		return Schema;
-	}
-
-	TSharedPtr<FJsonObject> BlueprintReadHierarchy()
-	{
-		TSharedPtr<FJsonObject> Properties = MakeProperties();
-
-		Properties->SetObjectField(TEXT("path"),
-			StringProp(TEXT("Blueprint asset path")));
-
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Read class hierarchy from a Blueprint (parent chain)"));
-		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("path")});
-
-		return Schema;
-	}
-
-	TSharedPtr<FJsonObject> BlueprintListOverridableFunctions()
-	{
-		TSharedPtr<FJsonObject> Properties = MakeProperties();
-
-		Properties->SetObjectField(TEXT("path"),
-			StringProp(TEXT("Blueprint asset path")));
-
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("List all functions from parent classes that can be overridden"));
+		Schema->SetStringField(TEXT("description"),
+			TEXT("Unified Blueprint reader. Read any aspect of a Blueprint by specifying 'section'. "
+				"Default section 'all' returns summary for large BPs and auto-upgrades to full for small ones (<=50 nodes). "
+				"section='graph' with graph_name reads a single graph with large-graph paging support (500+ node threshold)."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path")});
 
@@ -459,6 +368,21 @@ namespace OliveBlueprintSchemas
 		return Schema;
 	}
 
+	TSharedPtr<FJsonObject> BlueprintDescribeNodeType()
+	{
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		TSharedPtr<FJsonObject> Props = MakeProperties();
+
+		Props->SetObjectField(TEXT("type"), StringProp(
+			TEXT("Node type to describe. Accepts short names (Branch, ForEachLoop, Sequence, Delay), "
+				 "full K2 class names (K2Node_IfThenElse), or catalog names (ComponentBoundEvent, CallFunction). "
+				 "For function calls, use 'CallFunction' and check blueprint.get_node_pins after creation.")));
+
+		Schema->SetObjectField(TEXT("properties"), Props);
+		AddRequired(Schema, {TEXT("type")});
+		return Schema;
+	}
+
 	// ============================================================================
 	// Asset Writer Tool Schemas
 	// ============================================================================
@@ -471,16 +395,35 @@ namespace OliveBlueprintSchemas
 			StringProp(TEXT("Asset path for new Blueprint (e.g., '/Game/Blueprints/BP_NewActor')")));
 
 		Properties->SetObjectField(TEXT("parent_class"),
-			StringProp(TEXT("Parent class name (e.g., 'Actor', 'Character', '/Game/Blueprints/BP_Base')")));
+			StringProp(TEXT("Parent class name (e.g., 'Actor', 'Character', '/Game/Blueprints/BP_Base'). "
+				"Not required when template_id is set (template defines the parent class).")));
 
 		Properties->SetObjectField(TEXT("type"),
 			EnumProp(TEXT("Blueprint type (defaults to 'Normal')"),
 			{TEXT("Normal"), TEXT("Interface"), TEXT("FunctionLibrary"), TEXT("MacroLibrary"), TEXT("AnimationBlueprint"), TEXT("WidgetBlueprint")}));
 
+		// Template parameters (optional — when set, delegates to template system)
+		Properties->SetObjectField(TEXT("template_id"),
+			StringProp(TEXT("Factory template ID. When set, creates a Blueprint from a factory template "
+				"instead of an empty one. Use blueprint.list_templates to discover available templates.")));
+
+		TSharedPtr<FJsonObject> TemplateParamsProp = MakeSchema(TEXT("object"));
+		TemplateParamsProp->SetStringField(TEXT("description"),
+			TEXT("Parameter overrides for the template as key-value pairs (e.g., {\"stat_name\": \"Health\", \"max_value\": \"100\"})"));
+		TSharedPtr<FJsonObject> AdditionalProps = MakeSchema(TEXT("string"));
+		TemplateParamsProp->SetObjectField(TEXT("additionalProperties"), AdditionalProps);
+		Properties->SetObjectField(TEXT("template_params"), TemplateParamsProp);
+
+		Properties->SetObjectField(TEXT("preset"),
+			StringProp(TEXT("Named preset to use as template parameter base (e.g., 'Health', 'Stamina'). Only used with template_id.")));
+
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Create a new Blueprint asset"));
+		Schema->SetStringField(TEXT("description"),
+			TEXT("Create a new Blueprint asset. When template_id is provided, creates from a factory template "
+				"with parameterized, pre-wired logic. Without template_id, creates an empty Blueprint with "
+				"the specified parent_class. Use blueprint.list_templates to discover available factory templates."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("path"), TEXT("parent_class")});
+		AddRequired(Schema, {TEXT("path")});
 
 		return Schema;
 	}
@@ -583,8 +526,15 @@ namespace OliveBlueprintSchemas
 		Properties->SetObjectField(TEXT("variable"),
 			VariableSchema());
 
+		Properties->SetObjectField(TEXT("modify_only"),
+			BoolProp(TEXT("When true, error if the variable does not already exist (prevents accidental creation). "
+				"Default false: creates if missing, updates if present."), false));
+
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Add a variable to a Blueprint"));
+		Schema->SetStringField(TEXT("description"),
+			TEXT("Add or update a variable (upsert). If the variable already exists, modifies it in-place. "
+				"Set modify_only=true to require the variable to already exist (old modify_variable behavior). "
+				"Accepts flat format (name, type at top level) or nested {variable: {name, type, ...}}."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path"), TEXT("variable")});
 
@@ -609,34 +559,8 @@ namespace OliveBlueprintSchemas
 		return Schema;
 	}
 
-	TSharedPtr<FJsonObject> BlueprintModifyVariable()
-	{
-		TSharedPtr<FJsonObject> Properties = MakeProperties();
-
-		Properties->SetObjectField(TEXT("path"),
-			StringProp(TEXT("Blueprint asset path")));
-
-		Properties->SetObjectField(TEXT("name"),
-			StringProp(TEXT("Variable name to modify")));
-
-		// Changes object - flexible schema
-		TSharedPtr<FJsonObject> ChangesProps = MakeProperties();
-		ChangesProps->SetObjectField(TEXT("default_value"), StringProp(TEXT("New default value")));
-		ChangesProps->SetObjectField(TEXT("category"), StringProp(TEXT("New category")));
-		ChangesProps->SetObjectField(TEXT("description"), StringProp(TEXT("New description")));
-		ChangesProps->SetObjectField(TEXT("expose_on_spawn"), BoolProp(TEXT("Expose on spawn flag"), false));
-		ChangesProps->SetObjectField(TEXT("replicated"), BoolProp(TEXT("Replication flag"), false));
-
-		Properties->SetObjectField(TEXT("changes"),
-			ObjectProp(TEXT("Object containing fields to modify"), ChangesProps));
-
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Modify an existing variable's properties"));
-		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("path"), TEXT("name"), TEXT("changes")});
-
-		return Schema;
-	}
+	// NOTE: BlueprintModifyVariable has been consolidated into BlueprintAddVariable with upsert behavior.
+	// Old tool name 'blueprint.modify_variable' is an alias that redirects to 'blueprint.add_variable'.
 
 	// ============================================================================
 	// Component Writer Tool Schemas
@@ -739,13 +663,42 @@ namespace OliveBlueprintSchemas
 		Properties->SetObjectField(TEXT("path"),
 			StringProp(TEXT("Blueprint asset path")));
 
+		Properties->SetObjectField(TEXT("function_type"),
+			EnumProp(TEXT("What kind of function to add. "
+				"'function' (default) creates a user-defined function graph. "
+				"'custom_event' creates a custom event in the event graph. "
+				"'event_dispatcher' creates a multicast delegate variable. "
+				"'override' overrides a parent class or interface function."),
+			{TEXT("function"), TEXT("custom_event"), TEXT("event_dispatcher"), TEXT("override")}));
+
+		// 'name' is used by custom_event, event_dispatcher, and override (via function_name alias).
+		// For function_type='function', the name comes from signature.name, but we also accept
+		// a top-level 'name' for consistency.
+		Properties->SetObjectField(TEXT("name"),
+			StringProp(TEXT("Name of the function, event, or dispatcher to create. "
+				"For function_type='function', can also be specified inside 'signature'.")));
+
+		// signature — used by function_type='function'
 		Properties->SetObjectField(TEXT("signature"),
 			FunctionSignatureSchema());
 
+		// params — used by custom_event and event_dispatcher
+		Properties->SetObjectField(TEXT("params"),
+			ArrayProp(TEXT("Parameters for custom_event or event_dispatcher"), FunctionParamSchema()));
+
+		// function_name — used by override (name of parent function to override)
+		Properties->SetObjectField(TEXT("function_name"),
+			StringProp(TEXT("Parent function name to override (for function_type='override')")));
+
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Add a function to a Blueprint"));
+		Schema->SetStringField(TEXT("description"),
+			TEXT("Unified function creation tool. Creates functions (default), custom events, "
+				"event dispatchers, or overrides parent/interface functions. "
+				"Use function_type to select the operation. Old tool names "
+				"(blueprint.add_custom_event, blueprint.add_event_dispatcher, blueprint.override_function) "
+				"are aliases that auto-set function_type."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("path"), TEXT("signature")});
+		AddRequired(Schema, {TEXT("path")});
 
 		return Schema;
 	}
@@ -797,65 +750,9 @@ namespace OliveBlueprintSchemas
 		return Schema;
 	}
 
-	TSharedPtr<FJsonObject> BlueprintAddEventDispatcher()
-	{
-		TSharedPtr<FJsonObject> Properties = MakeProperties();
-
-		Properties->SetObjectField(TEXT("path"),
-			StringProp(TEXT("Blueprint asset path")));
-
-		Properties->SetObjectField(TEXT("name"),
-			StringProp(TEXT("Event dispatcher name")));
-
-		Properties->SetObjectField(TEXT("params"),
-			ArrayProp(TEXT("Event parameters"), FunctionParamSchema()));
-
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Add an event dispatcher to a Blueprint"));
-		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("path"), TEXT("name")});
-
-		return Schema;
-	}
-
-	TSharedPtr<FJsonObject> BlueprintOverrideFunction()
-	{
-		TSharedPtr<FJsonObject> Properties = MakeProperties();
-
-		Properties->SetObjectField(TEXT("path"),
-			StringProp(TEXT("Blueprint asset path")));
-
-		Properties->SetObjectField(TEXT("function_name"),
-			StringProp(TEXT("Function name from parent class to override")));
-
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Override a parent class function in a Blueprint"));
-		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("path"), TEXT("function_name")});
-
-		return Schema;
-	}
-
-	TSharedPtr<FJsonObject> BlueprintAddCustomEvent()
-	{
-		TSharedPtr<FJsonObject> Properties = MakeProperties();
-
-		Properties->SetObjectField(TEXT("path"),
-			StringProp(TEXT("Blueprint asset path")));
-
-		Properties->SetObjectField(TEXT("name"),
-			StringProp(TEXT("Custom event name")));
-
-		Properties->SetObjectField(TEXT("params"),
-			ArrayProp(TEXT("Event parameters"), FunctionParamSchema()));
-
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Add a custom event to a Blueprint's event graph"));
-		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("path"), TEXT("name")});
-
-		return Schema;
-	}
+	// NOTE: BlueprintAddEventDispatcher, BlueprintOverrideFunction, and BlueprintAddCustomEvent
+	// have been consolidated into BlueprintAddFunction with function_type parameter.
+	// Old tool names are aliases that set function_type automatically.
 
 	// ============================================================================
 	// Graph Writer Tool Schemas
@@ -1101,36 +998,8 @@ namespace OliveBlueprintSchemas
 	// Template Tool Schemas
 	// ============================================================================
 
-	TSharedPtr<FJsonObject> BlueprintCreateFromTemplate()
-	{
-		TSharedPtr<FJsonObject> Properties = MakeProperties();
-
-		Properties->SetObjectField(TEXT("template_id"),
-			StringProp(TEXT("ID of the factory template to instantiate")));
-
-		Properties->SetObjectField(TEXT("asset_path"),
-			StringProp(TEXT("Where to create the Blueprint (e.g., /Game/Blueprints/BP_Health)")));
-
-		// parameters — optional object with string additionalProperties
-		TSharedPtr<FJsonObject> ParamsProp = MakeSchema(TEXT("object"));
-		ParamsProp->SetStringField(TEXT("description"), TEXT("Parameter overrides as key-value pairs"));
-		TSharedPtr<FJsonObject> AdditionalProps = MakeSchema(TEXT("string"));
-		ParamsProp->SetObjectField(TEXT("additionalProperties"), AdditionalProps);
-		Properties->SetObjectField(TEXT("parameters"), ParamsProp);
-
-		Properties->SetObjectField(TEXT("preset"),
-			StringProp(TEXT("Named preset to use as base (e.g., 'Health', 'Stamina')")));
-
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"),
-			TEXT("Create a complete Blueprint from a factory template. "
-				 "Templates provide parameterized, pre-wired Blueprints for common patterns "
-				 "(health, projectile, trigger, door, spawner)."));
-		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("template_id"), TEXT("asset_path")});
-
-		return Schema;
-	}
+	// NOTE: BlueprintCreateFromTemplate has been consolidated into BlueprintCreate with template_id parameter.
+	// Old tool name 'blueprint.create_from_template' is an alias that redirects to 'blueprint.create'.
 
 	TSharedPtr<FJsonObject> BlueprintGetTemplate()
 	{

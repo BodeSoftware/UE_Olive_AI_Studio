@@ -83,6 +83,12 @@ namespace OlivePlanOps
 	/** Call (broadcast) an event dispatcher (multicast delegate) */
 	const FString CallDelegate = TEXT("call_delegate");
 
+	/** Alias for call_delegate (more natural name for AI agents) */
+	const FString CallDispatcher = TEXT("call_dispatcher");
+
+	/** Bind a custom event to an event dispatcher (UK2Node_AddDelegate) */
+	const FString BindDispatcher = TEXT("bind_dispatcher");
+
 	/**
 	 * Check whether a given op string is in the closed vocabulary.
 	 * @param Op The operation string to validate

@@ -540,3 +540,22 @@ struct OLIVEAIRUNTIME_API FOliveIRComponent
 	TSharedPtr<FJsonObject> ToJson() const;
 	static FOliveIRComponent FromJson(const TSharedPtr<FJsonObject>& JsonObject);
 };
+
+/**
+ * Summary of a Blueprint graph (name + node count) for AI discovery.
+ * Used in blueprint.read output so the AI can see graph complexity at a glance
+ * without reading full graph data.
+ */
+USTRUCT()
+struct OLIVEAIRUNTIME_API FOliveIRGraphSummary
+{
+	GENERATED_BODY()
+
+	/** Graph name (matches the corresponding entry in EventGraphNames / FunctionNames) */
+	UPROPERTY()
+	FString Name;
+
+	/** Number of nodes in this graph */
+	UPROPERTY()
+	int32 NodeCount = 0;
+};

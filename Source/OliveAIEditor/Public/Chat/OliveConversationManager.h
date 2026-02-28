@@ -11,7 +11,8 @@
 #include "Brain/OlivePromptDistiller.h"
 #include "Brain/OliveRetryPolicy.h"
 #include "Brain/OliveSelfCorrectionPolicy.h"
-#include "Brain/OliveToolPackManager.h"
+// DEPRECATED: Tool pack filtering removed in AI Freedom update.
+// #include "Brain/OliveToolPackManager.h"
 
 class FOliveMessageQueue;
 class FOliveProviderRetryManager;
@@ -409,8 +410,13 @@ private:
 	};
 	TArray<FPendingConfirmationRequest> PendingConfirmationQueue;
 
-	/** Turn-level intent flags for tool-pack policy */
+	/** Turn-level intent flag: used for multi-asset iteration budget and zero-tool re-prompt guard.
+	 *  Previously also used for tool-pack gating (removed in AI Freedom update). */
 	bool bTurnHasExplicitWriteIntent = false;
+
+	/** Turn-level intent flag: tracks whether the user message contains destructive keywords.
+	 *  Previously used for tool-pack gating (removed in AI Freedom update). Retained for
+	 *  potential future use by confirmation tier escalation. */
 	bool bTurnHasDangerIntent = false;
 
 	/** Zero-tool-call re-prompt counter for write-intent tasks.

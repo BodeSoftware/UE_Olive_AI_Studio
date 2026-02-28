@@ -645,7 +645,9 @@ namespace
 			TEXT("spawn_actor"),
 			TEXT("make_struct"),
 			TEXT("break_struct"),
-			TEXT("call_delegate")
+			TEXT("call_delegate"),
+			TEXT("call_dispatcher"),
+			TEXT("bind_dispatcher")
 		};
 		return Ops;
 	}

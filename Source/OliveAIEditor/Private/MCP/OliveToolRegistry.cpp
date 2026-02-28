@@ -316,6 +316,219 @@ namespace
 
 	FCriticalSection GBlueprintRoutingStatsLock;
 	TMap<FString, FBlueprintRoutingStats> GBlueprintRoutingStatsByContext;
+
+	// ==========================================
+	// Tool Alias Map (Backward Compatibility)
+	// ==========================================
+
+	/**
+	 * Returns the static tool alias map. Maps deprecated tool names to their
+	 * new consolidated names with parameter transformations.
+	 *
+	 * Aliases are resolved in ExecuteTool() BEFORE tool lookup, so deprecated
+	 * names transparently redirect to the new handler. This map is lazily
+	 * initialized once and never modified after startup.
+	 *
+	 * See plans/ai-freedom-design.md section 2.4 for the full alias list.
+	 */
+	const TMap<FString, FOliveToolAlias>& GetToolAliases()
+	{
+		static TMap<FString, FOliveToolAlias> Aliases = []()
+		{
+			TMap<FString, FOliveToolAlias> Map;
+
+			// ------------------------------------------------------------------
+			// Blueprint read tools -> blueprint.read with section param
+			// ------------------------------------------------------------------
+
+			Map.Add(TEXT("blueprint.read_function"), {
+				TEXT("blueprint.read"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("section"), TEXT("graph"));
+					// Copy function_name -> graph_name if not already set
+					FString FuncName;
+					if (P->TryGetStringField(TEXT("function_name"), FuncName) && !FuncName.IsEmpty())
+					{
+						if (!P->HasField(TEXT("graph_name")) || P->GetStringField(TEXT("graph_name")).IsEmpty())
+						{
+							P->SetStringField(TEXT("graph_name"), FuncName);
+						}
+					}
+				}
+			});
+
+			Map.Add(TEXT("blueprint.read_event_graph"), {
+				TEXT("blueprint.read"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("section"), TEXT("graph"));
+					// graph_name passes through if present
+				}
+			});
+
+			Map.Add(TEXT("blueprint.read_variables"), {
+				TEXT("blueprint.read"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("section"), TEXT("variables"));
+				}
+			});
+
+			Map.Add(TEXT("blueprint.read_components"), {
+				TEXT("blueprint.read"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("section"), TEXT("components"));
+				}
+			});
+
+			Map.Add(TEXT("blueprint.read_hierarchy"), {
+				TEXT("blueprint.read"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("section"), TEXT("hierarchy"));
+				}
+			});
+
+			Map.Add(TEXT("blueprint.list_overridable_functions"), {
+				TEXT("blueprint.read"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("section"), TEXT("overridable_functions"));
+				}
+			});
+
+			// ------------------------------------------------------------------
+			// Blueprint create tools -> blueprint.create
+			// ------------------------------------------------------------------
+
+			Map.Add(TEXT("blueprint.create_from_template"), {
+				TEXT("blueprint.create"),
+				nullptr // template_id and template_params pass through as-is
+			});
+
+			// ------------------------------------------------------------------
+			// Blueprint variable tools -> blueprint.add_variable (upsert)
+			// ------------------------------------------------------------------
+
+			Map.Add(TEXT("blueprint.modify_variable"), {
+				TEXT("blueprint.add_variable"),
+				nullptr // all params pass through (add_variable becomes upsert)
+			});
+
+			// ------------------------------------------------------------------
+			// Blueprint function tools -> blueprint.add_function with function_type
+			// ------------------------------------------------------------------
+
+			Map.Add(TEXT("blueprint.override_function"), {
+				TEXT("blueprint.add_function"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("function_type"), TEXT("override"));
+				}
+			});
+
+			Map.Add(TEXT("blueprint.add_custom_event"), {
+				TEXT("blueprint.add_function"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("function_type"), TEXT("custom_event"));
+				}
+			});
+
+			Map.Add(TEXT("blueprint.add_event_dispatcher"), {
+				TEXT("blueprint.add_function"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("function_type"), TEXT("event_dispatcher"));
+				}
+			});
+
+			// ------------------------------------------------------------------
+			// Behavior Tree tools -> behaviortree.add_node with node_kind
+			// ------------------------------------------------------------------
+
+			Map.Add(TEXT("behaviortree.add_composite"), {
+				TEXT("behaviortree.add_node"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("node_kind"), TEXT("composite"));
+				}
+			});
+
+			Map.Add(TEXT("behaviortree.add_task"), {
+				TEXT("behaviortree.add_node"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("node_kind"), TEXT("task"));
+				}
+			});
+
+			Map.Add(TEXT("behaviortree.add_decorator"), {
+				TEXT("behaviortree.add_node"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("node_kind"), TEXT("decorator"));
+				}
+			});
+
+			Map.Add(TEXT("behaviortree.add_service"), {
+				TEXT("behaviortree.add_node"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("node_kind"), TEXT("service"));
+				}
+			});
+
+			// ------------------------------------------------------------------
+			// Blackboard tools -> blackboard.add_key (upsert)
+			// ------------------------------------------------------------------
+
+			Map.Add(TEXT("blackboard.modify_key"), {
+				TEXT("blackboard.add_key"),
+				nullptr // all params pass through
+			});
+
+			// ------------------------------------------------------------------
+			// C++ tools -> cpp.read_class with include param
+			// ------------------------------------------------------------------
+
+			Map.Add(TEXT("cpp.list_blueprint_callable"), {
+				TEXT("cpp.read_class"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("include"), TEXT("callable"));
+				}
+			});
+
+			Map.Add(TEXT("cpp.list_overridable"), {
+				TEXT("cpp.read_class"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("include"), TEXT("overridable"));
+				}
+			});
+
+			// ------------------------------------------------------------------
+			// Project tools -> project.get_asset_info
+			// ------------------------------------------------------------------
+
+			Map.Add(TEXT("project.get_dependencies"), {
+				TEXT("project.get_asset_info"),
+				nullptr // all params pass through
+			});
+
+			Map.Add(TEXT("project.get_referencers"), {
+				TEXT("project.get_asset_info"),
+				nullptr // all params pass through
+			});
+
+			return Map;
+		}();
+
+		return Aliases;
+	}
 }
 
 // ==========================================
@@ -492,7 +705,60 @@ void FOliveToolRegistry::UnregisterTool(const FString& Name)
 bool FOliveToolRegistry::HasTool(const FString& Name) const
 {
 	FRWScopeLock ReadLock(ToolsLock, SLT_ReadOnly);
-	return Tools.Contains(Name);
+	if (Tools.Contains(Name))
+	{
+		return true;
+	}
+
+	// Also check if the name is a known alias pointing to a registered tool
+	const TMap<FString, FOliveToolAlias>& Aliases = GetToolAliases();
+	const FOliveToolAlias* Alias = Aliases.Find(Name);
+	if (Alias)
+	{
+		return Tools.Contains(Alias->NewToolName);
+	}
+
+	return false;
+}
+
+bool FOliveToolRegistry::IsToolAlias(const FString& Name) const
+{
+	const TMap<FString, FOliveToolAlias>& Aliases = GetToolAliases();
+	return Aliases.Contains(Name);
+}
+
+bool FOliveToolRegistry::ResolveAlias(FString& InOutName, TSharedPtr<FJsonObject>& InOutParams) const
+{
+	const TMap<FString, FOliveToolAlias>& Aliases = GetToolAliases();
+	const FOliveToolAlias* Alias = Aliases.Find(InOutName);
+	if (!Alias)
+	{
+		return false;
+	}
+
+	const FString OldName = InOutName;
+	InOutName = Alias->NewToolName;
+
+	// Clone params before transforming to avoid mutating the caller's original
+	if (InOutParams.IsValid())
+	{
+		InOutParams = CloneParams(InOutParams);
+	}
+	else
+	{
+		InOutParams = MakeShared<FJsonObject>();
+	}
+
+	// Apply parameter transformation if one is defined for this alias
+	if (Alias->TransformParams)
+	{
+		Alias->TransformParams(InOutParams);
+	}
+
+	UE_LOG(LogOliveAI, Log, TEXT("Tool alias: '%s' -> '%s' (deprecated, use new name)"),
+		*OldName, *InOutName);
+
+	return true;
 }
 
 // ==========================================
@@ -588,15 +854,23 @@ int32 FOliveToolRegistry::GetToolCount() const
 FOliveToolResult FOliveToolRegistry::ExecuteTool(const FString& Name, const TSharedPtr<FJsonObject>& Params)
 {
 	double StartTime = FPlatformTime::Seconds();
-	TArray<FString> NormalizedFields;
-	TSharedPtr<FJsonObject> EffectiveParams = NormalizeToolParams(Name, Params, NormalizedFields);
 
-	const bool bIsPlanTool = IsBlueprintPlanTool(Name);
-	const bool bIsGranularGraphTool = IsBlueprintGranularGraphTool(Name);
+	// Resolve tool aliases before anything else. This transforms both the
+	// tool name and parameters so that downstream normalization, routing,
+	// and dispatch all operate on the canonical tool name.
+	FString EffectiveName = Name;
+	TSharedPtr<FJsonObject> AliasedParams = Params;
+	const bool bWasAliased = ResolveAlias(EffectiveName, AliasedParams);
+
+	TArray<FString> NormalizedFields;
+	TSharedPtr<FJsonObject> EffectiveParams = NormalizeToolParams(EffectiveName, AliasedParams, NormalizedFields);
+
+	const bool bIsPlanTool = IsBlueprintPlanTool(EffectiveName);
+	const bool bIsGranularGraphTool = IsBlueprintGranularGraphTool(EffectiveName);
 	FString RoutingReasonCode;
 	bool bAttachRoutingReason = false;
 
-	if (IsBlueprintTool(Name))
+	if (IsBlueprintTool(EffectiveName))
 	{
 		if (const UOliveAISettings* Settings = UOliveAISettings::Get())
 		{
@@ -646,12 +920,12 @@ FOliveToolResult FOliveToolRegistry::ExecuteTool(const FString& Name, const TSha
 	{
 		FRWScopeLock ReadLock(ToolsLock, SLT_ReadOnly);
 
-		const FToolEntry* Entry = Tools.Find(Name);
+		const FToolEntry* Entry = Tools.Find(EffectiveName);
 		if (!Entry)
 		{
 			return FOliveToolResult::Error(
 				FOliveErrorBuilder::ERR_TOOL_NOT_FOUND,
-				FString::Printf(TEXT("Tool '%s' not found"), *Name),
+				FString::Printf(TEXT("Tool '%s' not found"), *EffectiveName),
 				TEXT("Use tools/list to see available tools.")
 			);
 		}
@@ -660,7 +934,7 @@ FOliveToolResult FOliveToolRegistry::ExecuteTool(const FString& Name, const TSha
 	}
 
 	// Validate with validation engine
-	FOliveValidationResult ValidationResult = FOliveValidationEngine::Get().ValidateOperation(Name, EffectiveParams, nullptr);
+	FOliveValidationResult ValidationResult = FOliveValidationEngine::Get().ValidateOperation(EffectiveName, EffectiveParams, nullptr);
 	if (ValidationResult.HasErrors())
 	{
 		TArray<FOliveIRMessage> Errors = ValidationResult.GetErrors();
@@ -699,9 +973,9 @@ FOliveToolResult FOliveToolRegistry::ExecuteTool(const FString& Name, const TSha
 	Result.ExecutionTimeMs = (EndTime - StartTime) * 1000.0;
 
 	UE_LOG(LogOliveAI, Log, TEXT("Tool '%s' executed in %.2fms - %s"),
-		*Name, Result.ExecutionTimeMs, Result.bSuccess ? TEXT("success") : TEXT("failed"));
+		*EffectiveName, Result.ExecutionTimeMs, Result.bSuccess ? TEXT("success") : TEXT("failed"));
 
-	if (NormalizedFields.Num() > 0 || bAttachRoutingReason)
+	if (NormalizedFields.Num() > 0 || bAttachRoutingReason || bWasAliased)
 	{
 		if (!Result.Data.IsValid())
 		{
@@ -722,6 +996,12 @@ FOliveToolResult FOliveToolRegistry::ExecuteTool(const FString& Name, const TSha
 		if (bAttachRoutingReason)
 		{
 			Result.Data->SetStringField(TEXT("reason_code"), RoutingReasonCode);
+		}
+
+		if (bWasAliased)
+		{
+			Result.Data->SetStringField(TEXT("aliased_from"), Name);
+			Result.Data->SetStringField(TEXT("aliased_to"), EffectiveName);
 		}
 	}
 
@@ -883,77 +1163,80 @@ void FOliveToolRegistry::RegisterProjectTools()
 		);
 	}
 
+	// Removed in AI Freedom Phase 2 — already returned by project.get_asset_info
 	// project.get_dependencies
-	{
-		TSharedPtr<FJsonObject> Schema = MakeShared<FJsonObject>();
-		Schema->SetStringField(TEXT("type"), TEXT("object"));
+	// {
+	// 	TSharedPtr<FJsonObject> Schema = MakeShared<FJsonObject>();
+	// 	Schema->SetStringField(TEXT("type"), TEXT("object"));
+	//
+	// 	TSharedPtr<FJsonObject> Properties = MakeShared<FJsonObject>();
+	//
+	// 	TSharedPtr<FJsonObject> PathProp = MakeShared<FJsonObject>();
+	// 	PathProp->SetStringField(TEXT("type"), TEXT("string"));
+	// 	PathProp->SetStringField(TEXT("description"), TEXT("Asset path to get dependencies for"));
+	// 	Properties->SetObjectField(TEXT("path"), PathProp);
+	//
+	// 	Schema->SetObjectField(TEXT("properties"), Properties);
+	//
+	// 	TArray<TSharedPtr<FJsonValue>> Required;
+	// 	Required.Add(MakeShared<FJsonValueString>(TEXT("path")));
+	// 	Schema->SetArrayField(TEXT("required"), Required);
+	//
+	// 	RegisterTool(
+	// 		TEXT("project.get_dependencies"),
+	// 		TEXT("Get all assets that the specified asset depends on."),
+	// 		Schema,
+	// 		FOliveToolHandler::CreateRaw(this, &FOliveToolRegistry::HandleProjectGetDependencies),
+	// 		{ TEXT("project"), TEXT("dependencies") },
+	// 		TEXT("project")
+	// 	);
+	// }
 
-		TSharedPtr<FJsonObject> Properties = MakeShared<FJsonObject>();
-
-		TSharedPtr<FJsonObject> PathProp = MakeShared<FJsonObject>();
-		PathProp->SetStringField(TEXT("type"), TEXT("string"));
-		PathProp->SetStringField(TEXT("description"), TEXT("Asset path to get dependencies for"));
-		Properties->SetObjectField(TEXT("path"), PathProp);
-
-		Schema->SetObjectField(TEXT("properties"), Properties);
-
-		TArray<TSharedPtr<FJsonValue>> Required;
-		Required.Add(MakeShared<FJsonValueString>(TEXT("path")));
-		Schema->SetArrayField(TEXT("required"), Required);
-
-		RegisterTool(
-			TEXT("project.get_dependencies"),
-			TEXT("Get all assets that the specified asset depends on."),
-			Schema,
-			FOliveToolHandler::CreateRaw(this, &FOliveToolRegistry::HandleProjectGetDependencies),
-			{ TEXT("project"), TEXT("dependencies") },
-			TEXT("project")
-		);
-	}
-
+	// Removed in AI Freedom Phase 2 — already returned by project.get_asset_info
 	// project.get_referencers
-	{
-		TSharedPtr<FJsonObject> Schema = MakeShared<FJsonObject>();
-		Schema->SetStringField(TEXT("type"), TEXT("object"));
+	// {
+	// 	TSharedPtr<FJsonObject> Schema = MakeShared<FJsonObject>();
+	// 	Schema->SetStringField(TEXT("type"), TEXT("object"));
+	//
+	// 	TSharedPtr<FJsonObject> Properties = MakeShared<FJsonObject>();
+	//
+	// 	TSharedPtr<FJsonObject> PathProp = MakeShared<FJsonObject>();
+	// 	PathProp->SetStringField(TEXT("type"), TEXT("string"));
+	// 	PathProp->SetStringField(TEXT("description"), TEXT("Asset path to get referencers for"));
+	// 	Properties->SetObjectField(TEXT("path"), PathProp);
+	//
+	// 	Schema->SetObjectField(TEXT("properties"), Properties);
+	//
+	// 	TArray<TSharedPtr<FJsonValue>> Required;
+	// 	Required.Add(MakeShared<FJsonValueString>(TEXT("path")));
+	// 	Schema->SetArrayField(TEXT("required"), Required);
+	//
+	// 	RegisterTool(
+	// 		TEXT("project.get_referencers"),
+	// 		TEXT("Get all assets that reference the specified asset."),
+	// 		Schema,
+	// 		FOliveToolHandler::CreateRaw(this, &FOliveToolRegistry::HandleProjectGetReferencers),
+	// 		{ TEXT("project"), TEXT("referencers") },
+	// 		TEXT("project")
+	// 	);
+	// }
 
-		TSharedPtr<FJsonObject> Properties = MakeShared<FJsonObject>();
-
-		TSharedPtr<FJsonObject> PathProp = MakeShared<FJsonObject>();
-		PathProp->SetStringField(TEXT("type"), TEXT("string"));
-		PathProp->SetStringField(TEXT("description"), TEXT("Asset path to get referencers for"));
-		Properties->SetObjectField(TEXT("path"), PathProp);
-
-		Schema->SetObjectField(TEXT("properties"), Properties);
-
-		TArray<TSharedPtr<FJsonValue>> Required;
-		Required.Add(MakeShared<FJsonValueString>(TEXT("path")));
-		Schema->SetArrayField(TEXT("required"), Required);
-
-		RegisterTool(
-			TEXT("project.get_referencers"),
-			TEXT("Get all assets that reference the specified asset."),
-			Schema,
-			FOliveToolHandler::CreateRaw(this, &FOliveToolRegistry::HandleProjectGetReferencers),
-			{ TEXT("project"), TEXT("referencers") },
-			TEXT("project")
-		);
-	}
-
+	// Removed in AI Freedom Phase 2 — in system prompt; rarely used by AI
 	// project.get_config
-	{
-		TSharedPtr<FJsonObject> Schema = MakeShared<FJsonObject>();
-		Schema->SetStringField(TEXT("type"), TEXT("object"));
-		Schema->SetObjectField(TEXT("properties"), MakeShared<FJsonObject>());
-
-		RegisterTool(
-			TEXT("project.get_config"),
-			TEXT("Get project configuration including engine version, enabled plugins, and primary asset types."),
-			Schema,
-			FOliveToolHandler::CreateRaw(this, &FOliveToolRegistry::HandleProjectGetConfig),
-			{ TEXT("project"), TEXT("config") },
-			TEXT("project")
-		);
-	}
+	// {
+	// 	TSharedPtr<FJsonObject> Schema = MakeShared<FJsonObject>();
+	// 	Schema->SetStringField(TEXT("type"), TEXT("object"));
+	// 	Schema->SetObjectField(TEXT("properties"), MakeShared<FJsonObject>());
+	//
+	// 	RegisterTool(
+	// 		TEXT("project.get_config"),
+	// 		TEXT("Get project configuration including engine version, enabled plugins, and primary asset types."),
+	// 		Schema,
+	// 		FOliveToolHandler::CreateRaw(this, &FOliveToolRegistry::HandleProjectGetConfig),
+	// 		{ TEXT("project"), TEXT("config") },
+	// 		TEXT("project")
+	// 	);
+	// }
 }
 
 

@@ -70,7 +70,7 @@ void FOliveBTToolHandlers::RegisterBlackboardTools()
 
 	Registry.RegisterTool(
 		TEXT("blackboard.add_key"),
-		TEXT("Add a new key to a Blackboard (Bool, Int, Float, String, Object, etc.)"),
+		TEXT("Add or modify a Blackboard key (upsert). If the key exists, modifies it instead of erroring."),
 		OliveBTSchemas::BlackboardAddKey(),
 		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBlackboardAddKey),
 		{TEXT("blackboard"), TEXT("write")},
@@ -88,15 +88,8 @@ void FOliveBTToolHandlers::RegisterBlackboardTools()
 	);
 	RegisteredToolNames.Add(TEXT("blackboard.remove_key"));
 
-	Registry.RegisterTool(
-		TEXT("blackboard.modify_key"),
-		TEXT("Modify properties of an existing Blackboard key (rename, description, instance sync)"),
-		OliveBTSchemas::BlackboardModifyKey(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBlackboardModifyKey),
-		{TEXT("blackboard"), TEXT("write")},
-		TEXT("blackboard")
-	);
-	RegisteredToolNames.Add(TEXT("blackboard.modify_key"));
+	// Removed in AI Freedom Phase 2 — blackboard.modify_key consolidated into blackboard.add_key (upsert)
+	// Old tool name still works via redirect aliases in OliveToolRegistry.cpp
 
 	Registry.RegisterTool(
 		TEXT("blackboard.set_parent"),
@@ -144,44 +137,18 @@ void FOliveBTToolHandlers::RegisterBehaviorTreeTools()
 	RegisteredToolNames.Add(TEXT("behaviortree.set_blackboard"));
 
 	Registry.RegisterTool(
-		TEXT("behaviortree.add_composite"),
-		TEXT("Add a Selector, Sequence, or SimpleParallel composite node"),
-		OliveBTSchemas::BehaviorTreeAddComposite(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBehaviorTreeAddComposite),
+		TEXT("behaviortree.add_node"),
+		TEXT("Add a node to a Behavior Tree. Use node_kind to specify: composite, task, decorator, or service."),
+		OliveBTSchemas::BehaviorTreeAddNode(),
+		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBehaviorTreeAddNode),
 		{TEXT("behaviortree"), TEXT("write")},
 		TEXT("behaviortree")
 	);
-	RegisteredToolNames.Add(TEXT("behaviortree.add_composite"));
+	RegisteredToolNames.Add(TEXT("behaviortree.add_node"));
 
-	Registry.RegisterTool(
-		TEXT("behaviortree.add_task"),
-		TEXT("Add a task node (e.g., BTTask_MoveTo, BTTask_Wait) with optional properties"),
-		OliveBTSchemas::BehaviorTreeAddTask(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBehaviorTreeAddTask),
-		{TEXT("behaviortree"), TEXT("write")},
-		TEXT("behaviortree")
-	);
-	RegisteredToolNames.Add(TEXT("behaviortree.add_task"));
-
-	Registry.RegisterTool(
-		TEXT("behaviortree.add_decorator"),
-		TEXT("Attach a decorator to a node (e.g., BTDecorator_Blackboard, BTDecorator_Cooldown)"),
-		OliveBTSchemas::BehaviorTreeAddDecorator(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBehaviorTreeAddDecorator),
-		{TEXT("behaviortree"), TEXT("write")},
-		TEXT("behaviortree")
-	);
-	RegisteredToolNames.Add(TEXT("behaviortree.add_decorator"));
-
-	Registry.RegisterTool(
-		TEXT("behaviortree.add_service"),
-		TEXT("Attach a service to a node (e.g., BTService_DefaultFocus)"),
-		OliveBTSchemas::BehaviorTreeAddService(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBehaviorTreeAddService),
-		{TEXT("behaviortree"), TEXT("write")},
-		TEXT("behaviortree")
-	);
-	RegisteredToolNames.Add(TEXT("behaviortree.add_service"));
+	// Removed in AI Freedom Phase 2 — behaviortree.add_composite, add_task, add_decorator, add_service
+	// consolidated into behaviortree.add_node. Old tool names still work via redirect aliases
+	// in OliveToolRegistry.cpp that inject the appropriate node_kind parameter.
 
 	Registry.RegisterTool(
 		TEXT("behaviortree.remove_node"),
@@ -370,6 +337,27 @@ FOliveToolResult FOliveBTToolHandlers::HandleBlackboardAddKey(const TSharedPtr<F
 			TEXT("Required parameter 'name' is missing"),
 			TEXT("Provide the key name. Example: \"name\": \"TargetActor\""));
 	}
+
+	// --- Upsert: check if key already exists ---
+	bool bKeyExists = false;
+	for (const FBlackboardEntry& Existing : BB->Keys)
+	{
+		if (Existing.EntryName == FName(*KeyName))
+		{
+			bKeyExists = true;
+			break;
+		}
+	}
+
+	if (bKeyExists)
+	{
+		// Delegate to modify logic: extract modify-relevant params and forward
+		UE_LOG(LogOliveBTTools, Log, TEXT("Key '%s' already exists in blackboard '%s' — upsert: modifying instead"),
+			*KeyName, *BB->GetName());
+		return HandleBlackboardModifyKey(Params);
+	}
+
+	// --- Create path: key does not exist ---
 	FString KeyTypeStr;
 	if (!Params->TryGetStringField(TEXT("key_type"), KeyTypeStr) || KeyTypeStr.IsEmpty())
 	{
@@ -401,7 +389,7 @@ FOliveToolResult FOliveBTToolHandlers::HandleBlackboardAddKey(const TSharedPtr<F
 	{
 		return FOliveToolResult::Error(TEXT("ADD_KEY_FAILED"),
 			FString::Printf(TEXT("Failed to add key '%s'"), *KeyName),
-			TEXT("Verify the key name is unique and not already defined in this Blackboard or its parent"));
+			TEXT("Verify the key name is not defined in a parent Blackboard"));
 	}
 
 	TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
@@ -613,6 +601,80 @@ FOliveToolResult FOliveBTToolHandlers::HandleBehaviorTreeSetBlackboard(const TSh
 	Result->SetStringField(TEXT("status"), TEXT("blackboard_set"));
 
 	return FOliveToolResult::Success(Result);
+}
+
+FOliveToolResult FOliveBTToolHandlers::HandleBehaviorTreeAddNode(const TSharedPtr<FJsonObject>& Params)
+{
+	// Validate node_kind parameter
+	FString NodeKind;
+	if (!Params->TryGetStringField(TEXT("node_kind"), NodeKind) || NodeKind.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'node_kind' is missing"),
+			TEXT("Provide node_kind: \"composite\", \"task\", \"decorator\", or \"service\""));
+	}
+
+	const FString NodeKindLower = NodeKind.ToLower();
+
+	if (NodeKindLower == TEXT("composite"))
+	{
+		// For composites, composite_type is the class selector.
+		// Map 'class' -> 'composite_type' if composite_type is missing but class is provided
+		if (!Params->HasField(TEXT("composite_type")))
+		{
+			FString ClassParam;
+			if (Params->TryGetStringField(TEXT("class"), ClassParam) && !ClassParam.IsEmpty())
+			{
+				Params->SetStringField(TEXT("composite_type"), ClassParam);
+			}
+		}
+		return HandleBehaviorTreeAddComposite(Params);
+	}
+	else if (NodeKindLower == TEXT("task"))
+	{
+		// Map 'class' -> 'task_class' if task_class is missing
+		if (!Params->HasField(TEXT("task_class")))
+		{
+			FString ClassParam;
+			if (Params->TryGetStringField(TEXT("class"), ClassParam) && !ClassParam.IsEmpty())
+			{
+				Params->SetStringField(TEXT("task_class"), ClassParam);
+			}
+		}
+		return HandleBehaviorTreeAddTask(Params);
+	}
+	else if (NodeKindLower == TEXT("decorator"))
+	{
+		// Map 'class' -> 'decorator_class' if decorator_class is missing
+		if (!Params->HasField(TEXT("decorator_class")))
+		{
+			FString ClassParam;
+			if (Params->TryGetStringField(TEXT("class"), ClassParam) && !ClassParam.IsEmpty())
+			{
+				Params->SetStringField(TEXT("decorator_class"), ClassParam);
+			}
+		}
+		return HandleBehaviorTreeAddDecorator(Params);
+	}
+	else if (NodeKindLower == TEXT("service"))
+	{
+		// Map 'class' -> 'service_class' if service_class is missing
+		if (!Params->HasField(TEXT("service_class")))
+		{
+			FString ClassParam;
+			if (Params->TryGetStringField(TEXT("class"), ClassParam) && !ClassParam.IsEmpty())
+			{
+				Params->SetStringField(TEXT("service_class"), ClassParam);
+			}
+		}
+		return HandleBehaviorTreeAddService(Params);
+	}
+	else
+	{
+		return FOliveToolResult::Error(TEXT("INVALID_NODE_KIND"),
+			FString::Printf(TEXT("Unknown node_kind: '%s'"), *NodeKind),
+			TEXT("Use: \"composite\", \"task\", \"decorator\", or \"service\""));
+	}
 }
 
 FOliveToolResult FOliveBTToolHandlers::HandleBehaviorTreeAddComposite(const TSharedPtr<FJsonObject>& Params)

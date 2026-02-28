@@ -239,20 +239,48 @@ TSharedPtr<FJsonObject> FOliveIRBlueprint::ToJson() const
 		Json->SetObjectField(TEXT("components"), ComponentsJson);
 	}
 
-	// Graph names
+	// Graph names and summaries
 	TSharedPtr<FJsonObject> GraphsJson = MakeShared<FJsonObject>();
 	{
+		// Event graphs: use summary objects (name + node_count) when available, fall back to name-only
 		TArray<TSharedPtr<FJsonValue>> EventGraphsArray;
-		for (const FString& GraphName : EventGraphNames)
+		if (EventGraphSummaries.Num() > 0)
 		{
-			EventGraphsArray.Add(MakeShared<FJsonValueString>(GraphName));
+			for (const FOliveIRGraphSummary& Summary : EventGraphSummaries)
+			{
+				TSharedPtr<FJsonObject> SummaryObj = MakeShared<FJsonObject>();
+				SummaryObj->SetStringField(TEXT("name"), Summary.Name);
+				SummaryObj->SetNumberField(TEXT("node_count"), Summary.NodeCount);
+				EventGraphsArray.Add(MakeShared<FJsonValueObject>(SummaryObj));
+			}
+		}
+		else
+		{
+			for (const FString& GraphName : EventGraphNames)
+			{
+				EventGraphsArray.Add(MakeShared<FJsonValueString>(GraphName));
+			}
 		}
 		GraphsJson->SetArrayField(TEXT("event_graphs"), EventGraphsArray);
 
+		// Functions: use summary objects (name + node_count) when available, fall back to name-only
 		TArray<TSharedPtr<FJsonValue>> FunctionsArray;
-		for (const FString& FuncName : FunctionNames)
+		if (FunctionSummaries.Num() > 0)
 		{
-			FunctionsArray.Add(MakeShared<FJsonValueString>(FuncName));
+			for (const FOliveIRGraphSummary& Summary : FunctionSummaries)
+			{
+				TSharedPtr<FJsonObject> SummaryObj = MakeShared<FJsonObject>();
+				SummaryObj->SetStringField(TEXT("name"), Summary.Name);
+				SummaryObj->SetNumberField(TEXT("node_count"), Summary.NodeCount);
+				FunctionsArray.Add(MakeShared<FJsonValueObject>(SummaryObj));
+			}
+		}
+		else
+		{
+			for (const FString& FuncName : FunctionNames)
+			{
+				FunctionsArray.Add(MakeShared<FJsonValueString>(FuncName));
+			}
 		}
 		GraphsJson->SetArrayField(TEXT("functions"), FunctionsArray);
 

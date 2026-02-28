@@ -59,53 +59,13 @@ namespace OliveBlueprintSchemas
 	// ============================================================================
 
 	/**
-	 * Schema for blueprint.read
-	 * Read Blueprint structure
-	 * Params: {path: string, mode?: "summary"|"full"}
+	 * Schema for blueprint.read (unified reader)
+	 * Read Blueprint data filtered by section.
+	 * Params: {path: string, section?: "all"|"summary"|"graph"|"variables"|"components"|"hierarchy"|"overridable_functions",
+	 *          graph_name?: string (required when section="graph"), mode?: "summary"|"full"|"auto",
+	 *          page?: int, page_size?: int}
 	 */
 	TSharedPtr<FJsonObject> BlueprintRead();
-
-	/**
-	 * Schema for blueprint.read_function
-	 * Read single function graph
-	 * Params: {path: string, function_name: string}
-	 */
-	TSharedPtr<FJsonObject> BlueprintReadFunction();
-
-	/**
-	 * Schema for blueprint.read_event_graph
-	 * Read event graph
-	 * Params: {path: string, graph_name?: string}
-	 */
-	TSharedPtr<FJsonObject> BlueprintReadEventGraph();
-
-	/**
-	 * Schema for blueprint.read_variables
-	 * Read all variables
-	 * Params: {path: string}
-	 */
-	TSharedPtr<FJsonObject> BlueprintReadVariables();
-
-	/**
-	 * Schema for blueprint.read_components
-	 * Read component tree
-	 * Params: {path: string}
-	 */
-	TSharedPtr<FJsonObject> BlueprintReadComponents();
-
-	/**
-	 * Schema for blueprint.read_hierarchy
-	 * Read class hierarchy
-	 * Params: {path: string}
-	 */
-	TSharedPtr<FJsonObject> BlueprintReadHierarchy();
-
-	/**
-	 * Schema for blueprint.list_overridable_functions
-	 * List overridable functions from parent
-	 * Params: {path: string}
-	 */
-	TSharedPtr<FJsonObject> BlueprintListOverridableFunctions();
 
 	/**
 	 * Schema for blueprint.get_node_pins
@@ -115,14 +75,23 @@ namespace OliveBlueprintSchemas
 	 */
 	TSharedPtr<FJsonObject> BlueprintGetNodePins();
 
+	/**
+	 * Schema for blueprint.describe_node_type
+	 * Describe a Blueprint node type before creating it.
+	 * Returns display name, description, pins, and behavior flags.
+	 * Params: {type: string}
+	 */
+	TSharedPtr<FJsonObject> BlueprintDescribeNodeType();
+
 	// ============================================================================
 	// Asset Writer Tool Schemas
 	// ============================================================================
 
 	/**
 	 * Schema for blueprint.create
-	 * Create new Blueprint
-	 * Params: {path: string, parent_class: string, type?: string}
+	 * Create new Blueprint. Optionally create from a factory template.
+	 * Params: {path: string, parent_class: string, type?: string,
+	 *          template_id?: string, template_params?: object, preset?: string}
 	 */
 	TSharedPtr<FJsonObject> BlueprintCreate();
 
@@ -166,9 +135,9 @@ namespace OliveBlueprintSchemas
 	// ============================================================================
 
 	/**
-	 * Schema for blueprint.add_variable
-	 * Add variable
-	 * Params: {path: string, variable: VariableSpec}
+	 * Schema for blueprint.add_variable (upsert)
+	 * Add or update a variable. If the variable already exists, modifies it.
+	 * Params: {path: string, variable: VariableSpec, modify_only?: bool}
 	 */
 	TSharedPtr<FJsonObject> BlueprintAddVariable();
 
@@ -178,13 +147,6 @@ namespace OliveBlueprintSchemas
 	 * Params: {path: string, name: string}
 	 */
 	TSharedPtr<FJsonObject> BlueprintRemoveVariable();
-
-	/**
-	 * Schema for blueprint.modify_variable
-	 * Modify variable
-	 * Params: {path: string, name: string, changes: object}
-	 */
-	TSharedPtr<FJsonObject> BlueprintModifyVariable();
 
 	// ============================================================================
 	// Component Writer Tool Schemas
@@ -223,9 +185,11 @@ namespace OliveBlueprintSchemas
 	// ============================================================================
 
 	/**
-	 * Schema for blueprint.add_function
-	 * Add function
-	 * Params: {path: string, signature: FunctionSignature}
+	 * Schema for blueprint.add_function (unified)
+	 * Add function, custom event, event dispatcher, or override a parent function.
+	 * Params: {path: string, function_type?: "function"|"custom_event"|"event_dispatcher"|"override",
+	 *          name: string, signature?: FunctionSignature, inputs?: Param[], outputs?: Param[],
+	 *          is_pure?: bool, params?: Param[]}
 	 */
 	TSharedPtr<FJsonObject> BlueprintAddFunction();
 
@@ -242,27 +206,6 @@ namespace OliveBlueprintSchemas
 	 * Params: {path: string, name: string, changes: object}
 	 */
 	TSharedPtr<FJsonObject> BlueprintModifyFunctionSignature();
-
-	/**
-	 * Schema for blueprint.add_event_dispatcher
-	 * Add dispatcher
-	 * Params: {path: string, name: string, params?: Param[]}
-	 */
-	TSharedPtr<FJsonObject> BlueprintAddEventDispatcher();
-
-	/**
-	 * Schema for blueprint.override_function
-	 * Override parent function
-	 * Params: {path: string, function_name: string}
-	 */
-	TSharedPtr<FJsonObject> BlueprintOverrideFunction();
-
-	/**
-	 * Schema for blueprint.add_custom_event
-	 * Add custom event
-	 * Params: {path: string, name: string, params?: Param[]}
-	 */
-	TSharedPtr<FJsonObject> BlueprintAddCustomEvent();
 
 	// ============================================================================
 	// Graph Writer Tool Schemas
@@ -333,13 +276,6 @@ namespace OliveBlueprintSchemas
 	// ============================================================================
 	// Template Tool Schemas
 	// ============================================================================
-
-	/**
-	 * Schema for blueprint.create_from_template
-	 * Create a Blueprint from a factory template
-	 * Params: {template_id: string, asset_path: string, parameters?: object, preset?: string}
-	 */
-	TSharedPtr<FJsonObject> BlueprintCreateFromTemplate();
 
 	/**
 	 * Schema for blueprint.get_template

@@ -1,4 +1,7 @@
 // Copyright Bode Software. All Rights Reserved.
+//
+// DEPRECATED: Tool pack filtering removed in AI Freedom update. This class is
+// retained for one release cycle. See header for details.
 
 #include "Brain/OliveToolPackManager.h"
 #include "Profiles/OliveFocusProfileManager.h"
@@ -171,9 +174,7 @@ void FOliveToolPackManager::RegisterDefaultPacks()
 	PackDefinitions.FindOrAdd(EOliveToolPack::ReadPack) = {
 		TEXT("project.search"), TEXT("project.get_asset_info"),
 		TEXT("project.get_class_hierarchy"), TEXT("project.get_dependencies"),
-		TEXT("blueprint.read"), TEXT("blueprint.read_function"),
-		TEXT("blueprint.read_event_graph"), TEXT("blueprint.read_variables"),
-		TEXT("blueprint.read_components"),
+		TEXT("blueprint.read"), TEXT("blueprint.get_node_pins"), TEXT("blueprint.describe_node_type"),
 		TEXT("behaviortree.read"), TEXT("blackboard.read"),
 		TEXT("pcg.read_graph"),
 		TEXT("cpp.read_class"), TEXT("cpp.read_header"),
@@ -183,7 +184,7 @@ void FOliveToolPackManager::RegisterDefaultPacks()
 	PackDefinitions.FindOrAdd(EOliveToolPack::WritePackBasic) = {
 		TEXT("blueprint.create"), TEXT("blueprint.add_variable"),
 		TEXT("blueprint.add_component"), TEXT("blueprint.add_function"),
-		TEXT("blueprint.add_custom_event"), TEXT("blueprint.compile"),
+		TEXT("blueprint.compile"),
 		TEXT("behaviortree.create"), TEXT("blackboard.add_key"),
 		TEXT("pcg.create_graph"), TEXT("cpp.create_class")
 	};

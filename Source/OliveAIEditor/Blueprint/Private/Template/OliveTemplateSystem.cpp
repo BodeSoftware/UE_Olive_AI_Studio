@@ -239,7 +239,7 @@ TArray<const FOliveTemplateInfo*> FOliveTemplateSystem::GetTemplatesByType(const
 void FOliveTemplateSystem::RebuildCatalog()
 {
 	CachedCatalog = TEXT("[AVAILABLE BLUEPRINT TEMPLATES]\n");
-	CachedCatalog += TEXT("Use blueprint.create_from_template when a template fits.\n");
+	CachedCatalog += TEXT("Use blueprint.create with template_id when a factory template fits.\n");
 	CachedCatalog += TEXT("Use blueprint.get_template to view a template as reference.\n");
 	CachedCatalog += TEXT("If no template fits, use apply_plan_json as normal.\n\n");
 
@@ -902,7 +902,7 @@ FOliveToolResult FOliveTemplateSystem::ApplyTemplate(
 			TEXT("TEMPLATE_NOT_FACTORY"),
 			FString::Printf(TEXT("Template '%s' is a reference template, not factory. "
 				"Use blueprint.get_template to view reference templates."), *TemplateId),
-			TEXT("Only factory templates can be instantiated with create_from_template"));
+			TEXT("Only factory templates can be instantiated with blueprint.create + template_id"));
 	}
 
 	if (!Info->FullJson.IsValid())

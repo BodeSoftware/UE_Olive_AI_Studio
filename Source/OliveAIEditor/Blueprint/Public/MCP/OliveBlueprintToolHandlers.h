@@ -26,11 +26,11 @@ DECLARE_LOG_CATEGORY_EXTERN(LogOliveBPTools, Log, All);
  * Blueprint reader/writer infrastructure.
  *
  * Tool Categories:
- * - Readers: blueprint.read, read_function, read_event_graph, etc.
+ * - Readers: blueprint.read (unified, section-based), blueprint.get_node_pins
  * - Asset Writers: blueprint.create, set_parent_class, add_interface, etc.
- * - Variable Writers: blueprint.add_variable, remove_variable, modify_variable
+ * - Variable Writers: blueprint.add_variable (upsert), remove_variable
  * - Component Writers: blueprint.add_component, remove_component, etc.
- * - Function Writers: blueprint.add_function, override_function, etc.
+ * - Function Writers: blueprint.add_function (unified: function, custom_event, event_dispatcher, override), etc.
  * - Graph Writers: blueprint.add_node, connect_pins, set_pin_default, etc.
  * - AnimBP Writers: animbp.add_state_machine, add_state, add_transition, etc.
  * - Widget Writers: widget.add_widget, remove_widget, bind_property, etc.
@@ -77,13 +77,19 @@ private:
 	// Reader Tool Handlers
 	// ============================================================================
 
+	/** Unified blueprint.read handler -- routes to section-specific helpers */
 	FOliveToolResult HandleBlueprintRead(const TSharedPtr<FJsonObject>& Params);
-	FOliveToolResult HandleBlueprintReadFunction(const TSharedPtr<FJsonObject>& Params);
-	FOliveToolResult HandleBlueprintReadEventGraph(const TSharedPtr<FJsonObject>& Params);
-	FOliveToolResult HandleBlueprintReadVariables(const TSharedPtr<FJsonObject>& Params);
-	FOliveToolResult HandleBlueprintReadComponents(const TSharedPtr<FJsonObject>& Params);
-	FOliveToolResult HandleBlueprintReadHierarchy(const TSharedPtr<FJsonObject>& Params);
-	FOliveToolResult HandleBlueprintListOverridableFunctions(const TSharedPtr<FJsonObject>& Params);
+
+	/** Describe a Blueprint node type: its pins, properties, and behavior */
+	FOliveToolResult HandleDescribeNodeType(const TSharedPtr<FJsonObject>& Params);
+
+	/** Section-specific reader helpers (called by HandleBlueprintRead based on section param) */
+	FOliveToolResult HandleReadSectionAll(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandleReadSectionGraph(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandleReadSectionVariables(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandleReadSectionComponents(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandleReadSectionHierarchy(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandleReadSectionOverridableFunctions(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlueprintGetNodePins(const TSharedPtr<FJsonObject>& Params);
 
 	// ============================================================================
@@ -103,7 +109,6 @@ private:
 
 	FOliveToolResult HandleBlueprintAddVariable(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlueprintRemoveVariable(const TSharedPtr<FJsonObject>& Params);
-	FOliveToolResult HandleBlueprintModifyVariable(const TSharedPtr<FJsonObject>& Params);
 
 	// ============================================================================
 	// Component Writer Tool Handlers
@@ -118,12 +123,16 @@ private:
 	// Function Writer Tool Handlers
 	// ============================================================================
 
+	/** Unified handler for blueprint.add_function — routes by function_type param */
 	FOliveToolResult HandleBlueprintAddFunction(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlueprintRemoveFunction(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlueprintModifyFunctionSignature(const TSharedPtr<FJsonObject>& Params);
-	FOliveToolResult HandleBlueprintAddEventDispatcher(const TSharedPtr<FJsonObject>& Params);
-	FOliveToolResult HandleBlueprintOverrideFunction(const TSharedPtr<FJsonObject>& Params);
-	FOliveToolResult HandleBlueprintAddCustomEvent(const TSharedPtr<FJsonObject>& Params);
+
+	/** Internal helpers for function_type routing (not registered as separate tools) */
+	FOliveToolResult HandleAddFunctionType_Function(const TSharedPtr<FJsonObject>& Params, const FString& AssetPath, UBlueprint* Blueprint);
+	FOliveToolResult HandleAddFunctionType_CustomEvent(const TSharedPtr<FJsonObject>& Params, const FString& AssetPath, UBlueprint* Blueprint);
+	FOliveToolResult HandleAddFunctionType_EventDispatcher(const TSharedPtr<FJsonObject>& Params, const FString& AssetPath, UBlueprint* Blueprint);
+	FOliveToolResult HandleAddFunctionType_Override(const TSharedPtr<FJsonObject>& Params, const FString& AssetPath, UBlueprint* Blueprint);
 
 	// ============================================================================
 	// Plan JSON Tool Handlers
@@ -138,7 +147,9 @@ private:
 	// ============================================================================
 
 	void RegisterTemplateTools();
-	FOliveToolResult HandleBlueprintCreateFromTemplate(const TSharedPtr<FJsonObject>& Params);
+	/** Internal helper: create Blueprint from template (called by HandleBlueprintCreate when template_id is set) */
+	FOliveToolResult HandleBlueprintCreateFromTemplate(const FString& TemplateId, const FString& AssetPath,
+		const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlueprintGetTemplate(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlueprintListTemplates(const TSharedPtr<FJsonObject>& Params);
 

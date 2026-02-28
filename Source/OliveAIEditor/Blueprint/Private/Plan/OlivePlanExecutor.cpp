@@ -319,6 +319,8 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
             TargetDesc = *VarName;
         else if (const FString* ClassN = Resolved.Properties.Find(TEXT("actor_class")))
             TargetDesc = *ClassN;
+        else if (const FString* DelegName = Resolved.Properties.Find(TEXT("delegate_name")))
+            TargetDesc = *DelegName;
         else
             TargetDesc = TEXT("(none)");
 
@@ -2405,11 +2407,11 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::AssembleResult(
 {
     FOliveIRBlueprintPlanResult Result;
 
-    // Success = all nodes created (Phase 1 didn't fail-fast)
+    // Success = all nodes created AND no critical wiring errors (connection failures)
     const bool bAllNodesCreated = (Context.CreatedNodeCount == Plan.Steps.Num());
-    const bool bHasWiringErrors = (Context.FailedConnectionCount > 0 || Context.FailedDefaultCount > 0);
+    const bool bHasCriticalWiringErrors = (Context.FailedConnectionCount > 0);
 
-    Result.bSuccess = bAllNodesCreated;
+    Result.bSuccess = bAllNodesCreated && !bHasCriticalWiringErrors;
     Result.StepToNodeMap = Context.StepToNodeMap;
     Result.ReusedStepIds = Context.ReusedStepIds;
     Result.PlanClassNames = Context.ResolvedClassNames;
@@ -2424,9 +2426,9 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::AssembleResult(
     Result.DefaultsSucceeded = Context.SuccessfulDefaultCount;
     Result.DefaultsFailed = Context.FailedDefaultCount;
 
-    // Partial success: all nodes created but some wiring/defaults failed
-    Result.bPartial = Result.bSuccess &&
-        (Context.FailedConnectionCount > 0 || Context.FailedDefaultCount > 0);
+    // Partial = nodes created, no connection failures, but some defaults failed (cosmetic)
+    Result.bPartial = bAllNodesCreated && !bHasCriticalWiringErrors
+        && (Context.FailedDefaultCount > 0);
 
     // Serialize pin manifests for AI self-correction
     for (const auto& ManifestPair : Context.StepManifests)
@@ -2444,8 +2446,9 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::AssembleResult(
         }
     }
 
-    // Add partial success warning
-    if (bAllNodesCreated && bHasWiringErrors)
+    // Add partial success warning when any wiring or default failures occurred
+    const bool bHasAnyWiringErrors = (Context.FailedConnectionCount > 0 || Context.FailedDefaultCount > 0);
+    if (bAllNodesCreated && bHasAnyWiringErrors)
     {
         Result.Warnings.Add(FString::Printf(
             TEXT("Partial success: %d nodes created, %d connections failed, %d defaults failed. "

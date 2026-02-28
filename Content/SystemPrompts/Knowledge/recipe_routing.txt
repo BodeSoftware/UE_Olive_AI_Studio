@@ -1,5 +1,5 @@
 ## Routing
-- ALWAYS call olive.get_recipe(query) before your first plan_json for each function. Contains tested wiring patterns. This includes functions created by templates -- templates create empty stubs, you write the logic.
+- olive.get_recipe(query) has tested wiring patterns. Use it when you're unsure about a pattern, but skip it for simple/well-known operations (e.g., BeginPlay -> PrintString).
 - NEW blueprint: check templates first (blueprint.create_from_template). If none fit: create + components/variables + apply_plan_json
 - MODIFY existing: project.search (find path) -> check reference templates if relevant -> blueprint.read -> then write tools
 - SMALL EDIT (1-2 nodes): read_event_graph -> add_node + connect_pins
@@ -7,4 +7,4 @@
 - FIX wiring: use wiring_errors and pin_manifests from the apply result
 - NEVER call blueprint.read before blueprint.create
 - Prefer plan_json for 3+ nodes. Use add_node/connect_pins for small edits (1-2 ops) or when the needed operation isn't in the plan vocabulary.
-- Keep plans under 12 steps; split complex logic into multiple functions
+- Split complex logic into multiple functions when it makes architectural sense. There is no hard step limit, but plans over ~20 steps benefit from splitting.

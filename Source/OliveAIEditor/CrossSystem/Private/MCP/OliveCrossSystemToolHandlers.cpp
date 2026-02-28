@@ -91,25 +91,27 @@ void FOliveCrossSystemToolHandlers::RegisterBulkTools()
 	);
 	RegisteredToolNames.Add(TEXT("project.refactor_rename"));
 
-	Registry.RegisterTool(
-		TEXT("project.create_ai_character"),
-		TEXT("Create a complete AI character setup (Blueprint + BehaviorTree + Blackboard)"),
-		OliveCrossSystemSchemas::ProjectCreateAICharacter(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleCreateAICharacter),
-		{TEXT("crosssystem"), TEXT("write")},
-		TEXT("crosssystem")
-	);
-	RegisteredToolNames.Add(TEXT("project.create_ai_character"));
+	// Removed in AI Freedom Phase 2 — AI uses individual tools (blueprint.create, behaviortree.create, blackboard.create)
+	// Registry.RegisterTool(
+	// 	TEXT("project.create_ai_character"),
+	// 	TEXT("Create a complete AI character setup (Blueprint + BehaviorTree + Blackboard)"),
+	// 	OliveCrossSystemSchemas::ProjectCreateAICharacter(),
+	// 	FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleCreateAICharacter),
+	// 	{TEXT("crosssystem"), TEXT("write")},
+	// 	TEXT("crosssystem")
+	// );
+	// RegisteredToolNames.Add(TEXT("project.create_ai_character"));
 
-	Registry.RegisterTool(
-		TEXT("project.move_to_cpp"),
-		TEXT("Analyze Blueprint and scaffold C++ migration artifacts"),
-		OliveCrossSystemSchemas::ProjectMoveToCpp(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleMoveToCpp),
-		{TEXT("crosssystem"), TEXT("write")},
-		TEXT("crosssystem")
-	);
-	RegisteredToolNames.Add(TEXT("project.move_to_cpp"));
+	// Removed in AI Freedom Phase 2 — rarely used, high maintenance cost
+	// Registry.RegisterTool(
+	// 	TEXT("project.move_to_cpp"),
+	// 	TEXT("Analyze Blueprint and scaffold C++ migration artifacts"),
+	// 	OliveCrossSystemSchemas::ProjectMoveToCpp(),
+	// 	FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleMoveToCpp),
+	// 	{TEXT("crosssystem"), TEXT("write")},
+	// 	TEXT("crosssystem")
+	// );
+	// RegisteredToolNames.Add(TEXT("project.move_to_cpp"));
 }
 
 void FOliveCrossSystemToolHandlers::RegisterSnapshotTools()
@@ -317,17 +319,18 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleMoveToCpp(const TSharedPtr
 
 void FOliveCrossSystemToolHandlers::RegisterBatchTools()
 {
-	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
-
-	Registry.RegisterTool(
-		TEXT("project.batch_write"),
-		TEXT("Execute multiple Blueprint graph operations atomically under a single undo transaction"),
-		OliveCrossSystemSchemas::ProjectBatchWrite(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleBatchWrite),
-		{TEXT("crosssystem"), TEXT("write")},
-		TEXT("crosssystem")
-	);
-	RegisteredToolNames.Add(TEXT("project.batch_write"));
+	// Removed in AI Freedom Phase 2 — plan-JSON handles Blueprint batching; individual BT/PCG/C++ ops are fast enough
+	// FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
+	//
+	// Registry.RegisterTool(
+	// 	TEXT("project.batch_write"),
+	// 	TEXT("Execute multiple Blueprint graph operations atomically under a single undo transaction"),
+	// 	OliveCrossSystemSchemas::ProjectBatchWrite(),
+	// 	FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleBatchWrite),
+	// 	{TEXT("crosssystem"), TEXT("write")},
+	// 	TEXT("crosssystem")
+	// );
+	// RegisteredToolNames.Add(TEXT("project.batch_write"));
 }
 
 // =============================================================================
@@ -885,25 +888,27 @@ void FOliveCrossSystemToolHandlers::RegisterIndexTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
-	Registry.RegisterTool(
-		TEXT("project.index_build"),
-		TEXT("Export the project index to a JSON file for external consumption"),
-		OliveCrossSystemSchemas::ProjectIndexBuild(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleIndexBuild),
-		{TEXT("crosssystem"), TEXT("read")},
-		TEXT("crosssystem")
-	);
-	RegisteredToolNames.Add(TEXT("project.index_build"));
+	// Removed in AI Freedom Phase 2 — project indexing is now automatic (on-demand)
+	// Registry.RegisterTool(
+	// 	TEXT("project.index_build"),
+	// 	TEXT("Export the project index to a JSON file for external consumption"),
+	// 	OliveCrossSystemSchemas::ProjectIndexBuild(),
+	// 	FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleIndexBuild),
+	// 	{TEXT("crosssystem"), TEXT("read")},
+	// 	TEXT("crosssystem")
+	// );
+	// RegisteredToolNames.Add(TEXT("project.index_build"));
 
-	Registry.RegisterTool(
-		TEXT("project.index_status"),
-		TEXT("Check whether the project index is stale and needs re-export"),
-		OliveCrossSystemSchemas::ProjectIndexStatus(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleIndexStatus),
-		{TEXT("crosssystem"), TEXT("read")},
-		TEXT("crosssystem")
-	);
-	RegisteredToolNames.Add(TEXT("project.index_status"));
+	// Removed in AI Freedom Phase 2 — not needed (was only needed when index_build was manual)
+	// Registry.RegisterTool(
+	// 	TEXT("project.index_status"),
+	// 	TEXT("Check whether the project index is stale and needs re-export"),
+	// 	OliveCrossSystemSchemas::ProjectIndexStatus(),
+	// 	FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleIndexStatus),
+	// 	{TEXT("crosssystem"), TEXT("read")},
+	// 	TEXT("crosssystem")
+	// );
+	// RegisteredToolNames.Add(TEXT("project.index_status"));
 
 	Registry.RegisterTool(
 		TEXT("project.get_relevant_context"),

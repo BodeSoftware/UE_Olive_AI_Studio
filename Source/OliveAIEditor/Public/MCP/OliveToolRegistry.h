@@ -84,10 +84,36 @@ struct OLIVEAIEDITOR_API FOliveToolResult
 DECLARE_DELEGATE_RetVal_OneParam(FOliveToolResult, FOliveToolHandler, const TSharedPtr<FJsonObject>&);
 
 /**
+ * Tool Alias
+ *
+ * Maps a deprecated tool name to a new consolidated tool name with
+ * an optional parameter transformation. Used for backward compatibility
+ * during tool consolidation (Phase 2). Aliases do not appear in tools/list.
+ */
+struct FOliveToolAlias
+{
+	/** The new consolidated tool name to redirect to */
+	FString NewToolName;
+
+	/**
+	 * Parameter transformation function.
+	 * Called with a mutable clone of the original parameters to inject/rename
+	 * fields required by the new consolidated tool.
+	 * May be unset if only the tool name changes (pass-through).
+	 */
+	TFunction<void(TSharedPtr<FJsonObject>&)> TransformParams;
+};
+
+/**
  * Tool Registry
  *
  * Central registry for all available tools. Handles registration,
  * lookup, execution, and filtering for Focus Profiles.
+ *
+ * Supports tool aliases for backward compatibility: deprecated tool names
+ * are transparently redirected to their new consolidated names with
+ * parameter transformation. Aliases are resolved before tool lookup
+ * and do not appear in tools/list discovery.
  */
 class OLIVEAIEDITOR_API FOliveToolRegistry
 {
@@ -167,6 +193,27 @@ public:
 	 * Get tool count
 	 */
 	int32 GetToolCount() const;
+
+	// ==========================================
+	// Alias Resolution
+	// ==========================================
+
+	/**
+	 * Check if a tool name is a deprecated alias.
+	 * @param Name Tool name to check
+	 * @return true if the name is a known alias for a consolidated tool
+	 */
+	bool IsToolAlias(const FString& Name) const;
+
+	/**
+	 * Resolve a tool alias, transforming the tool name and parameters.
+	 * If the name is not an alias, returns false and leaves parameters unchanged.
+	 *
+	 * @param InOutName Tool name; replaced with the new name if aliased
+	 * @param InOutParams Parameters; transformed in-place if aliased
+	 * @return true if an alias was resolved
+	 */
+	bool ResolveAlias(FString& InOutName, TSharedPtr<FJsonObject>& InOutParams) const;
 
 	// ==========================================
 	// Execution

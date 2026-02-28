@@ -417,7 +417,10 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::AddInterface(
 	if (!InterfaceClass)
 	{
 		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Interface '%s' not found"), *InterfacePath));
+			FString::Printf(TEXT("Interface '%s' not found. Searched: LoadObject, FindFirstObject, "
+				"I/U prefix variants, asset registry. Suggestion: Use the full path "
+				"(e.g., '/Game/Interfaces/%s') or search with project.search(query='%s')."),
+				*InterfacePath, *InterfacePath, *InterfacePath));
 	}
 
 	// Check if it's actually an interface
@@ -478,7 +481,10 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::RemoveInterface(
 	if (!InterfaceClass)
 	{
 		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Interface '%s' not found"), *InterfacePath));
+			FString::Printf(TEXT("Interface '%s' not found. Searched: LoadObject, FindFirstObject, "
+				"I/U prefix variants, asset registry. Suggestion: Use the full path "
+				"(e.g., '/Game/Interfaces/%s') or search with project.search(query='%s')."),
+				*InterfacePath, *InterfacePath, *InterfacePath));
 	}
 
 	// Check if interface is implemented
@@ -1044,10 +1050,40 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::OverrideFunction(
 
 	// Find the function in the parent class
 	UFunction* ParentFunction = Blueprint->ParentClass->FindFunctionByName(FName(*FunctionName));
+
+	// If not in parent class, check implemented interfaces
 	if (!ParentFunction)
 	{
-		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Function '%s' not found in parent class"), *FunctionName));
+		for (const FBPInterfaceDescription& InterfaceDesc : Blueprint->ImplementedInterfaces)
+		{
+			if (InterfaceDesc.Interface)
+			{
+				ParentFunction = InterfaceDesc.Interface->FindFunctionByName(FName(*FunctionName));
+				if (ParentFunction)
+				{
+					break;
+				}
+			}
+		}
+	}
+
+	if (!ParentFunction)
+	{
+		// Build a helpful error message listing where we searched
+		FString SearchedLocations = FString::Printf(
+			TEXT("Function '%s' not found. Searched: parent class '%s'"),
+			*FunctionName, *Blueprint->ParentClass->GetName());
+
+		for (const FBPInterfaceDescription& InterfaceDesc : Blueprint->ImplementedInterfaces)
+		{
+			if (InterfaceDesc.Interface)
+			{
+				SearchedLocations += FString::Printf(TEXT(", interface '%s'"),
+					*InterfaceDesc.Interface->GetName());
+			}
+		}
+
+		return FOliveBlueprintWriteResult::Error(SearchedLocations);
 	}
 
 	// Check if already overridden
@@ -1891,6 +1927,37 @@ UClass* FOliveBlueprintWriter::FindInterfaceClass(const FString& InterfacePath)
 	// Try with U prefix (some interfaces are UInterface-derived)
 	PrefixedName = TEXT("U") + InterfacePath;
 	Class = FindFirstObject<UClass>( *PrefixedName);
+	if (Class)
+	{
+		return Class;
+	}
+
+	// Asset registry fallback: search for Blueprint interface by short name
+	{
+		FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
+
+		TArray<FAssetData> Assets;
+		AssetRegistry.GetAssetsByClass(UBlueprint::StaticClass()->GetClassPathName(), Assets);
+
+		for (const FAssetData& Asset : Assets)
+		{
+			if (Asset.AssetName.ToString() == InterfacePath ||
+				Asset.AssetName.ToString() == (TEXT("BPI_") + InterfacePath))
+			{
+				UBlueprint* InterfaceBP = Cast<UBlueprint>(Asset.GetAsset());
+				if (InterfaceBP && InterfaceBP->GeneratedClass &&
+					InterfaceBP->GeneratedClass->HasAnyClassFlags(CLASS_Interface))
+				{
+					Class = InterfaceBP->GeneratedClass;
+					UE_LOG(LogOliveBPWriter, Log,
+						TEXT("FindInterfaceClass: Resolved short name '%s' to '%s' via asset registry"),
+						*InterfacePath, *Asset.GetObjectPathString());
+					break;
+				}
+			}
+		}
+	}
 
 	return Class;
 }
