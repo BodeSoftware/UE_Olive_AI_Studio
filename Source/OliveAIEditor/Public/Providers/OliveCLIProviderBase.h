@@ -87,6 +87,12 @@ struct FAutonomousRunContext
 	/** Ordered log of tool calls made during the run. Capped at 50 entries. */
 	TArray<FToolCallEntry> ToolCallLog;
 
+	/** Recipe names fetched via olive.get_recipe during the run, for continuation prompt */
+	TArray<FString> FetchedRecipeNames;
+
+	/** Template IDs fetched via blueprint.get_template during the run, for continuation prompt */
+	TArray<FString> FetchedTemplateIds;
+
 	/** Run outcome */
 	enum class EOutcome : uint8
 	{
@@ -106,6 +112,8 @@ struct FAutonomousRunContext
 		OriginalMessage.Empty();
 		ModifiedAssetPaths.Empty();
 		ToolCallLog.Empty();
+		FetchedRecipeNames.Empty();
+		FetchedTemplateIds.Empty();
 		Outcome = EOutcome::Completed;
 		bValid = false;
 	}
@@ -470,12 +478,6 @@ protected:
 	 *  idle stalls (auto-continuable) from runtime limit hits (not auto-continuable). */
 	bool bLastRunWasRuntimeLimit = false;
 
-	/** Whether the last timeout was an output stall: AI started a text response but froze
-	 *  (no new stdout chars AND no MCP tool calls for CLI_OUTPUT_STALL_TIMEOUT_SECONDS).
-	 *  Distinct from IdleTimeout (which fires on total stdout silence from the start).
-	 *  Set on background thread in LaunchCLIProcess, read on game thread in HandleResponseCompleteAutonomous. */
-	bool bLastRunWasOutputStall = false;
-
 	/** Number of automatic continuations since last user-initiated message.
 	 *  Reset to 0 on each non-continuation SendMessageAutonomous call. */
 	int32 AutoContinueCount = 0;
@@ -488,7 +490,7 @@ protected:
 	bool bIsAutoContinuation = false;
 
 	/** Maximum automatic continuations before giving up and reporting to user */
-	static constexpr int32 MaxAutoContinues = 3;
+	static constexpr int32 MaxAutoContinues = 1;
 
 	/**
 	 * Asset paths from @-mentions in the chat UI, set before the initial autonomous run.

@@ -1454,39 +1454,136 @@ UClass* FOliveNodeFactory::FindClass(const FString& ClassName)
 
 UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FString& ClassName, UBlueprint* Blueprint)
 {
-	// If class name specified, search in that class first
+	// --- Step 0: Alias lookup ---
+	// Before any class search, check if the function name is a known alias.
+	// If so, replace with the canonical name for all subsequent searches.
+	FString ResolvedName = FunctionName;
+	{
+		const TMap<FString, FString>& Aliases = GetAliasMap();
+		FString LowerName = FunctionName.ToLower();
+		for (const auto& Pair : Aliases)
+		{
+			if (Pair.Key.ToLower() == LowerName)
+			{
+				ResolvedName = Pair.Value;
+				UE_LOG(LogOliveNodeFactory, Log, TEXT("FindFunction('%s'): alias resolved -> '%s'"),
+					*FunctionName, *ResolvedName);
+				break;
+			}
+		}
+	}
+
+	// Lambda: try exact name then K2 prefix variant on a single class
+	auto TryClassWithK2 = [&ResolvedName](UClass* Class) -> UFunction*
+	{
+		if (!Class)
+		{
+			return nullptr;
+		}
+
+		// Exact match
+		UFunction* Func = Class->FindFunctionByName(FName(*ResolvedName));
+		if (Func)
+		{
+			return Func;
+		}
+
+		// K2 prefix fallback
+		if (!ResolvedName.StartsWith(TEXT("K2_")))
+		{
+			// Try adding K2_ prefix
+			Func = Class->FindFunctionByName(FName(*(TEXT("K2_") + ResolvedName)));
+		}
+		else
+		{
+			// Try removing K2_ prefix
+			Func = Class->FindFunctionByName(FName(*ResolvedName.Mid(3)));
+		}
+		return Func;
+	};
+
+	// --- Step 1: Search specified ClassName ---
 	if (!ClassName.IsEmpty())
 	{
-		UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s', class='%s'): searching specified class"), *FunctionName, *ClassName);
+		UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s', class='%s'): searching specified class"), *ResolvedName, *ClassName);
 		UClass* Class = FindClass(ClassName);
 		if (Class)
 		{
-			UFunction* Func = Class->FindFunctionByName(FName(*FunctionName));
+			UFunction* Func = TryClassWithK2(Class);
 			if (Func)
 			{
-				UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): found in class '%s'"), *FunctionName, *Class->GetName());
+				UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): found in specified class '%s'"), *ResolvedName, *Class->GetName());
 				return Func;
 			}
 		}
 	}
 
-	// Search the Blueprint's own GeneratedClass for Blueprint-defined functions
-	// (e.g., custom functions created via add_function). GeneratedClass may be null
-	// if the Blueprint hasn't been compiled yet.
+	// --- Step 2: Search Blueprint's GeneratedClass ---
 	if (Blueprint && Blueprint->GeneratedClass)
 	{
 		UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): trying Blueprint GeneratedClass '%s'"),
-			*FunctionName, *Blueprint->GeneratedClass->GetName());
-		UFunction* Func = Blueprint->GeneratedClass->FindFunctionByName(FName(*FunctionName));
+			*ResolvedName, *Blueprint->GeneratedClass->GetName());
+		UFunction* Func = TryClassWithK2(Blueprint->GeneratedClass);
 		if (Func)
 		{
 			UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): found in Blueprint GeneratedClass '%s'"),
-				*FunctionName, *Blueprint->GeneratedClass->GetName());
+				*ResolvedName, *Blueprint->GeneratedClass->GetName());
 			return Func;
 		}
 	}
 
-	// Search in common library classes
+	// --- Step 3: Search Blueprint parent class hierarchy ---
+	if (Blueprint && Blueprint->ParentClass)
+	{
+		TSet<UClass*> Visited;
+		// Skip GeneratedClass if already searched above
+		if (Blueprint->GeneratedClass)
+		{
+			Visited.Add(Blueprint->GeneratedClass);
+		}
+
+		UClass* Current = Blueprint->ParentClass;
+		while (Current)
+		{
+			if (!Visited.Contains(Current))
+			{
+				Visited.Add(Current);
+				UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): trying parent class '%s'"),
+					*ResolvedName, *Current->GetName());
+				UFunction* Func = TryClassWithK2(Current);
+				if (Func)
+				{
+					UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): found in parent class '%s'"),
+						*ResolvedName, *Current->GetName());
+					return Func;
+				}
+			}
+			Current = Current->GetSuperClass();
+		}
+	}
+
+	// --- Step 4: Search Blueprint SCS component classes ---
+	if (Blueprint && Blueprint->SimpleConstructionScript)
+	{
+		TArray<USCS_Node*> AllSCSNodes = Blueprint->SimpleConstructionScript->GetAllNodes();
+		for (USCS_Node* SCSNode : AllSCSNodes)
+		{
+			if (SCSNode && SCSNode->ComponentClass)
+			{
+				UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): trying SCS component class '%s'"),
+					*ResolvedName, *SCSNode->ComponentClass->GetName());
+				UFunction* Func = TryClassWithK2(SCSNode->ComponentClass);
+				if (Func)
+				{
+					UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): found on SCS component class '%s'"),
+						*ResolvedName, *SCSNode->ComponentClass->GetName());
+					return Func;
+				}
+			}
+		}
+	}
+
+	// --- Step 5: Search common library classes ---
 	TArray<UClass*> LibraryClasses = {
 		UKismetSystemLibrary::StaticClass(),
 		UKismetMathLibrary::StaticClass(),
@@ -1503,21 +1600,283 @@ UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FS
 
 	for (UClass* LibClass : LibraryClasses)
 	{
-		UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): trying library class '%s'"), *FunctionName, *LibClass->GetName());
-		UFunction* Func = LibClass->FindFunctionByName(FName(*FunctionName));
+		UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): trying library class '%s'"), *ResolvedName, *LibClass->GetName());
+		UFunction* Func = TryClassWithK2(LibClass);
 		if (Func)
 		{
-			UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): found in library class '%s'"), *FunctionName, *LibClass->GetName());
+			UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): found in library class '%s'"), *ResolvedName, *LibClass->GetName());
 			return Func;
 		}
 	}
 
 	UE_LOG(LogOliveNodeFactory, Warning,
-		TEXT("FindFunction('%s', class='%s'): FAILED -- searched specified class + Blueprint GeneratedClass + "
+		TEXT("FindFunction('%s' [resolved='%s'], class='%s'): FAILED -- searched specified class + Blueprint GeneratedClass + "
+			 "parent class hierarchy + SCS component classes + "
 			 "library classes [KismetSystemLibrary, KismetMathLibrary, KismetStringLibrary, KismetArrayLibrary, "
 			 "GameplayStatics, Object, Actor, SceneComponent, PrimitiveComponent, Pawn, Character]"),
-		*FunctionName, *ClassName);
+		*FunctionName, *ResolvedName, *ClassName);
 	return nullptr;
+}
+
+// ============================================================================
+// GetAliasMap
+// ============================================================================
+
+const TMap<FString, FString>& FOliveNodeFactory::GetAliasMap()
+{
+	static const TMap<FString, FString> Aliases = []()
+	{
+		TMap<FString, FString> Map;
+
+		// ================================================================
+		// Transform / Location / Rotation (AActor, K2_ prefixed)
+		// ================================================================
+		// AActor::K2_GetActorLocation, K2_SetActorLocation, etc.
+		Map.Add(TEXT("GetLocation"), TEXT("K2_GetActorLocation"));
+		Map.Add(TEXT("SetLocation"), TEXT("K2_SetActorLocation"));
+		Map.Add(TEXT("GetActorLocation"), TEXT("K2_GetActorLocation"));
+		Map.Add(TEXT("SetActorLocation"), TEXT("K2_SetActorLocation"));
+		Map.Add(TEXT("GetRotation"), TEXT("K2_GetActorRotation"));
+		Map.Add(TEXT("SetRotation"), TEXT("K2_SetActorRotation"));
+		Map.Add(TEXT("GetActorRotation"), TEXT("K2_GetActorRotation"));
+		Map.Add(TEXT("SetActorRotation"), TEXT("K2_SetActorRotation"));
+		Map.Add(TEXT("SetLocationAndRotation"), TEXT("K2_SetActorLocationAndRotation"));
+		Map.Add(TEXT("GetScale"), TEXT("GetActorScale3D"));
+		Map.Add(TEXT("SetScale"), TEXT("SetActorScale3D"));
+		Map.Add(TEXT("GetTransform"), TEXT("GetActorTransform"));
+		Map.Add(TEXT("SetTransform"), TEXT("K2_SetActorTransform"));
+
+		// Direction vectors (AActor -- NOT K2_ prefixed)
+		Map.Add(TEXT("GetForwardVector"), TEXT("GetActorForwardVector"));
+		Map.Add(TEXT("GetRightVector"), TEXT("GetActorRightVector"));
+		Map.Add(TEXT("GetUpVector"), TEXT("GetActorUpVector"));
+
+		// Component location (USceneComponent, K2_ prefixed)
+		Map.Add(TEXT("GetWorldLocation"), TEXT("K2_GetComponentLocation"));
+		Map.Add(TEXT("GetComponentLocation"), TEXT("K2_GetComponentLocation"));
+		Map.Add(TEXT("SetWorldLocation"), TEXT("K2_SetWorldLocation"));
+		Map.Add(TEXT("GetWorldRotation"), TEXT("K2_GetComponentRotation"));
+		Map.Add(TEXT("GetComponentRotation"), TEXT("K2_GetComponentRotation"));
+		Map.Add(TEXT("SetWorldRotation"), TEXT("K2_SetWorldRotation"));
+		Map.Add(TEXT("GetComponentTransform"), TEXT("K2_GetComponentToWorld"));
+		Map.Add(TEXT("GetWorldTransform"), TEXT("K2_GetComponentToWorld"));
+		Map.Add(TEXT("SetRelativeLocation"), TEXT("K2_SetRelativeLocation"));
+		Map.Add(TEXT("SetRelativeRotation"), TEXT("K2_SetRelativeRotation"));
+		Map.Add(TEXT("AddWorldOffset"), TEXT("K2_AddWorldOffset"));
+		Map.Add(TEXT("AddLocalOffset"), TEXT("K2_AddLocalOffset"));
+		Map.Add(TEXT("AddWorldRotation"), TEXT("K2_AddWorldRotation"));
+		Map.Add(TEXT("AddLocalRotation"), TEXT("K2_AddLocalRotation"));
+
+		// ================================================================
+		// Actor Operations (AActor, K2_ prefixed or direct)
+		// ================================================================
+		Map.Add(TEXT("Destroy"), TEXT("K2_DestroyActor"));
+		Map.Add(TEXT("DestroyActor"), TEXT("K2_DestroyActor"));
+		Map.Add(TEXT("DestroyComponent"), TEXT("K2_DestroyComponent"));
+		Map.Add(TEXT("AttachToActor"), TEXT("K2_AttachToActor"));
+		Map.Add(TEXT("AttachToComponent"), TEXT("K2_AttachToComponent"));
+		Map.Add(TEXT("DetachFromActor"), TEXT("K2_DetachFromActor"));
+		Map.Add(TEXT("GetOwner"), TEXT("GetOwner"));
+		Map.Add(TEXT("GetDistanceTo"), TEXT("GetDistanceTo"));
+		Map.Add(TEXT("Distance"), TEXT("GetDistanceTo"));
+
+		// ================================================================
+		// Spawning (UGameplayStatics / K2Node_SpawnActorFromClass)
+		// ================================================================
+		// Note: SpawnActor uses a dedicated node type (OliveNodeTypes::SpawnActor),
+		// but if the AI asks for it as a function call, point to the internal name
+		Map.Add(TEXT("SpawnActor"), TEXT("BeginDeferredActorSpawnFromClass"));
+		Map.Add(TEXT("SpawnActorFromClass"), TEXT("BeginDeferredActorSpawnFromClass"));
+
+		// ================================================================
+		// String Operations (UKismetStringLibrary)
+		// ================================================================
+		Map.Add(TEXT("Print"), TEXT("PrintString"));
+		Map.Add(TEXT("PrintMessage"), TEXT("PrintString"));
+		Map.Add(TEXT("Log"), TEXT("PrintString"));
+		Map.Add(TEXT("LogMessage"), TEXT("PrintString"));
+		Map.Add(TEXT("ToString"), TEXT("Conv_IntToString"));
+		Map.Add(TEXT("IntToString"), TEXT("Conv_IntToString"));
+		Map.Add(TEXT("FloatToString"), TEXT("Conv_FloatToString"));
+		Map.Add(TEXT("BoolToString"), TEXT("Conv_BoolToString"));
+		Map.Add(TEXT("Format"), TEXT("Format"));
+		Map.Add(TEXT("Concatenate"), TEXT("Concat_StrStr"));
+		Map.Add(TEXT("StringConcat"), TEXT("Concat_StrStr"));
+		Map.Add(TEXT("StringAppend"), TEXT("Concat_StrStr"));
+		Map.Add(TEXT("StringContains"), TEXT("Contains"));
+		Map.Add(TEXT("StringLength"), TEXT("Len"));
+		Map.Add(TEXT("Substring"), TEXT("GetSubstring"));
+
+		// ================================================================
+		// Math Operations (UKismetMathLibrary)
+		// ================================================================
+		Map.Add(TEXT("Add"), TEXT("Add_VectorVector"));
+		Map.Add(TEXT("AddVectors"), TEXT("Add_VectorVector"));
+		Map.Add(TEXT("Subtract"), TEXT("Subtract_VectorVector"));
+		Map.Add(TEXT("SubtractVectors"), TEXT("Subtract_VectorVector"));
+		Map.Add(TEXT("Multiply"), TEXT("Multiply_VectorFloat"));
+		Map.Add(TEXT("MultiplyVector"), TEXT("Multiply_VectorFloat"));
+		Map.Add(TEXT("Normalize"), TEXT("Normal"));
+		Map.Add(TEXT("NormalizeVector"), TEXT("Normal"));
+		Map.Add(TEXT("VectorLength"), TEXT("VSize"));
+		Map.Add(TEXT("VectorSize"), TEXT("VSize"));
+		Map.Add(TEXT("Lerp"), TEXT("Lerp"));
+		Map.Add(TEXT("LinearInterpolate"), TEXT("Lerp"));
+		Map.Add(TEXT("Clamp"), TEXT("FClamp"));
+		Map.Add(TEXT("ClampFloat"), TEXT("FClamp"));
+		Map.Add(TEXT("Abs"), TEXT("Abs"));
+		Map.Add(TEXT("RandomFloat"), TEXT("RandomFloatInRange"));
+		Map.Add(TEXT("RandomInt"), TEXT("RandomIntegerInRange"));
+		Map.Add(TEXT("RandomInRange"), TEXT("RandomFloatInRange"));
+		Map.Add(TEXT("Min"), TEXT("FMin"));
+		Map.Add(TEXT("Max"), TEXT("FMax"));
+		Map.Add(TEXT("Floor"), TEXT("FFloor"));
+		Map.Add(TEXT("Ceil"), TEXT("FCeil"));
+		Map.Add(TEXT("Round"), TEXT("Round"));
+		Map.Add(TEXT("Sin"), TEXT("Sin"));
+		Map.Add(TEXT("Cos"), TEXT("Cos"));
+		Map.Add(TEXT("Tan"), TEXT("Tan"));
+		Map.Add(TEXT("Atan2"), TEXT("Atan2"));
+		Map.Add(TEXT("Sqrt"), TEXT("Sqrt"));
+		Map.Add(TEXT("Power"), TEXT("MultiplyMultiply_FloatFloat"));
+		Map.Add(TEXT("DotProduct"), TEXT("Dot_VectorVector"));
+		Map.Add(TEXT("CrossProduct"), TEXT("Cross_VectorVector"));
+
+		// ================================================================
+		// Object / Validation (UKismetSystemLibrary, UObject)
+		// ================================================================
+		Map.Add(TEXT("IsValid"), TEXT("IsValid"));
+		Map.Add(TEXT("IsValidObject"), TEXT("IsValid"));
+		Map.Add(TEXT("GetClass"), TEXT("GetClass"));
+		Map.Add(TEXT("GetName"), TEXT("GetObjectName"));
+		Map.Add(TEXT("GetDisplayName"), TEXT("GetDisplayName"));
+
+		// ================================================================
+		// Component Access (AActor)
+		// ================================================================
+		Map.Add(TEXT("GetComponentByClass"), TEXT("GetComponentByClass"));
+		Map.Add(TEXT("GetComponent"), TEXT("GetComponentByClass"));
+		Map.Add(TEXT("AddComponent"), TEXT("AddComponent"));
+
+		// ================================================================
+		// Timer Operations (UKismetSystemLibrary, K2_ prefixed)
+		// ================================================================
+		Map.Add(TEXT("SetTimer"), TEXT("K2_SetTimer"));
+		Map.Add(TEXT("SetTimerByFunctionName"), TEXT("K2_SetTimer"));
+		Map.Add(TEXT("SetTimerByName"), TEXT("K2_SetTimer"));
+		Map.Add(TEXT("ClearTimer"), TEXT("K2_ClearTimer"));
+
+		// ================================================================
+		// Physics (UPrimitiveComponent)
+		// ================================================================
+		Map.Add(TEXT("AddForce"), TEXT("AddForce"));
+		Map.Add(TEXT("AddImpulse"), TEXT("AddImpulse"));
+		Map.Add(TEXT("AddTorque"), TEXT("AddTorqueInRadians"));
+		Map.Add(TEXT("SetSimulatePhysics"), TEXT("SetSimulatePhysics"));
+		Map.Add(TEXT("EnablePhysics"), TEXT("SetSimulatePhysics"));
+		Map.Add(TEXT("SetPhysicsLinearVelocity"), TEXT("SetPhysicsLinearVelocity"));
+		Map.Add(TEXT("SetVelocity"), TEXT("SetPhysicsLinearVelocity"));
+
+		// ================================================================
+		// Collision / Trace (UKismetSystemLibrary)
+		// ================================================================
+		Map.Add(TEXT("LineTrace"), TEXT("LineTraceSingle"));
+		Map.Add(TEXT("LineTraceSingle"), TEXT("LineTraceSingle"));
+		Map.Add(TEXT("SphereTrace"), TEXT("SphereTraceSingle"));
+		Map.Add(TEXT("SphereTraceSingle"), TEXT("SphereTraceSingle"));
+		Map.Add(TEXT("SetCollisionEnabled"), TEXT("SetCollisionEnabled"));
+
+		// ================================================================
+		// Gameplay Statics (UGameplayStatics)
+		// ================================================================
+		Map.Add(TEXT("GetPlayerPawn"), TEXT("GetPlayerPawn"));
+		Map.Add(TEXT("GetPlayerCharacter"), TEXT("GetPlayerCharacter"));
+		Map.Add(TEXT("GetPlayerController"), TEXT("GetPlayerController"));
+		Map.Add(TEXT("GetGameMode"), TEXT("GetGameMode"));
+		Map.Add(TEXT("GetAllActorsOfClass"), TEXT("GetAllActorsOfClass"));
+		Map.Add(TEXT("FindAllActors"), TEXT("GetAllActorsOfClass"));
+		Map.Add(TEXT("OpenLevel"), TEXT("OpenLevel"));
+		Map.Add(TEXT("LoadLevel"), TEXT("OpenLevel"));
+		Map.Add(TEXT("PlaySound"), TEXT("PlaySoundAtLocation"));
+		Map.Add(TEXT("PlaySoundAtLocation"), TEXT("PlaySoundAtLocation"));
+		Map.Add(TEXT("SpawnEmitter"), TEXT("SpawnEmitterAtLocation"));
+		Map.Add(TEXT("SpawnEmitterAtLocation"), TEXT("SpawnEmitterAtLocation"));
+		Map.Add(TEXT("SpawnParticle"), TEXT("SpawnEmitterAtLocation"));
+		Map.Add(TEXT("ApplyDamage"), TEXT("ApplyDamage"));
+
+		// ================================================================
+		// Input (various)
+		// ================================================================
+		Map.Add(TEXT("GetInputAxisValue"), TEXT("GetInputAxisValue"));
+		Map.Add(TEXT("GetInputAxisKeyValue"), TEXT("GetInputAxisKeyValue"));
+		Map.Add(TEXT("EnableInput"), TEXT("EnableInput"));
+		Map.Add(TEXT("DisableInput"), TEXT("DisableInput"));
+
+		// ================================================================
+		// Array Operations (UKismetArrayLibrary)
+		// ================================================================
+		Map.Add(TEXT("ArrayAdd"), TEXT("Array_Add"));
+		Map.Add(TEXT("ArrayRemove"), TEXT("Array_Remove"));
+		Map.Add(TEXT("ArrayLength"), TEXT("Array_Length"));
+		Map.Add(TEXT("ArrayContains"), TEXT("Array_Contains"));
+		Map.Add(TEXT("ArrayGet"), TEXT("Array_Get"));
+		Map.Add(TEXT("ArrayClear"), TEXT("Array_Clear"));
+		Map.Add(TEXT("ArrayShuffle"), TEXT("Array_Shuffle"));
+
+		// ================================================================
+		// Delay / Flow (UKismetSystemLibrary)
+		// ================================================================
+		Map.Add(TEXT("Wait"), TEXT("Delay"));
+		Map.Add(TEXT("Sleep"), TEXT("Delay"));
+
+		// ================================================================
+		// Transform Construction (UKismetMathLibrary)
+		// ================================================================
+		Map.Add(TEXT("MakeTransform"), TEXT("MakeTransform"));
+		Map.Add(TEXT("BreakTransform"), TEXT("BreakTransform"));
+		Map.Add(TEXT("MakeVector"), TEXT("MakeVector"));
+		Map.Add(TEXT("BreakVector"), TEXT("BreakVector"));
+		Map.Add(TEXT("MakeRotator"), TEXT("MakeRotator"));
+		Map.Add(TEXT("BreakRotator"), TEXT("BreakRotator"));
+		Map.Add(TEXT("MakeVector2D"), TEXT("MakeVector2D"));
+		Map.Add(TEXT("BreakVector2D"), TEXT("BreakVector2D"));
+
+		// ================================================================
+		// Commonly Attempted Names
+		// ================================================================
+		Map.Add(TEXT("GetActorTransform"), TEXT("GetActorTransform"));
+		Map.Add(TEXT("SetMaterial"), TEXT("SetMaterial"));
+		Map.Add(TEXT("SetCollisionProfileName"), TEXT("SetCollisionProfileName"));
+		Map.Add(TEXT("SetVisibility"), TEXT("SetVisibility"));
+		Map.Add(TEXT("SetHiddenInGame"), TEXT("SetHiddenInGame"));
+
+		// ================================================================
+		// Movement
+		// ================================================================
+		Map.Add(TEXT("LaunchCharacter"), TEXT("LaunchCharacter"));
+		Map.Add(TEXT("AddMovementInput"), TEXT("AddMovementInput"));
+		Map.Add(TEXT("GetVelocity"), TEXT("GetVelocity"));
+
+		// ================================================================
+		// UE 5.5+ Float->Double Renames
+		// ================================================================
+		// In UE 5.5, many float math functions were renamed to use Double.
+		// These aliases ensure plans written with old Float names still resolve.
+		Map.Add(TEXT("Add_FloatFloat"), TEXT("Add_DoubleDouble"));
+		Map.Add(TEXT("Subtract_FloatFloat"), TEXT("Subtract_DoubleDouble"));
+		Map.Add(TEXT("Multiply_FloatFloat"), TEXT("Multiply_DoubleDouble"));
+		Map.Add(TEXT("Divide_FloatFloat"), TEXT("Divide_DoubleDouble"));
+		Map.Add(TEXT("Less_FloatFloat"), TEXT("Less_DoubleDouble"));
+		Map.Add(TEXT("Greater_FloatFloat"), TEXT("Greater_DoubleDouble"));
+		Map.Add(TEXT("LessEqual_FloatFloat"), TEXT("LessEqual_DoubleDouble"));
+		Map.Add(TEXT("GreaterEqual_FloatFloat"), TEXT("GreaterEqual_DoubleDouble"));
+		Map.Add(TEXT("EqualEqual_FloatFloat"), TEXT("EqualEqual_DoubleDouble"));
+		Map.Add(TEXT("NotEqual_FloatFloat"), TEXT("NotEqual_DoubleDouble"));
+
+		return Map;
+	}();
+
+	return Aliases;
 }
 
 UScriptStruct* FOliveNodeFactory::FindStruct(const FString& StructName)

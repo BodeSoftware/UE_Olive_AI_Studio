@@ -12,7 +12,6 @@
 #include "Plan/OliveBlueprintPlanResolver.h"
 #include "Writer/OliveNodeFactory.h"
 #include "Catalog/OliveNodeCatalog.h"
-#include "Plan/OliveFunctionResolver.h"
 #include "Engine/Blueprint.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
@@ -1103,42 +1102,42 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 		return false;
 	}
 
-	// --- Smart function resolution via FOliveFunctionResolver ---
-	FOliveFunctionMatch Match = FOliveFunctionResolver::Resolve(
-		Step.Target, Step.TargetClass, BP);
+	// --- Direct function resolution via FOliveNodeFactory::FindFunction ---
+	// FindFunction handles: alias lookup, K2 prefix, specified class, GeneratedClass,
+	// parent class hierarchy, SCS component classes, and common library classes.
+	UFunction* Function = FOliveNodeFactory::Get().FindFunction(Step.Target, Step.TargetClass, BP);
 
-	if (Match.IsValid())
+	if (Function)
 	{
-		// Resolver found a concrete UFunction* -- use its canonical name and class
-		const FString ResolvedFunctionName = Match.Function->GetName();
-		const FString ResolvedClassName = Match.OwningClass ? Match.OwningClass->GetName() : FString();
+		// Found a concrete UFunction* -- use its canonical name and owning class
+		const FString ResolvedFunctionName = Function->GetName();
+		UClass* OwningClass = Function->GetOwnerClass();
+		const FString ResolvedClassName = OwningClass ? OwningClass->GetName() : FString();
 
 		Out.Properties.Add(TEXT("function_name"), ResolvedFunctionName);
 		if (!ResolvedClassName.IsEmpty())
 		{
 			Out.Properties.Add(TEXT("target_class"), ResolvedClassName);
 		}
-		Out.ResolvedOwningClass = Match.OwningClass;
-		Out.bIsPure = Match.Function->HasAnyFunctionFlags(FUNC_BlueprintPure);
-		Out.bIsLatent = Match.Function->HasMetaData(TEXT("Latent"));
+		Out.ResolvedOwningClass = OwningClass;
+		Out.bIsPure = Function->HasAnyFunctionFlags(FUNC_BlueprintPure);
+		Out.bIsLatent = Function->HasMetaData(TEXT("Latent"));
 
-		// Emit a warning if the resolution was not exact (so the AI learns the correct name)
-		if (Match.Confidence < 90)
+		// Emit a resolver note if the canonical name differs from what the AI provided
+		if (!ResolvedFunctionName.Equals(Step.Target, ESearchCase::IgnoreCase))
 		{
-			Warnings.Add(FString::Printf(
-				TEXT("Step '%s': '%s' resolved to '%s::%s' (confidence: %d, method: %s)"),
-				*Step.StepId, *Step.Target,
-				*ResolvedClassName, *ResolvedFunctionName,
-				Match.Confidence,
-				*FOliveFunctionResolver::MatchMethodToString(Match.MatchMethod)));
-		}
+			Out.ResolverNotes.Add(FOliveResolverNote{
+				TEXT("target"),
+				Step.Target,
+				FString::Printf(TEXT("%s::%s"), *ResolvedClassName, *ResolvedFunctionName),
+				TEXT("Function name resolved to canonical UE name")
+			});
 
-		UE_LOG(LogOlivePlanResolver, Verbose,
-			TEXT("Step '%s': Resolved call '%s' -> '%s::%s' (confidence: %d, method: %s)"),
-			*Step.StepId, *Step.Target,
-			*ResolvedClassName, *ResolvedFunctionName,
-			Match.Confidence,
-			*FOliveFunctionResolver::MatchMethodToString(Match.MatchMethod));
+			Warnings.Add(FString::Printf(
+				TEXT("Step '%s': '%s' resolved to '%s::%s'"),
+				*Step.StepId, *Step.Target,
+				*ResolvedClassName, *ResolvedFunctionName));
+		}
 
 		UE_LOG(LogOlivePlanResolver, Log,
 			TEXT("    ResolveCallOp: '%s' -> function_name='%s', target_class='%s'"),
@@ -1147,82 +1146,42 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 		return true;
 	}
 
-	// --- Resolver found nothing. Gather suggestions for error reporting. ---
+	// --- Function NOT found -- error unconditionally ---
+	// No more "accepted as-is" path. If FindFunction can't find it, the function
+	// does not exist and creating a node will fail. Fail early with suggestions.
+	TArray<FString> Alternatives;
 
-	// If TargetClass was explicitly provided but function was not found, this is an error.
-	if (!Step.TargetClass.IsEmpty())
+	// Use catalog fuzzy match for "did you mean?" suggestions
+	FOliveNodeCatalog& Catalog = FOliveNodeCatalog::Get();
+	if (Catalog.IsInitialized())
 	{
-		TArray<FOliveFunctionMatch> Candidates = FOliveFunctionResolver::GetCandidates(Step.Target, CATALOG_SEARCH_LIMIT);
-		TArray<FString> Alternatives;
-		for (const FOliveFunctionMatch& C : Candidates)
+		TArray<FOliveNodeSuggestion> Suggestions = Catalog.FuzzyMatch(Step.Target, CATALOG_SEARCH_LIMIT);
+		for (const FOliveNodeSuggestion& Suggestion : Suggestions)
 		{
-			if (C.IsValid())
-			{
-				Alternatives.Add(FString::Printf(TEXT("%s::%s (confidence: %d)"),
-					C.OwningClass ? *C.OwningClass->GetName() : TEXT("?"),
-					*C.Function->GetName(), C.Confidence));
-			}
-		}
-
-		FOliveIRBlueprintPlanError Error = FOliveIRBlueprintPlanError::MakeStepError(
-			TEXT("FUNCTION_NOT_FOUND"),
-			Step.StepId,
-			FString::Printf(TEXT("/steps/%d/target"), Idx),
-			FString::Printf(TEXT("Function '%s' not found on class '%s'"), *Step.Target, *Step.TargetClass),
-			Alternatives.Num() > 0
-				? FString::Printf(TEXT("Did you mean: %s"), *FString::Join(Alternatives, TEXT(", ")))
-				: TEXT("Check the function name and class name"));
-		Error.Alternatives = MoveTemp(Alternatives);
-		Errors.Add(MoveTemp(Error));
-
-		UE_LOG(LogOlivePlanResolver, Warning,
-			TEXT("    ResolveCallOp FAILED: function '%s' could not be resolved (target_class='%s')"),
-			*Step.Target, *Step.TargetClass);
-
-		return false;
-	}
-
-	// No TargetClass and resolver couldn't find it.
-	// Still accept the call as-is -- the function may exist but not be discoverable
-	// (e.g., Blueprint-defined functions, dynamically loaded plugins).
-	// The factory will validate at creation time.
-	Out.Properties.Add(TEXT("function_name"), Step.Target);
-
-	// Try to get candidates for a helpful warning
-	TArray<FOliveFunctionMatch> Candidates = FOliveFunctionResolver::GetCandidates(Step.Target, CATALOG_SEARCH_LIMIT);
-	if (Candidates.Num() > 0 && Candidates[0].IsValid())
-	{
-		Warnings.Add(FString::Printf(
-			TEXT("Step '%s': Function '%s' not found by resolver. Did you mean '%s::%s'?"),
-			*Step.StepId, *Step.Target,
-			Candidates[0].OwningClass ? *Candidates[0].OwningClass->GetName() : TEXT("?"),
-			*Candidates[0].Function->GetName()));
-	}
-	else
-	{
-		// Fall back to catalog fuzzy for suggestion text
-		FOliveNodeCatalog& Catalog = FOliveNodeCatalog::Get();
-		if (Catalog.IsInitialized())
-		{
-			TArray<FOliveNodeSuggestion> Suggestions = Catalog.FuzzyMatch(Step.Target, CATALOG_SEARCH_LIMIT);
-			if (Suggestions.Num() > 0)
-			{
-				Warnings.Add(FString::Printf(
-					TEXT("Step '%s': Function '%s' not found by resolver. Closest catalog match: '%s'"),
-					*Step.StepId, *Step.Target, *Suggestions[0].DisplayName));
-			}
+			Alternatives.Add(Suggestion.DisplayName);
 		}
 	}
 
-	UE_LOG(LogOlivePlanResolver, Verbose,
-		TEXT("Step '%s': Accepted call '%s' without definitive match (will validate at creation)"),
-		*Step.StepId, *Step.Target);
+	FString ErrorMessage = Step.TargetClass.IsEmpty()
+		? FString::Printf(TEXT("Function '%s' not found in any searched class"), *Step.Target)
+		: FString::Printf(TEXT("Function '%s' not found on class '%s'"), *Step.Target, *Step.TargetClass);
 
-	UE_LOG(LogOlivePlanResolver, Log,
-		TEXT("    ResolveCallOp: '%s' -> function_name='%s', target_class='' (unresolved, accepted as-is)"),
-		*Step.Target, *Step.Target);
+	FOliveIRBlueprintPlanError Error = FOliveIRBlueprintPlanError::MakeStepError(
+		TEXT("FUNCTION_NOT_FOUND"),
+		Step.StepId,
+		FString::Printf(TEXT("/steps/%d/target"), Idx),
+		ErrorMessage,
+		Alternatives.Num() > 0
+			? FString::Printf(TEXT("Did you mean: %s. Use blueprint.search_nodes to find the correct function name."), *FString::Join(Alternatives, TEXT(", ")))
+			: TEXT("Use blueprint.search_nodes to find available functions, or check the function name spelling"));
+	Error.Alternatives = MoveTemp(Alternatives);
+	Errors.Add(MoveTemp(Error));
 
-	return true;
+	UE_LOG(LogOlivePlanResolver, Warning,
+		TEXT("    ResolveCallOp FAILED: function '%s' could not be resolved (target_class='%s')"),
+		*Step.Target, *Step.TargetClass);
+
+	return false;
 }
 
 // ============================================================================

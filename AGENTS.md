@@ -270,6 +270,9 @@ Factory templates create complete Blueprints from parameterized JSON. Reference 
 - If a pattern needs more than ~10 lines, split it or cut it. The AI reads the whole template in one `get_template` call — token budget matters.
 - Reference templates that violate these rules must be rewritten before merging.
 
+**Modify-task template check (MUST follow):**
+- Before implementing any behavior on an existing Blueprint, call `blueprint.list_templates` to check for matching reference templates. If one matches the task domain (e.g., projectile, pickup, component patterns, UE events), call `blueprint.get_template` to read the architecture guidance before writing any plan_json.
+
 ### Safety Presets
 
 `UOliveAISettings` exposes presets: `Careful`, `Fast`, `YOLO` — with per-operation tier overrides. Rate limit: `MaxWriteOpsPerMinute = 30`. Brain layer settings: batch write max ops, context window, correction cycles. Checkpoint interval: every 5 steps.

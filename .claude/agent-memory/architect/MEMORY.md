@@ -156,6 +156,17 @@
 - **FOliveIRType struct location**: `Source/OliveAIRuntime/Public/IR/OliveIRTypes.h` line 49. Object types use `Category = EOliveIRTypeCategory::Object` + `ClassName`.
 - **All 6 tasks are independent** -- can run fully in parallel with 2-3 coders.
 
+### Resolver Removal (Function Resolution Consolidation) - Feb 2026
+- `plans/resolver-removal-and-template-check.md` -- 6 tasks (T1-T6)
+- **Core change**: `FOliveFunctionResolver` removed from plan pipeline. `FOliveNodeFactory::FindFunction()` becomes the single validation point for function resolution.
+- **Alias map moved**: `GetAliasMap()` (~150 entries) copied from FunctionResolver to NodeFactory as public static method.
+- **K2 prefix fallback moved**: Added inline in FindFunction -- each class gets tried with exact name, then K2_ variant, before moving to next class.
+- **FindFunction enhanced**: Now searches parent class hierarchy + SCS component classes (previously only resolver did this).
+- **"Accepted as-is" path eliminated**: ResolveCallOp now returns `FUNCTION_NOT_FOUND` error when FindFunction fails, instead of silently accepting.
+- **ResolvedOwningClass/bIsPure/bIsLatent preserved**: ResolveCallOp still populates these from the UFunction* returned by FindFunction. Downstream consumers (PlanValidator, PlanExecutor Phase 1.5) unchanged.
+- **Files kept as dead code**: OliveFunctionResolver.h/.cpp not deleted for one release cycle (rollback safety).
+- **Template check rule**: Added to AGENTS.md and sandbox CLAUDE.md -- "call list_templates before modifying existing Blueprints."
+
 ### Autonomous Mode Decisions - Feb 2026
 > See `autonomous-mode-decisions.md` for full details on NeoStack migration, timeout fixes, and efficiency rounds 2-3.
 - **NeoStack**: `bUseAutonomousMCPMode` flag, `SendMessageAutonomous()`, MCP tool discovery, no orchestration loop.

@@ -31,24 +31,8 @@ DEFINE_LOG_CATEGORY_STATIC(LogOliveCLIProvider, Log, All);
 
 namespace
 {
-	/** Base idle timeout: seconds with no stdout before killing a hung CLI process.
-	 *  120s accommodates typical plan generation pauses. Extended to 180s when the
-	 *  run has done scaffolding work or multiple recipe lookups (complex planning). */
-	constexpr double CLI_IDLE_TIMEOUT_SECONDS = 120.0;
-
-	/** Extended idle timeout for complex planning scenarios (180s).
-	 *  Activated when the run has performed scaffolding ops (add_component,
-	 *  add_variable, modify_component, create_from_template) or looked up
-	 *  multiple recipes (get_recipe >= 2), indicating imminent multi-function
-	 *  graph planning that needs sustained thinking time. */
-	constexpr double CLI_EXTENDED_IDLE_TIMEOUT_SECONDS = 180.0;
-
-	/** Output-stall timeout (90s).
-	 *  Fires when the AI has started producing output (> 100 stdout chars received)
-	 *  but then goes silent — no new chars AND no MCP tool calls — for this duration.
-	 *  Catches the "wrote one sentence then froze" pattern. Triggers auto-continue
-	 *  with an explicit nudge rather than the post-read idle timeout path. */
-	constexpr double CLI_OUTPUT_STALL_TIMEOUT_SECONDS = 90.0;
+	/** Flat idle timeout: kill the CLI process if no stdout for 600 seconds. */
+	constexpr double CLI_IDLE_TIMEOUT_SECONDS = 600.0;
 
 	/** Determine tool prefixes needed for a given user message.
 	 *  Used in autonomous mode to filter tools/list to only relevant domains. */
@@ -384,6 +368,7 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 	ClaudeMd += TEXT("- Once ALL Blueprints compile with 0 errors and 0 warnings, the task is COMPLETE. Immediately stop and report what you built.\n");
 	ClaudeMd += TEXT("- Before writing your first plan_json for each function, call olive.get_recipe to look up the correct wiring pattern. This includes functions created by templates -- templates create empty stubs, you write the logic.\n");
 	ClaudeMd += TEXT("- Use schema_version \"2.0\" for all plan_json calls (v2.0 has automatic pin resolution).\n");
+	ClaudeMd += TEXT("- Before implementing behavior on an existing Blueprint, call `blueprint.list_templates` to check for matching reference templates. If one matches, call `blueprint.get_template` to read the pattern before writing plan_json.\n");
 	ClaudeMd += TEXT("- After `create_from_template`, check the result for the list of created functions. Write plan_json for EACH function -- they are empty stubs. Do NOT call blueprint.read or read_function after template creation.\n\n");
 
 	// Append the full AGENTS.md content which has workflow patterns, plan JSON format, etc.
@@ -493,7 +478,6 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 	LastRunContext.OriginalMessage = UserMessage;
 	bLastRunTimedOut = false;
 	bLastRunWasRuntimeLimit = false;
-	bLastRunWasOutputStall = false;
 
 	// Set tool filter based on message content (autonomous mode only).
 	// Uses the original user message (not continuation prompt) for consistent filtering.
@@ -550,6 +534,24 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 						{
 							LastRunContext.ModifiedAssetPaths.Add(AssetPath);
 						}
+					}
+				}
+
+				// Track recipe and template fetches for continuation prompt
+				if (ToolName == TEXT("olive.get_recipe") && Arguments.IsValid())
+				{
+					FString RecipeName;
+					if (Arguments->TryGetStringField(TEXT("name"), RecipeName) && !RecipeName.IsEmpty())
+					{
+						LastRunContext.FetchedRecipeNames.AddUnique(RecipeName);
+					}
+				}
+				else if (ToolName == TEXT("blueprint.get_template") && Arguments.IsValid())
+				{
+					FString TemplateId;
+					if (Arguments->TryGetStringField(TEXT("template_id"), TemplateId) && !TemplateId.IsEmpty())
+					{
+						LastRunContext.FetchedTemplateIds.AddUnique(TemplateId);
 					}
 				}
 
@@ -763,43 +765,14 @@ void FOliveCLIProviderBase::LaunchCLIProcess(
 			}
 			else
 			{
-				// Output-stall detection: AI started a response then froze.
-				// Fires when stdout chars have been received (AI began output) but
-				// neither new chars nor MCP tool calls have arrived in 90s.
-				// This catches "wrote one sentence then froze" — the activity timer
-				// doesn't catch it because stdout IS flowing (idle timeout won't fire
-				// early), but text generation stalled waiting on the API.
-				const double LastActivity = FMath::Max(LastOutputTime, LastToolCallTimestamp.load());
-				if (AccumulatedOutputChars > 100
-					&& (FPlatformTime::Seconds() - LastActivity) > CLI_OUTPUT_STALL_TIMEOUT_SECONDS)
-				{
-					UE_LOG(LogOliveCLIProvider, Warning,
-						TEXT("%s process output stall: %d chars received, no activity for %.0fs - nudging"),
-						*CLIName, AccumulatedOutputChars, CLI_OUTPUT_STALL_TIMEOUT_SECONDS);
-					bLastRunTimedOut = true;
-					bLastRunWasOutputStall = true;
-					bStopReading = true;
-					if (*Guard)
-					{
-						FPlatformProcess::TerminateProc(ProcessHandle, true);
-					}
-					break;
-				}
-
-				// Adaptive idle timeout: extend when complexity signals are present.
-				// Scaffolding ops (add_component, add_variable, etc.) or multiple
-				// recipe lookups indicate imminent complex graph planning.
-				const int32 Scaffolding = ScaffoldingOpCount.load();
-				const int32 Recipes = RecipeCallCount.load();
-				const double EffectiveIdleTimeout = (Scaffolding > 0 || Recipes >= 2)
-					? CLI_EXTENDED_IDLE_TIMEOUT_SECONDS
-					: CLI_IDLE_TIMEOUT_SECONDS;
+				// Idle timeout: kill if no stdout for CLI_IDLE_TIMEOUT_SECONDS.
+				const double EffectiveIdleTimeout = CLI_IDLE_TIMEOUT_SECONDS;
 
 				if (FPlatformTime::Seconds() - LastOutputTime > EffectiveIdleTimeout)
 				{
 					UE_LOG(LogOliveCLIProvider, Warning,
-						TEXT("%s process idle for %.0f seconds (limit=%.0fs, scaffolding=%d, recipes=%d) - terminating"),
-						*CLIName, EffectiveIdleTimeout, EffectiveIdleTimeout, Scaffolding, Recipes);
+						TEXT("%s process idle for %.0f seconds (limit=%.0fs) - terminating"),
+						*CLIName, FPlatformTime::Seconds() - LastOutputTime, EffectiveIdleTimeout);
 					bLastRunTimedOut = true;
 					bStopReading = true;
 					if (*Guard)
@@ -819,12 +792,12 @@ void FOliveCLIProviderBase::LaunchCLIProcess(
 			const double LastToolCall = LastToolCallTimestamp.load();
 			if (LastToolCall > 0.0)
 			{
-				const double IdleToolTimeout = RuntimeSettings ? static_cast<double>(RuntimeSettings->AutonomousIdleToolSeconds) : 120.0;
-				if (IdleToolTimeout > 0.0 && (FPlatformTime::Seconds() - LastToolCall) > IdleToolTimeout)
+				const double IdleToolTimeout = CLI_IDLE_TIMEOUT_SECONDS;
+				if (FPlatformTime::Seconds() - LastToolCall > IdleToolTimeout)
 				{
 					UE_LOG(LogOliveCLIProvider, Warning,
-						TEXT("%s process: no MCP tool call in %.0f seconds - terminating"),
-						*CLIName, IdleToolTimeout);
+						TEXT("%s process: no MCP tool call in %.0f seconds (limit=%.0fs) - terminating"),
+						*CLIName, FPlatformTime::Seconds() - LastToolCall, IdleToolTimeout);
 					bLastRunTimedOut = true;
 					bStopReading = true;
 					if (*Guard)
@@ -964,78 +937,19 @@ void FOliveCLIProviderBase::HandleResponseCompleteAutonomous(int32 ReturnCode)
 	{
 		if (bLastRunWasRuntimeLimit)
 			LastRunContext.Outcome = FAutonomousRunContext::EOutcome::RuntimeLimit;
-		else if (bLastRunWasOutputStall)
-			LastRunContext.Outcome = FAutonomousRunContext::EOutcome::OutputStall;
 		else
 			LastRunContext.Outcome = FAutonomousRunContext::EOutcome::IdleTimeout;
 	}
 	// else stays Completed (the default set in Reset())
 
-	// Check if the last tool call was a write operation.
-	// Only auto-continue after writes (genuine stalls mid-task).
-	// If the AI stalled after reads/recipes, it was thinking — let it timeout and report to user.
-	bool bLastToolWasWrite = false;
-	if (LastRunContext.ToolCallLog.Num() > 0)
-	{
-		bLastToolWasWrite = IsWriteOperation(LastRunContext.ToolCallLog.Last().ToolName);
-	}
-
-	// Auto-continue: if the run idle-timed-out and made real write progress,
-	// automatically relaunch with continuation context.
-	// Only auto-continue on idle timeouts, NOT runtime limit timeouts
-	// (the run was long enough; auto-continuing would exceed time budgets).
-	if (bLastRunTimedOut
-		&& LastRunContext.Outcome == FAutonomousRunContext::EOutcome::IdleTimeout
-		&& LastRunContext.ToolCallLog.Num() > 0
-		&& bLastToolWasWrite
-		&& AutoContinueCount < MaxAutoContinues)
+	// Unified timeout handler: any idle timeout -> decomposition nudge.
+	// One nudge restart is allowed; if it also times out, report to user.
+	if (bLastRunTimedOut && AutoContinueCount < MaxAutoContinues)
 	{
 		AutoContinueCount++;
 
 		UE_LOG(LogOliveCLIProvider, Log,
-			TEXT("Auto-continuing after stall (attempt %d/%d): %d modified assets from previous run"),
-			AutoContinueCount, MaxAutoContinues, LastRunContext.ModifiedAssetPaths.Num());
-
-		// Release busy state so SendMessageAutonomous can acquire it
-		bIsBusy = false;
-
-		// Re-use the existing callbacks (they are still valid in CallbackLock scope).
-		// Copy them out before the recursive call clears them.
-		FOnOliveStreamChunk SavedOnChunk = CurrentOnChunk;
-		FOnOliveComplete SavedOnComplete = CurrentOnComplete;
-		FOnOliveError SavedOnError = CurrentOnError;
-
-		// Mark next SendMessageAutonomous as auto-continuation so it doesn't reset the counter
-		bIsAutoContinuation = true;
-
-		// Dispatch the continuation on the next game thread tick to avoid
-		// re-entering SendMessageAutonomous from within HandleResponseComplete.
-		AsyncTask(ENamedThreads::GameThread, [this,
-			SavedOnChunk, SavedOnComplete, SavedOnError]()
-		{
-			// Re-check AliveGuard before accessing members
-			if (!(*AliveGuard))
-			{
-				return;
-			}
-
-			// Build continuation prompt ON the game thread (safe for UObject loading in BuildAssetStateSummary)
-			FString ContinuationPrompt = BuildContinuationPrompt(TEXT("continue"));
-			SendMessageAutonomous(ContinuationPrompt, SavedOnChunk, SavedOnComplete, SavedOnError);
-		});
-
-		return; // Skip normal completion callback
-	}
-	else if (bLastRunTimedOut
-		&& LastRunContext.Outcome == FAutonomousRunContext::EOutcome::OutputStall
-		&& AutoContinueCount < MaxAutoContinues)
-	{
-		// AI gathered context, started a text response, then froze before calling any tools.
-		// Nudge it: relaunch with explicit directive to skip re-reading and start writing.
-		AutoContinueCount++;
-
-		UE_LOG(LogOliveCLIProvider, Log,
-			TEXT("Output stall detected (attempt %d/%d): AI wrote partial response then froze — nudging to act"),
+			TEXT("Run timed out (attempt %d/%d) — relaunching with decomposition nudge"),
 			AutoContinueCount, MaxAutoContinues);
 
 		bIsBusy = false;
@@ -1054,21 +968,12 @@ void FOliveCLIProviderBase::HandleResponseCompleteAutonomous(int32 ReturnCode)
 				return;
 			}
 
-			FString NudgePrompt = BuildContinuationPrompt(TEXT("nudge"));
+			FString NudgePrompt = BuildContinuationPrompt(
+				TEXT("The task is too large to plan at once. Break the remaining work into small steps and execute them one at a time. Start with the first step now."));
 			SendMessageAutonomous(NudgePrompt, SavedOnChunk, SavedOnComplete, SavedOnError);
 		});
 
-		return; // Skip normal completion callback
-	}
-	else if (bLastRunTimedOut
-		&& LastRunContext.Outcome == FAutonomousRunContext::EOutcome::IdleTimeout
-		&& LastRunContext.ToolCallLog.Num() > 0
-		&& !bLastToolWasWrite)
-	{
-		UE_LOG(LogOliveCLIProvider, Log,
-			TEXT("Idle timeout after read operation (%s) — reporting to user instead of auto-continuing"),
-			*LastRunContext.ToolCallLog.Last().ToolName);
-		// Fall through to normal completion path below
+		return;
 	}
 
 	// Log activity stats for diagnostic purposes
@@ -1186,13 +1091,27 @@ FString FOliveCLIProviderBase::BuildContinuationPrompt(const FString& UserMessag
 		Prompt += TEXT("No tool calls were recorded from the previous run.\n");
 	}
 
+	// Re-fetch directive: tell the new run to immediately re-acquire recipe/template content
+	if (LastRunContext.FetchedRecipeNames.Num() > 0 || LastRunContext.FetchedTemplateIds.Num() > 0)
+	{
+		Prompt += TEXT("\n### Re-fetch Immediately\n");
+		Prompt += TEXT("The previous run read these resources. Call them again first — they contain the implementation patterns you need:\n");
+		for (const FString& Name : LastRunContext.FetchedRecipeNames)
+		{
+			Prompt += FString::Printf(TEXT("- `olive.get_recipe` name=\"%s\"\n"), *Name);
+		}
+		for (const FString& Id : LastRunContext.FetchedTemplateIds)
+		{
+			Prompt += FString::Printf(TEXT("- `blueprint.get_template` template_id=\"%s\"\n"), *Id);
+		}
+	}
+
 	// Run outcome
 	Prompt += TEXT("\n### Previous Run Outcome\n");
 	switch (LastRunContext.Outcome)
 	{
 	case FAutonomousRunContext::EOutcome::IdleTimeout:
-		Prompt += TEXT("The previous run STALLED (idle timeout -- no tool calls for an extended period). ");
-		Prompt += TEXT("The task is incomplete. You need to continue from where it stopped.\n");
+		Prompt += TEXT("The previous run TIMED OUT (600s of no output). Break the remaining work into smaller steps and execute them one at a time.\n");
 		break;
 	case FAutonomousRunContext::EOutcome::RuntimeLimit:
 		Prompt += TEXT("The previous run hit the runtime limit. The task is incomplete.\n");
@@ -1231,14 +1150,17 @@ FString FOliveCLIProviderBase::BuildContinuationPrompt(const FString& UserMessag
 		Prompt += TEXT("2. Complete the remaining work.\n");
 	}
 
-	// Include the user's continuation message if it has additional context.
-	// "nudge" is an internal token (not a user message) — never emit it as instructions.
+	// Include the user's continuation message if it has substantive context.
+	// Skip bare continuation phrases (continue, keep going, etc.) since
+	// the sections above already convey the intent. Always include longer messages
+	// (e.g., decomposition nudges from auto-continue, or user instructions like
+	// "continue building the gun").
 	FString Trimmed = UserMessage.TrimStartAndEnd();
-	if (!Trimmed.Equals(TEXT("continue"), ESearchCase::IgnoreCase) &&
+	if (!Trimmed.IsEmpty() &&
+		!Trimmed.Equals(TEXT("continue"), ESearchCase::IgnoreCase) &&
 		!Trimmed.Equals(TEXT("keep going"), ESearchCase::IgnoreCase) &&
 		!Trimmed.Equals(TEXT("finish"), ESearchCase::IgnoreCase) &&
-		!Trimmed.Equals(TEXT("resume"), ESearchCase::IgnoreCase) &&
-		!Trimmed.Equals(TEXT("nudge"), ESearchCase::IgnoreCase))
+		!Trimmed.Equals(TEXT("resume"), ESearchCase::IgnoreCase))
 	{
 		Prompt += TEXT("\n### Additional Instructions\n");
 		Prompt += Trimmed;

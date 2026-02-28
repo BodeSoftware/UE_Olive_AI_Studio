@@ -175,6 +175,26 @@ public:
 		const TMap<FString, FString>& Properties);
 
 	/**
+	 * Get the function name alias map.
+	 * Maps common AI-provided names to actual UE function names.
+	 * Used as the first step in FindFunction() resolution.
+	 * @return Static alias map (case-insensitive lookup recommended)
+	 */
+	static const TMap<FString, FString>& GetAliasMap();
+
+	/**
+	 * Find a function by name, optionally within a specific class.
+	 * Searches (in order): alias map -> specified class -> Blueprint's GeneratedClass ->
+	 * Blueprint parent class hierarchy -> Blueprint SCS component classes -> common library classes.
+	 * Each class is tried with exact name first, then K2_ prefix variant.
+	 * @param FunctionName Name of the function to find (may be an alias or approximate name)
+	 * @param ClassName Optional class to search in first
+	 * @param Blueprint Optional Blueprint for class hierarchy, SCS, and GeneratedClass search
+	 * @return The function if found, nullptr otherwise
+	 */
+	UFunction* FindFunction(const FString& FunctionName, const FString& ClassName = TEXT(""), UBlueprint* Blueprint = nullptr);
+
+	/**
 	 * Get the last error message from a failed operation
 	 * @return Error message string
 	 */
@@ -460,16 +480,6 @@ private:
 	 * @return The class if found, nullptr otherwise
 	 */
 	UClass* FindClass(const FString& ClassName);
-
-	/**
-	 * Find a function by name, optionally within a specific class.
-	 * Searches: specified class -> Blueprint's GeneratedClass -> common library classes.
-	 * @param FunctionName Name of the function to find
-	 * @param ClassName Optional class to search in first
-	 * @param Blueprint Optional Blueprint whose GeneratedClass is searched for Blueprint-defined functions
-	 * @return The function if found, nullptr otherwise
-	 */
-	UFunction* FindFunction(const FString& FunctionName, const FString& ClassName = TEXT(""), UBlueprint* Blueprint = nullptr);
 
 	/**
 	 * Find a struct by name or path

@@ -35,7 +35,6 @@
 #include "Plan/OlivePlanExecutor.h"
 #include "Plan/OlivePlanValidator.h"
 #include "Plan/OlivePinManifest.h"
-#include "Plan/OliveFunctionResolver.h"
 #include "Services/OliveGraphBatchExecutor.h"
 #include "Services/OliveBatchExecutionScope.h"
 #include "IR/OliveIRSchema.h"
