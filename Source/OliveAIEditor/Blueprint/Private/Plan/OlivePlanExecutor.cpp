@@ -29,6 +29,7 @@
 #include "K2Node_Event.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_EnhancedInputAction.h"
+#include "K2Node_ComponentBoundEvent.h"
 #include "InputAction.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
@@ -320,7 +321,13 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
         else if (const FString* ClassN = Resolved.Properties.Find(TEXT("actor_class")))
             TargetDesc = *ClassN;
         else if (const FString* DelegName = Resolved.Properties.Find(TEXT("delegate_name")))
+        {
             TargetDesc = *DelegName;
+            if (const FString* CompName = Resolved.Properties.Find(TEXT("component_name")))
+            {
+                TargetDesc += FString::Printf(TEXT(" on %s"), **CompName);
+            }
+        }
         else
             TargetDesc = TEXT("(none)");
 
@@ -334,6 +341,7 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
         const bool bIsEventOp = (NodeType == OliveNodeTypes::Event);
         const bool bIsCustomEventOp = (NodeType == OliveNodeTypes::CustomEvent);
         const bool bIsEnhancedInputOp = (NodeType == OliveNodeTypes::EnhancedInputAction);
+        const bool bIsComponentBoundEventOp = (NodeType == OliveNodeTypes::ComponentBoundEvent);
 
         if (bIsEventOp || bIsCustomEventOp)
         {
@@ -413,6 +421,46 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
                     UE_LOG(LogOlivePlanExecutor, Log,
                         TEXT("Reused existing Enhanced Input Action node '%s' for step '%s'"),
                         **ActionNamePtr, *StepId);
+
+                    ReusedStepIds.Add(StepId);
+                    Context.ReusedStepIds.Add(StepId);
+                    continue; // Skip to next step
+                }
+            }
+        }
+
+        // ----------------------------------------------------------------
+        // Component Bound Event reuse check
+        // ----------------------------------------------------------------
+        if (bIsComponentBoundEventOp)
+        {
+            const FString* DelegateNamePtr = Resolved.Properties.Find(TEXT("delegate_name"));
+            const FString* ComponentNamePtr = Resolved.Properties.Find(TEXT("component_name"));
+            if (DelegateNamePtr && !DelegateNamePtr->IsEmpty()
+                && ComponentNamePtr && !ComponentNamePtr->IsEmpty())
+            {
+                UEdGraphNode* ExistingNode = FindExistingComponentBoundEventNode(
+                    Context.Graph, *DelegateNamePtr, *ComponentNamePtr);
+
+                if (ExistingNode)
+                {
+                    const FString ReuseNodeId = ExistingNode->NodeGuid.ToString();
+
+                    FOlivePinManifest Manifest = FOlivePinManifest::Build(
+                        ExistingNode, StepId, ReuseNodeId, NodeType);
+
+                    Context.StepManifests.Add(StepId, MoveTemp(Manifest));
+                    Context.StepToNodeMap.Add(StepId, ReuseNodeId);
+                    Context.StepToNodePtr.Add(StepId, ExistingNode);
+                    Context.CreatedNodeCount++;
+
+                    Context.Warnings.Add(FString::Printf(
+                        TEXT("Step '%s': ComponentBoundEvent '%s' on '%s' already exists in graph, reusing existing node"),
+                        *StepId, **DelegateNamePtr, **ComponentNamePtr));
+
+                    UE_LOG(LogOlivePlanExecutor, Log,
+                        TEXT("Reused existing ComponentBoundEvent node '%s' on '%s' for step '%s'"),
+                        **DelegateNamePtr, **ComponentNamePtr, *StepId);
 
                     ReusedStepIds.Add(StepId);
                     Context.ReusedStepIds.Add(StepId);
@@ -739,6 +787,37 @@ UEdGraphNode* FOlivePlanExecutor::FindExistingEnhancedInputNode(
 }
 
 // ============================================================================
+// FindExistingComponentBoundEventNode
+// ============================================================================
+
+UEdGraphNode* FOlivePlanExecutor::FindExistingComponentBoundEventNode(
+    UEdGraph* Graph,
+    const FString& DelegateName,
+    const FString& ComponentName)
+{
+    if (!Graph)
+    {
+        return nullptr;
+    }
+
+    const FName DelegateFName(*DelegateName);
+    const FName ComponentFName(*ComponentName);
+
+    for (UEdGraphNode* Node : Graph->Nodes)
+    {
+        UK2Node_ComponentBoundEvent* BoundEvent = Cast<UK2Node_ComponentBoundEvent>(Node);
+        if (BoundEvent
+            && BoundEvent->DelegatePropertyName == DelegateFName
+            && BoundEvent->ComponentPropertyName == ComponentFName)
+        {
+            return BoundEvent;
+        }
+    }
+
+    return nullptr;
+}
+
+// ============================================================================
 // Phase 1.5: Auto-Wire Component Targets
 // ============================================================================
 
@@ -986,13 +1065,24 @@ void FOlivePlanExecutor::PhaseWireExec(
             }
             else
             {
+                // Support "step_id.PinName" syntax (e.g., "branch.False", "loop.LoopBody")
+                FString SourceStep = Step.ExecAfter;
+                FString PinHint;
+                int32 DotIndex;
+                if (SourceStep.FindChar(TEXT('.'), DotIndex))
+                {
+                    PinHint = SourceStep.Mid(DotIndex + 1);
+                    SourceStep = SourceStep.Left(DotIndex);
+                }
+
                 UE_LOG(LogOlivePlanExecutor, Log,
-                    TEXT("  Exec wire: '%s' -> '%s' (exec_after)"),
-                    *Step.ExecAfter, *Step.StepId);
+                    TEXT("  Exec wire: '%s' -> '%s' (exec_after%s)"),
+                    *Step.ExecAfter, *Step.StepId,
+                    PinHint.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(", pin='%s'"), *PinHint));
 
                 FOliveSmartWireResult Result = WireExecConnection(
-                    Step.ExecAfter,     // source step
-                    FString(),          // empty hint = primary exec output
+                    SourceStep,         // source step (without pin suffix)
+                    PinHint,            // pin hint ("False", "LoopBody", etc. or empty)
                     Step.StepId,        // target step
                     Context);
 
@@ -1409,6 +1499,319 @@ void FOlivePlanExecutor::PhaseWireExec(
                 TEXT("Add explicit exec_after on the first step following the event")));
         }
     }
+
+    // ----------------------------------------------------------------
+    // Auto-chain: Wire last exec node to FunctionResult node.
+    //
+    // In function graphs, the UK2Node_FunctionResult has an exec input
+    // pin that must be connected.  When the plan omits an explicit
+    // "return" op, the FunctionResult node is orphaned.  This block
+    // finds the last node in the exec chain (an impure node with at
+    // least one incoming exec connection but no outgoing connections)
+    // and wires its PN_Then to the FunctionResult's PN_Execute.
+    // ----------------------------------------------------------------
+    if (EntryNode)
+    {
+        // Find the FunctionResult node in this graph
+        UK2Node_FunctionResult* ResultNode = nullptr;
+        for (UEdGraphNode* Node : Context.Graph->Nodes)
+        {
+            ResultNode = Cast<UK2Node_FunctionResult>(Node);
+            if (ResultNode)
+            {
+                break;
+            }
+        }
+
+        if (ResultNode)
+        {
+            // Check if the FunctionResult's exec input is already connected
+            UEdGraphPin* ResultExecIn = ResultNode->FindPin(UEdGraphSchema_K2::PN_Execute);
+            if (!ResultExecIn)
+            {
+                // Fallback: search for any exec input pin on the result node
+                for (UEdGraphPin* Pin : ResultNode->Pins)
+                {
+                    if (Pin && Pin->Direction == EGPD_Input &&
+                        Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+                    {
+                        ResultExecIn = Pin;
+                        break;
+                    }
+                }
+            }
+
+            // Declare LastExecNode at this scope so the data auto-wire block
+            // below (outside the exec-wiring if block) can also use it.
+            UEdGraphNode* LastExecNode = nullptr;
+            UEdGraphPin* LastExecOutPin = nullptr;
+            int32 LastStepIndex = -1;
+
+            if (ResultExecIn && ResultExecIn->LinkedTo.Num() == 0)
+            {
+                // Find the "last" exec node in the chain:
+                //   - Impure (has exec pins)
+                //   - Has at least one incoming exec connection (part of the chain)
+                //   - Has an outgoing exec pin (PN_Then) with zero connections
+                //   - Is not the FunctionEntry or FunctionResult itself
+                // If multiple candidates, pick the one with the highest plan step index.
+
+                for (int32 StepIdx = 0; StepIdx < Plan.Steps.Num(); ++StepIdx)
+                {
+                    const FOliveIRBlueprintPlanStep& Step = Plan.Steps[StepIdx];
+
+                    // Must be impure
+                    const FOlivePinManifest* Manifest = Context.GetManifest(Step.StepId);
+                    if (!Manifest || Manifest->bIsPure)
+                    {
+                        continue;
+                    }
+
+                    UEdGraphNode* StepNode = Context.GetNodePtr(Step.StepId);
+                    if (!StepNode)
+                    {
+                        continue;
+                    }
+
+                    // Skip FunctionEntry/FunctionResult nodes themselves
+                    if (Cast<UK2Node_FunctionEntry>(StepNode) || Cast<UK2Node_FunctionResult>(StepNode))
+                    {
+                        continue;
+                    }
+
+                    // Must have at least one incoming exec connection
+                    bool bHasIncomingExec = false;
+                    for (UEdGraphPin* Pin : StepNode->Pins)
+                    {
+                        if (Pin && Pin->Direction == EGPD_Input &&
+                            Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec &&
+                            Pin->LinkedTo.Num() > 0)
+                        {
+                            bHasIncomingExec = true;
+                            break;
+                        }
+                    }
+                    if (!bHasIncomingExec)
+                    {
+                        continue;
+                    }
+
+                    // Must have an outgoing exec pin with zero connections
+                    UEdGraphPin* CandidateExecOut = StepNode->FindPin(UEdGraphSchema_K2::PN_Then);
+                    if (!CandidateExecOut)
+                    {
+                        // Fallback: search for any unconnected exec output pin
+                        for (UEdGraphPin* Pin : StepNode->Pins)
+                        {
+                            if (Pin && Pin->Direction == EGPD_Output &&
+                                Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec &&
+                                Pin->LinkedTo.Num() == 0)
+                            {
+                                CandidateExecOut = Pin;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!CandidateExecOut || CandidateExecOut->LinkedTo.Num() > 0)
+                    {
+                        continue;
+                    }
+
+                    // This is a valid candidate; keep the one with the highest step index
+                    if (StepIdx > LastStepIndex)
+                    {
+                        LastStepIndex = StepIdx;
+                        LastExecNode = StepNode;
+                        LastExecOutPin = CandidateExecOut;
+                    }
+                }
+
+                if (LastExecNode && LastExecOutPin)
+                {
+                    FOlivePinConnector& Connector = FOlivePinConnector::Get();
+                    FOliveBlueprintWriteResult ConnectResult = Connector.Connect(
+                        LastExecOutPin, ResultExecIn, false);
+
+                    if (ConnectResult.bSuccess)
+                    {
+                        Context.SuccessfulConnectionCount++;
+                        Context.AutoFixCount++;
+                        UE_LOG(LogOlivePlanExecutor, Log,
+                            TEXT("Phase 3: Auto-wired last exec node '%s' to FunctionResult"),
+                            *LastExecNode->GetNodeTitle(ENodeTitleType::ListView).ToString());
+                    }
+                    else
+                    {
+                        Context.FailedConnectionCount++;
+                        const FString ErrorMsg = ConnectResult.Errors.Num() > 0
+                            ? ConnectResult.Errors[0]
+                            : TEXT("Unknown connection error");
+                        UE_LOG(LogOlivePlanExecutor, Warning,
+                            TEXT("Failed to auto-wire last exec node to FunctionResult: %s"),
+                            *ErrorMsg);
+
+                        Context.WiringErrors.Add(FOliveIRBlueprintPlanError::MakePlanError(
+                            TEXT("RESULT_AUTOCHAIN_FAILED"),
+                            FString::Printf(
+                                TEXT("Failed to wire last exec node to FunctionResult: %s"),
+                                *ErrorMsg),
+                            TEXT("Add an explicit 'return' step at the end of the function plan")));
+                    }
+                }
+                else
+                {
+                    UE_LOG(LogOlivePlanExecutor, Verbose,
+                        TEXT("Auto-chain: no last-exec-node candidate found for FunctionResult wiring -- skipping"));
+                }
+            }
+            else if (ResultExecIn)
+            {
+                UE_LOG(LogOlivePlanExecutor, Verbose,
+                    TEXT("FunctionResult exec input already connected, skipping auto-chain"));
+            }
+
+            // ----------------------------------------------------------------
+            // Auto-wire FunctionResult DATA pins (exec chain walkback).
+            //
+            // When the AI omits an explicit "return" op, data output pins on
+            // the FunctionResult node are left unwired.  For each unwired pin,
+            // walk backward along the exec chain from the FunctionResult,
+            // checking each node for a type-compatible output.  The first
+            // (closest) unambiguous match wins.  This handles cases where the
+            // data producer is several nodes back (e.g., SET CurrentAmmo
+            // followed by SET CanFire + Call OnReloaded before Return).
+            // ----------------------------------------------------------------
+            if (LastExecNode)
+            {
+                for (UEdGraphPin* ResultPin : ResultNode->Pins)
+                {
+                    if (!ResultPin || ResultPin->bHidden)
+                    {
+                        continue;
+                    }
+                    if (ResultPin->Direction != EGPD_Input)
+                    {
+                        continue;
+                    }
+                    if (ResultPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+                    {
+                        continue;
+                    }
+                    if (ResultPin->LinkedTo.Num() > 0)
+                    {
+                        continue; // Already wired
+                    }
+
+                    // Walk backward along the exec chain looking for a
+                    // type-compatible output pin. Stop at FunctionEntry.
+                    UEdGraphPin* MatchPin = nullptr;
+                    UEdGraphNode* MatchNode = nullptr;
+                    UEdGraphNode* WalkNode = LastExecNode;
+                    constexpr int32 MaxWalkDepth = 64; // Safety limit
+                    int32 WalkDepth = 0;
+
+                    // Use schema compatibility check instead of exact match.
+                    // Handles IS-A relationships (Actor -> Object), wildcard pins,
+                    // and interface types.
+                    const UEdGraphSchema_K2* K2SchemaWalk = GetDefault<UEdGraphSchema_K2>();
+
+                    while (WalkNode && WalkDepth < MaxWalkDepth)
+                    {
+                        ++WalkDepth;
+
+                        // Don't search FunctionEntry/FunctionResult
+                        if (Cast<UK2Node_FunctionEntry>(WalkNode) || Cast<UK2Node_FunctionResult>(WalkNode))
+                        {
+                            break;
+                        }
+
+                        // Check this node for exactly one type-compatible output
+                        UEdGraphPin* NodeMatch = nullptr;
+                        bool bNodeAmbiguous = false;
+
+                        for (UEdGraphPin* CandPin : WalkNode->Pins)
+                        {
+                            if (!CandPin || CandPin->bHidden)
+                            {
+                                continue;
+                            }
+                            if (CandPin->Direction != EGPD_Output)
+                            {
+                                continue;
+                            }
+                            if (CandPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+                            {
+                                continue;
+                            }
+                            if (!K2SchemaWalk->ArePinTypesCompatible(
+                                    CandPin->PinType, ResultPin->PinType,
+                                    Context.Blueprint ? Context.Blueprint->GeneratedClass : nullptr))
+                            {
+                                continue;
+                            }
+
+                            if (!NodeMatch)
+                            {
+                                NodeMatch = CandPin;
+                            }
+                            else
+                            {
+                                bNodeAmbiguous = true;
+                                break;
+                            }
+                        }
+
+                        if (NodeMatch && !bNodeAmbiguous)
+                        {
+                            MatchPin = NodeMatch;
+                            MatchNode = WalkNode;
+                            break; // Closest unambiguous match wins
+                        }
+
+                        // Walk backward: find exec input pin and follow its connection
+                        UEdGraphNode* PredecessorNode = nullptr;
+                        for (UEdGraphPin* Pin : WalkNode->Pins)
+                        {
+                            if (Pin && Pin->Direction == EGPD_Input &&
+                                Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec &&
+                                Pin->LinkedTo.Num() > 0)
+                            {
+                                PredecessorNode = Pin->LinkedTo[0]->GetOwningNode();
+                                break;
+                            }
+                        }
+                        WalkNode = PredecessorNode;
+                    }
+
+                    if (MatchPin && MatchNode)
+                    {
+                        FOlivePinConnector& DataConnector = FOlivePinConnector::Get();
+                        FOliveBlueprintWriteResult DataConnResult = DataConnector.Connect(
+                            MatchPin, ResultPin, /*bAllowConversion=*/true);
+
+                        if (DataConnResult.bSuccess)
+                        {
+                            Context.SuccessfulConnectionCount++;
+                            Context.AutoFixCount++;
+                            UE_LOG(LogOlivePlanExecutor, Log,
+                                TEXT("Phase 3: Auto-wired FunctionResult data pin '%s' <- '%s' pin '%s' (walked %d node(s) back)"),
+                                *ResultPin->GetName(),
+                                *MatchNode->GetNodeTitle(ENodeTitleType::ListView).ToString(),
+                                *MatchPin->GetName(),
+                                WalkDepth);
+                        }
+                        else
+                        {
+                            UE_LOG(LogOlivePlanExecutor, Warning,
+                                TEXT("Phase 3: Failed to auto-wire FunctionResult data pin '%s' <- '%s'"),
+                                *ResultPin->GetName(), *MatchPin->GetName());
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 // ============================================================================
@@ -1660,6 +2063,147 @@ void FOlivePlanExecutor::PhaseWireData(
             }
         }
     }
+
+    // ----------------------------------------------------------------
+    // Auto-wire unwired data pins on call_delegate/call_dispatcher nodes.
+    //
+    // The AI often omits inputs on dispatcher calls. For each unwired
+    // data input pin, walk backward along the exec chain looking for the
+    // closest node with a type-compatible output (same algorithm as the
+    // FunctionResult walkback in Phase 3).
+    // ----------------------------------------------------------------
+    for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
+    {
+        if (Step.Op != OlivePlanOps::CallDelegate && Step.Op != OlivePlanOps::CallDispatcher)
+        {
+            continue;
+        }
+
+        UEdGraphNode* DelegateNode = Context.GetNodePtr(Step.StepId);
+        if (!DelegateNode)
+        {
+            continue;
+        }
+
+        for (UEdGraphPin* DelegatePin : DelegateNode->Pins)
+        {
+            if (!DelegatePin || DelegatePin->bHidden)
+            {
+                continue;
+            }
+            if (DelegatePin->Direction != EGPD_Input)
+            {
+                continue;
+            }
+            if (DelegatePin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec ||
+                DelegatePin->PinType.PinCategory == UEdGraphSchema_K2::PC_Delegate)
+            {
+                continue;
+            }
+            if (DelegatePin->LinkedTo.Num() > 0)
+            {
+                continue; // Already wired by explicit @ref
+            }
+            // Skip "self" / target pins
+            if (DelegatePin->PinName == UEdGraphSchema_K2::PN_Self)
+            {
+                continue;
+            }
+
+            // Walk backward along exec chain from this node
+            UEdGraphPin* MatchPin = nullptr;
+            UEdGraphNode* MatchNode = nullptr;
+            int32 WalkDepth = 0;
+            constexpr int32 MaxWalkDepth = 64;
+
+            // Find exec predecessor of the delegate node
+            UEdGraphNode* WalkNode = nullptr;
+            for (UEdGraphPin* Pin : DelegateNode->Pins)
+            {
+                if (Pin && Pin->Direction == EGPD_Input &&
+                    Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec &&
+                    Pin->LinkedTo.Num() > 0)
+                {
+                    WalkNode = Pin->LinkedTo[0]->GetOwningNode();
+                    break;
+                }
+            }
+
+            // Use schema compatibility check instead of exact match.
+            // Handles IS-A relationships (Actor -> Object), wildcard pins,
+            // and interface types.
+            const UEdGraphSchema_K2* K2SchemaWalk = GetDefault<UEdGraphSchema_K2>();
+
+            while (WalkNode && WalkDepth < MaxWalkDepth)
+            {
+                ++WalkDepth;
+
+                UEdGraphPin* NodeMatch = nullptr;
+                bool bNodeAmbiguous = false;
+
+                for (UEdGraphPin* CandPin : WalkNode->Pins)
+                {
+                    if (!CandPin || CandPin->bHidden) continue;
+                    if (CandPin->Direction != EGPD_Output) continue;
+                    if (CandPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec) continue;
+                    if (!K2SchemaWalk->ArePinTypesCompatible(
+                            CandPin->PinType, DelegatePin->PinType,
+                            Context.Blueprint ? Context.Blueprint->GeneratedClass : nullptr)) continue;
+
+                    if (!NodeMatch)
+                    {
+                        NodeMatch = CandPin;
+                    }
+                    else
+                    {
+                        bNodeAmbiguous = true;
+                        break;
+                    }
+                }
+
+                if (NodeMatch && !bNodeAmbiguous)
+                {
+                    MatchPin = NodeMatch;
+                    MatchNode = WalkNode;
+                    break;
+                }
+
+                // Walk to predecessor
+                UEdGraphNode* PredNode = nullptr;
+                for (UEdGraphPin* Pin : WalkNode->Pins)
+                {
+                    if (Pin && Pin->Direction == EGPD_Input &&
+                        Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec &&
+                        Pin->LinkedTo.Num() > 0)
+                    {
+                        PredNode = Pin->LinkedTo[0]->GetOwningNode();
+                        break;
+                    }
+                }
+                WalkNode = PredNode;
+            }
+
+            if (MatchPin && MatchNode)
+            {
+                FOlivePinConnector& Connector = FOlivePinConnector::Get();
+                FOliveBlueprintWriteResult ConnResult = Connector.Connect(
+                    MatchPin, DelegatePin, /*bAllowConversion=*/true);
+
+                if (ConnResult.bSuccess)
+                {
+                    Context.SuccessfulConnectionCount++;
+                    Context.AutoFixCount++;
+                    UE_LOG(LogOlivePlanExecutor, Log,
+                        TEXT("Phase 4: Auto-wired dispatcher '%s' pin '%s' <- '%s' pin '%s' (walked %d node(s) back)"),
+                        *Step.StepId,
+                        *DelegatePin->GetName(),
+                        *MatchNode->GetNodeTitle(ENodeTitleType::ListView).ToString(),
+                        *MatchPin->GetName(),
+                        WalkDepth);
+                }
+            }
+        }
+    }
 }
 
 // ============================================================================
@@ -1753,6 +2297,64 @@ FOliveSmartWireResult FOlivePlanExecutor::WireDataConnection(
             *SourceManifest, TargetPin->IRTypeCategory, TargetPin->PinSubCategory,
             TargetPin->PinName);
         SourceMatchMethod = TEXT("type_auto");
+
+        // Schema-based fallback: when manifest-level matching fails,
+        // use real UEdGraphPin objects + ArePinTypesCompatible for
+        // IS-A relationships that manifest categories cannot express
+        // (e.g., Actor Object Reference -> Object Wildcard).
+        if (!SourcePin)
+        {
+            UEdGraphNode* FallbackSourceNode = Context.GetNodePtr(SourceStepId);
+            UEdGraphNode* FallbackTargetNode = Context.GetNodePtr(TargetStepId);
+            UEdGraphPin* RealTargetPin = FallbackTargetNode
+                ? FallbackTargetNode->FindPin(FName(*TargetPin->PinName))
+                : nullptr;
+
+            if (FallbackSourceNode && RealTargetPin)
+            {
+                const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
+                const FOlivePinManifestEntry* SchemaMatch = nullptr;
+                bool bSchemaAmbiguous = false;
+
+                TArray<const FOlivePinManifestEntry*> DataOutputs =
+                    SourceManifest->GetDataPins(/*bInput=*/false);
+
+                for (const FOlivePinManifestEntry* CandEntry : DataOutputs)
+                {
+                    UEdGraphPin* RealCandPin =
+                        FallbackSourceNode->FindPin(FName(*CandEntry->PinName));
+                    if (!RealCandPin)
+                    {
+                        continue;
+                    }
+
+                    if (K2Schema->ArePinTypesCompatible(
+                            RealCandPin->PinType, RealTargetPin->PinType,
+                            Context.Blueprint ? Context.Blueprint->GeneratedClass : nullptr))
+                    {
+                        if (!SchemaMatch)
+                        {
+                            SchemaMatch = CandEntry;
+                        }
+                        else
+                        {
+                            bSchemaAmbiguous = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (SchemaMatch && !bSchemaAmbiguous)
+                {
+                    SourcePin = SchemaMatch;
+                    SourceMatchMethod = TEXT("type_auto_schema_fallback");
+                    UE_LOG(LogOlivePlanExecutor, Log,
+                        TEXT("  FindTypeCompatibleOutput schema fallback: "
+                             "matched '%s' via ArePinTypesCompatible"),
+                        *SchemaMatch->PinName);
+                }
+            }
+        }
 
         if (!SourcePin)
         {
@@ -2192,6 +2794,15 @@ void FOlivePlanExecutor::PhasePreCompileValidation(
             continue;
         }
 
+        // Only validate nodes created/registered by the current plan.
+        // Nodes from previous plan_json calls are not in the map and
+        // must be skipped to avoid false "orphaned exec flow" warnings.
+        const FString NodeId = Node->NodeGuid.ToString();
+        if (!Context.NodeIdToStepId.Contains(NodeId))
+        {
+            continue;
+        }
+
         UK2Node* K2Node = Cast<UK2Node>(Node);
         if (!K2Node)
         {
@@ -2356,6 +2967,68 @@ void FOlivePlanExecutor::PhasePreCompileValidation(
                             *NodeDesc, *Func->GetName());
                     }
                 }
+            }
+        }
+    }
+
+    // ================================================================
+    // Check 3: Unwired FunctionResult data pins (function graphs only)
+    // ================================================================
+    {
+        // Detect function graph by presence of FunctionEntry node
+        UK2Node_FunctionResult* ResultNode = nullptr;
+        UK2Node_FunctionEntry* EntryNode = nullptr;
+        for (UEdGraphNode* Node : Context.Graph->Nodes)
+        {
+            if (!EntryNode)
+            {
+                EntryNode = Cast<UK2Node_FunctionEntry>(Node);
+            }
+            if (!ResultNode)
+            {
+                ResultNode = Cast<UK2Node_FunctionResult>(Node);
+            }
+            if (EntryNode && ResultNode)
+            {
+                break;
+            }
+        }
+
+        if (EntryNode && ResultNode)
+        {
+            for (UEdGraphPin* Pin : ResultNode->Pins)
+            {
+                if (!Pin || Pin->bHidden)
+                {
+                    continue;
+                }
+                if (Pin->Direction != EGPD_Input)
+                {
+                    continue;
+                }
+                if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+                {
+                    continue;
+                }
+                if (Pin->LinkedTo.Num() > 0)
+                {
+                    continue;
+                }
+
+                FString TypeName = Pin->PinType.PinCategory.ToString();
+                if (UObject* SubObj = Pin->PinType.PinSubCategoryObject.Get())
+                {
+                    TypeName = SubObj->GetName();
+                }
+
+                Context.PreCompileIssues.Add(FString::Printf(
+                    TEXT("UNWIRED_RETURN_PIN: Function output '%s' (%s) on FunctionResult is not wired. "
+                         "Add a 'return' step with inputs mapping to output pins, or use connect_pins to wire it manually."),
+                    *Pin->GetName(), *TypeName));
+
+                UE_LOG(LogOlivePlanExecutor, Warning,
+                    TEXT("Phase 5.5: Unwired FunctionResult data pin '%s' (%s) in function '%s'"),
+                    *Pin->GetName(), *TypeName, *Context.GraphName);
             }
         }
     }

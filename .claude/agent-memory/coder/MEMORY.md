@@ -50,6 +50,7 @@
 ## UE 5.5 API Quirks
 - **Float/Double PinType**: In UE 5.5, `PC_Float` and `PC_Double` must NOT be used as `PinCategory`. Instead use `PinCategory = PC_Real` with `PinSubCategory = PC_Float` (or `PC_Double`). Using `PC_Float` directly as category causes "Can't parse default value" compile warnings because the engine can't resolve an FProperty from a bare `PC_Float` category.
 - Source: `EdGraphSchema_K2.cpp` lines 3503-3512 (ConvertPropertyToPinType sets PC_Real+subcategory for both FFloatProperty and FDoubleProperty)
+- **FJsonValue::GetType()** is a **protected** virtual method in UE 5.5 (`JsonValue.h:117`). Cannot be called from outside the class. Use `Pair.Value->Type` (public `EJson` enum) instead with `static_cast<int32>()` for logging.
 
 ## Phase 3: Error Recovery (Completed)
 - Progressive error disclosure, plan dedup, blueprint context injection in prompts
@@ -102,6 +103,16 @@
 - **B2**: `ExpandComponentRefs()` now builds `BlueprintVariableNames` set from `Blueprint->NewVariables`. Bare `@VarName` and dotted `@VarName.hint` refs matching BP variables synthesize `_synth_getvar_xxx` get_var steps. Priority: step ID > function param > SCS component > BP variable.
 - **B3**: `ExpandBranchConditions()` new static resolver pass, called after `ExpandPlanInputs` in `Resolve()`. Detects branch steps where Condition `@ref` points to a get_var of non-boolean variable. Synthesizes `Greater_IntInt` (int) or `Greater_DoubleDouble` (float/real) comparison step. UE 5.5 pin category for float/double is `"real"` (not "float"/"double").
 
+## Component Bound Events (UK2Node_ComponentBoundEvent)
+- `OliveNodeTypes::ComponentBoundEvent = "ComponentBoundEvent"` in OliveNodeFactory.h
+- `CreateComponentBoundEventNode()` on FOliveNodeFactory: finds SCS node by component_name, finds FMulticastDelegateProperty on ComponentClass, finds FObjectProperty on GeneratedClass, uses `InitializeComponentBoundEventParams(ComponentProp, DelegateProp)`
+- Required properties: `delegate_name` (e.g., "OnComponentBeginOverlap"), `component_name` (e.g., "CollisionComp")
+- Resolver: `ResolveEventOp` detects non-native event targets by scanning SCS component delegates; fuzzy match with/without "On" prefix
+- Executor: `FindExistingComponentBoundEventNode()` matches by DelegatePropertyName + ComponentPropertyName for reuse
+- Auto-chain works because Plan.Steps[].Op stays "event" (resolver only changes NodeType)
+- Plan syntax: `{"op":"event","target":"OnComponentBeginOverlap","properties":{"component_name":"CollisionComp"}}`
+- Fallback: if resolver can't find SCS match (e.g., no component_name hint, inherited components), passes through to NodeFactory's CreateEventNode which has its own SCS scan
+
 ## Enhanced Input Action Support (K2Node_EnhancedInputAction)
 - `OliveNodeTypes::EnhancedInputAction = "EnhancedInputAction"` added to OliveNodeFactory.h
 - `CreateEnhancedInputActionNode()` on FOliveNodeFactory: searches AssetRegistry for UInputAction by name, creates UK2Node_EnhancedInputAction
@@ -121,14 +132,14 @@
 - `FindFunction()` is now PUBLIC on FOliveNodeFactory (was private)
 - `FindFunctionEx()` wraps FindFunction + collects SearchedLocations on failure for detailed error messages
 - `FOliveFunctionSearchResult` struct: Function, MatchMethod, MatchedClassName, SearchedLocations, BuildSearchedLocationsString()
-- `FindFunction()` enhanced search order: alias map -> specified class -> GeneratedClass -> FunctionGraphs -> parent class hierarchy -> SCS component classes -> implemented interfaces -> library classes
+- `FindFunction()` enhanced search order: alias map -> specified class -> GeneratedClass -> FunctionGraphs -> parent class hierarchy -> SCS component classes -> implemented interfaces -> library classes -> universal BFL search (TObjectIterator) -> K2_ fuzzy match (Steps 1-5 classes only)
 - Each class tried with exact name first, then K2_ prefix variant (inline lambda `TryClassWithK2`)
 - `GetAliasMap()` static public method on FOliveNodeFactory (copied verbatim from OliveFunctionResolver)
 - No more "accepted as-is" fallback path -- unknown functions fail at resolution with FUNCTION_NOT_FOUND error
 - `ResolvedOwningClass`, `bIsPure`, `bIsLatent` still populated from `UFunction*` introspection
 
 ## FN-4: Interface Message Call Support (Completed)
-- `EOliveFunctionMatchMethod` enum in OliveNodeFactory.h: None, ExactName, AliasMap, GeneratedClass, FunctionGraph, ParentClassSearch, ComponentClassSearch, InterfaceSearch, LibrarySearch
+- `EOliveFunctionMatchMethod` enum in OliveNodeFactory.h: None, ExactName, AliasMap, GeneratedClass, FunctionGraph, ParentClassSearch, ComponentClassSearch, InterfaceSearch, LibrarySearch, UniversalLibrarySearch, FuzzyK2Match
 - `FindFunction()` has optional `EOliveFunctionMatchMethod* OutMatchMethod` out-param
 - Step 4b in FindFunction: iterates `Blueprint->ImplementedInterfaces`, tries each InterfaceDesc.Interface
 - InterfaceSearch always reported as InterfaceSearch (even if alias was used, since node type depends on it)
@@ -188,5 +199,20 @@
   - Old tool names still work via redirect aliases in OliveToolRegistry.cpp
 - `blackboard.add_key` upsert: checks if key exists, delegates to `HandleBlackboardModifyKey` on match
   - `blackboard.modify_key` registration removed; handler kept as private internal helper
-  - Schema adds `new_name` field for rename-on-modify; `key_type` required only for new keys
-- Files: `BehaviorTree/Public/MCP/OliveBTToolHandlers.h`, `BehaviorTree/Private/MCP/OliveBTToolHandlers.cpp`, `BehaviorTree/Public/MCP/OliveBTSchemas.h`, `BehaviorTree/Private/MCP/OliveBTSchemas.cpp`
+
+## Python Tool (editor.run_python) - Autonomy Phase A
+- Files: `Python/Public/MCP/OlivePythonSchemas.h`, `Python/Private/MCP/OlivePythonSchemas.cpp`, `Python/Public/MCP/OlivePythonToolHandlers.h`, `Python/Private/MCP/OlivePythonToolHandlers.cpp`
+- Singleton `FOlivePythonToolHandlers::Get()` with `RegisterAllTools()`/`UnregisterAllTools()` pattern
+- `IPythonScriptPlugin::Get()` returns nullptr if module not loaded; `IsPythonAvailable()` is instance method
+- `FPythonCommandEx` default ExecutionMode is `ExecuteFile` (handles multi-line scripts); no need to set explicitly
+- `FPythonLogOutputEntry::Type` is `EPythonLogOutputType` (Info/Warning/Error)
+- Tags: `{blueprint, cpp, python, editor, write}` -- visible in all focus profiles
+- Safety: auto-snapshot via FOliveSnapshotManager, try/except wrapper, persistent log at `Saved/OliveAI/PythonScripts.log`
+- **UE API quirk**: `LogPath` is a UE global log category (from EngineLogs.h); avoid naming local variables `LogPath`
+- Build.cs: `"Python"` in SubModules + `"PythonScriptPlugin"` in PrivateDependencyModuleNames
+- uplugin: `PythonScriptPlugin` added to Plugins array
+
+## FindFunction Interface Fix (Autonomy Phase A, T7)
+- FindFunction Step 1: when specified class is UInterface or Blueprint Interface, reports InterfaceSearch (not ExactName)
+- Two-part check: `Class->IsChildOf(UInterface::StaticClass())` for native interfaces, `Cast<UBlueprint>(ClassGeneratedBy)->BlueprintType == BPTYPE_Interface` for Blueprint Interfaces
+- Bypasses `ReportMatch` lambda (which would override to AliasMap if alias was used) by setting `*OutMatchMethod` directly

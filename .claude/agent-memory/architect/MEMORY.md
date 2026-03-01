@@ -10,86 +10,13 @@
 
 ## Architecture Decisions
 
-### Phase 2 (Graph Edit Integrity) - Feb 2026
-- Node type validation added to NodeFactory as `ValidateNodeType()` method, called before creation attempt.
-- Fuzzy suggestions use `FOliveNodeCatalog::FuzzyMatch()` returning simple struct (not USTRUCT) with TypeId/DisplayName/Score.
-- Duplicate native event check happens in HandleBlueprintAddNode before pipeline entry, with defense-in-depth in CreateEventNode.
-- Node removal broken-link capture done via new `CaptureNodeConnections()` on GraphWriter, called before `RemoveNode()`.
-- Orphaned exec flow detection added to `VerifyBlueprintStructure` in Stage 5, scoped to the affected graph only.
-- Large graph threshold: 500 nodes. Page size: 100 (max 200). Full NodeIdMap built even for paged reads to preserve cross-page connection references.
-- `FOliveIRMessage` needs `TSharedPtr<FJsonObject> Context` field for structured context on warnings (additive, non-breaking IR change).
+### Early Phases (2, 3, Graph-From-Description, Critical Fixes) - Feb 2026
+> Older design decisions moved to `autonomous-mode-decisions.md` and prior design docs.
+> Key stable facts: SCREAMING_SNAKE_CASE error codes, Pipeline Stage 4 commits transaction, Stage 6 detects compile errors, partial success returns Success() with wiring_errors, HasCompileFailure checks `data.compile_result` (nested).
 
 ## Error Code Convention
 - Use `SCREAMING_SNAKE_CASE` for error codes
-- Existing: `VALIDATION_MISSING_PARAM`, `ASSET_NOT_FOUND`, `BP_ADD_NODE_FAILED`, `BP_REMOVE_NODE_FAILED`
-- Phase 2 added: `NODE_TYPE_UNKNOWN`, `DUPLICATE_NATIVE_EVENT`, `ORPHANED_EXEC_FLOW` (warning)
-
-### Phase 3 (Chat UX Resilience) - Feb 2026
-- ConversationManager ownership moves from SOliveAIChatPanel to FOliveEditorChatSession singleton.
-- Panel holds weak ref, rebinds delegates on open/close. Closing panel does NOT cancel operations.
-- FOliveMessageQueue: FIFO queue (max 5) for user messages during processing. Drains one at a time on completion.
-- FOliveProviderRetryManager: wraps provider with exponential backoff (1s/2s/4s, max 3 retries). Rate-limit Retry-After honored up to 120s.
-- Provider error classification uses parseable prefix format `[HTTP:{code}:RetryAfter={s}]` to avoid breaking IOliveAIProvider interface.
-- FOlivePromptDistiller::Distill() return type changed from void to FOliveDistillationResult for truncation metadata.
-- Truncation note injected into model-visible context when distillation summarizes messages.
-- Response truncation detected via FinishReason=="length", warning appended to message.
-- Focus profile switch deferred when processing; applied on completion.
-- FNotificationInfo toast for background completion when panel is closed.
-- Design doc: `plans/phase3-chat-ux-resilience-design.md`
-
-### Graph-From-Description (Post-Creation Pin Introspection) - Feb 2026
-- **Core insight**: After CreateNode + AllocateDefaultPins, the UEdGraphNode* has all real pin data. Introspect AFTER creation, never guess beforehand.
-- **Schema version gating**: `schema_version: "2.0"` routes to new `FOlivePlanExecutor`; `"1.0"` routes to existing `FOliveBlueprintPlanLowerer`. Both share enhanced `FOliveFunctionResolver`.
-- **Multi-phase execution**: Phase 1 (create nodes + build manifests) -> Phase 3 (exec wiring via manifest) -> Phase 4 (data wiring via manifest) -> Phase 5 (defaults via manifest) -> Phase 6 (auto-layout)
-- **Pin resolution fallback chain**: exact name -> display name -> case-insensitive -> fuzzy (Levenshtein + substring) -> type-based. Implemented in `FOlivePinManifest::FindPinSmart()`.
-- **New @ref syntax** (additive, backward compat): `@step.auto` (type match), `@step.~fuzzy` (fuzzy match). Standard `@step.pinName` now uses smart fallback chain.
-- **Smart function resolution**: `FOliveFunctionResolver` with chain: exact -> K2_ prefix -> alias map -> catalog -> broad library search. Replaces the hardcoded 3-class `FindFunction` in NodeFactory.
-- **Continue-on-failure**: Node creation is fail-fast, but wiring phases (exec, data, defaults) continue on failure and accumulate errors. Result includes `pin_manifests` for self-correction.
-- **Event reuse**: If plan includes an event that already exists, reuse the existing node instead of failing.
-- **Auto-layout**: `FOliveGraphLayoutEngine` uses BFS from exec roots, column/row assignment, branch offsets, pure node placement.
-- **Plan path enforcement**: Soft warning in HandleBlueprintAddNode after 3+ granular ops per turn, configurable via `PlanPathWarningThreshold` setting.
-- **New error codes**: `FUNCTION_NOT_FOUND`, `FUNCTION_AMBIGUOUS`, `NODE_CREATION_FAILED`, `EXEC_PIN_NOT_FOUND`, `DATA_PIN_NOT_FOUND`, `DATA_PIN_AMBIGUOUS`, `DEFAULT_PIN_NOT_FOUND`, `EVENT_ALREADY_EXISTS`, `PURE_NODE_EXEC_SKIP`
-- **Design doc**: `plans/graph-from-description-design.md`
-- **New files**: `OlivePlanExecutor.h/cpp`, `OlivePinManifest.h/cpp`, `OliveFunctionResolver.h/cpp`, `OliveGraphLayoutEngine.h/cpp` (all under `Blueprint/Public|Private/Plan/`)
-- **NOT a singleton**: `FOlivePlanExecutor` is instantiated per execution, not a singleton. It holds no persistent state.
-
-### Critical Fix Plan (Rollback/Resolver/Loop) - Feb 2026
-- `plans/critical_fix_implementation.md` -- 6 tasks (T1-T6) for 3 cascading fixes
-- **Fix 1 (Plan Rollback)**: Post-pipeline cleanup in tool handler. After `ExecuteWithOptionalConfirmation`, if compile failed AND step_to_node_map exists, call `RollbackPlanNodes()` to remove created nodes. Uses separate FScopedTransaction. Reused event nodes (tracked via `ReusedStepIds`) are NOT removed. `Writer.ClearNodeCache()` after removals (RemoveFromCache is private).
-- **Fix 1 key insight**: Pipeline transaction commits in Stage 4, compile errors detected in Stage 6 set bSuccess=false but transaction already committed. Rollback MUST happen post-pipeline, not inside the executor.
-- **Replace mode**: `Mode` parsed at line 6431 but NEVER captured into v2.0 lambda. T2 adds capture + pre-cleanup (remove non-event/non-entry nodes before executing plan).
-- **Fix 2 (Component-Aware Resolver)**: Insert SCS component class scan between parent hierarchy and common libraries in `GetSearchOrder`. New `ComponentClassSearch` enum value on `FOliveFunctionMatch::EMatchMethod`. BroadSearch gets `UBlueprint*` param for relevance scoring: component-on-BP=90, library=70, unrelated gameplay=40. Threshold=60 rejects low-confidence broad matches.
-- **Fix 3 (Stale Loop Detection)**: Add `ResolvedFunctionNames`/`ResolvedClassNames` to context, flow through result to ResultData. SelfCorrectionPolicy cross-references compile error text against plan names. If no compile error mentions any plan class/function, classify as stale -- skip loop detector, inject "STALE COMPILE ERROR" guidance recommending mode:"replace".
-- **Implementation lanes**: Lane A: T1->T2->T5->T6. Lane B: T3->T4. ~8.5 hours total.
-
-### CLI Provider Universal Fixes - Feb 2026
-- `plans/cli-provider-implementation-plan.md` -- Detailed implementation plan for resolver/executor/CLI fixes
-- **R1 (event name mapping) already implemented**: EventNameMap exists in ResolveEventOp at PlanResolver.cpp lines 602-613.
-- **R7 (INVALID_EXEC_REF guidance) already implemented**: SelfCorrectionPolicy.cpp lines 296-302.
-- **R5 (event auto-chain)**: Extends existing function entry auto-chain (PlanExecutor.cpp lines 482-639) to also auto-chain from event/custom_event nodes. Key: hoist TargetedStepIds to wider scope, iterate events in plan order, wire to next impure orphan.
-- **R6 (partial success = error)**: When `PlanResult.bPartial==true`, return `ExecutionError("PLAN_PARTIAL_SUCCESS")` instead of `Success()`. This makes SelfCorrectionPolicy detect it via `HasToolFailure`. The `status:"partial_success"` in ResultData distinguishes from total failure. Pipeline still commits transaction (nodes persist for repair).
-- **R3 (auto-conversion)**: Change `Connector.Connect(src, tgt, false)` to `true` in PhaseWireData (line 1066). Add FOliveConversionNote for transparency logging.
-- **R2 (SpawnActor expansion)**: New `ExpandPlanInputs()` on PlanResolver. Detects Location/Rotation inputs on spawn_actor, synthesizes MakeTransform step with `_synth_` prefix ID. Guard: skip if SpawnTransform already present.
-- **R4 (alias gaps)**: Add ~15 aliases: MakeTransform, BreakTransform, MakeVector, BreakVector, MakeRotator, BreakRotator, etc.
-- **FOliveResolverNote**: New struct for resolver transparency. Fields: Field, OriginalValue, ResolvedValue, Reason. Added to FOliveResolvedStep and FOlivePlanResolveResult.
-- **CLIBase extraction**: FOliveCLIProviderBase with virtual hooks GetExecutablePath(), GetCLIArguments(), ParseOutputLine(). FOliveClaudeCodeProvider shrinks to ~100 lines.
-- **New error code**: `PLAN_PARTIAL_SUCCESS` -- all nodes created but some wiring failed.
-
-### Resilience + Prompt Slimming - Feb 2026
-- `plans/resilience-implementation-tasks.md` -- 13 tasks across 3 phases
-- **Phase 1a**: Self-loop guard in PhaseWireExec. Guard BOTH exec_after AND exec_outputs. For exec_after, use if/else (NOT continue) because continue would skip exec_outputs processing for that step.
-- **Phase 1b REVERSAL**: Partial success now returns `FOliveWriteResult::Success(ResultData)` instead of `ExecutionError`. This REVERSES the R6 decision from CLI Provider Universal Fixes. The pipeline sees bSuccess=true, does NOT cancel transaction, nodes persist. The AI gets `status:"partial_success"` + `wiring_errors` in a success result.
-- **PLAN_PARTIAL_SUCCESS self-correction removed**: Since `HasToolFailure()` checks `bSuccess==false` and partial success now returns true, the self-correction case is dead code. Removed entirely (Option A).
-- **Write pipeline interaction**: Pipeline line 194 checks `!ExecuteResult.bSuccess`. Partial success returning Success() bypasses this, flows to Stage 5 (Verify), which may report compile errors from broken wires -- this is desired (AI gets maximum info).
-- **Phase 3 recipe refactor**: Tool keeps name `olive.get_recipe`, schema changes from `{category?, name?}` to `{query: string}`. LoadRecipeLibrary updated to parse TAGS format (format_version 2.0). Keyword matching: tag match = 2pts, content substring = 1pt.
-- **Manifest tags already exist** in `_manifest.json` but are unused by current code. Phase 3 puts tags IN the .txt files instead (self-contained entries).
-
-### Gun Fix (Orphan/Component/Compile) - Feb 2026
-- `plans/gun-fix-implementation-tasks.md` -- 5 tasks fixing 3 issues from gun+bullet test
-- **CRITICAL BUG FOUND**: `HasCompileFailure()` looks for `compile_result` at JSON top level, but `FOliveToolResult::ToJson()` nests it inside `"data"`. Compile error self-correction has been BROKEN for ALL tools. Fix: try top-level first, then fall back to `data.compile_result`.
-- **JSON nesting**: `FOliveToolResult::ToJson()` (OliveToolRegistry.cpp line 203) puts `ResultData` inside `"data"`. So pipeline fields (`compile_result`, `asset_path`, `compile_status`) are at `data.X`, not top-level. `HasToolFailure()` works because it checks top-level `success` (set by ToJson directly). `HasCompileFailure()` breaks because it checks top-level `compile_result` (which is inside `data`).
-- **Component guard**: New error code `COMPONENT_NOT_VARIABLE` in ResolveGetVarOp/ResolveSetVarOp. SCS traversal uses same pattern as `FOliveComponentWriter::FindSCSNode()`. Includes: `Engine/SimpleConstructionScript.h`, `Engine/SCS_Node.h`.
-- **Orphan cleanup**: `CleanupCreatedNodes` lambda in `PhaseCreateNodes`. Must skip reused event nodes (tracked via `ReusedStepIds` set). `Graph->RemoveNode()` inside transaction scope is defense-in-depth.
+- See design docs for full list. Recent: `GHOST_NODE_PREVENTED`, `INTERFACE_GRAPH_CONFLICT`, `VALIDATION_EMPTY_SCRIPT`, `PYTHON_PLUGIN_NOT_AVAILABLE`, `PYTHON_NOT_AVAILABLE`, `PYTHON_EXECUTION_FAILED`
 
 ### Phase 3 Error Recovery (Master Plan v2) - Feb 2026
 - `plans/phase3-error-recovery-design.md` -- Design for Changes 3.1-3.4
@@ -187,6 +114,20 @@
 - Class resolver: `Source/OliveAIEditor/Blueprint/Public/OliveClassResolver.h`
 - Template system: `Source/OliveAIEditor/Blueprint/Public/Template/OliveTemplateSystem.h`
 
+### Autonomy & Improvisation - Feb 2026
+- `plans/autonomy-implementation.md` -- 14 tasks across 6 priorities
+- **Priority 1 (Prompts)**: Rewrite 5 content files. Remove prescriptive language, present 3 approaches (plan_json/granular/Python) as equals. No C++ changes.
+- **Priority 2 (editor.run_python)**: New `Python` sub-module under `Source/OliveAIEditor/Python/`. Single tool `editor.run_python`. Uses `IPythonScriptPlugin::ExecPythonCommandEx(FPythonCommandEx&)`.
+- **Python API (verified UE 5.5)**: `IPythonScriptPlugin::Get()` returns nullptr if module not loaded. `IsPythonAvailable()` is instance method. `FPythonLogOutputEntry::Type` is `EPythonLogOutputType` (not SeverityType). Default `ExecutionMode` is `ExecuteFile` (handles multi-line). NO `IsAvailable()` static method.
+- **Python safety**: Snapshot before every execution, persistent log at `Saved/OliveAI/PythonScripts.log`, try/except wrapper. No size/complexity limits.
+- **PythonScriptPlugin**: Hard dependency in Build.cs (module ships with UE 5.5, always available for linking). Runtime check via `Get() != nullptr`.
+- **Priority 3 (Interface fix)**: ~5-line fix in `FindFunction` Step 1. When specified class is UInterface or BlueprintType==BPTYPE_Interface, report `InterfaceSearch` instead of `ExactName`. Bypass `ReportMatch` lambda (set OutMatchMethod directly like Step 6 does).
+- **Priority 4 (Templates)**: Rewrite `pickup_interaction.json` to descriptive style. No C++ changes.
+- **Priority 5**: Already covered by Priority 1 prompt rewrites.
+- **Priority 6 (Granular reliability)**: Enhance add_node error messages with Python fallback suggestion. Minimal changes.
+- **New error codes**: `VALIDATION_EMPTY_SCRIPT`, `PYTHON_PLUGIN_NOT_AVAILABLE`, `PYTHON_NOT_AVAILABLE`, `PYTHON_EXECUTION_FAILED`
+- **New files**: `Python/Public/MCP/OlivePythonToolHandlers.h`, `Python/Private/MCP/OlivePythonToolHandlers.cpp`, `Python/Public/MCP/OlivePythonSchemas.h`, `Python/Private/MCP/OlivePythonSchemas.cpp`
+
 ### AI Freedom Design - Feb 2026
 - `plans/ai-freedom-design.md` -- 3-phase design: Unblock (5 false negatives), Simplify (111->76 tools), Discover (enhanced reads + describe_node_type)
 - **Phase 1 (5 false negatives)**: FN-1 OverrideFunction interface search, FN-2 FindInterfaceClass asset registry fallback, FN-3 EventTick alias additions, FN-4 FindFunction interface search + UK2Node_Message, FN-5 FunctionGraphs scan for uncompiled user functions
@@ -198,3 +139,31 @@
 - **Phase 3 discovery**: FOliveIRGraphSummary (name + node_count) per function. CompileErrors array on FOliveIRBlueprint. New blueprint.describe_node_type tool. FOliveFunctionSearchResult struct replacing bare UFunction* return.
 - **New error code**: `INTERFACE_FUNCTION_FOUND` (info)
 - **New enum value**: `EMatchMethod::InterfaceSearch`
+
+### Log Analysis Fixes - Feb 2026
+- `plans/log-analysis-fixes.md` -- 7 tasks (T1-T7) for 5 issues from real autonomous run log
+- **Issue 1 (Ghost K2Node_CallFunction)**: CreateNodeByClass gains FMemberReference special-case for UK2Node_CallFunction. Extracts function_name/function_class from Properties, calls `SetFromFunction(UFunction*)` BEFORE AllocateDefaultPins. Zero-pin guard removes ghost node and fails with `GHOST_NODE_PREVENTED`. `CreateNodeByClass` gets new `UBlueprint* Blueprint = nullptr` param.
+- **Issue 2 (Compile Error Masking)**: `FOliveCompileManager::Compile()` now checks `Blueprint->Status == BS_Error` as authoritative fallback when no per-node errors found. Also captures compiler messages via `FCompilerResultsLog*` overload of `CompileBlueprint`. Dedup prevents double-reporting.
+- **Issue 3 (Interface Graph Conflict)**: `FOliveBlueprintWriter::AddInterface()` pre-flights function name collision check before calling `ImplementNewInterface`. Scans interface's FUNC_BlueprintEvent functions against existing FunctionGraphs/UbergraphPages. Error code `INTERFACE_GRAPH_CONFLICT`.
+- **Issue 4 (Cast-Aware Resolution)**: `ResolveCallOp` fallback searches cast target class when primary resolution fails. Pre-builds `CastTargetMap` in `Resolve()` (step_id -> cast target class). Passed to `ResolveStep`/`ResolveCallOp`. New `ResolveStep`/`ResolveCallOp` param: `const TMap<FString,FString>& CastTargetMap`.
+- **Issue 5 (@entry Alias)**: `ExpandMissingComponentTargets` handles `@entry.ParamName` and `@GraphName.ParamName` in function graphs. Synthesizes `_synth_param_` step (same as bare `@ParamName` path). Case-insensitive "entry" alias check.
+- **New error codes**: `GHOST_NODE_PREVENTED`, `INTERFACE_GRAPH_CONFLICT`
+- **Key insight**: `SetNodePropertiesViaReflection` cannot handle nested struct fields like `FMemberReference` -- only direct UProperties on the node class. Special-casing is required for K2Node types that store critical config in nested structs.
+
+### Blueprint Interface Tools - Mar 2026
+- `plans/blueprint-interface-tools-design.md` -- 5 tasks: create_interface tool, VariableGet FMemberReference fix, DoesImplementInterface alias, recipe, template update
+- **`blueprint.create_interface` tool**: New writer method `CreateBlueprintInterface()` on FOliveBlueprintWriter. Uses `FKismetEditorUtilities::CreateBlueprint(UInterface::StaticClass(), Package, Name, BPTYPE_Interface, ...)`. Function signatures added via `CreateNewGraph` + `AddFunctionGraph<UClass>` + `UserDefinedPins` on entry/result nodes.
+- **Confirmation tier**: Tier 1 (auto-execute) via `OperationCategory = "create"`. Same as blueprint.create.
+- **VariableGet fix**: `CreateNodeByClass` gains `UK2Node_Variable` FMemberReference special-case (mirrors existing UK2Node_CallFunction block). Calls `VariableReference.SetSelfMember()` BEFORE AllocateDefaultPins. No zero-pin guard (unlike CallFunction) because variable nodes resolve at compile time.
+- **DoesImplementInterface aliases**: `ImplementsInterface`, `HasInterface`, `CheckInterface` -> `DoesImplementInterface` in GetAliasMap().
+- **New error code**: `BPI_CREATE_FAILED`
+- **New recipe**: `Content/SystemPrompts/Knowledge/recipes/blueprint/interface_pattern.txt`
+- **Tags for registration**: `{blueprint, write, create, interface}`, family `blueprint`
+
+### Auto-Wire Type Fixes - Feb 2026
+- `plans/auto-wire-type-fixes-design.md` -- 3 issues: type matching, JSON array coercion, exec chain inference
+- **Issue 1 (type matching)**: 3 sites in OlivePlanExecutor.cpp use exact `PinCategory == && PinSubCategoryObject ==` comparisons. Replace with `GetDefault<UEdGraphSchema_K2>()->ArePinTypesCompatible(Output, Input, CallingContext)`. Note: first arg is Output pin type, second is Input pin type. For `FindTypeCompatibleOutput` (manifest-level), add schema-based fallback in `WireDataConnection` using real `UEdGraphPin*` from context nodes.
+- **Issue 2 (JSON array coercion)**: `JsonToStringMap` in BlueprintPlanIR.cpp calls `AsString()` on all values -- Array types log error + return "". Fix: use `TryGetString()` first (handles String/Number/Boolean), then explicit Array fallback (take first element + warn). Also add `exec_after` array fallback via `TryGetArrayField`.
+- **Issue 3 (exec chain inference)**: Minimal fix: remove empty strings from `HasIncomingExec` set (caused by Issue 2 coercion). Full graph-aware inference deferred unless interleaved step ordering observed in logs.
+- **Implementation order**: Issue 2 (root cause) -> Issue 1 (highest impact) -> Issue 3 (depends on 2)
+- **No new error codes, no header changes, no new files.**

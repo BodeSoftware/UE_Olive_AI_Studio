@@ -20,6 +20,7 @@
 #include "Utility/OlivePCGAvailability.h"
 #include "MCP/OliveCppToolHandlers.h"
 #include "MCP/OliveCrossSystemToolHandlers.h"
+#include "MCP/OlivePythonToolHandlers.h"
 #include "Template/OliveTemplateSystem.h"
 #include "OliveMCPPromptTemplates.h"
 #include "Chat/OliveEditorChatSession.h"
@@ -66,6 +67,9 @@ void FOliveAIEditorModule::ShutdownModule()
 
 	// Unregister UI
 	UnregisterUI();
+
+	// Unregister Python tools
+	FOlivePythonToolHandlers::Get().UnregisterAllTools();
 
 	// Unregister Cross-System tools
 	FOliveCrossSystemToolHandlers::Get().UnregisterAllTools();
@@ -236,6 +240,10 @@ void FOliveAIEditorModule::OnPostEngineInit()
 	// Register Cross-System tools
 	FOliveCrossSystemToolHandlers::Get().RegisterAllTools();
 	UE_LOG(LogOliveAI, Log, TEXT("Cross-System tools registered"));
+
+	// Register Python tools
+	FOlivePythonToolHandlers::Get().RegisterAllTools();
+	UE_LOG(LogOliveAI, Log, TEXT("Python tools registered"));
 
 	// Register Cross-System validation rules
 	FOliveValidationEngine::Get().RegisterCrossSystemRules();

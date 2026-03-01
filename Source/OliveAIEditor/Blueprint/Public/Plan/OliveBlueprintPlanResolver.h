@@ -222,6 +222,27 @@ public:
 		const FOliveIRBlueprintPlan& Plan);
 
 	/**
+	 * Infer missing exec_after chains from step order.
+	 *
+	 * When the AI omits exec_after on impure steps, the layout engine treats
+	 * each as a separate root, causing extreme vertical spread. This pass
+	 * walks the plan in order and chains orphaned impure steps to the previous
+	 * impure step, creating a linear exec flow.
+	 *
+	 * Must be called AFTER Resolve() (needs purity info) and BEFORE
+	 * CollapseExecThroughPureSteps.
+	 *
+	 * @param Plan           The plan to modify in place
+	 * @param ResolvedSteps  Resolved steps from Resolve() (for bIsPure flags)
+	 * @param OutNotes       Resolver notes appended for each inference (transparency)
+	 * @return True if any exec_after values were inferred
+	 */
+	static bool InferMissingExecChain(
+		FOliveIRBlueprintPlan& Plan,
+		const TArray<FOliveResolvedStep>& ResolvedSteps,
+		TArray<FOliveResolverNote>& OutNotes);
+
+	/**
 	 * Post-resolve pass: collapse exec chains through pure steps.
 	 *
 	 * Pure nodes (get_var, make_struct, break_struct, pure function calls, etc.)
@@ -324,6 +345,8 @@ private:
 	 * @param OutResolved Populated on success with the resolved step data
 	 * @param OutErrors Appended with errors if resolution fails
 	 * @param OutWarnings Appended with non-fatal warnings
+	 * @param GraphContext Context about the target graph (function vs event graph, params)
+	 * @param CastTargetMap Maps cast step_id -> target class name for cross-step function resolution
 	 * @return True if resolution succeeded
 	 */
 	static bool ResolveStep(
@@ -333,20 +356,35 @@ private:
 		FOliveResolvedStep& OutResolved,
 		TArray<FOliveIRBlueprintPlanError>& OutErrors,
 		TArray<FString>& OutWarnings,
-		const FOliveGraphContext& GraphContext);
+		const FOliveGraphContext& GraphContext,
+		const TMap<FString, FString>& CastTargetMap);
 
 	// ============================================================================
 	// Per-Op Resolvers
 	// ============================================================================
 
-	/** Resolve a "call" op -- function call via catalog lookup */
+	/**
+	 * Resolve a "call" op -- function call via catalog lookup.
+	 * When the primary FindFunctionEx fails, scans Step.Inputs for @refs
+	 * that point to cast steps (via CastTargetMap) and searches the cast
+	 * target class for the function as a fallback.
+	 * @param Step The plan step to resolve
+	 * @param BP The target Blueprint
+	 * @param Idx Step index for error location
+	 * @param Out Populated on success with resolved step data
+	 * @param Errors Appended with errors on failure
+	 * @param Warnings Appended with non-fatal warnings
+	 * @param CastTargetMap Maps cast step_id -> target class name for cross-step resolution
+	 * @return True if resolution succeeded
+	 */
 	static bool ResolveCallOp(
 		const FOliveIRBlueprintPlanStep& Step,
 		UBlueprint* BP,
 		int32 Idx,
 		FOliveResolvedStep& Out,
 		TArray<FOliveIRBlueprintPlanError>& Errors,
-		TArray<FString>& Warnings);
+		TArray<FString>& Warnings,
+		const TMap<FString, FString>& CastTargetMap);
 
 	/** Resolve a "get_var" op -- get variable node */
 	static bool ResolveGetVarOp(

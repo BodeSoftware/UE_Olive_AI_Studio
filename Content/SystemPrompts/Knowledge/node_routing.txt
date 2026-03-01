@@ -1,25 +1,39 @@
-## Graph Node Reference
+## Graph Editing Tools
 
-Two equal approaches for adding logic to Blueprints. Pick whichever fits.
+Three approaches for adding logic to Blueprints. Pick whichever fits the task.
 
 ### plan_json (blueprint.apply_plan_json, schema_version "2.0")
 Declarative: describe intent, automatic pin resolution and wiring.
-Ops: event, custom_event, call, get_var, set_var, branch, sequence,
-  cast, for_loop, for_each_loop, while_loop, do_once, flip_flop, gate,
-  delay, is_valid, print_string, spawn_actor, make_struct, break_struct,
-  return, comment
+Ops: event, custom_event, call, call_delegate, call_dispatcher, bind_dispatcher,
+  get_var, set_var, branch, sequence, cast, for_loop, for_each_loop,
+  while_loop, do_once, flip_flop, gate, delay, is_valid, print_string,
+  spawn_actor, make_struct, break_struct, return, comment
 
 Best for: standard logic (3+ nodes), function bodies, event graph flows.
 
 ### add_node (blueprint.add_node)
 Imperative: place a specific UK2Node by class name, wire manually.
-Examples: K2Node_ComponentBoundEvent, K2Node_Timeline, K2Node_Select,
-  K2Node_SwitchEnum, K2Node_SwitchString, K2Node_EnhancedInputAction,
-  animation nodes (AnimBP), any UK2Node subclass.
+Works with ANY UK2Node subclass -- not limited to the plan_json ops list.
+Examples: K2Node_Timeline, K2Node_Select, K2Node_SwitchEnum, K2Node_SwitchString,
+  K2Node_EnhancedInputAction, K2Node_Message (interface calls), animation nodes.
 
 Pass `type` (curated name or exact class) + `properties` (UPROPERTY key-value pairs).
 Returns pin manifest. Follow up with connect_pins / set_pin_default.
 
+### editor.run_python
+Execute Python in UE's editor scripting context. The `unreal` module gives full access
+to editor APIs. Use when neither plan_json nor add_node can express what you need.
+
 ### get_node_pins (blueprint.get_node_pins)
 Re-inspect a node's pins after property changes that reconstruct it.
 Use when: set_node_property changes pin layout (e.g., adding array inputs).
+
+### Mixing approaches
+plan_json creates new nodes — it cannot reference nodes already in the graph by ID.
+If you place a node with add_node (e.g., K2Node_ComponentBoundEvent), then need to wire
+logic after it, use granular connect_pins with the node_id, not plan_json exec_after.
+
+### Your UE5 knowledge is valid
+You know Unreal Engine. If you know a node type, function, or pattern exists, try it.
+Don't limit yourself to what's documented in recipes or alias maps.
+If you know K2Node_Message is the right node for an interface call, use add_node to create it.

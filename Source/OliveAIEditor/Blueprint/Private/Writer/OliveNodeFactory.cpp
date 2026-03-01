@@ -14,6 +14,7 @@
 // K2 Node includes
 #include "K2Node.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_Variable.h"
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
 #include "K2Node_Event.h"
@@ -42,6 +43,9 @@
 #include "K2Node_EnhancedInputAction.h"
 #include "InputAction.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+
+// Blueprint Function Library (for universal fallback search)
+#include "Kismet/BlueprintFunctionLibrary.h"
 
 // Utility includes
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -1126,6 +1130,146 @@ UK2Node* FOliveNodeFactory::CreateBindDelegateNode(
 	return BindDelegateNode;
 }
 
+UK2Node* FOliveNodeFactory::CreateComponentBoundEventNode(
+	UBlueprint* Blueprint,
+	UEdGraph* Graph,
+	const TMap<FString, FString>& Properties)
+{
+	const FString* DelegateNamePtr = Properties.Find(TEXT("delegate_name"));
+	if (!DelegateNamePtr || DelegateNamePtr->IsEmpty())
+	{
+		LastError = TEXT("ComponentBoundEvent node requires 'delegate_name' property");
+		return nullptr;
+	}
+
+	const FString* ComponentNamePtr = Properties.Find(TEXT("component_name"));
+	if (!ComponentNamePtr || ComponentNamePtr->IsEmpty())
+	{
+		LastError = TEXT("ComponentBoundEvent node requires 'component_name' property");
+		return nullptr;
+	}
+
+	const FName DelegateFName(**DelegateNamePtr);
+	const FString& ComponentName = *ComponentNamePtr;
+
+	// Find the SCS node matching the component name
+	if (!Blueprint->SimpleConstructionScript)
+	{
+		LastError = FString::Printf(
+			TEXT("Blueprint '%s' has no SimpleConstructionScript (not an Actor-based Blueprint)"),
+			*Blueprint->GetName());
+		return nullptr;
+	}
+
+	USCS_Node* MatchedSCSNode = nullptr;
+	TArray<USCS_Node*> AllSCSNodes = Blueprint->SimpleConstructionScript->GetAllNodes();
+	for (USCS_Node* SCSNode : AllSCSNodes)
+	{
+		if (SCSNode && SCSNode->GetVariableName().ToString().Equals(ComponentName, ESearchCase::IgnoreCase))
+		{
+			MatchedSCSNode = SCSNode;
+			break;
+		}
+	}
+
+	if (!MatchedSCSNode)
+	{
+		// Build a list of available components for the error message
+		TArray<FString> AvailableComponents;
+		for (USCS_Node* SCSNode : AllSCSNodes)
+		{
+			if (SCSNode)
+			{
+				AvailableComponents.Add(SCSNode->GetVariableName().ToString());
+			}
+		}
+
+		LastError = FString::Printf(
+			TEXT("Component '%s' not found in Blueprint '%s' SCS. Available components: %s"),
+			*ComponentName, *Blueprint->GetName(),
+			AvailableComponents.Num() > 0
+				? *FString::Join(AvailableComponents, TEXT(", "))
+				: TEXT("(none)"));
+		return nullptr;
+	}
+
+	if (!MatchedSCSNode->ComponentClass)
+	{
+		LastError = FString::Printf(
+			TEXT("SCS node '%s' has no ComponentClass"), *ComponentName);
+		return nullptr;
+	}
+
+	// Find the multicast delegate property on the component class
+	FMulticastDelegateProperty* FoundDelegateProp = nullptr;
+	TArray<FString> AvailableDelegates;
+
+	for (TFieldIterator<FMulticastDelegateProperty> It(MatchedSCSNode->ComponentClass); It; ++It)
+	{
+		FMulticastDelegateProperty* DelegateProp = *It;
+		AvailableDelegates.Add(DelegateProp->GetName());
+
+		if (DelegateProp->GetFName() == DelegateFName)
+		{
+			FoundDelegateProp = DelegateProp;
+			// Do not break — continue to collect all available delegates for error messages
+		}
+	}
+
+	if (!FoundDelegateProp)
+	{
+		LastError = FString::Printf(
+			TEXT("Delegate '%s' not found on component '%s' (class '%s'). "
+				 "Available delegates: %s"),
+			**DelegateNamePtr, *ComponentName,
+			*MatchedSCSNode->ComponentClass->GetName(),
+			AvailableDelegates.Num() > 0
+				? *FString::Join(AvailableDelegates, TEXT(", "))
+				: TEXT("(none)"));
+		return nullptr;
+	}
+
+	// Find the FObjectProperty on the Blueprint's GeneratedClass that corresponds
+	// to the SCS component variable. InitializeComponentBoundEventParams needs this.
+	FObjectProperty* ComponentProp = nullptr;
+	if (Blueprint->GeneratedClass)
+	{
+		ComponentProp = FindFProperty<FObjectProperty>(
+			Blueprint->GeneratedClass, MatchedSCSNode->GetVariableName());
+	}
+
+	if (!ComponentProp)
+	{
+		// Fallback: try SkeletonGeneratedClass
+		if (Blueprint->SkeletonGeneratedClass)
+		{
+			ComponentProp = FindFProperty<FObjectProperty>(
+				Blueprint->SkeletonGeneratedClass, MatchedSCSNode->GetVariableName());
+		}
+	}
+
+	if (!ComponentProp)
+	{
+		LastError = FString::Printf(
+			TEXT("Could not find FObjectProperty for component '%s' on Blueprint '%s' generated class. "
+				 "The Blueprint may need to be compiled first."),
+			*ComponentName, *Blueprint->GetName());
+		return nullptr;
+	}
+
+	UE_LOG(LogOliveNodeFactory, Log,
+		TEXT("CreateComponentBoundEventNode: Found delegate '%s' on component '%s' (class '%s')"),
+		**DelegateNamePtr, *ComponentName, *MatchedSCSNode->ComponentClass->GetName());
+
+	// Create the ComponentBoundEvent node using the engine's initialization API
+	UK2Node_ComponentBoundEvent* BoundEventNode = NewObject<UK2Node_ComponentBoundEvent>(Graph);
+	BoundEventNode->InitializeComponentBoundEventParams(ComponentProp, FoundDelegateProp);
+	BoundEventNode->AllocateDefaultPins();
+	Graph->AddNode(BoundEventNode, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+
+	return BoundEventNode;
+}
+
 UK2Node* FOliveNodeFactory::CreateEnhancedInputActionNode(
 	UBlueprint* Blueprint,
 	UEdGraph* Graph,
@@ -1535,6 +1679,122 @@ UEdGraphNode* FOliveNodeFactory::CreateNodeByClass(
 		TEXT("CreateNodeByClass: Set %d/%d properties on %s"),
 		PropsSet, Properties.Num(), *NodeClass->GetName());
 
+	// --- FMemberReference support for UK2Node_CallFunction ---
+	// SetNodePropertiesViaReflection cannot set the FunctionReference nested struct
+	// because its fields (MemberName, MemberParentClass) are not top-level UProperties.
+	// We must use SetFromFunction() to populate FunctionReference correctly BEFORE
+	// AllocateDefaultPins, which reads FunctionReference to determine which pins to create.
+	if (NewNode->IsA<UK2Node_CallFunction>())
+	{
+		// Extract function name from properties (check common aliases)
+		FString FuncName;
+		const FString* FuncNamePtr = Properties.Find(TEXT("function_name"));
+		if (!FuncNamePtr) FuncNamePtr = Properties.Find(TEXT("FunctionName"));
+		if (!FuncNamePtr) FuncNamePtr = Properties.Find(TEXT("MemberName"));
+		if (!FuncNamePtr) FuncNamePtr = Properties.Find(TEXT("target"));
+		if (FuncNamePtr && !FuncNamePtr->IsEmpty())
+		{
+			FuncName = *FuncNamePtr;
+		}
+
+		// Extract class name from properties (check common aliases)
+		FString FuncClassName;
+		const FString* ClassNamePtr = Properties.Find(TEXT("function_class"));
+		if (!ClassNamePtr) ClassNamePtr = Properties.Find(TEXT("FunctionClass"));
+		if (!ClassNamePtr) ClassNamePtr = Properties.Find(TEXT("MemberParentClass"));
+		if (!ClassNamePtr) ClassNamePtr = Properties.Find(TEXT("target_class"));
+		if (ClassNamePtr && !ClassNamePtr->IsEmpty())
+		{
+			FuncClassName = *ClassNamePtr;
+		}
+
+		if (!FuncName.IsEmpty())
+		{
+			// Try resolving the function via FindFunctionEx (searches alias map,
+			// Blueprint hierarchy, SCS components, interfaces, library classes)
+			FOliveFunctionSearchResult SearchResult = FindFunctionEx(FuncName, FuncClassName, Blueprint);
+
+			// If class was specified but search failed, retry without class for broader search
+			if (!SearchResult.IsValid() && !FuncClassName.IsEmpty())
+			{
+				UE_LOG(LogOliveNodeFactory, Log,
+					TEXT("CreateNodeByClass: Function '%s' not found on class '%s', "
+						 "retrying broad search"),
+					*FuncName, *FuncClassName);
+				SearchResult = FindFunctionEx(FuncName, TEXT(""), Blueprint);
+			}
+
+			if (SearchResult.IsValid())
+			{
+				UK2Node_CallFunction* CallFuncNode = CastChecked<UK2Node_CallFunction>(NewNode);
+				CallFuncNode->SetFromFunction(SearchResult.Function);
+
+				UE_LOG(LogOliveNodeFactory, Log,
+					TEXT("CreateNodeByClass: Set FunctionReference for '%s' via '%s' "
+						 "(match method: %d, class: %s)"),
+					*FuncName,
+					*SearchResult.Function->GetName(),
+					static_cast<int32>(SearchResult.MatchMethod),
+					*SearchResult.MatchedClassName);
+			}
+			else
+			{
+				UE_LOG(LogOliveNodeFactory, Warning,
+					TEXT("CreateNodeByClass: Could not resolve function '%s' "
+						 "(class hint: '%s') for UK2Node_CallFunction. "
+						 "Searched: %s. Node will likely have 0 pins."),
+					*FuncName,
+					*FuncClassName,
+					*SearchResult.BuildSearchedLocationsString());
+			}
+		}
+		else
+		{
+			UE_LOG(LogOliveNodeFactory, Warning,
+				TEXT("CreateNodeByClass: UK2Node_CallFunction created without function_name "
+					 "property. The node will have no FunctionReference and 0 pins. "
+					 "Pass 'function_name' (or 'FunctionName'/'MemberName'/'target') "
+					 "in properties."));
+		}
+	}
+
+	// --- FMemberReference support for UK2Node_Variable (Get/Set) ---
+	// Same issue as UK2Node_CallFunction: VariableReference is a nested
+	// FMemberReference that SetNodePropertiesViaReflection cannot populate.
+	// We must call SetSelfMember() BEFORE AllocateDefaultPins.
+	if (NewNode->IsA<UK2Node_Variable>())
+	{
+		// Extract variable name from properties (check common aliases)
+		FString VarName;
+		const FString* VarNamePtr = Properties.Find(TEXT("variable_name"));
+		if (!VarNamePtr) VarNamePtr = Properties.Find(TEXT("VariableName"));
+		if (!VarNamePtr) VarNamePtr = Properties.Find(TEXT("MemberName"));
+		if (!VarNamePtr) VarNamePtr = Properties.Find(TEXT("name"));
+		if (VarNamePtr && !VarNamePtr->IsEmpty())
+		{
+			VarName = *VarNamePtr;
+		}
+
+		if (!VarName.IsEmpty())
+		{
+			UK2Node_Variable* VarNode = CastChecked<UK2Node_Variable>(NewNode);
+			VarNode->VariableReference.SetSelfMember(FName(*VarName));
+
+			UE_LOG(LogOliveNodeFactory, Log,
+				TEXT("CreateNodeByClass: Set VariableReference.SetSelfMember('%s') for %s"),
+				*VarName, *NodeClass->GetName());
+		}
+		else
+		{
+			UE_LOG(LogOliveNodeFactory, Warning,
+				TEXT("CreateNodeByClass: %s created without variable_name property. "
+					 "The node will have no VariableReference and likely 0 pins. "
+					 "Pass 'variable_name' (or 'VariableName'/'MemberName'/'name') "
+					 "in properties."),
+				*NodeClass->GetName());
+		}
+	}
+
 	// Create GUID for the node
 	NewNode->CreateNewGuid();
 
@@ -1548,6 +1808,36 @@ UEdGraphNode* FOliveNodeFactory::CreateNodeByClass(
 	// This is mandatory defense-in-depth -- many K2Nodes only produce correct
 	// pins after reconstruction (which may read properties, resolve references, etc.).
 	NewNode->ReconstructNode();
+
+	// --- Zero-pin guard for UK2Node_CallFunction ---
+	// If a CallFunction node ends up with 0 pins, it means FunctionReference was
+	// never set correctly. This produces a "ghost node" that compiles with
+	// "Could not find a function named 'None'" and wastes the AI's entire
+	// budget trying to wire a pinless node. Remove it immediately and fail
+	// with actionable guidance toward blueprint.apply_plan_json.
+	if (NewNode->IsA<UK2Node_CallFunction>() && NewNode->Pins.Num() == 0)
+	{
+		const FString* FuncNamePtr = Properties.Find(TEXT("function_name"));
+		if (!FuncNamePtr) FuncNamePtr = Properties.Find(TEXT("FunctionName"));
+		if (!FuncNamePtr) FuncNamePtr = Properties.Find(TEXT("MemberName"));
+		if (!FuncNamePtr) FuncNamePtr = Properties.Find(TEXT("target"));
+		const FString FuncHint = FuncNamePtr ? *FuncNamePtr : TEXT("<unknown>");
+
+		Graph->RemoveNode(NewNode);
+
+		LastError = FString::Printf(
+			TEXT("[GHOST_NODE_PREVENTED] K2Node_CallFunction created with 0 pins — "
+				 "function reference not resolved. "
+				 "Do NOT use blueprint.add_node for function calls. "
+				 "Use blueprint.apply_plan_json with a 'call' op instead. "
+				 "Example: {\"op\": \"call\", \"target\": \"%s\"}"),
+			*FuncHint);
+
+		UE_LOG(LogOliveNodeFactory, Error,
+			TEXT("CreateNodeByClass: %s"), *LastError);
+
+		return nullptr;
+	}
 
 	UE_LOG(LogOliveNodeFactory, Log,
 		TEXT("CreateNodeByClass: Successfully created %s with %d pins, "
@@ -1662,8 +1952,24 @@ UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FS
 			UFunction* Func = TryClassWithK2(Class);
 			if (Func)
 			{
-				UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): found in specified class '%s'"), *ResolvedName, *Class->GetName());
-				ReportMatch(EOliveFunctionMatchMethod::ExactName);
+				// If the specified class is a UInterface (or its generated class derives from
+				// UInterface), report InterfaceSearch so the downstream pipeline creates
+				// UK2Node_Message instead of UK2Node_CallFunction.
+				if (Class->IsChildOf(UInterface::StaticClass()) ||
+					(Class->ClassGeneratedBy && Cast<UBlueprint>(Class->ClassGeneratedBy) &&
+					 Cast<UBlueprint>(Class->ClassGeneratedBy)->BlueprintType == BPTYPE_Interface))
+				{
+					UE_LOG(LogOliveNodeFactory, Log, TEXT("FindFunction('%s'): found in specified interface class '%s' -> InterfaceSearch"), *ResolvedName, *Class->GetName());
+					if (OutMatchMethod)
+					{
+						*OutMatchMethod = EOliveFunctionMatchMethod::InterfaceSearch;
+					}
+				}
+				else
+				{
+					UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): found in specified class '%s'"), *ResolvedName, *Class->GetName());
+					ReportMatch(EOliveFunctionMatchMethod::ExactName);
+				}
 				return Func;
 			}
 		}
@@ -1826,6 +2132,62 @@ UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FS
 		ACharacter::StaticClass(),
 	};
 
+	// Accumulate classes searched in Steps 1-5 for Step 7 fuzzy matching
+	TArray<UClass*> AllSearchedClasses;
+
+	// Add Step 1 class
+	if (!ClassName.IsEmpty())
+	{
+		UClass* SpecifiedClass = FindClass(ClassName);
+		if (SpecifiedClass)
+		{
+			AllSearchedClasses.AddUnique(SpecifiedClass);
+		}
+	}
+
+	// Add Step 2 class
+	if (Blueprint && Blueprint->GeneratedClass)
+	{
+		AllSearchedClasses.AddUnique(Blueprint->GeneratedClass);
+	}
+
+	// Add Step 3 parent hierarchy classes
+	if (Blueprint && Blueprint->ParentClass)
+	{
+		UClass* Current = Blueprint->ParentClass;
+		while (Current)
+		{
+			AllSearchedClasses.AddUnique(Current);
+			Current = Current->GetSuperClass();
+		}
+	}
+
+	// Add Step 4 SCS component classes
+	if (Blueprint && Blueprint->SimpleConstructionScript)
+	{
+		TArray<USCS_Node*> AllSCSNodes2 = Blueprint->SimpleConstructionScript->GetAllNodes();
+		for (USCS_Node* SCSNode : AllSCSNodes2)
+		{
+			if (SCSNode && SCSNode->ComponentClass)
+			{
+				AllSearchedClasses.AddUnique(SCSNode->ComponentClass);
+			}
+		}
+	}
+
+	// Add Step 4b interface classes
+	if (Blueprint)
+	{
+		for (const FBPInterfaceDescription& InterfaceDesc : Blueprint->ImplementedInterfaces)
+		{
+			if (InterfaceDesc.Interface)
+			{
+				AllSearchedClasses.AddUnique(InterfaceDesc.Interface);
+			}
+		}
+	}
+
+	// Add Step 5 library classes
 	for (UClass* LibClass : LibraryClasses)
 	{
 		UE_LOG(LogOliveNodeFactory, Verbose, TEXT("FindFunction('%s'): trying library class '%s'"), *ResolvedName, *LibClass->GetName());
@@ -1836,6 +2198,107 @@ UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FS
 			ReportMatch(EOliveFunctionMatchMethod::LibrarySearch);
 			return Func;
 		}
+		AllSearchedClasses.AddUnique(LibClass);
+	}
+
+	// --- Step 6: Universal Blueprint Function Library search ---
+	// Iterate all non-abstract UBlueprintFunctionLibrary subclasses that were
+	// not already covered by the hardcoded Step 5 list.
+	TSet<UClass*> SearchedLibraries;
+	for (UClass* LC : LibraryClasses)
+	{
+		SearchedLibraries.Add(LC);
+	}
+
+	for (TObjectIterator<UClass> ClassIt; ClassIt; ++ClassIt)
+	{
+		UClass* TestClass = *ClassIt;
+		if (TestClass->IsChildOf(UBlueprintFunctionLibrary::StaticClass())
+			&& !TestClass->HasAnyClassFlags(CLASS_Abstract)
+			&& !SearchedLibraries.Contains(TestClass))
+		{
+			UFunction* Func = TryClassWithK2(TestClass);
+			if (Func)
+			{
+				UE_LOG(LogOliveNodeFactory, Log,
+					TEXT("FindFunction('%s'): found in library class '%s' (universal search)"),
+					*ResolvedName, *TestClass->GetName());
+				if (OutMatchMethod)
+				{
+					*OutMatchMethod = EOliveFunctionMatchMethod::UniversalLibrarySearch;
+				}
+				return Func;
+			}
+		}
+	}
+
+	// --- Step 7: K2_ prefix fuzzy matching across previously searched classes ---
+	// This catches cases where the function IS on a known class from Steps 1-5
+	// but the name is slightly off (e.g., "SetActorLocation" vs "K2_SetActorLocation").
+	// Only high-confidence exact matches (case-insensitive) are accepted.
+	{
+		FString CoreName = ResolvedName;
+		CoreName.RemoveFromStart(TEXT("K2_"));
+
+		// Step 7a: Re-check the alias map with the K2_-stripped name.
+		// This catches cases like K2_SetTimerByFunctionName -> strip K2_ ->
+		// SetTimerByFunctionName -> alias map -> K2_SetTimer (the real UFunction).
+		if (CoreName != ResolvedName) // Only if we actually stripped a K2_ prefix
+		{
+			const FString* ReAliased = GetAliasMap().Find(CoreName);
+			if (ReAliased)
+			{
+				for (UClass* SearchClass : AllSearchedClasses)
+				{
+					if (!SearchClass) continue;
+					UFunction* Func = SearchClass->FindFunctionByName(FName(**ReAliased));
+					if (Func)
+					{
+						UE_LOG(LogOliveNodeFactory, Log,
+							TEXT("FindFunction('%s'): K2_ strip + re-alias '%s' -> '%s' found on '%s'"),
+							*FunctionName, *CoreName, **ReAliased, *SearchClass->GetName());
+						if (OutMatchMethod)
+						{
+							*OutMatchMethod = EOliveFunctionMatchMethod::FuzzyK2Match;
+						}
+						return Func;
+					}
+				}
+			}
+		}
+
+		for (UClass* SearchClass : AllSearchedClasses)
+		{
+			if (!SearchClass)
+			{
+				continue;
+			}
+
+			for (TFieldIterator<UFunction> FuncIt(SearchClass); FuncIt; ++FuncIt)
+			{
+				if (!FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
+				{
+					continue;
+				}
+
+				FString FuncName = FuncIt->GetName();
+				// High-confidence matches only:
+				// 1. CoreName matches function name (ignoring case)
+				// 2. K2_ + CoreName matches function name (ignoring case)
+				if (FuncName.Equals(CoreName, ESearchCase::IgnoreCase) ||
+					FuncName.Equals(TEXT("K2_") + CoreName, ESearchCase::IgnoreCase))
+				{
+					UE_LOG(LogOliveNodeFactory, Log,
+						TEXT("FindFunction('%s'): K2_ fuzzy match '%s::%s'"),
+						*FunctionName, *SearchClass->GetName(), *FuncName);
+					if (OutMatchMethod)
+					{
+						*OutMatchMethod = EOliveFunctionMatchMethod::FuzzyK2Match;
+					}
+					return *FuncIt;
+				}
+			}
+		}
 	}
 
 	UE_LOG(LogOliveNodeFactory, Warning,
@@ -1843,8 +2306,10 @@ UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FS
 			 "Blueprint FunctionGraphs + parent class hierarchy + SCS component classes + "
 			 "implemented interfaces + "
 			 "library classes [KismetSystemLibrary, KismetMathLibrary, KismetStringLibrary, KismetArrayLibrary, "
-			 "GameplayStatics, Object, Actor, SceneComponent, PrimitiveComponent, Pawn, Character]"),
-		*FunctionName, *ResolvedName, *ClassName);
+			 "GameplayStatics, Object, Actor, SceneComponent, PrimitiveComponent, Pawn, Character] + "
+			 "universal library search (all UBlueprintFunctionLibrary subclasses) + "
+			 "K2_ fuzzy match (%d searched classes)"),
+		*FunctionName, *ResolvedName, *ClassName, AllSearchedClasses.Num());
 	return nullptr;
 }
 
@@ -1992,6 +2457,40 @@ FOliveFunctionSearchResult FOliveNodeFactory::FindFunctionEx(
 		TEXT("library classes (KismetSystemLibrary, KismetMathLibrary, KismetStringLibrary, ")
 		TEXT("KismetArrayLibrary, GameplayStatics, Object, Actor, SceneComponent, ")
 		TEXT("PrimitiveComponent, Pawn, Character)"));
+
+	// Step 6: Universal library search
+	Result.SearchedLocations.Add(
+		TEXT("universal library search (all UBlueprintFunctionLibrary subclasses)"));
+
+	// Step 7: K2_ fuzzy match
+	// Count how many classes were accumulated in Steps 1-5 for the message
+	int32 FuzzyClassCount = 0;
+	// Step 1
+	if (!ClassName.IsEmpty()) FuzzyClassCount++;
+	// Step 2
+	if (Blueprint && Blueprint->GeneratedClass) FuzzyClassCount++;
+	// Step 3
+	if (Blueprint && Blueprint->ParentClass)
+	{
+		UClass* WalkClass2 = Blueprint->ParentClass;
+		while (WalkClass2)
+		{
+			FuzzyClassCount++;
+			WalkClass2 = WalkClass2->GetSuperClass();
+		}
+	}
+	// Step 4
+	if (Blueprint && Blueprint->SimpleConstructionScript)
+	{
+		FuzzyClassCount += Blueprint->SimpleConstructionScript->GetAllNodes().Num();
+	}
+	// Step 4b
+	if (Blueprint) FuzzyClassCount += Blueprint->ImplementedInterfaces.Num();
+	// Step 5: 11 library classes
+	FuzzyClassCount += 11;
+
+	Result.SearchedLocations.Add(
+		FString::Printf(TEXT("K2_ fuzzy match across %d searched classes"), FuzzyClassCount));
 
 	return Result;
 }
@@ -2146,8 +2645,10 @@ const TMap<FString, FString>& FOliveNodeFactory::GetAliasMap()
 		Map.Add(TEXT("SetTimer"), TEXT("K2_SetTimer"));
 		Map.Add(TEXT("SetTimerByFunctionName"), TEXT("K2_SetTimer"));
 		Map.Add(TEXT("SetTimerByName"), TEXT("K2_SetTimer"));
+		Map.Add(TEXT("K2_SetTimerByFunctionName"), TEXT("K2_SetTimer")); // AI sends K2_ + display name
 		Map.Add(TEXT("ClearTimer"), TEXT("K2_ClearTimer"));
 		Map.Add(TEXT("ClearTimerByFunctionName"), TEXT("K2_ClearTimer"));
+		Map.Add(TEXT("K2_ClearTimerByFunctionName"), TEXT("K2_ClearTimer")); // AI sends K2_ + display name
 		Map.Add(TEXT("PauseTimer"), TEXT("K2_PauseTimer"));
 		Map.Add(TEXT("PauseTimerByFunctionName"), TEXT("K2_PauseTimer"));
 		Map.Add(TEXT("UnPauseTimer"), TEXT("K2_UnPauseTimer"));
@@ -2274,6 +2775,54 @@ const TMap<FString, FString>& FOliveNodeFactory::GetAliasMap()
 		Map.Add(TEXT("GreaterEqual_FloatFloat"), TEXT("GreaterEqual_DoubleDouble"));
 		Map.Add(TEXT("EqualEqual_FloatFloat"), TEXT("EqualEqual_DoubleDouble"));
 		Map.Add(TEXT("NotEqual_FloatFloat"), TEXT("NotEqual_DoubleDouble"));
+
+		// ================================================================
+		// Conversion (AI never guesses Conv_ prefix)
+		// ================================================================
+		Map.Add(TEXT("IntToFloat"), TEXT("Conv_IntToDouble"));
+		Map.Add(TEXT("IntToDouble"), TEXT("Conv_IntToDouble"));
+		Map.Add(TEXT("Conv_IntToFloat"), TEXT("Conv_IntToDouble")); // UE 5.5 renamed Float->Double
+		Map.Add(TEXT("FloatToInt"), TEXT("Conv_DoubleToInt"));
+		Map.Add(TEXT("DoubleToInt"), TEXT("Conv_DoubleToInt"));
+		Map.Add(TEXT("NameToString"), TEXT("Conv_NameToString"));
+		Map.Add(TEXT("StringToName"), TEXT("Conv_StringToName"));
+		Map.Add(TEXT("TextToString"), TEXT("Conv_TextToString"));
+		Map.Add(TEXT("StringToText"), TEXT("Conv_StringToText"));
+		Map.Add(TEXT("ObjectToString"), TEXT("Conv_ObjectToString"));
+		Map.Add(TEXT("VectorToString"), TEXT("Conv_VectorToString"));
+		Map.Add(TEXT("RotatorToString"), TEXT("Conv_RotatorToString"));
+		Map.Add(TEXT("BoolToInt"), TEXT("Conv_BoolToInt"));
+		Map.Add(TEXT("IntToBool"), TEXT("Conv_IntToBool"));
+
+		// ================================================================
+		// Math — name mismatches
+		// ================================================================
+		Map.Add(TEXT("MapRange"), TEXT("MapRangeClamped"));
+		Map.Add(TEXT("NearlyEqual"), TEXT("NearlyEqual_FloatFloat"));
+		Map.Add(TEXT("Sign"), TEXT("SignOfFloat"));
+
+		// ================================================================
+		// Physics — name mismatches
+		// ================================================================
+		Map.Add(TEXT("SetPhysicsAngularVelocity"), TEXT("SetPhysicsAngularVelocityInDegrees"));
+
+		// ================================================================
+		// Widget/UI — "Create" is the actual UFunction on UWidgetBlueprintLibrary
+		// ================================================================
+		Map.Add(TEXT("CreateWidget"), TEXT("Create"));
+
+		// ================================================================
+		// Save/Load shorthand
+		// ================================================================
+		Map.Add(TEXT("SaveGame"), TEXT("SaveGameToSlot"));
+		Map.Add(TEXT("LoadGame"), TEXT("LoadGameFromSlot"));
+
+		// ================================================================
+		// Interface Checks (UKismetSystemLibrary)
+		// ================================================================
+		Map.Add(TEXT("ImplementsInterface"), TEXT("DoesImplementInterface"));
+		Map.Add(TEXT("HasInterface"), TEXT("DoesImplementInterface"));
+		Map.Add(TEXT("CheckInterface"), TEXT("DoesImplementInterface"));
 
 		return Map;
 	}();
@@ -2489,6 +3038,11 @@ void FOliveNodeFactory::InitializeNodeCreators()
 		return CreateBindDelegateNode(BP, G, P);
 	});
 
+	// Component Events
+	NodeCreators.Add(OliveNodeTypes::ComponentBoundEvent, [this](UBlueprint* BP, UEdGraph* G, const TMap<FString, FString>& P) -> UEdGraphNode* {
+		return CreateComponentBoundEventNode(BP, G, P);
+	});
+
 	// ============================================================================
 	// Register Required Properties
 	// ============================================================================
@@ -2570,6 +3124,12 @@ void FOliveNodeFactory::InitializeNodeCreators()
 	TMap<FString, FString> BindDelegateProps;
 	BindDelegateProps.Add(TEXT("delegate_name"), TEXT("Name of the event dispatcher to bind to (required)"));
 	RequiredPropertiesMap.Add(OliveNodeTypes::BindDelegate, BindDelegateProps);
+
+	// ComponentBoundEvent
+	TMap<FString, FString> ComponentBoundEventProps;
+	ComponentBoundEventProps.Add(TEXT("delegate_name"), TEXT("Name of the delegate property on the component class (required, e.g., 'OnComponentBeginOverlap')"));
+	ComponentBoundEventProps.Add(TEXT("component_name"), TEXT("SCS variable name of the component (required, e.g., 'CollisionComp')"));
+	RequiredPropertiesMap.Add(OliveNodeTypes::ComponentBoundEvent, ComponentBoundEventProps);
 
 	// Nodes with no required properties get empty maps
 	RequiredPropertiesMap.Add(OliveNodeTypes::Branch, TMap<FString, FString>());

@@ -1,11 +1,10 @@
 TAGS: create new blueprint plan_json actor component variable
 ---
 CREATE new Blueprint:
-1. blueprint.create -> {path:"/Game/Blueprints/BP_Name", parent_class:"Actor"}
-2. add_component + add_variable (batch all in one turn)
-3. blueprint.apply_plan_json (ALL graph logic in ONE call)
+1. blueprint.create with path and parent_class
+2. Add structure: components, variables (batch in one turn)
+3. Wire graph logic (apply_plan_json for 3+ nodes, add_node for 1-2)
 
 Do NOT call blueprint.read before create -- the asset does not exist yet.
-Do NOT call preview_plan_json in the same turn as apply.
-Data-provider steps (get_var, pure calls) MUST appear BEFORE steps that @ref them.
-All graph nodes go in one plan_json call -- never add_node one-at-a-time for 3+ nodes.
+Do NOT batch preview_plan_json and apply_plan_json in the same turn.
+Data-provider steps (get_var, pure calls) should appear BEFORE steps that @ref them.

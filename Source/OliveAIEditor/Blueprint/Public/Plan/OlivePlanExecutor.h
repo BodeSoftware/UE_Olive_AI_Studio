@@ -340,6 +340,19 @@ private:
         UEdGraph* Graph,
         const FString& InputActionName);
 
+    /**
+     * Find existing UK2Node_ComponentBoundEvent in graph for reuse.
+     * Matches by delegate property name and component property name.
+     * @param Graph The graph to search
+     * @param DelegateName The delegate property name (e.g., "OnComponentBeginOverlap")
+     * @param ComponentName The component variable name (e.g., "CollisionComp")
+     * @return The existing node, or nullptr if not found
+     */
+    UEdGraphNode* FindExistingComponentBoundEventNode(
+        UEdGraph* Graph,
+        const FString& DelegateName,
+        const FString& ComponentName);
+
     /** Build human-readable list of available pins for error messages */
     FString BuildPinSuggestionList(
         const FOlivePinManifest& Manifest,

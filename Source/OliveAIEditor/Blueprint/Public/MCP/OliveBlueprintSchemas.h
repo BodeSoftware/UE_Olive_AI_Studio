@@ -110,6 +110,13 @@ namespace OliveBlueprintSchemas
 	TSharedPtr<FJsonObject> BlueprintAddInterface();
 
 	/**
+	 * Schema for blueprint.create_interface
+	 * Create a new Blueprint Interface asset with function signatures.
+	 * Params: {path: string, functions: [{name: string, inputs?: [{name, type}], outputs?: [{name, type}]}]}
+	 */
+	TSharedPtr<FJsonObject> BlueprintCreateInterface();
+
+	/**
 	 * Schema for blueprint.remove_interface
 	 * Remove interface
 	 * Params: {path: string, interface: string}

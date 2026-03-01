@@ -215,6 +215,18 @@ public:
 		const FString& AssetPath,
 		const FString& InterfacePath);
 
+	/**
+	 * Create a new Blueprint Interface asset with function signatures.
+	 * Functions with outputs become implementable functions.
+	 * Functions without outputs become implementable events.
+	 * @param AssetPath Full asset path (e.g., "/Game/Interfaces/BPI_Interactable")
+	 * @param Functions Array of function signatures to add to the interface
+	 * @return Result with asset path on success, list of created function names
+	 */
+	FOliveBlueprintWriteResult CreateBlueprintInterface(
+		const FString& AssetPath,
+		const TArray<FOliveIRFunctionSignature>& Functions);
+
 	// ============================================================================
 	// Variable Operations
 	// ============================================================================

@@ -1,6 +1,7 @@
 // Copyright Bode Software. All Rights Reserved.
 
 #include "IR/BlueprintPlanIR.h"
+#include "OliveAIRuntimeModule.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 
@@ -45,6 +46,13 @@ namespace
 		return Json;
 	}
 
+	/**
+	 * Convert a JSON object to a string map, handling type mismatches gracefully.
+	 * String, Number, and Boolean values are handled via TryGetString (all three
+	 * JSON value types implement it). Array values are coerced to their first
+	 * element with a warning log, preventing silent data loss when the AI sends
+	 * e.g. "exec_outputs": {"True": ["step_a", "step_b"]}.
+	 */
 	TMap<FString, FString> JsonToStringMap(const TSharedPtr<FJsonObject>& Json)
 	{
 		TMap<FString, FString> Map;
@@ -52,7 +60,38 @@ namespace
 		{
 			for (const auto& Pair : Json->Values)
 			{
-				Map.Add(Pair.Key, Pair.Value->AsString());
+				FString StringValue;
+				if (Pair.Value->TryGetString(StringValue))
+				{
+					// String, Number, Boolean all implement TryGetString
+					Map.Add(Pair.Key, StringValue);
+				}
+				else if (Pair.Value->Type == EJson::Array)
+				{
+					// AI sent array where string expected -- take first element
+					const TArray<TSharedPtr<FJsonValue>>& Arr = Pair.Value->AsArray();
+					if (Arr.Num() > 0 && Arr[0]->TryGetString(StringValue))
+					{
+						Map.Add(Pair.Key, StringValue);
+						UE_LOG(LogOliveAIRuntime, Warning,
+							TEXT("JsonToStringMap: Key '%s' has Array value, "
+								 "coerced to first element '%s' (%d elements total)"),
+							*Pair.Key, *StringValue, Arr.Num());
+					}
+					else
+					{
+						UE_LOG(LogOliveAIRuntime, Warning,
+							TEXT("JsonToStringMap: Key '%s' has empty or non-string Array, skipping"),
+							*Pair.Key);
+					}
+				}
+				else
+				{
+					// Null or Object -- skip with warning
+					UE_LOG(LogOliveAIRuntime, Warning,
+						TEXT("JsonToStringMap: Key '%s' has unsupported JSON type (EJson=%d), skipping"),
+						*Pair.Key, static_cast<int32>(Pair.Value->Type));
+				}
 			}
 		}
 		return Map;
@@ -138,6 +177,26 @@ FOliveIRBlueprintPlanStep FOliveIRBlueprintPlanStep::FromJson(const TSharedPtr<F
 	Json->TryGetStringField(TEXT("target"), Step.Target);
 	Json->TryGetStringField(TEXT("target_class"), Step.TargetClass);
 	Json->TryGetStringField(TEXT("exec_after"), Step.ExecAfter);
+
+	// Fallback: if exec_after was sent as an array, take first element.
+	// exec_after is semantically a single predecessor step ID; if the AI
+	// sends an array, the first element is the primary predecessor.
+	if (Step.ExecAfter.IsEmpty())
+	{
+		const TArray<TSharedPtr<FJsonValue>>* ExecAfterArr = nullptr;
+		if (Json->TryGetArrayField(TEXT("exec_after"), ExecAfterArr)
+			&& ExecAfterArr && ExecAfterArr->Num() > 0)
+		{
+			FString FirstVal;
+			if ((*ExecAfterArr)[0]->TryGetString(FirstVal) && !FirstVal.IsEmpty())
+			{
+				Step.ExecAfter = FirstVal;
+				UE_LOG(LogOliveAIRuntime, Warning,
+					TEXT("Plan step '%s': exec_after was Array, coerced to first element '%s'"),
+					*Step.StepId, *FirstVal);
+			}
+		}
+	}
 
 	const TSharedPtr<FJsonObject>* InputsObj = nullptr;
 	if (Json->TryGetObjectField(TEXT("inputs"), InputsObj))

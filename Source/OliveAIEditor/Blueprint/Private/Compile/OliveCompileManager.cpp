@@ -8,6 +8,7 @@
 #include "EdGraph/EdGraphNode.h"
 #include "K2Node.h"
 #include "Kismet2/KismetEditorUtilities.h"
+#include "Kismet2/CompilerResultsLog.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Internationalization/Regex.h"
 #include "Editor.h"
@@ -55,12 +56,20 @@ FOliveIRCompileResult FOliveCompileManager::Compile(UBlueprint* Blueprint)
 	// Time the compilation
 	double StartTime = FPlatformTime::Seconds();
 
-	// Clear existing messages before compile
-	// Note: Blueprint error tracking is managed internally by the compiler
+	// Create a compiler results log to capture ALL compiler messages, including
+	// graph-level errors that don't attach to any specific node (e.g., "Graph named
+	// 'Interact' already exists"). Without this, those errors are silently dropped
+	// because ExtractNodeErrors only finds per-node ErrorMsg/ErrorType.
+	FCompilerResultsLog CompilerLog;
+	CompilerLog.bSilentMode = true; // Don't spam the editor's message log tab
+	CompilerLog.bAnnotateMentionedNodes = false; // We handle node annotation ourselves
+	CompilerLog.BeginEvent(TEXT("OliveCompile"));
 
-	// Perform compilation
+	// Perform compilation WITH results capture
 	EBlueprintCompileOptions CompileOptions = EBlueprintCompileOptions::None;
-	FKismetEditorUtilities::CompileBlueprint(Blueprint, CompileOptions, nullptr);
+	FKismetEditorUtilities::CompileBlueprint(Blueprint, CompileOptions, &CompilerLog);
+
+	CompilerLog.EndEvent();
 
 	// Calculate compile time
 	Result.CompileTimeMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
@@ -68,11 +77,39 @@ FOliveIRCompileResult FOliveCompileManager::Compile(UBlueprint* Blueprint)
 	// Parse results from the compiled Blueprint
 	ParseCompileLog(Blueprint, Result);
 
-	// Extract node-level errors
+	// Extract node-level errors (from ErrorMsg/ErrorType on each UEdGraphNode)
 	ExtractNodeErrors(Blueprint, Result);
 
-	// Set success flag based on error count
-	Result.bSuccess = (Result.Errors.Num() == 0);
+	// Extract compiler-log-level errors that were NOT captured via per-node extraction.
+	// This catches graph-level errors like duplicate graph names, interface conflicts,
+	// and other structural issues that the compiler logs but doesn't attach to nodes.
+	ExtractCompilerLogErrors(CompilerLog, Result);
+
+	// Set success flag based on error count AND Blueprint status.
+	// Blueprint->Status is set by UE's compiler after FKismetEditorUtilities::CompileBlueprint returns.
+	// BS_Error is authoritative -- some errors (e.g., duplicate graph names, interface conflicts)
+	// are graph-level and do NOT attach to any specific node, so per-node extraction misses them.
+	Result.bSuccess = (Result.Errors.Num() == 0) && (Blueprint->Status != BS_Error);
+
+	// Defense-in-depth: If the Blueprint reports an error state but NEITHER per-node
+	// extraction NOR compiler log capture found any errors, add a synthetic error.
+	// This should be rare now that we capture from FCompilerResultsLog, but serves
+	// as a safety net for edge cases where the compiler sets BS_Error without logging.
+	if (Blueprint->Status == BS_Error && Result.Errors.Num() == 0)
+	{
+		Result.Errors.Add(FOliveIRCompileError::MakeError(
+			TEXT("Blueprint has compile errors that are not attached to specific nodes. "
+				 "This usually means a structural problem like duplicate graph names, "
+				 "interface conflicts, or circular dependencies."),
+			TEXT("Use blueprint.read to examine the Blueprint structure. "
+				 "Check for duplicate function/graph names and interface conflicts. "
+				 "Consider using mode:'replace' in plan_json to rebuild the graph.")));
+
+		UE_LOG(LogOliveCompile, Warning,
+			TEXT("Blueprint '%s' has BS_Error status but no errors were found from nodes or compiler log. "
+				 "Added synthetic error for structural problem detection."),
+			*Blueprint->GetPathName());
+	}
 
 	UE_LOG(LogOliveCompile, Log, TEXT("Compilation complete: %s - Errors: %d, Warnings: %d, Time: %.2fms"),
 		Result.bSuccess ? TEXT("SUCCESS") : TEXT("FAILED"),
@@ -501,6 +538,71 @@ void FOliveCompileManager::ExtractNodeErrors(const UBlueprint* Blueprint, FOlive
 					ProcessedNodeIds.Add(NodeId);
 				}
 			}
+		}
+	}
+}
+
+void FOliveCompileManager::ExtractCompilerLogErrors(const FCompilerResultsLog& CompilerLog, FOliveIRCompileResult& OutResult) const
+{
+	// Iterate all messages captured by the compiler results log.
+	// Many of these will duplicate errors already found via per-node extraction
+	// (ExtractNodeErrors), so we deduplicate by checking if each message text
+	// is already present (substring match) in an existing error.
+	for (const TSharedRef<FTokenizedMessage>& Msg : CompilerLog.Messages)
+	{
+		const EMessageSeverity::Type Severity = Msg->GetSeverity();
+
+		// Only capture errors and warnings
+		if (Severity != EMessageSeverity::Error && Severity != EMessageSeverity::Warning
+			&& Severity != EMessageSeverity::PerformanceWarning)
+		{
+			continue;
+		}
+
+		const FString MsgText = Msg->ToText().ToString();
+		if (MsgText.IsEmpty())
+		{
+			continue;
+		}
+
+		// Deduplicate: check if this message is already captured by per-node extraction.
+		// Use bidirectional substring containment to handle cases where the compiler log
+		// message is slightly longer/shorter than the node-level ErrorMsg.
+		const TArray<FOliveIRCompileError>& ExistingList =
+			(Severity == EMessageSeverity::Error) ? OutResult.Errors : OutResult.Warnings;
+
+		bool bAlreadyCaptured = false;
+		for (const FOliveIRCompileError& Existing : ExistingList)
+		{
+			if (Existing.Message.Contains(MsgText) || MsgText.Contains(Existing.Message))
+			{
+				bAlreadyCaptured = true;
+				break;
+			}
+		}
+
+		if (bAlreadyCaptured)
+		{
+			continue;
+		}
+
+		FOliveIRCompileError NewError;
+		NewError.Message = MsgText;
+		NewError.Severity = (Severity == EMessageSeverity::Error)
+			? EOliveIRCompileErrorSeverity::Error
+			: EOliveIRCompileErrorSeverity::Warning;
+		NewError.Suggestion = GenerateSuggestion(NewError);
+
+		if (Severity == EMessageSeverity::Error)
+		{
+			OutResult.Errors.Add(MoveTemp(NewError));
+
+			UE_LOG(LogOliveCompile, Log,
+				TEXT("Captured compiler-log error (not on any node): %s"), *MsgText);
+		}
+		else
+		{
+			OutResult.Warnings.Add(MoveTemp(NewError));
 		}
 	}
 }

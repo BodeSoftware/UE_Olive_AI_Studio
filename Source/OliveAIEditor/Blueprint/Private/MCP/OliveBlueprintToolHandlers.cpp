@@ -558,6 +558,20 @@ void FOliveBlueprintToolHandlers::RegisterAssetWriterTools()
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.add_interface"));
 
+	// blueprint.create_interface
+	Registry.RegisterTool(
+		TEXT("blueprint.create_interface"),
+		TEXT("Create a new Blueprint Interface (BPI) asset with function signatures. "
+			 "Functions without outputs become implementable events. "
+			 "Functions with outputs become implementable functions. "
+			 "After creation, use blueprint.add_interface to implement it on target BPs."),
+		OliveBlueprintSchemas::BlueprintCreateInterface(),
+		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintCreateInterface),
+		{TEXT("blueprint"), TEXT("write"), TEXT("create"), TEXT("interface")},
+		TEXT("blueprint")
+	);
+	RegisteredToolNames.Add(TEXT("blueprint.create_interface"));
+
 	// blueprint.remove_interface
 	Registry.RegisterTool(
 		TEXT("blueprint.remove_interface"),
@@ -591,7 +605,7 @@ void FOliveBlueprintToolHandlers::RegisterAssetWriterTools()
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.delete"));
 
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered 6 asset writer tools"));
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered 7 asset writer tools"));
 }
 
 void FOliveBlueprintToolHandlers::RegisterVariableWriterTools()
@@ -1631,8 +1645,16 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleDescribeNodeType(const TShar
 		);
 	}
 
-	// Create a temporary graph and node for pin introspection
-	UEdGraph* TempGraph = NewObject<UEdGraph>(GetTransientPackage(), NAME_None, RF_Transient);
+	// Create a scratch Blueprint so the temp graph has a valid outer for
+	// FindBlueprintForNodeChecked (called internally by many K2Node subclasses
+	// during AllocateDefaultPins). Without this, nodes like UK2Node_CallFunction
+	// hit a fatal assertion on the transient package.
+	UBlueprint* ScratchBP = NewObject<UBlueprint>(GetTransientPackage(), NAME_None, RF_Transient);
+	ScratchBP->ParentClass = AActor::StaticClass();
+	ScratchBP->GeneratedClass = AActor::StaticClass();
+	ScratchBP->SkeletonGeneratedClass = AActor::StaticClass();
+
+	UEdGraph* TempGraph = NewObject<UEdGraph>(ScratchBP, NAME_None, RF_Transient);
 	TempGraph->Schema = UEdGraphSchema_K2::StaticClass();
 
 	UK2Node* TempNode = NewObject<UK2Node>(TempGraph, NodeClass, NAME_None, RF_Transient);
@@ -2286,6 +2308,260 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintDelete(const TShare
 	// Execute through pipeline
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
 	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
+
+	return Result.ToToolResult();
+}
+
+// ============================================================================
+// Blueprint Interface Creation
+// ============================================================================
+
+FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreateInterface(
+	const TSharedPtr<FJsonObject>& Params)
+{
+	// Validate parameters
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide 'path' and 'functions' parameters")
+		);
+	}
+
+	// Extract path
+	FString AssetPath;
+	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'path' is missing or empty"),
+			TEXT("Provide the interface asset path (e.g., '/Game/Interfaces/BPI_Interactable')")
+		);
+	}
+
+	// Path validation (same as HandleBlueprintCreate)
+	{
+		FString ShortName = FPackageName::GetShortName(AssetPath);
+		if (ShortName.IsEmpty() || AssetPath.EndsWith(TEXT("/")))
+		{
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_PATH_IS_FOLDER"),
+				FString::Printf(TEXT("'%s' is a folder path, not an asset path."),
+					*AssetPath),
+				FString::Printf(TEXT("Append the interface name: '%s/BPI_Interactable'"),
+					*AssetPath)
+			);
+		}
+
+		if (!AssetPath.StartsWith(TEXT("/Game/")))
+		{
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_INVALID_PATH_PREFIX"),
+				FString::Printf(TEXT("Path '%s' must start with '/Game/'."),
+					*AssetPath),
+				FString::Printf(TEXT("Use '/Game/Interfaces/%s'"), *ShortName)
+			);
+		}
+	}
+
+	// Extract functions array
+	const TArray<TSharedPtr<FJsonValue>>* FunctionsArray = nullptr;
+	if (!Params->TryGetArrayField(TEXT("functions"), FunctionsArray)
+		|| !FunctionsArray || FunctionsArray->Num() == 0)
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'functions' is missing or empty"),
+			TEXT("Provide at least one function definition: "
+				 "[{\"name\": \"Interact\", \"inputs\": [{\"name\": \"Caller\", \"type\": \"Actor\"}]}]")
+		);
+	}
+
+	// Parse function signatures
+	TArray<FOliveIRFunctionSignature> Functions;
+	for (const TSharedPtr<FJsonValue>& FuncValue : *FunctionsArray)
+	{
+		const TSharedPtr<FJsonObject>* FuncObjPtr = nullptr;
+		if (!FuncValue->TryGetObject(FuncObjPtr) || !FuncObjPtr->IsValid())
+		{
+			continue;
+		}
+		const TSharedPtr<FJsonObject>& FuncObj = *FuncObjPtr;
+
+		FOliveIRFunctionSignature Sig;
+
+		// Name (required)
+		if (!FuncObj->TryGetStringField(TEXT("name"), Sig.Name)
+			|| Sig.Name.IsEmpty())
+		{
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_MISSING_PARAM"),
+				TEXT("Each function must have a 'name' field"),
+				TEXT("Example: {\"name\": \"Interact\"}")
+			);
+		}
+
+		// Parse inputs
+		const TArray<TSharedPtr<FJsonValue>>* InputsArray = nullptr;
+		if (FuncObj->TryGetArrayField(TEXT("inputs"), InputsArray) && InputsArray)
+		{
+			for (const TSharedPtr<FJsonValue>& InputValue : *InputsArray)
+			{
+				const TSharedPtr<FJsonObject>* InputObjPtr = nullptr;
+				if (!InputValue->TryGetObject(InputObjPtr) || !InputObjPtr->IsValid())
+				{
+					continue;
+				}
+				const TSharedPtr<FJsonObject>& InputObj = *InputObjPtr;
+
+				FOliveIRFunctionParam Param;
+				InputObj->TryGetStringField(TEXT("name"), Param.Name);
+
+				// Type -- accept string or object with "category" key
+				FString TypeStr;
+				const TSharedPtr<FJsonObject>* TypeJsonPtr = nullptr;
+				if (InputObj->TryGetObjectField(TEXT("type"), TypeJsonPtr)
+					&& TypeJsonPtr->IsValid())
+				{
+					Param.Type = ParseTypeFromParams(*TypeJsonPtr);
+				}
+				else if (InputObj->TryGetStringField(TEXT("type"), TypeStr))
+				{
+					// Simple string type (e.g., "Actor", "Float", "Bool")
+					// ParseTypeFromParams expects "category" as the field name
+					TSharedPtr<FJsonObject> TypeObj = MakeShareable(new FJsonObject());
+					TypeObj->SetStringField(TEXT("category"), TypeStr);
+					Param.Type = ParseTypeFromParams(TypeObj);
+				}
+
+				Sig.Inputs.Add(Param);
+			}
+		}
+
+		// Parse outputs (same pattern)
+		const TArray<TSharedPtr<FJsonValue>>* OutputsArray = nullptr;
+		if (FuncObj->TryGetArrayField(TEXT("outputs"), OutputsArray) && OutputsArray)
+		{
+			for (const TSharedPtr<FJsonValue>& OutputValue : *OutputsArray)
+			{
+				const TSharedPtr<FJsonObject>* OutputObjPtr = nullptr;
+				if (!OutputValue->TryGetObject(OutputObjPtr)
+					|| !OutputObjPtr->IsValid())
+				{
+					continue;
+				}
+				const TSharedPtr<FJsonObject>& OutputObj = *OutputObjPtr;
+
+				FOliveIRFunctionParam Param;
+				OutputObj->TryGetStringField(TEXT("name"), Param.Name);
+
+				FString TypeStr;
+				const TSharedPtr<FJsonObject>* TypeJsonPtr = nullptr;
+				if (OutputObj->TryGetObjectField(TEXT("type"), TypeJsonPtr)
+					&& TypeJsonPtr->IsValid())
+				{
+					Param.Type = ParseTypeFromParams(*TypeJsonPtr);
+				}
+				else if (OutputObj->TryGetStringField(TEXT("type"), TypeStr))
+				{
+					TSharedPtr<FJsonObject> TypeObj = MakeShareable(new FJsonObject());
+					TypeObj->SetStringField(TEXT("category"), TypeStr);
+					Param.Type = ParseTypeFromParams(TypeObj);
+				}
+
+				Sig.Outputs.Add(Param);
+			}
+		}
+
+		Functions.Add(Sig);
+	}
+
+	// Build write request
+	FOliveWriteRequest Request;
+	Request.ToolName = TEXT("blueprint.create_interface");
+	Request.Params = Params;
+	Request.AssetPath = AssetPath;
+	Request.TargetAsset = nullptr; // New asset, does not exist yet
+	Request.OperationDescription = FText::FromString(
+		FString::Printf(TEXT("Create Blueprint Interface '%s' with %d functions"),
+			*AssetPath, Functions.Num()));
+	Request.OperationCategory = TEXT("create"); // Tier 1
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
+	Request.bAutoCompile = true;
+	Request.bSkipVerification = false;
+
+	// Create executor
+	FOliveWriteExecutor Executor;
+	Executor.BindLambda([AssetPath, Functions](
+		const FOliveWriteRequest& Req, UObject* Target) -> FOliveWriteResult
+	{
+		FOliveBlueprintWriter& Writer = FOliveBlueprintWriter::Get();
+		FOliveBlueprintWriteResult WriteResult =
+			Writer.CreateBlueprintInterface(AssetPath, Functions);
+
+		if (!WriteResult.bSuccess)
+		{
+			FString ErrorMsg = WriteResult.Errors.Num() > 0
+				? WriteResult.Errors[0] : TEXT("Unknown error");
+			return FOliveWriteResult::ExecutionError(
+				TEXT("BPI_CREATE_FAILED"),
+				ErrorMsg,
+				TEXT("Check the path and function signatures")
+			);
+		}
+
+		// Build success result
+		TSharedPtr<FJsonObject> ResultData =
+			MakeShareable(new FJsonObject());
+		ResultData->SetStringField(TEXT("asset_path"),
+			WriteResult.AssetPath);
+		ResultData->SetStringField(TEXT("created_name"),
+			WriteResult.CreatedItemName);
+
+		// List created functions
+		TArray<TSharedPtr<FJsonValue>> FuncNames;
+		for (const FOliveIRFunctionSignature& Sig : Functions)
+		{
+			FuncNames.Add(MakeShareable(
+				new FJsonValueString(Sig.Name)));
+		}
+		ResultData->SetArrayField(TEXT("functions"), FuncNames);
+
+		// Include usage guidance in result
+		ResultData->SetStringField(TEXT("next_steps"),
+			FString::Printf(
+				TEXT("Interface created. To use it: "
+					 "1) blueprint.add_interface on target BPs with interface='%s'. "
+					 "2) Functions without outputs become events the BP must implement. "
+					 "3) Functions with outputs become functions the BP must override. "
+					 "4) Call through the interface with plan_json: "
+					 "{\"op\": \"call\", \"target\": \"FunctionName\", "
+					 "\"target_class\": \"%s\"} (creates UK2Node_Message)."),
+				*WriteResult.AssetPath,
+				*FPackageName::GetShortName(WriteResult.AssetPath)));
+
+		// Embed warnings in result data if any
+		if (WriteResult.Warnings.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> WarningValues;
+			for (const FString& W : WriteResult.Warnings)
+			{
+				WarningValues.Add(MakeShareable(new FJsonValueString(W)));
+			}
+			ResultData->SetArrayField(TEXT("warnings"), WarningValues);
+		}
+
+		FOliveWriteResult WR = FOliveWriteResult::Success(ResultData);
+		WR.CreatedItem = AssetPath;
+
+		return WR;
+	});
+
+	// Execute through pipeline
+	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
+	FOliveWriteResult Result =
+		ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
 }
@@ -3989,12 +4265,15 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddNode(const TShar
 		}
 		ErrorData->SetArrayField(TEXT("suggestions"), SuggestionArray);
 
+		FString SuggestionText = Suggestions.Num() > 0
+			? FString::Printf(TEXT("Did you mean '%s'? "), *Suggestions[0].DisplayName)
+			: TEXT("Use blueprint.describe_node_type to check available types. ");
+		SuggestionText += TEXT("Alternatively, use editor.run_python for node types not supported by add_node.");
+
 		FOliveToolResult Result = FOliveToolResult::Error(
 			TEXT("NODE_TYPE_UNKNOWN"),
 			FString::Printf(TEXT("Node type '%s' is not recognized"), *NodeType),
-			Suggestions.Num() > 0
-				? FString::Printf(TEXT("Did you mean '%s'?"), *Suggestions[0].DisplayName)
-				: TEXT("Use blueprint.node_catalog_search to find available node types")
+			SuggestionText
 		);
 		Result.Data = ErrorData;
 		return Result;
@@ -4070,12 +4349,25 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddNode(const TShar
 
 			// Defense-in-depth: detect duplicate native event from NodeFactory
 			FString ErrorCode = TEXT("BP_ADD_NODE_FAILED");
-			FString Suggestion = TEXT("Verify the node type is valid and the graph exists");
+			FString Suggestion;
 			if (ErrorMsg.Contains(TEXT("already exists")))
 			{
 				ErrorCode = TEXT("DUPLICATE_NATIVE_EVENT");
 				Suggestion = TEXT("Use blueprint.read_event_graph to see existing event nodes, "
 					"or use 'CustomEvent' type to create user-defined events");
+			}
+			else
+			{
+				// Provide actionable suggestions with Python fallback
+				Suggestion = TEXT("Check the type name and properties. ");
+				if (NodeType.Contains(TEXT("K2Node_")) || NodeType.Contains(TEXT("Input")))
+				{
+					Suggestion += TEXT("For complex node types, try editor.run_python with unreal.BlueprintEditorLibrary or direct node creation via Python.");
+				}
+				else
+				{
+					Suggestion += TEXT("Use blueprint.describe_node_type to check available types, or editor.run_python for types not supported by add_node.");
+				}
 			}
 
 			return FOliveWriteResult::ExecutionError(ErrorCode, ErrorMsg, Suggestion);
@@ -6532,6 +6824,10 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 	// point because it lacks synthetic steps from ExpandComponentRefs/etc.
 	FOliveIRBlueprintPlan& ExpandedPlan = ResolveResult.ExpandedPlan;
 
+	// Infer missing exec_after from step order (fixes layout for plans without explicit exec flow)
+	FOliveBlueprintPlanResolver::InferMissingExecChain(
+		ExpandedPlan, ResolveResult.ResolvedSteps, ResolveResult.GlobalNotes);
+
 	// Collapse exec chains through pure steps (pure nodes have no exec pins)
 	FOliveBlueprintPlanResolver::CollapseExecThroughPureSteps(
 		ExpandedPlan, ResolveResult.ResolvedSteps, ResolveResult.GlobalNotes);
@@ -6894,6 +7190,10 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 	// 8. Post-resolve passes + Lower (v1.0 only)
 	// ------------------------------------------------------------------
 	const bool bIsV2Plan = (ExpandedPlan.SchemaVersion == TEXT("2.0"));
+
+	// Infer missing exec_after from step order (fixes layout for plans without explicit exec flow)
+	FOliveBlueprintPlanResolver::InferMissingExecChain(
+		ExpandedPlan, ResolveResult.ResolvedSteps, ResolveResult.GlobalNotes);
 
 	// Collapse exec chains through pure steps (pure nodes have no exec pins)
 	FOliveBlueprintPlanResolver::CollapseExecThroughPureSteps(

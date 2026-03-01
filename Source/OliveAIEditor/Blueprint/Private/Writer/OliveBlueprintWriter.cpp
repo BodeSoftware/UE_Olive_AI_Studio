@@ -441,6 +441,63 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::AddInterface(
 		}
 	}
 
+	// Pre-flight check: detect function graph name collisions BEFORE adding the interface.
+	// ImplementNewInterface auto-creates function graph stubs for each interface function
+	// that has FUNC_BlueprintEvent. If a graph with the same name already exists, UE produces
+	// a permanent compile error ("Graph named 'X' already exists").
+	{
+		TArray<FString> ConflictingNames;
+		for (TFieldIterator<UFunction> FuncIt(InterfaceClass, EFieldIteratorFlags::IncludeSuper); FuncIt; ++FuncIt)
+		{
+			UFunction* InterfaceFunc = *FuncIt;
+			if (!InterfaceFunc || !InterfaceFunc->HasAnyFunctionFlags(FUNC_BlueprintEvent))
+			{
+				continue;
+			}
+
+			const FName FuncName = InterfaceFunc->GetFName();
+
+			// Check existing function graphs
+			bool bConflictFound = false;
+			for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+			{
+				if (Graph && Graph->GetFName() == FuncName)
+				{
+					ConflictingNames.Add(FuncName.ToString());
+					bConflictFound = true;
+					break;
+				}
+			}
+
+			// Also check UbergraphPages (event graphs can have sub-graphs with matching names)
+			if (!bConflictFound)
+			{
+				for (UEdGraph* Graph : Blueprint->UbergraphPages)
+				{
+					if (Graph && Graph->GetFName() == FuncName)
+					{
+						ConflictingNames.Add(FuncName.ToString());
+						break;
+					}
+				}
+			}
+		}
+
+		if (ConflictingNames.Num() > 0)
+		{
+			return FOliveBlueprintWriteResult::Error(
+				FString::Printf(
+					TEXT("[INTERFACE_GRAPH_CONFLICT] Cannot add interface '%s': function graph(s) "
+						"named '%s' already exist on this Blueprint. Adding the interface would "
+						"create duplicate graphs causing permanent compile errors. Remove or rename "
+						"the conflicting function(s) first using blueprint.remove_function, then "
+						"add the interface."),
+					*InterfacePath,
+					*FString::Join(ConflictingNames, TEXT("', '"))),
+				AssetPath);
+		}
+	}
+
 	// Use transaction for undo support
 	OLIVE_SCOPED_TRANSACTION(FText::Format(
 		NSLOCTEXT("OliveBPWriter", "AddInterface", "Add Interface '{0}' to '{1}'"),
@@ -521,6 +578,210 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::RemoveInterface(
 	UE_LOG(LogOliveBPWriter, Log, TEXT("Removed interface '%s' from '%s'"), *InterfacePath, *AssetPath);
 
 	return FOliveBlueprintWriteResult::Success(AssetPath);
+}
+
+// ============================================================================
+// Blueprint Interface Creation
+// ============================================================================
+
+FOliveBlueprintWriteResult FOliveBlueprintWriter::CreateBlueprintInterface(
+	const FString& AssetPath,
+	const TArray<FOliveIRFunctionSignature>& Functions)
+{
+	if (IsPIEActive())
+	{
+		return FOliveBlueprintWriteResult::Error(
+			TEXT("Cannot create Blueprints while Play-In-Editor is active"));
+	}
+
+	// Validate path format
+	if (!FPackageName::IsValidLongPackageName(AssetPath))
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Invalid Blueprint asset path '%s'. "
+				"Expected '/Game/.../BPI_Name'"), *AssetPath));
+	}
+
+	FString PackagePath = FPackageName::GetLongPackagePath(AssetPath);
+	FString AssetName = FPackageName::GetShortName(AssetPath);
+
+	if (AssetName.IsEmpty())
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Path '%s' is a folder, not an asset path. "
+				"Append the interface name, e.g. '%s/BPI_Interactable'."),
+				*AssetPath, *AssetPath));
+	}
+
+	// Check if asset already exists
+	FString FullObjectPath = AssetPath + TEXT(".") + AssetName;
+	if (FindObject<UBlueprint>(nullptr, *FullObjectPath))
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Blueprint already exists at path: %s"),
+				*AssetPath));
+	}
+
+	// Must have at least one function
+	if (Functions.Num() == 0)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			TEXT("Blueprint Interface must have at least one function. "
+				 "Provide a 'functions' array with function definitions."));
+	}
+
+	// Create the package
+	UPackage* Package = CreatePackage(*AssetPath);
+	if (!Package)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Failed to create package for: %s"),
+				*AssetPath));
+	}
+
+	// Transaction for undo support
+	OLIVE_SCOPED_TRANSACTION(FText::Format(
+		NSLOCTEXT("OliveBPWriter", "CreateBlueprintInterface",
+			"Create Blueprint Interface '{0}'"),
+		FText::FromString(AssetName)));
+
+	// Create the Blueprint Interface
+	// UInterface::StaticClass() is the parent for all Blueprint Interfaces
+	UBlueprint* NewBPI = FKismetEditorUtilities::CreateBlueprint(
+		UInterface::StaticClass(),
+		Package,
+		*AssetName,
+		BPTYPE_Interface,
+		UBlueprint::StaticClass(),
+		UBlueprintGeneratedClass::StaticClass()
+	);
+
+	if (!NewBPI)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Failed to create Blueprint Interface: %s"),
+				*AssetPath));
+	}
+
+	// Add each function signature to the interface
+	TArray<FString> CreatedFunctions;
+	TArray<FString> Warnings;
+
+	for (const FOliveIRFunctionSignature& Sig : Functions)
+	{
+		if (Sig.Name.IsEmpty())
+		{
+			Warnings.Add(TEXT("Skipped function with empty name"));
+			continue;
+		}
+
+		// Create a new function graph
+		UEdGraph* FuncGraph = FBlueprintEditorUtils::CreateNewGraph(
+			NewBPI,
+			FName(*Sig.Name),
+			UEdGraph::StaticClass(),
+			UEdGraphSchema_K2::StaticClass()
+		);
+
+		if (!FuncGraph)
+		{
+			Warnings.Add(FString::Printf(
+				TEXT("Failed to create function graph for '%s'"),
+				*Sig.Name));
+			continue;
+		}
+
+		// Add to Blueprint's function graphs
+		FBlueprintEditorUtils::AddFunctionGraph<UClass>(
+			NewBPI, FuncGraph, /*bIsUserCreated=*/true,
+			/*SignatureFromObject=*/nullptr);
+
+		// Find entry node to add input parameters
+		UK2Node_FunctionEntry* EntryNode = nullptr;
+		for (UEdGraphNode* Node : FuncGraph->Nodes)
+		{
+			EntryNode = Cast<UK2Node_FunctionEntry>(Node);
+			if (EntryNode) break;
+		}
+
+		if (EntryNode)
+		{
+			// Add input parameters to the entry node
+			for (const FOliveIRFunctionParam& Param : Sig.Inputs)
+			{
+				FEdGraphPinType PinType = CreatePinTypeFromParam(Param);
+
+				TSharedPtr<FUserPinInfo> NewPinInfo =
+					MakeShareable(new FUserPinInfo());
+				NewPinInfo->PinName = FName(*Param.Name);
+				NewPinInfo->PinType = PinType;
+				// Entry node outputs are function inputs
+				NewPinInfo->DesiredPinDirection = EGPD_Output;
+
+				EntryNode->UserDefinedPins.Add(NewPinInfo);
+			}
+
+			EntryNode->ReconstructNode();
+		}
+
+		// Add output parameters via result node
+		if (Sig.Outputs.Num() > 0)
+		{
+			UK2Node_FunctionResult* ResultNode = nullptr;
+			for (UEdGraphNode* Node : FuncGraph->Nodes)
+			{
+				ResultNode = Cast<UK2Node_FunctionResult>(Node);
+				if (ResultNode) break;
+			}
+
+			// Create result node if not found
+			if (!ResultNode)
+			{
+				FGraphNodeCreator<UK2Node_FunctionResult> Creator(*FuncGraph);
+				ResultNode = Creator.CreateNode();
+				ResultNode->NodePosX = EntryNode ?
+					EntryNode->NodePosX + 400 : 400;
+				ResultNode->NodePosY = EntryNode ?
+					EntryNode->NodePosY : 0;
+				Creator.Finalize();
+			}
+
+			for (const FOliveIRFunctionParam& Param : Sig.Outputs)
+			{
+				FEdGraphPinType PinType = CreatePinTypeFromParam(Param);
+
+				TSharedPtr<FUserPinInfo> NewPinInfo =
+					MakeShareable(new FUserPinInfo());
+				NewPinInfo->PinName = FName(*Param.Name);
+				NewPinInfo->PinType = PinType;
+				// Result node inputs are function outputs
+				NewPinInfo->DesiredPinDirection = EGPD_Input;
+
+				ResultNode->UserDefinedPins.Add(NewPinInfo);
+			}
+
+			ResultNode->ReconstructNode();
+		}
+
+		CreatedFunctions.Add(Sig.Name);
+	}
+
+	// Mark as structurally modified and notify asset registry
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(NewBPI);
+	Package->MarkPackageDirty();
+	FAssetRegistryModule::AssetCreated(NewBPI);
+
+	UE_LOG(LogOliveBPWriter, Log,
+		TEXT("Created Blueprint Interface: %s with %d functions"),
+		*AssetPath, CreatedFunctions.Num());
+
+	FOliveBlueprintWriteResult Result =
+		FOliveBlueprintWriteResult::Success(AssetPath, AssetName);
+	for (const FString& W : Warnings)
+	{
+		Result.AddWarning(W);
+	}
+	return Result;
 }
 
 // ============================================================================
@@ -1653,31 +1914,11 @@ FOliveBlueprintWriter::FOliveVariableCorrectionDecision FOliveBlueprintWriter::A
 
 UClass* FOliveBlueprintWriter::ResolveClassByName(const FString& ClassName)
 {
-	// 1. Exact match
-	UClass* Class = FindObject<UClass>(nullptr, *ClassName);
-	if (Class) return Class;
-
-	// 2. FindFirstObject (searches all packages)
-	Class = FindFirstObject<UClass>(*ClassName);
-	if (Class) return Class;
-
-	// 3. Strip A/U prefix (AActor -> Actor, UObject -> Object)
-	if (ClassName.Len() > 1 && (ClassName[0] == TEXT('A') || ClassName[0] == TEXT('U')))
-	{
-		FString Stripped = ClassName.Mid(1);
-		Class = FindFirstObject<UClass>(*Stripped);
-		if (Class) return Class;
-	}
-
-	// 4. Try adding A prefix (Actor -> AActor)
-	Class = FindFirstObject<UClass>(*(TEXT("A") + ClassName));
-	if (Class) return Class;
-
-	// 5. Try adding U prefix (Object -> UObject)
-	Class = FindFirstObject<UClass>(*(TEXT("U") + ClassName));
-	if (Class) return Class;
-
-	return nullptr;
+	// Delegate to the shared class resolver which handles native classes,
+	// Blueprint generated classes (BP_Gun, BP_Gun_C), full asset paths
+	// (/Game/Blueprints/BP_Gun), and asset registry search — with LRU cache.
+	FOliveClassResolveResult Result = FOliveClassResolver::Resolve(ClassName);
+	return Result.Class;
 }
 
 FEdGraphPinType FOliveBlueprintWriter::ConvertIRType(const FOliveIRType& IRType)

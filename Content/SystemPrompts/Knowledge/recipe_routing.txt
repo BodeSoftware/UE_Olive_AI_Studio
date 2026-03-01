@@ -1,10 +1,8 @@
 ## Routing
-- olive.get_recipe(query) has tested wiring patterns. Use it when you're unsure about a pattern, but skip it for simple/well-known operations (e.g., BeginPlay -> PrintString).
-- NEW blueprint: check templates first (blueprint.create_from_template). If none fit: create + components/variables + apply_plan_json
-- MODIFY existing: project.search (find path) -> check reference templates if relevant -> blueprint.read -> then write tools
-- SMALL EDIT (1-2 nodes): read_event_graph -> add_node + connect_pins
-- MULTI-ASSET (2+ blueprints): completing one asset at a time before starting the next tends to work better.
+- olive.get_recipe(query) has tested wiring patterns. Use it when unsure about a pattern, but skip it for simple/well-known operations.
+- NEW blueprint: check templates first (blueprint.create with template_id). If none fit: create + components/variables + apply_plan_json
+- MODIFY existing: project.search (find path) → blueprint.read → write tools
+- MULTI-ASSET: complete one asset at a time before starting the next.
 - FIX wiring: use wiring_errors and pin_manifests from the apply result
-- NEVER call blueprint.read before blueprint.create
-- Prefer plan_json for 3+ nodes. Use add_node/connect_pins for small edits (1-2 ops) or when the needed operation isn't in the plan vocabulary.
-- Split complex logic into multiple functions when it makes architectural sense. There is no hard step limit, but plans over ~20 steps benefit from splitting.
+- plan_json is atomic (all-or-nothing); granular tools are incremental. Pick what fits.
+- Split complex logic into multiple functions when it makes architectural sense.

@@ -464,6 +464,63 @@ namespace OliveBlueprintSchemas
 		return Schema;
 	}
 
+	TSharedPtr<FJsonObject> BlueprintCreateInterface()
+	{
+		TSharedPtr<FJsonObject> Properties = MakeProperties();
+
+		Properties->SetObjectField(TEXT("path"),
+			StringProp(TEXT("Asset path for the new Blueprint Interface "
+				"(e.g., '/Game/Interfaces/BPI_Interactable')")));
+
+		// Function parameter schema (input or output)
+		TSharedPtr<FJsonObject> ParamSchema = MakeSchema(TEXT("object"));
+		{
+			TSharedPtr<FJsonObject> ParamProps = MakeProperties();
+			ParamProps->SetObjectField(TEXT("name"),
+				StringProp(TEXT("Parameter name")));
+			ParamProps->SetObjectField(TEXT("type"),
+				StringProp(TEXT("Parameter type (e.g., 'Actor', 'Float', 'Bool', "
+					"'Text', 'Vector', 'FString')")));
+			ParamSchema->SetObjectField(TEXT("properties"), ParamProps);
+			AddRequired(ParamSchema, {TEXT("name"), TEXT("type")});
+		}
+
+		// Single function definition schema
+		TSharedPtr<FJsonObject> FuncSchema = MakeSchema(TEXT("object"));
+		{
+			TSharedPtr<FJsonObject> FuncProps = MakeProperties();
+			FuncProps->SetObjectField(TEXT("name"),
+				StringProp(TEXT("Function name (e.g., 'Interact', 'GetDisplayName')")));
+			FuncProps->SetObjectField(TEXT("inputs"),
+				ArrayProp(TEXT("Input parameters (optional). "
+					"Functions with no outputs become events in implementing BPs."),
+					ParamSchema));
+			FuncProps->SetObjectField(TEXT("outputs"),
+				ArrayProp(TEXT("Output/return parameters (optional). "
+					"Functions WITH outputs must be implemented as functions, "
+					"not events."),
+					ParamSchema));
+			FuncSchema->SetObjectField(TEXT("properties"), FuncProps);
+			AddRequired(FuncSchema, {TEXT("name")});
+		}
+
+		Properties->SetObjectField(TEXT("functions"),
+			ArrayProp(TEXT("Array of function signatures to define on the interface. "
+				"Each function can have inputs, outputs, or both."),
+				FuncSchema));
+
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		Schema->SetStringField(TEXT("description"),
+			TEXT("Create a new Blueprint Interface (BPI) asset with function signatures. "
+				 "After creation, use blueprint.add_interface to implement it on target BPs. "
+				 "Functions without outputs become events; functions with outputs become "
+				 "overridable functions."));
+		Schema->SetObjectField(TEXT("properties"), Properties);
+		AddRequired(Schema, {TEXT("path"), TEXT("functions")});
+
+		return Schema;
+	}
+
 	TSharedPtr<FJsonObject> BlueprintRemoveInterface()
 	{
 		TSharedPtr<FJsonObject> Properties = MakeProperties();

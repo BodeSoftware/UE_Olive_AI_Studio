@@ -77,10 +77,11 @@ Source/
     ├── BehaviorTree/        # BT/Blackboard
     ├── PCG/                 # PCG graphs
     ├── Cpp/                 # C++ integration
-    └── CrossSystem/         # Multi-asset operations
+    ├── CrossSystem/         # Multi-asset operations
+    └── Python/              # Python editor scripting (editor.run_python)
 ```
 
-`OliveAIEditor.Build.cs` adds recursive include paths for sub-modules: `Blueprint`, `BehaviorTree`, `PCG`, `Cpp`, `CrossSystem`, `Brain`. Notable module dependencies include `AnimGraph`/`AnimGraphRuntime` (Animation Blueprint support), `UMG`/`UMGEditor` (Widget Blueprint support), and `LiveCoding`/`SourceCodeAccess` (C++ hot reload integration).
+`OliveAIEditor.Build.cs` adds recursive include paths for sub-modules: `Blueprint`, `BehaviorTree`, `PCG`, `Cpp`, `CrossSystem`, `Brain`, `Python`. Notable module dependencies include `AnimGraph`/`AnimGraphRuntime` (Animation Blueprint support), `UMG`/`UMGEditor` (Widget Blueprint support), `LiveCoding`/`SourceCodeAccess` (C++ hot reload integration), and `PythonScriptPlugin` (editor Python scripting).
 
 ### Startup Order (OliveAIEditorModule.cpp)
 
@@ -99,11 +100,12 @@ Source/
 8. PCG tools (guarded by availability check): `FOlivePCGNodeCatalog` → `FOlivePCGToolHandlers`
 9. `FOliveCppToolHandlers::Get().RegisterAllTools()` → `RegisterCppRules()`
 10. `FOliveCrossSystemToolHandlers::Get().RegisterAllTools()` → `RegisterCrossSystemRules()`
-11. `FOliveTemplateSystem::Get().Initialize()` (scans `Content/Templates/` for factory + reference JSON templates)
-12. `FOliveFocusProfileManager::Get().Initialize()` (must come after all tool registration)
-13. `FOliveToolPackManager::Get().Initialize()`
-14. `FOlivePromptAssembler::Get().Initialize()` + `FOliveMCPPromptTemplates::Get().Initialize()`
-15. `FOliveMCPServer::Get().Start()` (if `bAutoStartMCPServer`)
+11. `FOlivePythonToolHandlers::Get().RegisterAllTools()` (editor Python scripting, guarded by `IPythonScriptPlugin` availability)
+12. `FOliveTemplateSystem::Get().Initialize()` (scans `Content/Templates/` for factory + reference JSON templates)
+13. `FOliveFocusProfileManager::Get().Initialize()` (must come after all tool registration)
+14. `FOliveToolPackManager::Get().Initialize()`
+15. `FOlivePromptAssembler::Get().Initialize()` + `FOliveMCPPromptTemplates::Get().Initialize()`
+16. `FOliveMCPServer::Get().Start()` (if `bAutoStartMCPServer`)
 
 ### Key Singletons (all `static Foo& Get()`)
 
@@ -126,6 +128,7 @@ Source/
 | `FOliveMCPPromptTemplates` | MCP prompt template registry |
 | `FOliveBTNodeCatalog` | Behavior Tree node catalog |
 | `FOliveTemplateSystem` | Factory + reference template registry; loaded from `Content/Templates/` |
+| `FOlivePythonToolHandlers` | `editor.run_python` tool; wraps `IPythonScriptPlugin`, auto-snapshot + logging |
 
 ### Write Pipeline (6 Stages)
 
@@ -190,7 +193,7 @@ Threshold: `OLIVE_LARGE_GRAPH_THRESHOLD = 500` nodes. Page size: `OLIVE_GRAPH_PA
 validate params → load Blueprint → build `FOliveWriteRequest` → bind executor lambda → `ExecuteWithOptionalConfirmation`
 
 Schema implementations: `OliveBlueprintSchemas.cpp`. Tool registrations: `RegisterReaderTools()`, etc.
-Note: `OliveBlueprintToolHandlers.cpp` is 7000+ lines with anonymous namespace helpers. Registration methods: `RegisterReaderTools()`, `RegisterWriterTools()`, `RegisterPlanTools()`, `RegisterTemplateTools()`.
+Note: `OliveBlueprintToolHandlers.cpp` is 7000+ lines with anonymous namespace helpers. Registration methods: `RegisterReaderTools()` (includes `blueprint.describe_node_type`), `RegisterWriterTools()`, `RegisterPlanTools()`, `RegisterTemplateTools()`.
 
 ---
 
@@ -243,15 +246,35 @@ Tool packs (`Config/OliveToolPacks.json`) define named sets: `read_pack`, `write
 
 Intent-level graph editing system where the AI describes "what" it wants (e.g., "call SetActorLocation") and the plan resolver translates to concrete Blueprint nodes. Has its own preview/apply cycle with fingerprint verification.
 
-- **IR:** `BlueprintPlanIR.h` defines `OlivePlanOps` namespace with closed vocabulary (`call`, `get_var`, `set_var`, `branch`, `sequence`, `cast`, `event`, `custom_event`, `for_loop`, `for_each_loop`, `while_loop`, `do_once`, `flip_flop`, `gate`, `delay`, `is_valid`, `print_string`, `spawn_actor`, `make_struct`, `break_struct`, `return`, `comment`)
+- **IR:** `BlueprintPlanIR.h` defines `OlivePlanOps` namespace with closed vocabulary (`call`, `get_var`, `set_var`, `branch`, `sequence`, `cast`, `event`, `custom_event`, `for_loop`, `for_each_loop`, `while_loop`, `do_once`, `flip_flop`, `gate`, `delay`, `is_valid`, `print_string`, `spawn_actor`, `make_struct`, `break_struct`, `return`, `comment`, `call_delegate`, `call_dispatcher`, `bind_dispatcher`)
 - **Tools:** `blueprint.preview_plan_json` (preview) → `blueprint.apply_plan_json` (apply with fingerprint)
 - **Code:** `Blueprint/Public/Plan/` and `Blueprint/Private/Plan/`
 - **Settings:** `bEnableBlueprintPlanJsonTools`, `PlanJsonMaxSteps = 128`, `bPlanJsonRequirePreviewForApply`, `bEnforcePlanFirstGraphRouting`, `PlanFirstGraphRoutingThreshold = 3`
 
 **Plan Pipeline (resolver → validator → executor):**
-1. `FOliveBlueprintPlanResolver::Resolve()` — alias resolution, SCS component variable recognition (`BlueprintHasVariable` checks both `NewVariables` and SCS nodes — components ARE variables), pure-node collapse, `ExpandPlanInputs()` for auto-synthesis, `ExpandMissingComponentTargets()` for auto-injecting get_var steps when Target is unambiguous
+1. `FOliveBlueprintPlanResolver::Resolve()` — alias resolution, SCS component variable recognition (`BlueprintHasVariable` checks both `NewVariables` and SCS nodes — components ARE variables), pure-node collapse, `ExpandPlanInputs()` for auto-synthesis, `ExpandMissingComponentTargets()` for auto-injecting get_var steps when Target is unambiguous. Auto-reroutes: `call` op auto-detects event dispatchers in `NewVariables` and reroutes to `call_delegate`; `event` op auto-detects component delegate events via SCS inspection (creates `UK2Node_ComponentBoundEvent`).
 2. `FOlivePlanValidator::Validate()` — Phase 0 structural checks: `COMPONENT_FUNCTION_ON_ACTOR` (unwired Target on Actor BP) and `EXEC_WIRING_CONFLICT` (exec_after targeting a step with exec_outputs)
 3. `FOlivePlanExecutor::Execute()` — 7 phases: CreateNodes → AutoWireComponents (Phase 1.5) → WireExec → WireData → SetDefaults → PreCompileValidation (Phase 5.5) → AutoLayout. `FOlivePlanExecutionContext` carries `AutoFixCount`, `PreCompileIssues`, `NodeIdToStepId`.
+
+**Key executor behaviors:**
+- **`return` op** resolves to `OliveNodeTypes::FunctionOutput` — reuses the existing `UK2Node_FunctionResult` node, wiring both exec and data pins to it
+- **FunctionResult auto-chain** — in function graphs, PhaseWireExec automatically wires the last exec node to `UK2Node_FunctionResult`'s exec input (if no explicit return op provides one)
+- **Phase 5.5 scoping** — orphan detection only checks nodes in `Context.NodeIdToStepId`, so nodes from previous plan_json calls are not flagged
+
+### FindFunction Search Order
+
+`FOliveNodeFactory::FindFunction()` resolves AI-provided function names to `UFunction*` through 7 steps:
+
+1. **Alias map** (~180 entries) — maps common names to UE internal names (e.g., `SetTimer` → `K2_SetTimer`, `IntToFloat` → `Conv_IntToDouble`)
+2. **Specified class** — if `target_class` provided. Auto-detects interface classes (native `UInterface` subclasses and Blueprint Interfaces) and reports `InterfaceSearch` match method, enabling `UK2Node_Message` creation for interface calls.
+3. **Blueprint class** — `GeneratedClass` + `FunctionGraphs` + `SkeletonGeneratedClass`
+4. **Parent hierarchy** — walks `SuperClass` chain
+5. **SCS components** — searches component class functions
+6. **Interfaces** — searches `ImplementedInterfaces`
+7. **Library classes** — 11 hardcoded (KismetSystemLibrary, GameplayStatics, etc.) then **universal fallback** scanning ALL `UBlueprintFunctionLibrary` subclasses
+8. **K2_ fuzzy match** — exact match modulo `K2_` prefix across all previously searched classes
+
+`FindFunctionEx()` wraps `FindFunction()` and returns `FOliveFunctionSearchResult` with search trail on failure for rich error messages.
 
 ### Blueprint Templates
 
@@ -264,15 +287,38 @@ Factory templates create complete Blueprints from parameterized JSON. Reference 
 - **Catalog injection:** `FOliveTemplateSystem::GetCatalogBlock()` is appended to capability knowledge by `FOlivePromptAssembler::GetCapabilityKnowledge()` so AI agents always see available templates
 
 **Reference template rules (MUST follow):**
-- Target **60–120 lines** total. Existing templates: `component_patterns.json` (73), `ue_events.json` (113), `projectile_patterns.json` (119), `pickup_interaction.json`. A new reference template exceeding 150 lines is wrong.
-- Do **NOT** embed full `plan_json_example` blocks in reference templates — the AI gets plan_json from `olive.get_recipe`. A reference template teaches *architecture* and *tool sequence*, not step-by-step wiring.
-- Each pattern: 1-2 sentence `description`, concise `notes` (2–4 sentences max), optional short `steps` array with tool name + a one-line note per step. No inline params blocks.
+- Target **60–120 lines** total. A new reference template exceeding 150 lines is wrong.
+- **Descriptive, not prescriptive.** Templates teach *architecture* — asset structure, component layout, variable roles, interaction patterns. They do NOT dictate tool names, tool sequences, or step-by-step instructions.
+- Do **NOT** embed `plan_json_example` blocks, tool-specific `steps` arrays, or inline params. The AI decides which tools to use.
+- Each pattern: 1-2 sentence `description`, concise `notes` (2–4 sentences max) explaining the design and why it works.
 - If a pattern needs more than ~10 lines, split it or cut it. The AI reads the whole template in one `get_template` call — token budget matters.
 - Reference templates that violate these rules must be rewritten before merging.
 
 ### Safety Presets
 
 `UOliveAISettings` exposes presets: `Careful`, `Fast`, `YOLO` — with per-operation tier overrides. Rate limit: `MaxWriteOpsPerMinute = 30`. Brain layer settings: batch write max ops, context window, correction cycles. Checkpoint interval: every 5 steps.
+
+### AI Autonomy Philosophy
+
+The AI agent has **three equal approaches** for building Blueprint graphs, and it should use whichever fits the task — or mix them freely:
+
+1. **plan_json** (`blueprint.apply_plan_json`) — Batch declarative. Best for standard logic (3+ nodes).
+2. **Granular tools** (`add_node`, `connect_pins`, `set_pin_default`) — Any `UK2Node` subclass. Best for node types outside plan_json ops, small edits, or wiring to existing nodes.
+3. **`editor.run_python`** — Python in UE's editor scripting context via `IPythonScriptPlugin`. Best for anything the other tools cannot express.
+
+**Core principle:** Never simplify the AI's design to fit a tool's limitations. If plan_json can't express something, use granular tools. If granular tools can't, use Python. The AI's UE5 knowledge is valid — if it knows a node type, function, or pattern exists, it should try it.
+
+**Prompts and templates are descriptive, not prescriptive.** System prompts present tools as options, not mandates. Reference templates describe architecture (asset structure, component layout, interaction patterns) — they do not dictate tool sequences or step-by-step instructions. Recipes are soft guides, not rails.
+
+**Safety practices vs tool preferences:**
+- **Keep firm:** "Read before write", "compile after changes", "fix the first error" — these are error-prevention practices.
+- **Keep flexible:** Which tool to use for N nodes, whether to batch or sequence, whether to use plan_json or add_node — these are tool preferences the AI should override when it makes sense.
+
+**Python tool safety layers:**
+- Auto-snapshot via `FOliveSnapshotManager` before execution (one-click rollback)
+- Persistent script logging to `Saved/OliveAI/PythonScripts.log`
+- `try/except` wrapper with traceback capture
+- No size or complexity limits on scripts
 
 ---
 
@@ -299,6 +345,8 @@ Unreal's startup popup ("rebuild from source") is generic. Treat it as a symptom
 - `UPCGEdge::OtherPin` is obsolete → use `GetOtherPin(...)` with `PCGEdge.h`
 - `TWeakObjectPtr` has no `IsNull()` — use `.Get() != nullptr` or `IsValid()`
 - `FEdGraphPinType::PinSubCategoryObject` is `TWeakObjectPtr<UObject>` — check with `.Get()`
+- `K2Node::AllocateDefaultPins()` on many subclasses calls `FindBlueprintForNodeChecked()` — nodes on transient graphs MUST have a `UBlueprint` outer, not `GetTransientPackage()`. Use a scratch Blueprint as the graph's outer.
+- `UK2Node_ComponentBoundEvent::InitializeComponentBoundEventParams()` takes `(FObjectProperty*, FMulticastDelegateProperty*)` — find both via class reflection
 - Always confirm current symbols in UE 5.5 source for Blueprint/editor APIs
 
 ---
@@ -345,6 +393,7 @@ This project uses specialized subagents. USE THEM — do not try to do everythin
 | BP schemas | `Source/OliveAIEditor/Blueprint/Private/MCP/OliveBlueprintSchemas.cpp` |
 | BP plan JSON | `Source/OliveAIEditor/Blueprint/Public/Plan/`, `Source/OliveAIRuntime/Public/IR/BlueprintPlanIR.h` |
 | Plan validator | `Source/OliveAIEditor/Blueprint/Public/Plan/OlivePlanValidator.h` |
+| Node factory | `Source/OliveAIEditor/Blueprint/Public/Writer/OliveNodeFactory.h` (FindFunction, node type constants, creators) |
 | Node catalog | `Source/OliveAIEditor/Blueprint/Private/Catalog/OliveNodeCatalog.cpp` |
 | Template system | `Source/OliveAIEditor/Blueprint/Public/Template/OliveTemplateSystem.h` |
 | Template data | `Content/Templates/factory/`, `Content/Templates/reference/` |
@@ -360,6 +409,7 @@ This project uses specialized subagents. USE THEM — do not try to do everythin
 | Snapshot manager | `Source/OliveAIEditor/CrossSystem/Public/OliveSnapshotManager.h` |
 | MCP prompt templates | `Source/OliveAIEditor/CrossSystem/Public/OliveMCPPromptTemplates.h` |
 | Asset resolver | `Source/OliveAIEditor/Public/Services/OliveAssetResolver.h` |
+| Python tool handlers | `Source/OliveAIEditor/Python/Private/MCP/OlivePythonToolHandlers.cpp` |
 | IR types | `Source/OliveAIRuntime/Public/IR/OliveIRTypes.h` |
 | Tool packs config | `Config/OliveToolPacks.json` |
 | System prompts | `Content/SystemPrompts/` |

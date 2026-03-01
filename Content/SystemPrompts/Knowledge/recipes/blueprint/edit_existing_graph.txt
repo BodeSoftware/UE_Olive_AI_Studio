@@ -1,13 +1,11 @@
 TAGS: edit existing graph add_node connect_pins small change
 ---
 Edit an existing graph:
-1. blueprint.read_event_graph -> see current nodes and connections
-2. SMALL edits (1-2 nodes): blueprint.add_node + blueprint.connect_pins
-3. LARGER edits: blueprint.apply_plan_json with mode:"merge" (preserves existing)
-4. REMOVE: blueprint.remove_node -> {path, graph, node_id} (get ID from read result)
-5. REWIRE: blueprint.disconnect_pins then blueprint.connect_pins
+1. Read the graph first (blueprint.read_event_graph or blueprint.read_function)
+2. apply_plan_json with mode:"merge" preserves existing nodes. add_node + connect_pins edits incrementally. Pick what fits.
+3. Remove: blueprint.remove_node with node_id from read result
+4. Rewire: disconnect_pins then connect_pins
 
-For function graphs use blueprint.read_function to read first.
-read_event_graph returns node_ids -- use these for remove/disconnect, never guess.
+For function graphs, use blueprint.read_function to read first.
+Node IDs come from read results — never guess them.
 mode:"merge" keeps existing nodes; mode:"replace" clears the graph first.
-Use plan_json for 3+ nodes -- never add_node one-at-a-time for bulk changes.

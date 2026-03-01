@@ -12,6 +12,7 @@
 #include "Plan/OliveBlueprintPlanResolver.h"
 #include "Writer/OliveNodeFactory.h"
 #include "Catalog/OliveNodeCatalog.h"
+#include "OliveClassResolver.h"
 #include "Engine/Blueprint.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
@@ -236,6 +237,35 @@ FOlivePlanResolveResult FOliveBlueprintPlanResolver::Resolve(
 			? *FString::Printf(TEXT(" (%d input expansions applied)"), Result.GlobalNotes.Num())
 			: TEXT(""));
 
+	// ------------------------------------------------------------------
+	// Pre-scan: build cast target map for cross-step function resolution.
+	// When a "call" step references a cast step's output (via @ref in inputs),
+	// the call target function should be searched on the cast target class,
+	// not just the editing Blueprint's class hierarchy.
+	// ------------------------------------------------------------------
+	TMap<FString, FString> CastTargetMap;
+	for (const FOliveIRBlueprintPlanStep& PreScanStep : MutablePlan.Steps)
+	{
+		if (PreScanStep.Op == OlivePlanOps::Cast)
+		{
+			// Cast steps use Target for the class name (e.g., "BP_Gun"),
+			// with TargetClass as a fallback field.
+			FString CastTarget = PreScanStep.Target.IsEmpty()
+				? PreScanStep.TargetClass : PreScanStep.Target;
+			if (!CastTarget.IsEmpty())
+			{
+				CastTargetMap.Add(PreScanStep.StepId, CastTarget);
+			}
+		}
+	}
+
+	if (CastTargetMap.Num() > 0)
+	{
+		UE_LOG(LogOlivePlanResolver, Log,
+			TEXT("  Built CastTargetMap with %d entries for cross-step function resolution"),
+			CastTargetMap.Num());
+	}
+
 	bool bAllSucceeded = true;
 
 	for (int32 i = 0; i < MutablePlan.Steps.Num(); ++i)
@@ -243,7 +273,7 @@ FOlivePlanResolveResult FOliveBlueprintPlanResolver::Resolve(
 		const FOliveIRBlueprintPlanStep& Step = MutablePlan.Steps[i];
 		FOliveResolvedStep Resolved;
 
-		if (ResolveStep(Step, Blueprint, i, Resolved, Result.Errors, Result.Warnings, GraphContext))
+		if (ResolveStep(Step, Blueprint, i, Resolved, Result.Errors, Result.Warnings, GraphContext, CastTargetMap))
 		{
 			Result.ResolvedSteps.Add(MoveTemp(Resolved));
 		}
@@ -603,6 +633,69 @@ bool FOliveBlueprintPlanResolver::ExpandComponentRefs(
 					continue;
 				}
 
+				// Handle @entry.X or @GraphName.X -- "entry" and the graph name are
+				// aliases for the FunctionEntry node in a function graph. Rewrite to
+				// a synthesized get_var step for the referenced parameter.
+				if (GraphContext.bIsFunctionGraph
+					&& (RefStepId.Equals(TEXT("entry"), ESearchCase::IgnoreCase)
+						|| RefStepId.Equals(GraphContext.GraphName, ESearchCase::IgnoreCase)))
+				{
+					FString PinHint = RefBody.Mid(DotIndex + 1);
+
+					// Resolve the parameter name to canonical casing from GraphContext
+					FString ParamTarget = PinHint;
+					for (const FString& ParamName : GraphContext.InputParamNames)
+					{
+						if (ParamName.Equals(PinHint, ESearchCase::IgnoreCase))
+						{
+							ParamTarget = ParamName; // Use canonical casing
+							break;
+						}
+					}
+
+					// Use a synth key that matches what bare @ParamName uses, so that
+					// @entry.X and bare @X referencing the same param share one synth step.
+					FString SynthKey = ParamTarget;
+					FString* ExistingSynthId = SynthesizedComponentSteps.Find(SynthKey);
+					if (!ExistingSynthId)
+					{
+						FString SynthStepId = FString::Printf(TEXT("_synth_param_%s"), *ParamTarget.ToLower());
+
+						// Check if this synth step already exists (e.g., from a bare @ParamName reference)
+						if (!ExistingStepIds.Contains(SynthStepId))
+						{
+							FOliveIRBlueprintPlanStep SynthStep;
+							SynthStep.StepId = SynthStepId;
+							SynthStep.Op = OlivePlanOps::GetVar;
+							SynthStep.Target = ParamTarget;
+
+							Inserts.Add({ MoveTemp(SynthStep), i });
+							ExistingStepIds.Add(SynthStepId);
+						}
+
+						SynthesizedComponentSteps.Add(SynthKey, SynthStepId);
+
+						FOliveResolverNote Note;
+						Note.Field = FString::Printf(TEXT("step '%s' inputs.%s"), *Step.StepId, *PinName);
+						Note.OriginalValue = Value;
+						Note.ResolvedValue = FString::Printf(
+							TEXT("Rewritten @%s.%s -> @_synth_param_%s.auto (FunctionInput step)"),
+							*RefStepId, *PinHint, *ParamTarget.ToLower());
+						Note.Reason = TEXT("@entry is an alias for the function entry node. "
+							"Synthesized a get_var step for the parameter.");
+						OutNotes.Add(MoveTemp(Note));
+
+						UE_LOG(LogOlivePlanResolver, Log,
+							TEXT("ExpandComponentRefs: Synthesized get_var step '_synth_param_%s' for @%s.%s alias (referenced by step '%s')"),
+							*ParamTarget.ToLower(), *RefStepId, *PinHint, *Step.StepId);
+					}
+
+					FString SynthId = SynthesizedComponentSteps[SynthKey];
+					RewrittenInputs.Add(PinName, FString::Printf(TEXT("@%s.auto"), *SynthId));
+					bExpanded = true;
+					continue;
+				}
+
 				// Check if it's a function input parameter
 				if (FunctionInputParams.Contains(RefStepId))
 				{
@@ -861,7 +954,8 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 	FOliveResolvedStep& OutResolved,
 	TArray<FOliveIRBlueprintPlanError>& OutErrors,
 	TArray<FString>& OutWarnings,
-	const FOliveGraphContext& GraphContext)
+	const FOliveGraphContext& GraphContext,
+	const TMap<FString, FString>& CastTargetMap)
 {
 	OutResolved.StepId = Step.StepId;
 
@@ -888,7 +982,7 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 
 	if (Op == OlivePlanOps::Call)
 	{
-		bResult = ResolveCallOp(Step, Blueprint, StepIndex, OutResolved, OutErrors, OutWarnings);
+		bResult = ResolveCallOp(Step, Blueprint, StepIndex, OutResolved, OutErrors, OutWarnings, CastTargetMap);
 	}
 	else if (Op == OlivePlanOps::GetVar)
 	{
@@ -1019,16 +1113,19 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 	}
 	else if (Op == OlivePlanOps::Return)
 	{
-		// Return nodes are auto-created by function graphs.
-		// Emit a comment node as a placeholder annotation.
-		bResult = ResolveSimpleOp(Step, OliveNodeTypes::Comment, OutResolved);
-		if (bResult)
-		{
-			OutResolved.Properties.Add(TEXT("text"), TEXT("Return (auto-created by function graph)"));
-		}
-		OutWarnings.Add(FString::Printf(
-			TEXT("Step '%s': 'return' op mapped to Comment node — return nodes are auto-created by function graphs"),
-			*Step.StepId));
+		// Map to the existing UK2Node_FunctionResult node.
+		// The step's inputs will wire data to the FunctionResult's input pins.
+		// exec_after wires the exec chain to the FunctionResult.
+		OutResolved.StepId = Step.StepId;
+		OutResolved.NodeType = OliveNodeTypes::FunctionOutput;
+		OutResolved.bIsPure = false; // FunctionResult has exec input
+		OutResolved.ResolverNotes.Add(FOliveResolverNote{
+			TEXT("op"),
+			TEXT("return"),
+			TEXT("FunctionOutput"),
+			TEXT("return op maps to existing FunctionResult node — inputs wire to output parameter pins")
+		});
+		bResult = true;
 	}
 	else if (Op == OlivePlanOps::Comment)
 	{
@@ -1089,7 +1186,8 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 	int32 Idx,
 	FOliveResolvedStep& Out,
 	TArray<FOliveIRBlueprintPlanError>& Errors,
-	TArray<FString>& Warnings)
+	TArray<FString>& Warnings,
+	const TMap<FString, FString>& CastTargetMap)
 {
 	Out.NodeType = OliveNodeTypes::CallFunction;
 
@@ -1170,6 +1268,140 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 			*Step.Target, *ResolvedFunctionName, *ResolvedClassName);
 
 		return true;
+	}
+
+	// --- Function NOT found -- check if target is an event dispatcher before erroring ---
+	// If the AI used "call" but the target is actually an event dispatcher, silently
+	// reroute to call_delegate. This is zero-cost on the happy path (only runs after
+	// FindFunctionEx fails) and avoids a confusing FUNCTION_NOT_FOUND for dispatchers.
+	if (BP)
+	{
+		for (const FBPVariableDescription& Var : BP->NewVariables)
+		{
+			if (Var.VarType.PinCategory == UEdGraphSchema_K2::PC_MCDelegate)
+			{
+				const FString VarName = Var.VarName.ToString();
+				if (VarName == Step.Target || VarName.Equals(Step.Target, ESearchCase::IgnoreCase))
+				{
+					UE_LOG(LogOlivePlanResolver, Log,
+						TEXT("    ResolveCallOp step '%s': '%s' not found as function, matches event dispatcher '%s'. Rerouting to call_delegate."),
+						*Step.StepId, *Step.Target, *VarName);
+
+					// Add resolver note for transparency
+					Out.ResolverNotes.Add(FOliveResolverNote{
+						TEXT("op"),
+						TEXT("call"),
+						TEXT("call_delegate"),
+						FString::Printf(TEXT("'%s' is an event dispatcher, not a function"), *Step.Target)
+					});
+
+					return ResolveCallDelegateOp(Step, BP, Idx, Out, Errors);
+				}
+			}
+		}
+	}
+
+	// --- Function NOT found -- check if an input references a cast step ---
+	// When the AI writes a plan like: cast to BP_Gun -> call Interact with
+	// self from cast output, the function "Interact" exists on BP_Gun (via
+	// its interface), not on the editing Blueprint. We scan the step's inputs
+	// for @refs that point to cast steps and search the cast target class.
+	if (CastTargetMap.Num() > 0)
+	{
+		for (const auto& InputPair : Step.Inputs)
+		{
+			const FString& InputValue = InputPair.Value;
+			if (!InputValue.StartsWith(TEXT("@")))
+			{
+				continue;
+			}
+
+			// Parse the @ref to extract the source step ID.
+			// Format: "@step_id" or "@step_id.pin_hint"
+			FString RefBody = InputValue.Mid(1);
+			FString RefStepId;
+			int32 DotIdx;
+			if (RefBody.FindChar(TEXT('.'), DotIdx))
+			{
+				RefStepId = RefBody.Left(DotIdx);
+			}
+			else
+			{
+				RefStepId = RefBody;
+			}
+
+			// Check if the referenced step is a cast op
+			const FString* CastClassName = CastTargetMap.Find(RefStepId);
+			if (!CastClassName || CastClassName->IsEmpty())
+			{
+				continue;
+			}
+
+			// Resolve the cast target class name to a UClass*
+			FOliveClassResolveResult ClassResolve = FOliveClassResolver::Resolve(*CastClassName);
+			if (!ClassResolve.IsValid())
+			{
+				UE_LOG(LogOlivePlanResolver, Warning,
+					TEXT("    ResolveCallOp: cast target class '%s' (from step '%s') could not be resolved -- skipping cast-target fallback"),
+					**CastClassName, *RefStepId);
+				continue;
+			}
+
+			// Search the cast target class for the function
+			FOliveFunctionSearchResult CastSearchResult =
+				FOliveNodeFactory::Get().FindFunctionEx(
+					Step.Target, ClassResolve.Class->GetName(), nullptr);
+
+			if (CastSearchResult.IsValid())
+			{
+				// Found the function on the cast target class!
+				UFunction* Function = CastSearchResult.Function;
+				const FString ResolvedFunctionName = Function->GetName();
+				UClass* OwningClass = Function->GetOwnerClass();
+				const FString ResolvedClassName = OwningClass ? OwningClass->GetName() : FString();
+
+				Out.Properties.Add(TEXT("function_name"), ResolvedFunctionName);
+				if (!ResolvedClassName.IsEmpty())
+				{
+					Out.Properties.Add(TEXT("target_class"), ResolvedClassName);
+				}
+				Out.ResolvedOwningClass = OwningClass;
+				Out.bIsPure = Function->HasAnyFunctionFlags(FUNC_BlueprintPure);
+				Out.bIsLatent = Function->HasMetaData(TEXT("Latent"));
+
+				// Mark interface calls so the executor creates UK2Node_Message
+				if (CastSearchResult.MatchMethod == EOliveFunctionMatchMethod::InterfaceSearch)
+				{
+					Out.bIsInterfaceCall = true;
+					Out.Properties.Add(TEXT("is_interface_call"), TEXT("true"));
+				}
+
+				Out.ResolverNotes.Add(FOliveResolverNote{
+					TEXT("search_scope"),
+					TEXT("editing_blueprint"),
+					FString::Printf(TEXT("cast_target:%s"), **CastClassName),
+					FString::Printf(TEXT("Function '%s' found on cast target class '%s' (from step '%s' via input '%s')"),
+						*ResolvedFunctionName, **CastClassName, *RefStepId, *InputPair.Key)
+				});
+
+				// Emit note if canonical name differs from AI-provided name
+				if (!ResolvedFunctionName.Equals(Step.Target, ESearchCase::IgnoreCase))
+				{
+					Out.ResolverNotes.Add(FOliveResolverNote{
+						TEXT("target"),
+						Step.Target,
+						FString::Printf(TEXT("%s::%s"), *ResolvedClassName, *ResolvedFunctionName),
+						TEXT("Function name resolved to canonical UE name via cast target class")
+					});
+				}
+
+				UE_LOG(LogOlivePlanResolver, Log,
+					TEXT("    ResolveCallOp: '%s' -> function_name='%s', target_class='%s' (via cast target '%s' from step '%s')"),
+					*Step.Target, *ResolvedFunctionName, *ResolvedClassName, **CastClassName, *RefStepId);
+
+				return true;
+			}
+		}
 	}
 
 	// --- Function NOT found -- error with search history and suggestions ---
@@ -1603,6 +1835,23 @@ bool FOliveBlueprintPlanResolver::ResolveEventOp(
 		{ TEXT("ReceiveBeginPlay"),        TEXT("ReceiveBeginPlay") },
 		{ TEXT("ReceiveTick"),             TEXT("ReceiveTick") },
 		{ TEXT("ReceiveEndPlay"),          TEXT("ReceiveEndPlay") },
+		{ TEXT("ReceiveActorBeginOverlap"), TEXT("ReceiveActorBeginOverlap") },
+		{ TEXT("ReceiveActorEndOverlap"),  TEXT("ReceiveActorEndOverlap") },
+		{ TEXT("ReceiveAnyDamage"),        TEXT("ReceiveAnyDamage") },
+		{ TEXT("ReceiveHit"),              TEXT("ReceiveHit") },
+		{ TEXT("ReceivePointDamage"),      TEXT("ReceivePointDamage") },
+		{ TEXT("ReceiveRadialDamage"),     TEXT("ReceiveRadialDamage") },
+		{ TEXT("ReceiveDestroyed"),        TEXT("ReceiveDestroyed") },
+
+		// Pawn/Character events
+		{ TEXT("Possessed"),               TEXT("ReceivePossessed") },
+		{ TEXT("UnPossessed"),             TEXT("ReceiveUnPossessed") },
+		{ TEXT("ControllerChanged"),       TEXT("ReceiveControllerChanged") },
+		{ TEXT("Landed"),                  TEXT("OnLanded") },
+		{ TEXT("OnLanded"),                TEXT("OnLanded") },
+		{ TEXT("OnJumped"),                TEXT("OnJumped") },
+		{ TEXT("MovementModeChanged"),     TEXT("OnMovementModeChanged") },
+		{ TEXT("OnMovementModeChanged"),   TEXT("OnMovementModeChanged") },
 	};
 
 	// ----------------------------------------------------------------
@@ -1643,23 +1892,149 @@ bool FOliveBlueprintPlanResolver::ResolveEventOp(
 			*Step.StepId, *Step.Target, *ResolvedEventName);
 	}
 
+	// ----------------------------------------------------------------
+	// Component delegate event detection via SCS inspection.
+	// For non-native events (names not in EventNameMap), check if
+	// the target matches a multicast delegate property on any SCS
+	// component. This resolves to ComponentBoundEvent node type
+	// which gives the executor proper reuse detection and node
+	// creation through the dedicated factory method.
+	//
+	// When a component_name property is explicitly provided, we
+	// require a match on that specific component.
+	// ----------------------------------------------------------------
+	if (!bIsNativeEvent && BP && BP->SimpleConstructionScript)
+	{
+		FString ComponentNameHint;
+		if (Step.Properties.Contains(TEXT("component_name")))
+		{
+			ComponentNameHint = Step.Properties[TEXT("component_name")];
+		}
+
+		const FName EventFName(*Step.Target);
+
+		FString MatchedDelegateName;
+		FString MatchedComponentName;
+		bool bFoundMatch = false;
+
+		TArray<USCS_Node*> AllSCSNodes = BP->SimpleConstructionScript->GetAllNodes();
+		for (USCS_Node* SCSNode : AllSCSNodes)
+		{
+			if (!SCSNode || !SCSNode->ComponentClass)
+			{
+				continue;
+			}
+
+			// If component_name hint was provided, only search that component
+			if (!ComponentNameHint.IsEmpty()
+				&& !SCSNode->GetVariableName().ToString().Equals(ComponentNameHint, ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+
+			for (TFieldIterator<FMulticastDelegateProperty> It(SCSNode->ComponentClass); It; ++It)
+			{
+				const FString PropName = It->GetName();
+
+				// Match: exact name, or with/without "On" prefix
+				if (PropName.Equals(Step.Target, ESearchCase::IgnoreCase)
+					|| PropName.Equals(TEXT("On") + Step.Target, ESearchCase::IgnoreCase)
+					|| (TEXT("On") + PropName).Equals(Step.Target, ESearchCase::IgnoreCase))
+				{
+					MatchedDelegateName = PropName;
+					MatchedComponentName = SCSNode->GetVariableName().ToString();
+					bFoundMatch = true;
+					break;
+				}
+			}
+
+			if (bFoundMatch)
+			{
+				break;
+			}
+		}
+
+		if (bFoundMatch)
+		{
+			Out.NodeType = OliveNodeTypes::ComponentBoundEvent;
+			Out.Properties.Add(TEXT("delegate_name"), MatchedDelegateName);
+			Out.Properties.Add(TEXT("component_name"), MatchedComponentName);
+
+			Out.ResolverNotes.Add(FOliveResolverNote{
+				TEXT("event_type"),
+				FString::Printf(TEXT("event: %s"), *Step.Target),
+				FString::Printf(TEXT("component_bound_event: %s on %s"), *MatchedDelegateName, *MatchedComponentName),
+				TEXT("Detected as component delegate event via SCS inspection")
+			});
+
+			UE_LOG(LogOlivePlanResolver, Log,
+				TEXT("Step '%s': Resolved as ComponentBoundEvent — delegate='%s' on component='%s'"),
+				*Step.StepId, *MatchedDelegateName, *MatchedComponentName);
+
+			return true;
+		}
+
+		// If component_name was explicitly specified but no match found, give a targeted error
+		if (!ComponentNameHint.IsEmpty())
+		{
+			// Build a list of available delegates on the specified component
+			TArray<FString> AvailableDelegates;
+			for (USCS_Node* SCSNode : AllSCSNodes)
+			{
+				if (SCSNode && SCSNode->GetVariableName().ToString().Equals(ComponentNameHint, ESearchCase::IgnoreCase))
+				{
+					for (TFieldIterator<FMulticastDelegateProperty> It(SCSNode->ComponentClass); It; ++It)
+					{
+						AvailableDelegates.Add(It->GetName());
+					}
+					break;
+				}
+			}
+
+			FString Suggestion;
+			if (AvailableDelegates.Num() > 0)
+			{
+				Suggestion = FString::Printf(
+					TEXT("Available delegates on '%s': %s"),
+					*ComponentNameHint, *FString::Join(AvailableDelegates, TEXT(", ")));
+			}
+			else
+			{
+				Suggestion = FString::Printf(
+					TEXT("Check that component '%s' exists in the Blueprint SCS and the delegate name is correct "
+						 "(e.g., 'OnComponentBeginOverlap', not 'BeginOverlap')."),
+					*ComponentNameHint);
+			}
+
+			Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+				TEXT("COMPONENT_EVENT_NOT_FOUND"),
+				Step.StepId,
+				FString::Printf(TEXT("/steps/%d/target"), Idx),
+				FString::Printf(TEXT("Event '%s' not found on component '%s'."), *Step.Target, *ComponentNameHint),
+				Suggestion));
+
+			return false;
+		}
+	}
+
+	// Native event or unresolved non-native event — pass through to NodeFactory
 	Out.Properties.Add(TEXT("event_name"), ResolvedEventName);
 
-	// Non-native events that reach here are likely component delegate events
-	// (e.g., OnComponentBeginOverlap, OnComponentHit). custom_event ops use a
-	// separate op type and never enter ResolveEventOp. Add a resolver note for
-	// transparency so the AI knows the name will be passed to NodeFactory as-is.
 	if (!bIsNativeEvent)
 	{
+		// Non-native event that didn't match any SCS delegate. NodeFactory's
+		// CreateEventNode has its own fallback SCS scan, so we pass through
+		// and let it try (it may find a match on parent class components, etc.).
 		FOliveResolverNote Note;
 		Note.Field = TEXT("event_name");
 		Note.OriginalValue = Step.Target;
 		Note.ResolvedValue = ResolvedEventName;
-		Note.Reason = TEXT("Not a native event override. Will be resolved as a component delegate event by NodeFactory.");
+		Note.Reason = TEXT("Not a native event override and no SCS delegate match found at resolve time. "
+			"Will be resolved by NodeFactory fallback.");
 		Out.ResolverNotes.Add(MoveTemp(Note));
 
 		UE_LOG(LogOlivePlanResolver, Log,
-			TEXT("Step '%s': Non-native event '%s' — will be treated as component delegate event"),
+			TEXT("Step '%s': Non-native event '%s' — no SCS delegate match, falling through to NodeFactory"),
 			*Step.StepId, *ResolvedEventName);
 	}
 
@@ -1944,6 +2319,101 @@ bool FOliveBlueprintPlanResolver::ResolveBindDelegateOp(
 		*Step.Target);
 
 	return true;
+}
+
+// ============================================================================
+// InferMissingExecChain
+// ============================================================================
+
+bool FOliveBlueprintPlanResolver::InferMissingExecChain(
+	FOliveIRBlueprintPlan& Plan,
+	const TArray<FOliveResolvedStep>& ResolvedSteps,
+	TArray<FOliveResolverNote>& OutNotes)
+{
+	// Build StepId -> bIsPure lookup from resolved steps
+	TSet<FString> PureStepIds;
+	for (const FOliveResolvedStep& RS : ResolvedSteps)
+	{
+		if (RS.bIsPure)
+		{
+			PureStepIds.Add(RS.StepId);
+		}
+	}
+
+	// Build set of steps that already have incoming exec:
+	//   - Steps with exec_after set (they follow another step)
+	//   - Steps targeted by another step's exec_outputs values
+	TSet<FString> HasIncomingExec;
+	for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
+	{
+		if (!Step.ExecAfter.IsEmpty())
+		{
+			HasIncomingExec.Add(Step.StepId);
+		}
+		for (const auto& Pair : Step.ExecOutputs)
+		{
+			HasIncomingExec.Add(Pair.Value);
+		}
+	}
+
+	// Empty string entries come from malformed exec_outputs (array coercion).
+	// They pollute the set without providing useful data.
+	HasIncomingExec.Remove(TEXT(""));
+
+	int32 InferredCount = 0;
+	FString PreviousImpureStepId;
+	FString CurrentEventId;
+
+	for (FOliveIRBlueprintPlanStep& Step : Plan.Steps)
+	{
+		// Skip pure steps entirely — they have no exec pins
+		if (PureStepIds.Contains(Step.StepId))
+		{
+			continue;
+		}
+
+		// Event/custom_event are chain roots — update tracking but never chain from previous
+		if (Step.Op == OlivePlanOps::Event || Step.Op == OlivePlanOps::CustomEvent)
+		{
+			PreviousImpureStepId = Step.StepId;
+			CurrentEventId = Step.StepId;
+			continue;
+		}
+
+		// Skip steps that already have incoming exec (exec_after set or targeted by exec_outputs)
+		if (HasIncomingExec.Contains(Step.StepId))
+		{
+			PreviousImpureStepId = Step.StepId;
+			continue;
+		}
+
+		// This is an orphaned impure step — chain it to the previous impure step
+		if (!PreviousImpureStepId.IsEmpty())
+		{
+			Step.ExecAfter = PreviousImpureStepId;
+			InferredCount++;
+
+			FOliveResolverNote Note;
+			Note.Field = FString::Printf(TEXT("step '%s' exec_after"), *Step.StepId);
+			Note.OriginalValue = TEXT("(empty)");
+			Note.ResolvedValue = PreviousImpureStepId;
+			Note.Reason = FString::Printf(
+				TEXT("Orphaned impure step inferred to follow '%s' within event '%s' chain."),
+				*PreviousImpureStepId, *CurrentEventId);
+			OutNotes.Add(MoveTemp(Note));
+		}
+
+		PreviousImpureStepId = Step.StepId;
+	}
+
+	if (InferredCount > 0)
+	{
+		UE_LOG(LogOlivePlanResolver, Log,
+			TEXT("InferMissingExecChain: inferred exec_after for %d orphaned impure step(s)"),
+			InferredCount);
+	}
+
+	return InferredCount > 0;
 }
 
 // ============================================================================

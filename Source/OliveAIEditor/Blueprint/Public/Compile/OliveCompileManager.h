@@ -9,6 +9,7 @@
 class UBlueprint;
 class UEdGraph;
 class UEdGraphNode;
+class FCompilerResultsLog;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogOliveCompile, Log, All);
 
@@ -134,6 +135,16 @@ private:
 	 * @param OutResult The result to populate with node-level errors
 	 */
 	void ExtractNodeErrors(const UBlueprint* Blueprint, FOliveIRCompileResult& OutResult) const;
+
+	/**
+	 * Extract errors from the FCompilerResultsLog that were not already captured
+	 * by per-node extraction. This catches graph-level compiler errors (e.g.,
+	 * duplicate graph names, interface conflicts) that don't attach to any node.
+	 * Deduplicates against existing errors/warnings in OutResult via substring match.
+	 * @param CompilerLog The compiler results log from FKismetEditorUtilities::CompileBlueprint
+	 * @param OutResult The result to append newly-discovered errors/warnings to
+	 */
+	void ExtractCompilerLogErrors(const FCompilerResultsLog& CompilerLog, FOliveIRCompileResult& OutResult) const;
 
 	// ============================================================================
 	// Error Pattern Matchers

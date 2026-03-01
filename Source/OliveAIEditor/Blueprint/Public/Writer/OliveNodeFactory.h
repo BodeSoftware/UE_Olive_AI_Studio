@@ -39,6 +39,10 @@ enum class EOliveFunctionMatchMethod : uint8
 	InterfaceSearch,
 	/** Found in a common library class (KismetSystemLibrary, GameplayStatics, etc.) */
 	LibrarySearch,
+	/** Found via universal search across all UBlueprintFunctionLibrary subclasses */
+	UniversalLibrarySearch,
+	/** Found via K2_ prefix fuzzy matching across previously searched classes */
+	FuzzyK2Match,
 };
 
 /**
@@ -89,6 +93,9 @@ namespace OliveNodeTypes
 	// Delegate
 	const FString CallDelegate = TEXT("CallDelegate");
 	const FString BindDelegate = TEXT("BindDelegate");
+
+	// Component Events
+	const FString ComponentBoundEvent = TEXT("ComponentBoundEvent");
 
 	// Function Parameter (virtual -- maps to existing FunctionEntry/FunctionResult nodes)
 	const FString FunctionInput = TEXT("FunctionInput");
@@ -494,6 +501,30 @@ private:
 	 * @return The created AddDelegate node, or nullptr if the delegate was not found
 	 */
 	UK2Node* CreateBindDelegateNode(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		const TMap<FString, FString>& Properties);
+
+	/**
+	 * Create a UK2Node_ComponentBoundEvent for component delegate events
+	 * (OnComponentBeginOverlap, OnComponentHit, OnComponentEndOverlap, etc.).
+	 *
+	 * Required properties:
+	 *   "delegate_name"   -- the FMulticastDelegateProperty name on the component
+	 *                        class (e.g., "OnComponentBeginOverlap")
+	 *   "component_name"  -- the SCS variable name of the component in the Blueprint
+	 *                        (e.g., "CollisionComp", "MeshComp")
+	 *
+	 * Searches the Blueprint's SCS for the matching component, finds the
+	 * FObjectProperty on the GeneratedClass, then uses
+	 * InitializeComponentBoundEventParams() to configure the node.
+	 *
+	 * @param Blueprint The Blueprint containing the graph
+	 * @param Graph The target graph
+	 * @param Properties Must contain "delegate_name" and "component_name"
+	 * @return The created ComponentBoundEvent node, or nullptr on failure
+	 */
+	UK2Node* CreateComponentBoundEventNode(
 		UBlueprint* Blueprint,
 		UEdGraph* Graph,
 		const TMap<FString, FString>& Properties);

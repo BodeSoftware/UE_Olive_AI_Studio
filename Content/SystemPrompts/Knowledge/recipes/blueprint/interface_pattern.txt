@@ -1,0 +1,32 @@
+TAGS: interface blueprint interface bpi interactable decouple cast message overlap
+---
+BLUEPRINT INTERFACE (BPI) workflow:
+1. blueprint.create_interface with path and functions array
+   Functions with outputs = implementable functions
+   Functions without outputs = implementable events
+
+2. blueprint.add_interface on each implementing BP (e.g., item BPs)
+
+3. Implement interface functions in each BP:
+   - No-output functions: appear as events in EventGraph (auto-created)
+   - With-output functions: appear in FunctionGraphs (auto-created)
+   - Wire logic with apply_plan_json targeting the interface function graph
+
+4. Call through interface from the caller BP:
+   plan_json call op with target_class set to the BPI name
+   Example: {"op": "call", "target": "Interact", "target_class": "BPI_Interactable"}
+   This creates a UK2Node_Message (interface call) -- no cast needed.
+
+5. Check if an actor implements the interface:
+   plan_json call op: {"op": "call", "target": "DoesImplementInterface"}
+   The Interface pin default = BPI asset path + _C suffix
+
+COMMON PATTERN -- overlap-based interaction:
+  GetOverlappingActors -> ForEachLoop -> DoesImplementInterface(actor, BPI_C) -> Branch
+  True path: call interface function via target_class (UK2Node_Message)
+  No casting needed. That is the whole point of interfaces.
+
+WHEN TO USE interfaces vs casting:
+  - Interface: item behavior varies by type, system should be extensible
+  - Cast: you need access to specific class properties (e.g., gun ammo count)
+  - Both: interface for generic interaction + cast only when type-specific data needed

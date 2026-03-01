@@ -1,69 +1,53 @@
-Use these Blueprint creation/editing reliability rules:
+## Blueprint Authoring
 
-1. Read before write:
-- Use blueprint.read (or specific read tools) before creating or modifying variables, functions, graphs, dispatchers, and nodes.
-- Confirm the target Blueprint type and parent class first.
+You have three ways to build Blueprint graphs. Use whichever fits.
 
-2. Variable typing:
-- Use concrete UE types that resolve cleanly.
-- For object/class/interface/struct/enum variables, ensure the referenced type exists before creating.
-- For containers (array/set/map), ensure nested element/key/value types are explicit and valid.
-- Never use wildcard/exec as variable types.
+### plan_json (blueprint.apply_plan_json, schema_version "2.0")
+Batch operation. Describe intent, get automatic pin resolution and wiring.
+Ops: event, custom_event, call, call_delegate, call_dispatcher, bind_dispatcher,
+  get_var, set_var, branch, sequence, cast, for_loop, for_each_loop,
+  while_loop, do_once, flip_flop, gate, delay, is_valid, print_string,
+  spawn_actor, make_struct, break_struct, return, comment
 
-3. Delegates and dispatchers:
-- For multicast events, use blueprint.add_function with function_type="event_dispatcher" (do not model dispatchers as raw variables).
-- Avoid creating single-cast delegate member variables unless explicit tool support exists.
+Best for: standard logic, function bodies, event graph flows.
+Atomic: all nodes succeed or none do.
 
-4. Graph edits:
-- Prefer surgical edits (add/connect/remove specific nodes) over rebuilding full graphs.
-- After structural edits, run compile and inspect warnings/errors.
-- If compile warnings mention missing signatures, invalid pin types, or unresolved classes, fix type/modeling first before further edits.
+### Granular tools (blueprint.add_node, connect_pins, set_pin_default)
+Place any UK2Node by class name, wire manually. Returns pin manifest.
+Best for: node types not in plan_json ops, 1-2 node edits, fixing specific wires.
+Examples: K2Node_Timeline, K2Node_Select, K2Node_SwitchEnum, K2Node_EnhancedInputAction.
 
-5. Error recovery order:
-- First retry by re-reading current asset state.
-- Then adjust only the failing operation.
-- If the same signature repeats, stop and propose a safer alternative plan to the user.
+### editor.run_python
+Execute Python directly in UE's editor scripting context. Full access to the `unreal` module.
+Best for: anything the other tools cannot express. Properties that reflection cannot set.
+Node types that need special configuration. Bulk operations across assets. Querying project state.
 
-6. Naming and safety:
-- Follow project naming conventions and existing patterns in the target asset.
-- Avoid destructive changes unless explicitly requested.
+### Choosing your approach
+- plan_json is atomic (all-or-nothing). Granular tools are incremental (one change at a time).
+- You can mix approaches within a single task.
+- Never simplify your design to fit a tool's limitations. Use a different tool instead.
+- plan_json CREATES nodes — it cannot reference existing nodes by ID or internal name. To wire from an existing node (e.g., one placed by add_node), use granular connect_pins.
 
-7. No fake success:
-- If batch_write returns an error, report what failed truthfully
-- Do not summarize partial failures as successes
-- If you cannot verify, say so explicitly
+### Wiring syntax — two separate systems
+Data wires use @ prefix: `"inputs": {"Target": "@get_comp.auto"}` — values flow between nodes.
+Exec wires use plain step_ids: `"exec_after": "prev_step"` — execution order, NO @ prefix.
+For branches: put `"exec_outputs": {"True": "step_a", "False": "step_b"}` ON the branch step.
+WRONG: `"exec_after": "@branch.True"`. RIGHT: `"exec_outputs": {"True": "next"}` on the branch.
 
-## Blueprint Creation Quick Reference
+### Reliability rules
+1. Read before write: use blueprint.read before modifying an existing Blueprint.
+2. Variable types: use concrete UE types. Object refs need class_name.
+3. Dispatchers: use blueprint.add_function with function_type="event_dispatcher".
+4. After structural edits, compile and inspect errors. Fix the FIRST error.
+5. Self-correct: if an operation fails, analyze the error and try a different approach.
+6. No fake success: report failures truthfully. If something cannot be done, say so.
 
-Recommended workflow order:
-1. CREATE the Blueprint (path must end with asset name: /Game/Blueprints/BP_Name)
-2. ADD components (StaticMeshComponent, CapsuleComponent, etc.)
-3. ADD variables (types: Float, Boolean, Vector, Int, String, etc.)
-4. BUILD graph logic with blueprint.apply_plan_json (schema_version "2.0") — one call for all logic
-5. VERIFY with blueprint.read
+### Quick reference
+PATH FORMAT: /Game/Blueprints/BP_Name (must start with /Game/, must end with asset name)
+VARIABLE TYPES: Float, Boolean, Int, String, Vector, Rotator, Transform, Name, Text, Color
+  Object ref: {"category":"object","class_name":"Actor"}
+  Class ref: {"category":"class","class_name":"Actor"}
+  Array: {"category":"array","value_type":{"category":"float"}}
 
-PATH FORMAT:
-  ✓ /Game/Blueprints/BP_Gun
-  ✓ /Game/Characters/BP_Enemy
-  ✗ /Game/Blueprints          ← FOLDER, not asset
-  ✗ /Game/Blueprints/         ← Trailing slash = folder
-  ✗ Blueprints/BP_Gun         ← Must start with /Game/
-
-VARIABLE TYPES (use these exact strings):
-  Float, Boolean, Int, String, Vector, Rotator, Transform,
-  "TSubclassOf<Actor>", "TArray<Float>", Name, Text, Color
-
-PLAN JSON OPS:
-  event, custom_event, call, get_var, set_var, branch, sequence,
-  for_loop, for_each_loop, while_loop, do_once, flip_flop, gate,
-  delay, spawn_actor, print_string, is_valid, cast, make_struct,
-  break_struct, return, comment
-
-## Multi-Asset Task Planning
-
-When the user's request requires creating MULTIPLE Blueprints (e.g., "create a gun and bullet system"):
-
-1. Before calling any tools, list all assets you need to create
-2. Completing one asset at a time (structure + graph logic + compile) before starting the next tends to work better
-3. Allocate your iteration budget: if you have 10 iterations and need 2 assets, spend at most 5 on each
-4. Avoid spending all iterations on one asset when multiple are needed
+### Multi-asset tasks
+Complete one asset at a time (structure + graph logic + compile) before starting the next.
