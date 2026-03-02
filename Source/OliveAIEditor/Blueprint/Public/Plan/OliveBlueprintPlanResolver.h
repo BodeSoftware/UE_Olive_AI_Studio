@@ -336,6 +336,25 @@ public:
 		UBlueprint* Blueprint,
 		TArray<FOliveResolverNote>& OutNotes);
 
+	/**
+	 * Pre-process plan to rewrite C++ accessor calls to GetComponentByClass.
+	 *
+	 * ACharacter has GetMesh(), GetCapsuleComponent(), GetCharacterMovement()
+	 * which are plain FORCEINLINE C++ accessors, NOT UFUNCTIONs. The AI's C++
+	 * training data causes it to emit these as "call" ops, but FindFunction
+	 * cannot find them. This pre-pass rewrites them to GetComponentByClass
+	 * with the appropriate ComponentClass input.
+	 *
+	 * Must be called BEFORE Resolve's per-step resolution loop.
+	 *
+	 * @param Plan The plan to rewrite (modified in place)
+	 * @param OutNotes Resolver notes for transparency (appended, not cleared)
+	 * @return True if any rewrites were made
+	 */
+	static bool RewriteAccessorCalls(
+		FOliveIRBlueprintPlan& Plan,
+		TArray<FOliveResolverNote>& OutNotes);
+
 private:
 	/**
 	 * Resolve a single plan step to a concrete node type.

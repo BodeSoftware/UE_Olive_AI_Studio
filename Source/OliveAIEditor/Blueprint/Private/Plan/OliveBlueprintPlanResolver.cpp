@@ -162,6 +162,50 @@ FOliveGraphContext FOliveGraphContext::BuildFromBlueprint(UBlueprint* Blueprint,
 		}
 	}
 
+	// Search interface implementation graphs (ImplementedInterfaces[i].Graphs).
+	// These are NOT in FunctionGraphs — UE stores them separately.
+	for (FBPInterfaceDescription& InterfaceDesc : Blueprint->ImplementedInterfaces)
+	{
+		for (UEdGraph* Graph : InterfaceDesc.Graphs)
+		{
+			if (Graph && Graph->GetFName() == FName(*GraphName))
+			{
+				Ctx.Graph = Graph;
+				Ctx.bIsFunctionGraph = true;
+
+				// Scan for FunctionEntry to get input/output param names (same as regular function graphs)
+				for (UEdGraphNode* Node : Graph->Nodes)
+				{
+					if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(Node))
+					{
+						for (const auto& Pin : Entry->UserDefinedPins)
+						{
+							if (Pin.IsValid())
+							{
+								Ctx.InputParamNames.Add(Pin->PinName.ToString());
+							}
+						}
+					}
+					else if (UK2Node_FunctionResult* Result = Cast<UK2Node_FunctionResult>(Node))
+					{
+						for (const auto& Pin : Result->UserDefinedPins)
+						{
+							if (Pin.IsValid())
+							{
+								Ctx.OutputParamNames.Add(Pin->PinName.ToString());
+							}
+						}
+					}
+				}
+
+				UE_LOG(LogOlivePlanResolver, Log,
+					TEXT("GraphContext: '%s' is interface implementation graph (%d inputs, %d outputs)"),
+					*GraphName, Ctx.InputParamNames.Num(), Ctx.OutputParamNames.Num());
+				return Ctx;
+			}
+		}
+	}
+
 	// Search MacroGraphs
 	for (UEdGraph* Graph : Blueprint->MacroGraphs)
 	{
@@ -228,6 +272,9 @@ FOlivePlanResolveResult FOliveBlueprintPlanResolver::Resolve(
 
 	// Pass 3: Expand branch conditions with non-boolean @refs to > 0 comparisons
 	ExpandBranchConditions(MutablePlan, Blueprint, ExpansionNotes);
+
+	// Pass 4: Rewrite C++ accessor calls (GetMesh, etc.) to GetComponentByClass
+	RewriteAccessorCalls(MutablePlan, ExpansionNotes);
 
 	Result.GlobalNotes = MoveTemp(ExpansionNotes);
 
@@ -527,6 +574,69 @@ bool FOliveBlueprintPlanResolver::ExpandBranchConditions(
 	}
 
 	return bExpanded;
+}
+
+// ============================================================================
+// RewriteAccessorCalls — Rewrite C++ accessor calls to GetComponentByClass
+// ============================================================================
+
+bool FOliveBlueprintPlanResolver::RewriteAccessorCalls(
+	FOliveIRBlueprintPlan& Plan,
+	TArray<FOliveResolverNote>& OutNotes)
+{
+	// ACharacter has GetMesh(), GetCapsuleComponent(), GetCharacterMovement()
+	// which are plain FORCEINLINE C++ accessors, NOT UFUNCTIONs. FindFunction
+	// can't resolve them. Rewrite to GetComponentByClass with the appropriate
+	// ComponentClass input, which is a UFUNCTION on AActor.
+	struct FAccessorRewrite
+	{
+		const TCHAR* Accessor;
+		const TCHAR* ComponentClass;
+	};
+
+	static const FAccessorRewrite Rewrites[] = {
+		{ TEXT("GetMesh"),                  TEXT("SkeletalMeshComponent") },
+		{ TEXT("GetCapsuleComponent"),       TEXT("CapsuleComponent") },
+		{ TEXT("GetCharacterMovement"),      TEXT("CharacterMovementComponent") },
+	};
+
+	bool bRewrote = false;
+
+	for (FOliveIRBlueprintPlanStep& Step : Plan.Steps)
+	{
+		if (Step.Op != OlivePlanOps::Call)
+		{
+			continue;
+		}
+
+		for (const FAccessorRewrite& Rewrite : Rewrites)
+		{
+			if (Step.Target.Equals(Rewrite.Accessor, ESearchCase::IgnoreCase))
+			{
+				const FString OldTarget = Step.Target;
+
+				Step.Target = TEXT("GetComponentByClass");
+				Step.Inputs.Add(TEXT("ComponentClass"), Rewrite.ComponentClass);
+
+				FOliveResolverNote Note;
+				Note.Field = TEXT("target");
+				Note.OriginalValue = OldTarget;
+				Note.ResolvedValue = FString::Printf(TEXT("GetComponentByClass(ComponentClass=%s)"), Rewrite.ComponentClass);
+				Note.Reason = FString::Printf(TEXT("'%s' is a C++ FORCEINLINE accessor, not a UFUNCTION. "
+					"Rewritten to GetComponentByClass which is a UFUNCTION on AActor."), Rewrite.Accessor);
+				OutNotes.Add(MoveTemp(Note));
+
+				UE_LOG(LogOlivePlanResolver, Log,
+					TEXT("RewriteAccessorCalls: step '%s' target '%s' -> GetComponentByClass(ComponentClass=%s)"),
+					*Step.StepId, *OldTarget, Rewrite.ComponentClass);
+
+				bRewrote = true;
+				break;
+			}
+		}
+	}
+
+	return bRewrote;
 }
 
 // ============================================================================

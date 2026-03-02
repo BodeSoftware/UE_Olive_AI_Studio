@@ -366,6 +366,12 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 		UE_LOG(LogOliveCLIProvider, Warning, TEXT("Failed to load recipe_routing.txt knowledge pack"));
 	}
 
+	FString DesignPatterns;
+	if (!FFileHelper::LoadFileToString(DesignPatterns, *FPaths::Combine(KnowledgeDir, TEXT("blueprint_design_patterns.txt"))))
+	{
+		UE_LOG(LogOliveCLIProvider, Warning, TEXT("Failed to load blueprint_design_patterns.txt knowledge pack"));
+	}
+
 	FString AgentsContent;
 	const FString AgentsPath = FPaths::Combine(PluginDir, TEXT("AGENTS.md"));
 	FFileHelper::LoadFileToString(AgentsContent, *AgentsPath);
@@ -397,6 +403,15 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 		ClaudeMd += RecipeRouting;
 		ClaudeMd += TEXT("\n\n");
 	}
+
+	if (!DesignPatterns.IsEmpty())
+	{
+		ClaudeMd += TEXT("---\n\n");
+		ClaudeMd += DesignPatterns;
+		ClaudeMd += TEXT("\n\n");
+	}
+
+	ClaudeMd += TEXT("- Use Blueprint Interfaces (not cast loops) when 2+ types share a behavior. Use overlap events (not GetOverlappingActors+ForEach) for detection zones. Use call_delegate (not call_dispatcher) to broadcast event dispatchers. See blueprint_design_patterns knowledge pack for exact tool call sequences.\n");
 
 	// Append the full AGENTS.md content which has workflow patterns, plan JSON format, etc.
 	if (!AgentsContent.IsEmpty())

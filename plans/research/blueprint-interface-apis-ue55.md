@@ -447,6 +447,127 @@ The `UnrealEd` module is already in `OliveAIEditor.Build.cs`.
 
 ---
 
+### 9. Interface Implementation Graph Storage — Deep Dive
+
+This section answers: exactly where do generated stub graphs end up, and how do they differ from regular function graphs?
+
+#### Storage Location: ImplementedInterfaces[i].Graphs ONLY
+
+`FBlueprintEditorUtils::ImplementNewInterface` (BlueprintEditorUtils.cpp, line 6482) does the following per interface function that needs an implementation:
+
+```cpp
+// Inside ImplementNewInterface:
+NewGraph = FBlueprintEditorUtils::CreateNewGraph(Blueprint, FunctionName, UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
+NewGraph->bAllowDeletion = false;
+NewGraph->InterfaceGuid = FindInterfaceFunctionGuid(Function, InterfaceClass);
+
+NewInterface.Graphs.Add(NewGraph);                                // <-- stored here
+FBlueprintEditorUtils::AddInterfaceGraph(Blueprint, NewGraph, InterfaceClass);  // <-- does NOT add to FunctionGraphs
+```
+
+`AddInterfaceGraph` (line 2483) ONLY calls `CreateFunctionGraphTerminators` — it never touches `Blueprint->FunctionGraphs`:
+
+```cpp
+void FBlueprintEditorUtils::AddInterfaceGraph(UBlueprint* Blueprint, UEdGraph* Graph, UClass* InterfaceClass)
+{
+    const UEdGraphSchema_K2* K2Schema = Cast<const UEdGraphSchema_K2>(Graph->GetSchema());
+    if (K2Schema != nullptr)
+    {
+        K2Schema->CreateFunctionGraphTerminators(*Graph, InterfaceClass);
+    }
+    // No Blueprint->FunctionGraphs.Add() here
+}
+```
+
+Compare with `AddFunctionGraph` (BlueprintEditorUtils.h, line 390), which DOES add to `FunctionGraphs`:
+```cpp
+template <typename SignatureType>
+static void AddFunctionGraph(UBlueprint* Blueprint, UEdGraph* Graph, bool bIsUserCreated, SignatureType* SignatureFromObject)
+{
+    CreateFunctionGraph(Blueprint, Graph, bIsUserCreated, SignatureFromObject);
+    Blueprint->FunctionGraphs.Add(Graph);   // <-- regular function graphs go here
+    ...
+}
+```
+
+**Conclusion: Interface implementation graphs are stored ONLY in `Blueprint->ImplementedInterfaces[i].Graphs`. They are NOT duplicated into `Blueprint->FunctionGraphs`.**
+
+#### Two Graph Flags Set on Interface Graphs (Not on Regular Function Graphs)
+
+```cpp
+NewGraph->bAllowDeletion = false;        // Cannot be deleted from Blueprint editor
+NewGraph->InterfaceGuid = FindInterfaceFunctionGuid(Function, InterfaceClass); // Non-zero GUID
+```
+
+Regular function graphs created via `AddFunctionGraph` have `bAllowDeletion = true` by default (UEdGraph default) and `InterfaceGuid = FGuid()` (zero).
+
+#### Entry Node Difference: SetExternalMember vs SetSelfMember
+
+For interface implementation graphs, `CreateFunctionGraphTerminators(UEdGraph& Graph, UClass* Class)` creates the entry node with:
+
+```cpp
+// BlueprintEditorUtils.cpp / EdGraphSchema_K2.cpp, line 3331
+EntryNode->FunctionReference.SetExternalMember(GraphName, Class, GraphGuid);
+//                                              ^name       ^interface class  ^guid from interface
+```
+
+For regular user-created function graphs, `CreateFunctionGraphTerminators(UEdGraph& Graph, const UFunction*)` or the `bIsUserCreated=true` path calls:
+```cpp
+// SetSelfMember is called later in PromoteFromInterfaceOverride or at user creation time
+FunctionReference.SetSelfMember(FunctionName);
+```
+
+The key difference: the `FunctionReference` on an interface entry node has `MemberParent = InterfaceClass` (non-null, external member), while a regular function entry node has no `MemberParent` (self-member). This is how the compiler knows the function implements an interface.
+
+`PromoteFromInterfaceOverride` (K2Node_FunctionTerminator.cpp, line 174) converts an interface entry to a regular self-member entry:
+```cpp
+void UK2Node_FunctionTerminator::PromoteFromInterfaceOverride(bool bIsPrimaryTerminator)
+{
+    FunctionReference.SetSelfMember(FunctionReference.GetMemberName()); // removes MemberParent
+    // Also converts all pins to UserDefinedPins so signatures become editable
+    ...
+}
+```
+
+#### Compiler Behavior (KismetCompiler.cpp)
+
+The Kismet compiler processes interface implementation graphs separately from regular function graphs (line 4739):
+
+```cpp
+// Process regular function graphs
+for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+    ProcessOneFunctionGraph(Graph);
+
+// Process interface implementation graphs — separate loop
+for (int32 i = 0; i < Blueprint->ImplementedInterfaces.Num(); ++i)
+    for (int32 j = 0; j < Blueprint->ImplementedInterfaces[i].Graphs.Num(); ++j)
+        ProcessOneFunctionGraph(Blueprint->ImplementedInterfaces[i].Graphs[j]);
+```
+
+Both call the same `ProcessOneFunctionGraph`, so the compiled output is equivalent — just the storage and loop are separate.
+
+#### GetAllGraphs Includes Interface Graphs
+
+`UBlueprint::GetAllGraphs` (Blueprint.cpp, line 1855) iterates ALL graph collections:
+1. `FunctionGraphs`
+2. `MacroGraphs`
+3. `UbergraphPages`
+4. `DelegateSignatureGraphs`
+5. `ImplementedInterfaces[i].Graphs` ← included here
+
+So any code using `GetAllGraphs` will see interface implementation graphs. However, code iterating `Blueprint->FunctionGraphs` directly will miss them.
+
+#### Which Interface Functions Get Graphs
+
+Only functions where `CanKismetOverrideFunction(Function) && !FunctionCanBePlacedAsEvent(Function)` (i.e., functions with output parameters, since event-compatible functions without outputs are implemented as events in the event graph, not as separate function graphs).
+
+Source: `C:/Program Files/Epic Games/UE_5.5/Engine/Source/Editor/UnrealEd/Private/Kismet2/BlueprintEditorUtils.cpp`, lines 6482–6565
+Source: `C:/Program Files/Epic Games/UE_5.5/Engine/Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp`, lines 3317–3408
+Source: `C:/Program Files/Epic Games/UE_5.5/Engine/Source/Runtime/Engine/Private/Blueprint.cpp`, lines 1855–1910
+Source: `C:/Program Files/Epic Games/UE_5.5/Engine/Source/Editor/KismetCompiler/Private/KismetCompiler.cpp`, lines 4739–4746
+
+---
+
 ## Recommendations
 
 1. **BPI creation tool**: Use `FKismetEditorUtilities::CreateBlueprint(UInterface::StaticClass(), ...)`
@@ -486,3 +607,20 @@ The `UnrealEd` module is already in `OliveAIEditor.Build.cs`.
    which works for PC_Class pins IF the AI passes a valid full asset path ending in `_C`. The AI
    should be informed in documentation/prompts that interface class pins take the path
    `"/Path/To/BPI_Asset.BPI_Asset_C"` (the generated class, not the asset itself).
+
+9. **Searching for interface implementation graphs**: Any tool that needs to find ALL graphs on a
+   Blueprint (e.g., for reading, plan injection, node search) should use `Blueprint->GetAllGraphs()`
+   or separately iterate `Blueprint->ImplementedInterfaces[i].Graphs`. Iterating only
+   `Blueprint->FunctionGraphs` will silently miss all interface implementation graphs.
+
+10. **Detecting an interface graph**: Check `Graph->InterfaceGuid.IsValid()` (non-zero guid) or
+    check that the entry node's `FunctionReference` is an external member:
+    `!EntryNode->FunctionReference.IsSelfContext()`. Regular user-defined function graphs have
+    `FunctionReference` as self-context; interface implementation graphs have
+    `MemberParent = InterfaceClass`.
+
+11. **Injecting nodes into interface implementation graphs**: The procedure is the same as any other
+    function graph — find it via `Blueprint->ImplementedInterfaces[i].Graphs`, locate the entry
+    node, and add nodes normally. The graph schema is still `UEdGraphSchema_K2`. The only constraint
+    is the entry node's pins are fixed to the interface signature (not user-editable unless
+    `PromoteFromInterfaceOverride` is called first).

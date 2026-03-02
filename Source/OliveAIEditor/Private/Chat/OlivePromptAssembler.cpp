@@ -541,8 +541,8 @@ Project Name: {PROJECT_NAME}
 	}
 
 	// Profile -> capability pack mapping. Add packs here without changing assembly flow.
-	ProfileCapabilityPackIds.Add(TEXT("Auto"), { TEXT("blueprint_authoring"), TEXT("recipe_routing"), TEXT("node_routing") });
-	ProfileCapabilityPackIds.Add(TEXT("Blueprint"), { TEXT("blueprint_authoring"), TEXT("recipe_routing"), TEXT("node_routing") });
+	ProfileCapabilityPackIds.Add(TEXT("Auto"), { TEXT("blueprint_authoring"), TEXT("recipe_routing"), TEXT("node_routing"), TEXT("blueprint_design_patterns") });
+	ProfileCapabilityPackIds.Add(TEXT("Blueprint"), { TEXT("blueprint_authoring"), TEXT("recipe_routing"), TEXT("node_routing"), TEXT("blueprint_design_patterns") });
 	// NOTE: C++ profile intentionally omits recipe_routing — current recipes are Blueprint-only.
 	// Add it when C++ recipes exist.
 	ProfileCapabilityPackIds.Add(TEXT("C++"), {});

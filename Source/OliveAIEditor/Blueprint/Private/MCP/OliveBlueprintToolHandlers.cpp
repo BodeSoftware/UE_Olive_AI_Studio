@@ -1190,7 +1190,24 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleReadSectionGraph(const TShar
 		}
 	}
 
-	// 3. Search MacroGraphs
+	// 3. Search interface implementation graphs
+	if (!TargetGraph)
+	{
+		for (FBPInterfaceDescription& InterfaceDesc : Blueprint->ImplementedInterfaces)
+		{
+			for (UEdGraph* Graph : InterfaceDesc.Graphs)
+			{
+				if (Graph && Graph->GetName() == GraphName)
+				{
+					TargetGraph = Graph;
+					break;
+				}
+			}
+			if (TargetGraph) { break; }
+		}
+	}
+
+	// 4. Search MacroGraphs
 	if (!TargetGraph)
 	{
 		for (UEdGraph* Graph : Blueprint->MacroGraphs)
@@ -1203,7 +1220,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleReadSectionGraph(const TShar
 		}
 	}
 
-	// 4. Fallback: if "EventGraph" was requested and not found by name, use first Ubergraph
+	// 5. Fallback: if "EventGraph" was requested and not found by name, use first Ubergraph
 	if (!TargetGraph && GraphName == TEXT("EventGraph") && Blueprint->UbergraphPages.Num() > 0)
 	{
 		TargetGraph = Blueprint->UbergraphPages[0];
@@ -1222,6 +1239,13 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleReadSectionGraph(const TShar
 		for (UEdGraph* Graph : Blueprint->FunctionGraphs)
 		{
 			if (Graph) { AvailableGraphs.Add(Graph->GetName()); }
+		}
+		for (FBPInterfaceDescription& InterfaceDesc : Blueprint->ImplementedInterfaces)
+		{
+			for (UEdGraph* Graph : InterfaceDesc.Graphs)
+			{
+				if (Graph) { AvailableGraphs.Add(Graph->GetName()); }
+			}
 		}
 		for (UEdGraph* Graph : Blueprint->MacroGraphs)
 		{
@@ -4524,6 +4548,21 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveNode(const TS
 				}
 				if (!Graph)
 				{
+					for (FBPInterfaceDescription& InterfaceDesc : BP->ImplementedInterfaces)
+					{
+						for (UEdGraph* G : InterfaceDesc.Graphs)
+						{
+							if (G && G->GetName() == GraphName)
+							{
+								Graph = G;
+								break;
+							}
+						}
+						if (Graph) { break; }
+					}
+				}
+				if (!Graph)
+				{
 					for (UEdGraph* G : BP->MacroGraphs)
 					{
 						if (G && G->GetName() == GraphName)
@@ -6440,6 +6479,19 @@ UEdGraph* FindGraphByName(UBlueprint* Blueprint, const FString& GraphName)
 		if (Graph && Graph->GetName() == GraphName)
 		{
 			return Graph;
+		}
+	}
+
+	// Search interface implementation graphs (ImplementedInterfaces[i].Graphs).
+	// These are NOT in FunctionGraphs — UE stores them separately.
+	for (FBPInterfaceDescription& InterfaceDesc : Blueprint->ImplementedInterfaces)
+	{
+		for (UEdGraph* Graph : InterfaceDesc.Graphs)
+		{
+			if (Graph && Graph->GetName() == GraphName)
+			{
+				return Graph;
+			}
 		}
 	}
 

@@ -2753,15 +2753,60 @@ void FOlivePlanExecutor::PhaseSetDefaults(
                 continue;
             }
 
-            // Use the schema to set the default value properly
-            const UEdGraphSchema* Schema = Context.Graph->GetSchema();
-            if (Schema)
+            // For class pins (TSubclassOf<>), resolve the name to a UClass*
+            // and set DefaultObject. TrySetDefaultValue doesn't handle short
+            // class names on PC_Class pins.
+            if (RealPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Class
+                || RealPin->PinType.PinCategory == UEdGraphSchema_K2::PC_SoftClass)
             {
-                Schema->TrySetDefaultValue(*RealPin, PinValue);
+                UClass* FoundClass = Cast<UClass>(StaticFindFirstObject(
+                    UClass::StaticClass(), *PinValue,
+                    EFindFirstObjectOptions::NativeFirst,
+                    ELogVerbosity::NoLogging, TEXT("OlivePlanExecutor")));
+                // Also try with U prefix (e.g., "SkeletalMeshComponent" -> "USkeletalMeshComponent")
+                if (!FoundClass)
+                {
+                    FoundClass = Cast<UClass>(StaticFindFirstObject(
+                        UClass::StaticClass(), *(TEXT("U") + PinValue),
+                        EFindFirstObjectOptions::NativeFirst,
+                        ELogVerbosity::NoLogging, TEXT("OlivePlanExecutor")));
+                }
+                if (FoundClass)
+                {
+                    RealPin->DefaultObject = FoundClass;
+                    UE_LOG(LogOlivePlanExecutor, Verbose,
+                        TEXT("Set class default: %s.%s = %s (resolved UClass*)"),
+                        *Step.StepId, *PinEntry->PinName, *FoundClass->GetName());
+                }
+                else
+                {
+                    // Fallback: try with Schema in case it's a full path
+                    const UEdGraphSchema* Schema = Context.Graph->GetSchema();
+                    if (Schema)
+                    {
+                        Schema->TrySetDefaultValue(*RealPin, PinValue);
+                    }
+                    else
+                    {
+                        RealPin->DefaultValue = PinValue;
+                    }
+                    UE_LOG(LogOlivePlanExecutor, Warning,
+                        TEXT("Class pin '%s' on step '%s': UClass '%s' not found, falling back to TrySetDefaultValue"),
+                        *PinEntry->PinName, *Step.StepId, *PinValue);
+                }
             }
             else
             {
-                RealPin->DefaultValue = PinValue;
+                // Use the schema to set the default value properly
+                const UEdGraphSchema* Schema = Context.Graph->GetSchema();
+                if (Schema)
+                {
+                    Schema->TrySetDefaultValue(*RealPin, PinValue);
+                }
+                else
+                {
+                    RealPin->DefaultValue = PinValue;
+                }
             }
 
             Context.SuccessfulDefaultCount++;

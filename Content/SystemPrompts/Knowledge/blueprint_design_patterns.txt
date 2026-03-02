@@ -1,0 +1,260 @@
+TAGS: interface cast dispatcher delegate overlap interaction communication between blueprints coupling pickup damage event
+---
+## Cross-Blueprint Communication Patterns
+
+### Decision Tree
+ONE known type → Direct cast (simplest)
+TWO+ types share a behavior → Blueprint Interface (no casting)
+Notify others about state changes → Event Dispatcher
+
+### Prefer Better Patterns
+- ForEachLoop + Cast to find actors is usually wrong → overlap events give you the actor directly
+- Casting inside a loop usually means you want a Blueprint Interface instead
+- Tick + GetOverlappingActors for continuous detection → OnComponentBeginOverlap/EndOverlap is cheaper
+- Hard-typed variable (BP_Gun ref) when multiple types should work → store as Actor, check via interface
+- ForEachLoop + Cast IS fine for one-shot area queries (explosions, AoE) or iterating a known-type array
+
+---
+
+## 1. Blueprint Interfaces — Complete Workflow
+
+Use when multiple Blueprint types share the same interaction (pickup, damage, interact).
+
+### Step A: Create the Interface Asset
+  blueprint.create → {
+    "path": "/Game/Interfaces/BPI_Interactable",
+    "type": "Interface",
+    "parent_class": "Interface"
+  }
+
+### Step B: Add Functions to the Interface
+Each function the interface declares:
+
+  blueprint.add_function → {
+    "path": "/Game/Interfaces/BPI_Interactable",
+    "signature": {
+      "name": "Interact",
+      "inputs": [{"name": "Caller", "type": {"category": "object", "class_name": "Actor"}}],
+      "outputs": [{"name": "ReturnValue", "type": "Boolean"}]
+    }
+  }
+
+  blueprint.add_function → {
+    "path": "/Game/Interfaces/BPI_Interactable",
+    "signature": {
+      "name": "GetInteractionText",
+      "outputs": [{"name": "ReturnValue", "type": "String"}],
+      "pure": true
+    }
+  }
+
+### Step C: Implement the Interface on Target Blueprints
+  blueprint.add_interface → {"path": "/Game/BP_Door", "interface": "BPI_Interactable"}
+  blueprint.add_interface → {"path": "/Game/BP_Chest", "interface": "BPI_Interactable"}
+
+  This AUTOMATICALLY creates empty function graph stubs (Interact, GetInteractionText) on each BP.
+  You do NOT need to call add_function or override_function — the stubs already exist.
+
+### Step D: Write Logic for Each Implementation
+Target the function graph BY NAME. Each BP gets its own implementation:
+
+  apply_plan_json on BP_Door, function: "Interact" →
+  {"schema_version":"2.0","steps":[
+    {"step_id":"get_open","op":"get_var","target":"bIsOpen"},
+    {"step_id":"toggle","op":"set_var","target":"bIsOpen",
+     "inputs":{"Value":"@get_open.auto"},"exec_after":"entry"},
+    {"step_id":"ret","op":"return","inputs":{"ReturnValue":"true"},"exec_after":"toggle"}
+  ]}
+
+  apply_plan_json on BP_Chest, function: "Interact" →
+  {"schema_version":"2.0","steps":[
+    {"step_id":"open","op":"call","target":"OpenChestAnimation","exec_after":"entry"},
+    {"step_id":"spawn","op":"call","target":"SpawnLoot","exec_after":"open"},
+    {"step_id":"ret","op":"return","inputs":{"ReturnValue":"true"},"exec_after":"spawn"}
+  ]}
+
+### Step E: Call Interface Functions (From the Caller)
+In the CALLER's plan_json, use op:"call" with target_class set to the interface name.
+NO CAST NEEDED. UE routes the call through the interface automatically.
+
+  {"step_id":"do_interact","op":"call","target":"Interact",
+   "target_class":"BPI_Interactable",
+   "inputs":{"Target":"@get_nearby.auto","Caller":"@self.auto"},
+   "exec_after":"prev_step"}
+
+  For pure interface functions:
+  {"step_id":"get_text","op":"call","target":"GetInteractionText",
+   "target_class":"BPI_Interactable",
+   "inputs":{"Target":"@get_nearby.auto"}}
+
+KEY RULES for interface calls:
+  - target_class = interface asset name (e.g., "BPI_Interactable"), NOT the implementing class
+  - Target input = the actor you're calling it ON (wire from overlap ref, cast result, or variable)
+  - The resolver finds interface functions automatically via target_class
+  - If target_class is omitted, the resolver won't find the function (it's not on the caller's class)
+
+---
+
+## 2. Event Dispatchers — Complete Workflow
+
+Use when one actor notifies others about state changes (health changed, item picked up, door opened).
+Publisher doesn't know or care who listens.
+
+### Step A: Create the Dispatcher
+  blueprint.add_event_dispatcher → {
+    "path": "/Game/BP_HealthComponent",
+    "name": "OnHealthChanged",
+    "params": [
+      {"name": "NewHealth", "type": "Float"},
+      {"name": "MaxHealth", "type": "Float"}
+    ]
+  }
+
+### Step B: Broadcast the Dispatcher (in plan_json)
+Use op: "call_delegate" with target = dispatcher name:
+
+  {"step_id":"notify","op":"call_delegate","target":"OnHealthChanged",
+   "inputs":{"NewHealth":"@clamp.auto","MaxHealth":"@get_max.auto"},
+   "exec_after":"set_hp"}
+
+IMPORTANT: The op is "call_delegate", NOT "call_dispatcher" or "bind_dispatcher".
+Those are NOT implemented in the resolver and will cause "Unknown operation" errors.
+
+### Step C: Bind to the Dispatcher (from another Blueprint)
+Binding is NOT supported in plan_json. Use GRANULAR TOOLS:
+
+  blueprint.add_node → {
+    "path": "/Game/BP_HealthUI",
+    "graph": "EventGraph",
+    "type": "K2Node_AssignDelegate",
+    "properties": {"delegate_name": "OnHealthChanged"}
+  }
+
+  Then wire with connect_pins to link the delegate output to your handler logic.
+
+  Alternative for component-owned dispatchers:
+  blueprint.add_node → {
+    "path": "/Game/BP_Player",
+    "graph": "EventGraph",
+    "type": "K2Node_ComponentBoundEvent",
+    "properties": {"component_name": "HealthComp", "delegate_name": "OnHealthChanged"}
+  }
+
+---
+
+## 3. Overlap Events — Use Events, Not Queries
+
+### Persistent Detection (pickup zones, interaction ranges)
+Use OnComponentBeginOverlap/EndOverlap to track who's nearby. Store the reference.
+
+plan_json for BeginOverlap (stores nearby actor):
+  {"schema_version":"2.0","steps":[
+    {"step_id":"overlap","op":"event","target":"OnComponentBeginOverlap",
+     "properties":{"component_name":"InteractionSphere"}},
+    {"step_id":"cast","op":"cast","target":"Character",
+     "inputs":{"Object":"@overlap.~OtherActor"},
+     "exec_after":"overlap",
+     "exec_outputs":{"CastSucceeded":"store"}},
+    {"step_id":"store","op":"set_var","target":"NearbyCharacter",
+     "inputs":{"Value":"@cast.auto"}}
+  ]}
+
+plan_json for EndOverlap (clears reference):
+  {"schema_version":"2.0","steps":[
+    {"step_id":"end_ol","op":"event","target":"OnComponentEndOverlap",
+     "properties":{"component_name":"InteractionSphere"}},
+    {"step_id":"clear","op":"set_var","target":"NearbyCharacter",
+     "inputs":{"Value":""},"exec_after":"end_ol"}
+  ]}
+
+Then the input handler just checks the stored reference:
+  {"step_id":"get_ref","op":"get_var","target":"NearbyCharacter"},
+  {"step_id":"valid","op":"is_valid","inputs":{"Object":"@get_ref.auto"},"exec_after":"input_event",
+   "exec_outputs":{"IsValid":"do_interact","IsNotValid":"skip"}}
+
+### When GetOverlappingActors IS OK
+One-shot area queries ONLY: explosions, AoE damage, debug visualization.
+NOT for continuous detection — that's what overlap events are for.
+
+---
+
+## 4. Direct Cast — Use Sparingly
+
+### When Cast IS Correct
+- Need data specific to ONE known type: Cast to BP_Gun → read CurrentAmmo
+- After overlap gives you OtherActor and you need type-specific data
+- ONE cast after an event = fine. Cast inside a loop = WRONG.
+
+plan_json cast example:
+  {"step_id":"cast_gun","op":"cast","target":"BP_Gun",
+   "inputs":{"Object":"@overlap.~OtherActor"},
+   "exec_after":"overlap",
+   "exec_outputs":{"CastSucceeded":"pickup","CastFailed":"skip"}}
+
+After cast, access typed pins: @cast_gun.auto or @cast_gun.~PinHint
+
+---
+
+## 5. Input Events in EventGraph
+
+### Enhanced Input Actions (UE 5.1+ — preferred)
+In plan_json, use op:"event" with target starting with "IA_":
+  {"step_id":"input","op":"event","target":"IA_Interact"}
+
+This auto-resolves to UK2Node_EnhancedInputAction. Pins include Triggered, Started, etc.
+
+### Simple Key Press (legacy input)
+InputKey is NOT a plan_json event. Use GRANULAR add_node:
+  blueprint.add_node → {
+    "path": "/Game/BP_Character",
+    "graph": "EventGraph",
+    "type": "InputKey",
+    "properties": {"key": "E"}
+  }
+
+Then wire with connect_pins from the add_node result's node_id.
+
+### Wiring Input → Interface Call
+After creating the input event (either method), wire through stored ref:
+  get_var NearbyInteractable → is_valid → call Interact with target_class:"BPI_Interactable"
+
+If using plan_json with Enhanced Input:
+  {"step_id":"input","op":"event","target":"IA_Interact"},
+  {"step_id":"get_ref","op":"get_var","target":"NearbyInteractable"},
+  {"step_id":"valid","op":"is_valid","inputs":{"Object":"@get_ref.auto"},
+   "exec_after":"input",
+   "exec_outputs":{"IsValid":"interact","IsNotValid":"done"}},
+  {"step_id":"interact","op":"call","target":"Interact",
+   "target_class":"BPI_Interactable",
+   "inputs":{"Target":"@get_ref.auto","Caller":"@self.auto"}},
+  {"step_id":"done","op":"do_once","exec_after":"interact"}
+
+If using InputKey (add_node), use granular connect_pins for the input→is_valid wiring,
+then apply_plan_json for the rest of the logic starting from is_valid onward.
+
+---
+
+## 6. Complete Example: Interaction System
+
+Goal: Character presses E to interact with doors, chests, switches (all different types).
+
+### Assets to Create
+1. BPI_Interactable — interface with Interact(Caller) and CanInteract():Bool
+2. BP_Door — implements BPI_Interactable, toggles open/closed
+3. BP_Chest — implements BPI_Interactable, spawns loot
+4. Modify BP_ThirdPersonCharacter — add InteractionSphere, E key handling
+
+### Order of Operations
+1. blueprint.create BPI_Interactable as type:"Interface"
+2. add_function Interact and CanInteract to the interface
+3. blueprint.add_interface on BP_Door and BP_Chest
+4. apply_plan_json for Interact function on EACH implementing BP
+5. add_component InteractionSphere (SphereComponent) on Character
+6. add_variable NearbyInteractable (type: {category:"object", class_name:"Actor"}) on Character
+7. apply_plan_json for BeginOverlap → store NearbyInteractable
+8. apply_plan_json for EndOverlap → clear NearbyInteractable
+9. apply_plan_json for E key → is_valid check → BPI_Interactable::Interact via target_class
+10. compile all
+
+No ForEachLoop. No cast loops. One interface handles any number of interactable types.
+Adding a new interactable (BP_Switch, BP_Lever) = add_interface + implement Interact. Zero changes to Character.

@@ -905,6 +905,18 @@ UEdGraph* FOliveGraphWriter::FindGraph(UBlueprint* Blueprint, const FString& Gra
 		}
 	}
 
+	// Check interface implementation graphs
+	for (FBPInterfaceDescription& InterfaceDesc : Blueprint->ImplementedInterfaces)
+	{
+		for (UEdGraph* Graph : InterfaceDesc.Graphs)
+		{
+			if (Graph && Graph->GetName() == GraphName)
+			{
+				return Graph;
+			}
+		}
+	}
+
 	// Check macro graphs
 	for (UEdGraph* Graph : Blueprint->MacroGraphs)
 	{
