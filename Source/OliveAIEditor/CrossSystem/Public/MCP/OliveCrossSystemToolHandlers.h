@@ -7,6 +7,8 @@
 
 DECLARE_LOG_CATEGORY_EXTERN(LogOliveCrossSystemTools, Log, All);
 
+class FSQLiteDatabase;
+
 /**
  * FOliveCrossSystemToolHandlers
  *
@@ -78,6 +80,18 @@ private:
 
 	/** Tags per recipe entry for keyword search. Key = "category/name" */
 	TMap<FString, TArray<FString>> RecipeTags;
+
+	// Community Blueprint search
+	void RegisterCommunityTools();
+	void OpenCommunityDatabase();
+	void CloseCommunityDatabase();
+	FOliveToolResult HandleSearchCommunityBlueprints(const TSharedPtr<FJsonObject>& Params);
+
+	/** SQLite connection for community blueprint database (lazy init, read-only) */
+	TSharedPtr<FSQLiteDatabase> CommunityDb;
+
+	/** Whether we've attempted to open the db (avoid retrying on missing file) */
+	bool bCommunityDbInitAttempted = false;
 
 	TArray<FString> RegisteredToolNames;
 };

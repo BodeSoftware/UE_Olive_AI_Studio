@@ -310,4 +310,27 @@ namespace OliveCrossSystemSchemas
 		AddRequired(Schema, { TEXT("query") });
 		return Schema;
 	}
+
+	// ============================================================================
+	// Community Blueprint Search
+	// ============================================================================
+
+	TSharedPtr<FJsonObject> CommunitySearch()
+	{
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		TSharedPtr<FJsonObject> Props = MakeProperties();
+
+		Props->SetObjectField(TEXT("query"),
+			OliveBlueprintSchemas::StringProp(TEXT("Search terms (e.g. 'gun fire reload', 'pickup overlap interact', 'health damage')")));
+		Props->SetObjectField(TEXT("type"),
+			OliveBlueprintSchemas::StringProp(TEXT("Optional: filter by asset type — 'blueprint', 'material', 'pcg'. Omit to search all types.")));
+		Props->SetObjectField(TEXT("max_results"),
+			OliveBlueprintSchemas::IntProp(TEXT("Maximum results to return (1-10, default 5)"), 1, 10));
+		Props->SetObjectField(TEXT("offset"),
+			OliveBlueprintSchemas::IntProp(TEXT("Skip this many results for pagination (default 0). Use offset=5 to get the next batch if first results aren't useful."), 0, 10000));
+
+		Schema->SetObjectField(TEXT("properties"), Props);
+		AddRequired(Schema, { TEXT("query") });
+		return Schema;
+	}
 }

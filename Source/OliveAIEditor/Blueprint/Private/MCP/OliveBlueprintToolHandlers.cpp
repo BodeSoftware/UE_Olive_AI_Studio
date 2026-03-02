@@ -1101,6 +1101,17 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleReadSectionAll(const TShared
 				 "No need to use section='graph' for individual graphs."));
 	}
 
+	// One-time hint: nudge the agent to research community patterns before building.
+	// Fires on the first blueprint.read per editor session so it appears at the
+	// decision point (agent just read the BP and is about to plan).
+	static bool bCommunitySearchHintShown = false;
+	if (!bCommunitySearchHintShown && ResultData.IsValid())
+	{
+		bCommunitySearchHintShown = true;
+		ResultData->SetStringField(TEXT("tip"),
+			TEXT("olive.search_community_blueprints('relevant query') can show how other developers built similar patterns."));
+	}
+
 	return FOliveToolResult::Success(ResultData);
 }
 
@@ -1784,12 +1795,24 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 		}
 	}
 
+	// One-time hint: nudge the agent to research community patterns after creating.
+	// Declared here so both template and non-template paths share one static bool.
+	static bool bCommunitySearchHintShownCreate = false;
+
 	// Check for template_id — if set, delegate to template creation
 	FString TemplateId;
 	if (Params->TryGetStringField(TEXT("template_id"), TemplateId) && !TemplateId.IsEmpty())
 	{
 		UE_LOG(LogOliveBPTools, Log, TEXT("blueprint.create: template_id='%s' detected, delegating to template system"), *TemplateId);
-		return HandleBlueprintCreateFromTemplate(TemplateId, AssetPath, Params);
+		FOliveToolResult TemplateResult = HandleBlueprintCreateFromTemplate(TemplateId, AssetPath, Params);
+
+		if (!bCommunitySearchHintShownCreate && TemplateResult.bSuccess && TemplateResult.Data.IsValid())
+		{
+			bCommunitySearchHintShownCreate = true;
+			TemplateResult.Data->SetStringField(TEXT("tip"),
+				TEXT("olive.search_community_blueprints('relevant query') can show how other developers built similar patterns."));
+		}
+		return TemplateResult;
 	}
 
 	// Extract parent_class (required when not using a template)
@@ -1891,7 +1914,16 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
 	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
-	return Result.ToToolResult();
+	FOliveToolResult ToolResult = Result.ToToolResult();
+
+	if (!bCommunitySearchHintShownCreate && ToolResult.bSuccess && ToolResult.Data.IsValid())
+	{
+		bCommunitySearchHintShownCreate = true;
+		ToolResult.Data->SetStringField(TEXT("tip"),
+			TEXT("olive.search_community_blueprints('relevant query') can show how other developers built similar patterns."));
+	}
+
+	return ToolResult;
 }
 
 FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintSetParentClass(const TSharedPtr<FJsonObject>& Params)
@@ -7981,7 +8013,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintGetTemplate(const T
 		return FOliveToolResult::Error(
 			TEXT("TEMPLATE_NOT_FOUND"),
 			FString::Printf(TEXT("Template '%s' not found"), *TemplateId),
-			TEXT("Use blueprint.list_templates to see available templates")
+			TEXT("Use blueprint.list_templates to see available templates, or olive.search_community_blueprints(query) for community examples")
 		);
 	}
 

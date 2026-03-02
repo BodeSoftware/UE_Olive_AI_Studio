@@ -16,6 +16,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Internationalization/Regex.h"
+#include "SQLiteDatabase.h"
 
 #define LOCTEXT_NAMESPACE "OliveCrossSystemToolHandlers"
 
@@ -40,6 +41,9 @@ void FOliveCrossSystemToolHandlers::RegisterAllTools()
 	LoadRecipeLibrary();
 	RegisterRecipeTools();
 
+	// Community blueprint search
+	RegisterCommunityTools();
+
 	UE_LOG(LogOliveCrossSystemTools, Log, TEXT("Registered %d Cross-System MCP tools"), RegisteredToolNames.Num());
 }
 
@@ -52,6 +56,8 @@ void FOliveCrossSystemToolHandlers::UnregisterAllTools()
 	{
 		Registry.UnregisterTool(ToolName);
 	}
+
+	CloseCommunityDatabase();
 
 	RegisteredToolNames.Empty();
 	UE_LOG(LogOliveCrossSystemTools, Log, TEXT("Cross-System MCP tools unregistered"));
@@ -1412,6 +1418,230 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleGetRecipe(const TSharedPtr
 	}
 
 	return FOliveToolResult::Success(Data);
+}
+
+// =============================================================================
+// Community Blueprint Search
+// =============================================================================
+
+void FOliveCrossSystemToolHandlers::OpenCommunityDatabase()
+{
+	if (bCommunityDbInitAttempted)
+	{
+		return;
+	}
+	bCommunityDbInitAttempted = true;
+
+	const FString DbPath = FPaths::Combine(
+		FPaths::ProjectPluginsDir(),
+		TEXT("UE_Olive_AI_Studio/Content/CommunityBlueprints/community_blueprints.db"));
+
+	if (!FPaths::FileExists(DbPath))
+	{
+		UE_LOG(LogOliveCrossSystemTools, Log, TEXT("Community blueprint database not found at %s (optional feature)"), *DbPath);
+		return;
+	}
+
+	CommunityDb = MakeShared<FSQLiteDatabase>();
+
+	// ReadOnly is sufficient for SELECT + FTS5 MATCH queries.
+	// IMPORTANT: The .db file MUST use rollback journal mode (not WAL).
+	// UE's custom SQLite VFS (SQLITE_OS_OTHER) doesn't implement shared memory,
+	// which WAL mode requires. If queries fail with "unable to open database file",
+	// convert the .db: sqlite3 community_blueprints.db "PRAGMA journal_mode=DELETE;"
+	if (!CommunityDb->Open(*DbPath, ESQLiteDatabaseOpenMode::ReadOnly))
+	{
+		UE_LOG(LogOliveCrossSystemTools, Warning, TEXT("Failed to open community blueprint database: %s"), *CommunityDb->GetLastError());
+		CommunityDb.Reset();
+		return;
+	}
+
+	UE_LOG(LogOliveCrossSystemTools, Log, TEXT("Opened community blueprint database: %s"), *DbPath);
+}
+
+void FOliveCrossSystemToolHandlers::CloseCommunityDatabase()
+{
+	if (CommunityDb.IsValid())
+	{
+		CommunityDb->Close();
+		CommunityDb.Reset();
+	}
+	bCommunityDbInitAttempted = false;
+}
+
+void FOliveCrossSystemToolHandlers::RegisterCommunityTools()
+{
+	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
+
+	Registry.RegisterTool(
+		TEXT("olive.search_community_blueprints"),
+		TEXT("Search ~150K real-world community Blueprints for gameplay patterns like weapons, pickups, "
+			"inventory, interaction, AI, movement, doors, health systems, and more. "
+			"Returns compact graph summaries showing node flow, data wiring, and pin defaults "
+			"so you can see how other developers structured similar systems. "
+			"Useful when building gameplay systems to discover common variable layouts, "
+			"component choices, and wiring patterns you might not think of. "
+			"Results prefer UE 5.0+ examples. Quality varies — adapt rather than copy."),
+		OliveCrossSystemSchemas::CommunitySearch(),
+		FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleSearchCommunityBlueprints),
+		{TEXT("crosssystem"), TEXT("read")},
+		TEXT("crosssystem")
+	);
+	RegisteredToolNames.Add(TEXT("olive.search_community_blueprints"));
+
+	UE_LOG(LogOliveCrossSystemTools, Log, TEXT("Registered community blueprint search tool"));
+}
+
+FOliveToolResult FOliveCrossSystemToolHandlers::HandleSearchCommunityBlueprints(const TSharedPtr<FJsonObject>& Params)
+{
+	// --- Parameter extraction ---
+	FString Query;
+	if (!Params->TryGetStringField(TEXT("query"), Query) || Query.IsEmpty())
+	{
+		return FOliveToolResult::Error(TEXT("MISSING_PARAM"),
+			TEXT("'query' is required"),
+			TEXT("Provide search terms like 'gun fire reload'"));
+	}
+
+	FString TypeFilter;
+	Params->TryGetStringField(TEXT("type"), TypeFilter);
+
+	int32 MaxResults = 5;
+	if (Params->HasField(TEXT("max_results")))
+	{
+		MaxResults = FMath::Clamp(static_cast<int32>(Params->GetNumberField(TEXT("max_results"))), 1, 10);
+	}
+
+	int32 Offset = 0;
+	if (Params->HasField(TEXT("offset")))
+	{
+		Offset = FMath::Max(0, static_cast<int32>(Params->GetNumberField(TEXT("offset"))));
+	}
+
+	// --- Lazy-init database ---
+	OpenCommunityDatabase();
+	if (!CommunityDb.IsValid())
+	{
+		// Database not available — return empty result, NOT an error
+		TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+		TArray<TSharedPtr<FJsonValue>> EmptyArray;
+		Result->SetArrayField(TEXT("results"), EmptyArray);
+		Result->SetNumberField(TEXT("count"), 0);
+		Result->SetStringField(TEXT("note"),
+			TEXT("Community blueprint index not found. This is an optional feature — place community_blueprints.db in Content/CommunityBlueprints/."));
+		return FOliveToolResult::Success(Result);
+	}
+
+	// --- Build FTS5 query string ---
+	// Multi-word queries use OR logic: "gun fire reload" -> "gun OR fire OR reload"
+	FString FtsQuery;
+	TArray<FString> Terms;
+	Query.ParseIntoArrayWS(Terms);
+	if (Terms.Num() > 1)
+	{
+		FtsQuery = FString::Join(Terms, TEXT(" OR "));
+	}
+	else
+	{
+		FtsQuery = Query;
+	}
+
+	// --- Build and execute SQL ---
+	const bool bHasTypeFilter = !TypeFilter.IsEmpty();
+
+	const TCHAR* SqlWithoutType = TEXT(
+		"SELECT b.slug, b.title, b.type, b.ue_version, b.node_count, "
+		"b.functions, b.variables, b.compact, b.url "
+		"FROM blueprints_fts fts "
+		"JOIN blueprints b ON b.slug = fts.slug "
+		"WHERE blueprints_fts MATCH ? "
+		"ORDER BY "
+		"CASE WHEN CAST(b.ue_version AS REAL) >= 5.0 THEN 0 ELSE 1 END, "
+		"rank "
+		"LIMIT ? OFFSET ?");
+
+	const TCHAR* SqlWithType = TEXT(
+		"SELECT b.slug, b.title, b.type, b.ue_version, b.node_count, "
+		"b.functions, b.variables, b.compact, b.url "
+		"FROM blueprints_fts fts "
+		"JOIN blueprints b ON b.slug = fts.slug "
+		"WHERE blueprints_fts MATCH ? AND b.type = ? "
+		"ORDER BY "
+		"CASE WHEN CAST(b.ue_version AS REAL) >= 5.0 THEN 0 ELSE 1 END, "
+		"rank "
+		"LIMIT ? OFFSET ?");
+
+	FSQLitePreparedStatement Statement = CommunityDb->PrepareStatement(
+		bHasTypeFilter ? SqlWithType : SqlWithoutType,
+		ESQLitePreparedStatementFlags::None);
+
+	if (!Statement.IsValid())
+	{
+		return FOliveToolResult::Error(TEXT("DB_ERROR"),
+			FString::Printf(TEXT("Failed to prepare SQL statement: %s"), *CommunityDb->GetLastError()),
+			TEXT("The community blueprint database may be corrupted or in WAL journal mode. "
+				"Convert with: sqlite3 community_blueprints.db \"PRAGMA journal_mode=DELETE;\""));
+	}
+
+	// Bind parameters (1-indexed in SQLite)
+	int32 BindIdx = 1;
+	Statement.SetBindingValueByIndex(BindIdx++, FtsQuery);
+	if (bHasTypeFilter)
+	{
+		Statement.SetBindingValueByIndex(BindIdx++, TypeFilter);
+	}
+	Statement.SetBindingValueByIndex(BindIdx++, MaxResults);
+	Statement.SetBindingValueByIndex(BindIdx++, Offset);
+
+	// Execute and collect results
+	TArray<TSharedPtr<FJsonValue>> Results;
+
+	int64 RowCount = Statement.Execute([&Results](const FSQLitePreparedStatement& Row) -> ESQLitePreparedStatementExecuteRowResult
+	{
+		TSharedPtr<FJsonObject> Entry = MakeShared<FJsonObject>();
+
+		// Column indices match SELECT order:
+		// 0=slug (skip), 1=title, 2=type, 3=ue_version, 4=node_count, 5=functions, 6=variables, 7=compact, 8=url
+		FString Title, Type, UeVersion, Functions, Variables, Compact, Url;
+		int32 NodeCount = 0;
+
+		Row.GetColumnValueByIndex(1, Title);
+		Row.GetColumnValueByIndex(2, Type);
+		Row.GetColumnValueByIndex(3, UeVersion);
+		Row.GetColumnValueByIndex(4, NodeCount);
+		Row.GetColumnValueByIndex(5, Functions);
+		Row.GetColumnValueByIndex(6, Variables);
+		Row.GetColumnValueByIndex(7, Compact);
+		Row.GetColumnValueByIndex(8, Url);
+
+		Entry->SetStringField(TEXT("title"), Title);
+		Entry->SetStringField(TEXT("type"), Type);
+		Entry->SetStringField(TEXT("ue_version"), UeVersion);
+		Entry->SetNumberField(TEXT("node_count"), NodeCount);
+		Entry->SetStringField(TEXT("functions"), Functions);
+		Entry->SetStringField(TEXT("variables"), Variables);
+		Entry->SetStringField(TEXT("compact"), Compact);
+		Entry->SetStringField(TEXT("url"), Url);
+
+		Results.Add(MakeShared<FJsonValueObject>(Entry));
+		return ESQLitePreparedStatementExecuteRowResult::Continue;
+	});
+
+	if (RowCount == INDEX_NONE)
+	{
+		return FOliveToolResult::Error(TEXT("QUERY_ERROR"),
+			FString::Printf(TEXT("Query failed: %s"), *CommunityDb->GetLastError()),
+			TEXT("Try simpler search terms. FTS5 special characters may cause issues."));
+	}
+
+	// --- Build response ---
+	TSharedPtr<FJsonObject> Response = MakeShared<FJsonObject>();
+	Response->SetArrayField(TEXT("results"), Results);
+	Response->SetNumberField(TEXT("count"), Results.Num());
+	Response->SetStringField(TEXT("note"),
+		TEXT("Community examples from blueprintue.com. Quality varies — use your judgment on which patterns to follow."));
+
+	return FOliveToolResult::Success(Response);
 }
 
 #undef LOCTEXT_NAMESPACE

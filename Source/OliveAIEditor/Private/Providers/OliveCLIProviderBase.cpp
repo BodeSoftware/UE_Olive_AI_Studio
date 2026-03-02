@@ -350,7 +350,22 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 	FFileHelper::SaveStringToFile(McpConfig, *McpConfigPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 
 	// --- Write CLAUDE.md with agent role context ---
-	// Read AGENTS.md from plugin dir for domain-specific workflow guidance
+	// Read knowledge packs from plugin Content/ — single source of truth for both
+	// orchestrated and autonomous modes
+	const FString KnowledgeDir = FPaths::Combine(PluginDir, TEXT("Content/SystemPrompts/Knowledge"));
+
+	FString BlueprintKnowledge;
+	if (!FFileHelper::LoadFileToString(BlueprintKnowledge, *FPaths::Combine(KnowledgeDir, TEXT("cli_blueprint.txt"))))
+	{
+		UE_LOG(LogOliveCLIProvider, Warning, TEXT("Failed to load cli_blueprint.txt knowledge pack"));
+	}
+
+	FString RecipeRouting;
+	if (!FFileHelper::LoadFileToString(RecipeRouting, *FPaths::Combine(KnowledgeDir, TEXT("recipe_routing.txt"))))
+	{
+		UE_LOG(LogOliveCLIProvider, Warning, TEXT("Failed to load recipe_routing.txt knowledge pack"));
+	}
+
 	FString AgentsContent;
 	const FString AgentsPath = FPaths::Combine(PluginDir, TEXT("AGENTS.md"));
 	FFileHelper::LoadFileToString(AgentsContent, *AgentsPath);
@@ -366,10 +381,22 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 	ClaudeMd += TEXT("- When creating Blueprints, use `blueprint.create` (with optional template_id for templates) -- never try to create .uasset files manually.\n");
 	ClaudeMd += TEXT("- Complete the FULL task: create structures, wire graph logic, compile, and verify. Do not stop partway.\n");
 	ClaudeMd += TEXT("- Once ALL Blueprints compile with 0 errors and 0 warnings, the task is COMPLETE. Immediately stop and report what you built.\n");
-	ClaudeMd += TEXT("- olive.get_recipe has tested wiring patterns. Call it for unfamiliar or complex patterns. Skip it for straightforward operations you already know.\n");
-	ClaudeMd += TEXT("- Use schema_version \"2.0\" for all plan_json calls (v2.0 has automatic pin resolution).\n");
-	ClaudeMd += TEXT("- Before implementing behavior on an existing Blueprint, call `blueprint.list_templates` to check for matching reference templates. If one matches, call `blueprint.get_template` to read the pattern before writing plan_json.\n");
 	ClaudeMd += TEXT("- After creating from a template (blueprint.create with template_id), check the result for the list of created functions. Write plan_json for EACH function -- they are empty stubs. Do NOT call blueprint.read or read_function after template creation.\n\n");
+
+	// Append knowledge packs — operational guidance for the agent
+	if (!BlueprintKnowledge.IsEmpty())
+	{
+		ClaudeMd += TEXT("---\n\n");
+		ClaudeMd += BlueprintKnowledge;
+		ClaudeMd += TEXT("\n\n");
+	}
+
+	if (!RecipeRouting.IsEmpty())
+	{
+		ClaudeMd += TEXT("---\n\n");
+		ClaudeMd += RecipeRouting;
+		ClaudeMd += TEXT("\n\n");
+	}
 
 	// Append the full AGENTS.md content which has workflow patterns, plan JSON format, etc.
 	if (!AgentsContent.IsEmpty())
@@ -471,6 +498,14 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 				InitialContextAssetPaths.Num());
 		}
 		InitialContextAssetPaths.Empty(); // Consume -- only inject once per user message
+	}
+
+	// Nudge community search in the imperative channel (stdin).
+	// CLAUDE.md workflow steps are treated as optional; stdin directives are followed
+	// more reliably. Only inject on initial messages, not continuations.
+	if (!IsContinuationMessage(UserMessage))
+	{
+		EffectiveMessage += TEXT("\n\nBefore building, call olive.search_community_blueprints to research how other developers approached similar patterns.\n");
 	}
 
 	// Initialize run context tracking for this new run

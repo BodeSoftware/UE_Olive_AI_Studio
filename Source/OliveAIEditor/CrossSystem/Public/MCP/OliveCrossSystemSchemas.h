@@ -71,4 +71,11 @@ namespace OliveCrossSystemSchemas
 
 	/** Schema for olive.get_recipe: {query: string} -- free-text keyword search */
 	TSharedPtr<FJsonObject> RecipeGetRecipe();
+
+	// ============================================================================
+	// Community Blueprint Search
+	// ============================================================================
+
+	/** Schema for olive.search_community_blueprints: {query, type?, max_results?, offset?} */
+	TSharedPtr<FJsonObject> CommunitySearch();
 }

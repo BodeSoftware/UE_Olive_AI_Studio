@@ -893,7 +893,7 @@ FOliveToolResult FOliveTemplateSystem::ApplyTemplate(
 		return FOliveToolResult::Error(
 			TEXT("TEMPLATE_NOT_FOUND"),
 			FString::Printf(TEXT("Template '%s' not found"), *TemplateId),
-			TEXT("Use blueprint.list_templates to see available templates"));
+			TEXT("Use blueprint.list_templates to see available templates, or olive.search_community_blueprints(query) for community examples"));
 	}
 
 	if (Info->TemplateType != TEXT("factory"))

@@ -116,7 +116,10 @@ public class OliveAIEditor : ModuleRules
 			"InputBlueprintNodes",
 
 			// Python scripting (editor.run_python tool)
-			"PythonScriptPlugin"
+			"PythonScriptPlugin",
+
+			// Community blueprint search (SQLite FTS5)
+			"SQLiteCore"
 		});
 	}
 }
