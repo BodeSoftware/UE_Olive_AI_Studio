@@ -537,7 +537,7 @@ FOliveBlueprintWriteResult FOliveGraphWriter::ConnectPins(
 
 	// Use the pin connector to make the connection
 	FOlivePinConnector& Connector = FOlivePinConnector::Get();
-	FOliveBlueprintWriteResult Result = Connector.Connect(SourcePin, TargetPin, /*bAllowConversion=*/false);
+	FOliveBlueprintWriteResult Result = Connector.Connect(SourcePin, TargetPin, /*bAllowConversion=*/true);
 
 	if (Result.bSuccess)
 	{
@@ -874,6 +874,13 @@ bool FOliveGraphWriter::HasCachedNode(const FString& BlueprintPath, const FStrin
 	}
 
 	return false;
+}
+
+FString FOliveGraphWriter::CacheExternalNode(const FString& BlueprintPath, UEdGraphNode* Node)
+{
+	FString NodeId = GenerateNodeId(BlueprintPath);
+	CacheNode(BlueprintPath, NodeId, Node);
+	return NodeId;
 }
 
 // ============================================================================

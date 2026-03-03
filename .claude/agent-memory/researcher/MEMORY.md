@@ -8,6 +8,7 @@ PCG plugin headers: `C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/PCG/Sourc
 - `plans/research/pcg-api-ue55.md` — Full PCG plugin public API (UPCGGraph, UPCGNode, UPCGPin, UPCGSettings, EPCGDataType, UPCGSubgraphSettings, UPCGComponent, UPCGSubsystem)
 - `plans/research/uanimstatetransitionnode-api-ue55.md` — (exists, topic unknown)
 - `plans/research/log-failure-analysis.md` — Session log failure analysis; 5 Olive false negatives documented; interface call gap is primary issue
+- `plans/research/interface-event-resolution.md` — Interface event resolution gap: ResolveEventOp and CreateEventNode never check ImplementedInterfaces
 
 ## PCG API Key Facts (UE 5.5)
 - Module name for PCG plugin is `"PCG"` (add to Build.cs PrivateDependencyModuleNames)
@@ -75,6 +76,65 @@ PCG plugin headers: `C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/PCG/Sourc
 - Interface entry node difference: FunctionReference uses SetExternalMember(name, InterfaceClass, guid) — NOT SetSelfMember. `!EntryNode->FunctionReference.IsSelfContext()` identifies interface graphs.
 - GetAllGraphs() includes ImplementedInterfaces[i].Graphs — safe to use. Direct FunctionGraphs iteration MISSES interface graphs.
 - Kismet compiler processes interface graphs in a separate loop (line 4739 in KismetCompiler.cpp) but calls same ProcessOneFunctionGraph.
+
+## Timeline Node API Key Facts (UE 5.5)
+- Research reports: `plans/research/timeline-node-api.md` (overview), `plans/research/timeline-node-api-deep.md` (exhaustive)
+- `UK2Node_Timeline` does NOT store timeline data — only `TimelineName` (FName). Data is in `UTimelineTemplate` on `Blueprint->Timelines`.
+- `bAutoPlay`, `bLoop`, `bReplicated`, `bIgnoreTimeDilation` on UK2Node_Timeline are ALL `Transient` caches — source of truth is on UTimelineTemplate.
+- `TimelineLength` is a field on `UTimelineTemplate`, NOT on `UK2Node_Timeline` — `set_node_property` cannot set it.
+- UTimelineTemplate constructor defaults: `TimelineLength = 5.0f`, `bReplicated = false`, `LengthMode` = TL_TimelineLength (zero-init)
+- PostInitProperties auto-sets `TimelineGuid = FGuid::NewGuid()` and calls `UpdateCachedNames()` — do NOT set these manually
+- Creation order MATTERS: set TimelineName → AddNewTimeline → populate template (tracks, flags, length) → AddDisplayTrack → AllocateDefaultPins
+- Track name set via `Track.SetTrackName(FName, UTimelineTemplate*)` — `TrackName` is private on FTTTrackBase
+- FTTPropertyTrack::SetTrackName auto-generates PropertyName: `"{TimelineName}_{TrackName}_{Guid}"` (sanitized to valid C++ identifier)
+- FTTEventTrack::SetTrackName auto-generates FunctionName: `"{TimelineName}__{TrackName}__EventFunc"`
+- Track types: FTTFloatTrack (UCurveFloat), FTTVectorTrack (UCurveVector), FTTLinearColorTrack (UCurveLinearColor), FTTEventTrack (UCurveFloat with bIsEventCurve=true)
+- Curve outer MUST be `Blueprint->GeneratedClass` (not Blueprint, not template): `NewObject<UCurveFloat>(Blueprint->GeneratedClass, NAME_None, RF_Public)`
+- Add keys: `CurveFloat->FloatCurve.AddKey(time, value)` — FRichCurve::AddKey(), default interp RCIM_Linear
+- After adding tracks to existing node: call `TimelineNode->ReconstructNode()` to rebuild pins
+- bAutoPlay/bLoop must sync to BOTH template AND node when modifying existing node
+- Only Actor-based BPTYPE_Normal/LevelScript blueprints support timelines — `FBlueprintEditorUtils::DoesSupportTimelines(Blueprint)` checks `IsActorBased && DoesSupportEventGraphs`
+- Timelines ONLY valid in ubergraphs (event graphs) and composite graphs nested inside ubergraphs — NOT function graphs
+- AddNewTimeline returns nullptr silently on: incompatible BP type, duplicate name
+- AddNewTimeline calls `MarkBlueprintAsStructurallyModified` internally — no need to call it again
+- AddNewTimeline does NOT create FScopedTransaction — caller must wrap in transaction
+- Template UObject name: `"{VarName}_Template"` via `TimelineVariableNameToTemplateName()`
+- Template outer: `Blueprint->GeneratedClass`, with `RF_Transactional` flag
+- `GetTrackPin(FName)` is DECLARED but NOT IMPLEMENTED in K2Node_Timeline.cpp — use `FindPin(TrackName)` instead
+- Fixed pin FNames: Play, PlayFromStart, Stop, Reverse, ReverseFromEnd, SetNewTime, NewTime, Update, Finished, Direction
+- `AllocateDefaultPins` calls `GetBlueprint()` which calls `FindBlueprintForNodeChecked()` — node must be on a graph with UBlueprint outer chain
+- DestroyNode automatically removes associated template from Blueprint->Timelines
+- Current CreateNodeByClass does NOT handle timelines — would create broken node (no template)
+- No `timeline` plan op exists yet in OlivePlanOps vocabulary
+- Module: UK2Node_Timeline in BlueprintGraph; UTimelineTemplate/UCurveFloat in Engine; AddNewTimeline in UnrealEd
+- ETimelineLengthMode in Components/TimelineComponent.h: TL_TimelineLength (0), TL_LastKeyFrame (1)
+- ERichCurveInterpMode in Curves/RealCurve.h: RCIM_Linear, RCIM_Constant, RCIM_Cubic, RCIM_None
+
+## Interface Event API Key Facts (UE 5.5)
+- Research report: `plans/research/interface-event-resolution.md`
+- Interface functions with NO outputs: `FunctionCanBePlacedAsEvent()` returns true — implemented as `UK2Node_Event` in EventGraph
+- Interface functions WITH outputs: `FunctionCanBePlacedAsEvent()` returns false — get own graph in `ImplementedInterfaces[i].Graphs`
+- `ConformImplementedInterfaces` only creates graphs for NON-event interface functions (line 7371 in BlueprintEditorUtils.cpp)
+- Create interface event node: `EventNode->EventReference.SetFromField<UFunction>(InterfaceFunc, false)` + `bOverrideFunction = true`
+- Use `SetFromField` not `SetExternalMember` — SetFromField also sets MemberGuid for BPI rename tracking
+- `UK2Node_Event::IsInterfaceEventNode()` checks if EventReference parent class IsChildOf(UInterface)
+- For BPI (not native), search SkeletonGeneratedClass: `CastChecked<UBlueprint>(InterfaceClass->ClassGeneratedBy)->SkeletonGeneratedClass`
+- Duplicate detection: `FBlueprintEditorUtils::FindOverrideForFunction(BP, InterfaceClass, EventName)` — pass interface class, NOT parent class
+- `FBlueprintEditorUtils::FindImplementedInterfaces(BP, true, OutClasses)` gets all interfaces including inherited
+- `UEdGraphSchema_K2::FunctionCanBePlacedAsEvent()`: !outputs AND overridable AND !static AND !const AND !thread-safe AND !ForceAsFunction
+
+## Autocast / Auto-Conversion API Key Facts (UE 5.5)
+- Research report: `plans/research/autocast-api.md`
+- `SearchForAutocastFunction(OutputType, InputType)` returns `TOptional<FSearchForAutocastFunctionResults>` with `{FName TargetFunction, UClass* FunctionOwner}`
+- `FindSpecializedConversionNode(OutputType, InputPin, bCreateNode)` returns `TOptional<FFindSpecializedConversionNodeResults>` with `UK2Node*` template
+- `CreateAutomaticConversionNodeAndConnections(PinA, PinB)` is the one-stop shop: finds conversion, spawns node, auto-wires
+- `Schema->TryCreateConnection(PinA, PinB)` handles auto-conversion internally via `CONNECT_RESPONSE_MAKE_WITH_CONVERSION_NODE`
+- **CRITICAL:** `CanSafeConnect()` does NOT include `CONNECT_RESPONSE_MAKE_WITH_CONVERSION_NODE` — only MAKE and MAKE_WITH_PROMOTION
+- Autocast functions: `BlueprintAutocast` metadata + FUNC_Static|Native|Public|BlueprintPure + one input + return value
+- `FAutocastFunctionMap` is file-scope internal to EdGraphSchema_K2.cpp — not directly accessible
+- `SplitPin(Pin, bNotify)` creates sub-pins named `{PinName}_{ComponentName}` (e.g., `Location_X`, `Rotation_Pitch`)
+- NO autocast from Vector/Rotator to float — must use SplitPin or break_struct
+- OlivePinConnector::CreateConversionNode() is NOT IMPLEMENTED (returns nullptr) — use TryCreateConnection instead
 
 ## Search Patterns
 - Use `find "C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/..." -name "*.h"` to locate headers

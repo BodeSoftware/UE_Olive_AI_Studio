@@ -167,6 +167,9 @@ private:
 	FOliveToolResult HandleBlueprintSetPinDefault(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlueprintSetNodeProperty(const TSharedPtr<FJsonObject>& Params);
 
+	/** Create a Timeline node with tracks and curve data in an event graph */
+	FOliveToolResult HandleBlueprintCreateTimeline(const TSharedPtr<FJsonObject>& Params);
+
 	// ============================================================================
 	// AnimBP Writer Tool Handlers
 	// ============================================================================

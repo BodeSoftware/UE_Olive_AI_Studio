@@ -97,6 +97,9 @@ namespace OliveNodeTypes
 	// Component Events
 	const FString ComponentBoundEvent = TEXT("ComponentBoundEvent");
 
+	// Timeline (requires blueprint.create_timeline -- cannot be created via add_node)
+	const FString Timeline = TEXT("Timeline");
+
 	// Function Parameter (virtual -- maps to existing FunctionEntry/FunctionResult nodes)
 	const FString FunctionInput = TEXT("FunctionInput");
 	const FString FunctionOutput = TEXT("FunctionOutput");

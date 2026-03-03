@@ -175,3 +175,37 @@
 - **Issue 3 (exec chain inference)**: Minimal fix: remove empty strings from `HasIncomingExec` set (caused by Issue 2 coercion). Full graph-aware inference deferred unless interleaved step ordering observed in logs.
 - **Implementation order**: Issue 2 (root cause) -> Issue 1 (highest impact) -> Issue 3 (depends on 2)
 - **No new error codes, no header changes, no new files.**
+
+### Templates & Recipe: Interactables + Events/Functions - Mar 2026
+- `plans/templates-recipe-design.md` -- 5 tasks (all content except 1 line of C++)
+- **Events & Functions recipe**: `Content/SystemPrompts/Knowledge/recipes/blueprint/events_and_functions.txt`. Covers event-vs-function decision, interface output trap, hybrid pattern, Tick+FInterpTo for smooth movement. Registered in `_manifest.json`.
+- **Factory templates**: `interactable_door.json` (pivot rotation via RInterpTo) and `interactable_gate.json` (slider translation via VInterpTo). Both use Tick-driven interpolation, no Timeline nodes. No graph logic in templates (AI writes ToggleDoor/ToggleGate + Tick via plan_json).
+- **Reference template**: `interactable_patterns.json` (5 patterns, 46 lines). EventBasedInterfaces, TickDrivenInterpolation, StateTogglePattern, PivotAndSliderComponents, InterfaceIntegration.
+- **list_templates nudge**: One `SetStringField("note", ...)` line in HandleBlueprintListTemplates after count field. Soft guidance, not mandatory.
+- **No C++ structural changes**: All templates and recipes loaded by existing scanning systems. Only C++ change is the one-line nudge.
+- **Design principle**: Suggestive, not mandatory. AI freedom to improvise. Templates create structure, AI writes logic.
+
+### Timeline Tool - Mar 2026
+- `plans/timeline-tool-design.md` -- Single tool `blueprint.create_timeline`
+- No plan_json `timeline` op. CacheExternalNode() on GraphWriter. NodeTypes guard (nullptr creator).
+- GetTrackPin() LINKER ERROR -- use FindPin(TrackName). Curve outer: GeneratedClass with RF_Public.
+
+### Autocast / Auto-Conversion Integration - Mar 2026
+- `plans/autocast-design.md` -- 8 tasks. Critical: `CanSafeConnect()` excluded autocast. Fix: `TryCreateConnection()` directly. SplitPin fallback for struct->scalar.
+
+### Interface Event Resolution - Mar 2026
+- `plans/interface-event-design.md` -- 4 changes, 3 files, no new files/error codes
+- **Gap**: ResolveEventOp + CreateEventNode never search ImplementedInterfaces. No-output interface functions should be UK2Node_Event in EventGraph.
+- **New field**: `bIsInterfaceEvent` on FOliveResolvedStep. Resolver tags with `interface_class` path in Properties.
+- **Resolver**: Insert after SCS scan (line 2128), before pass-through. `FunctionCanBePlacedAsEvent()` gate.
+- **Factory**: Two paths: fast (resolver-tagged) + slow (direct search). `SetFromField<UFunction>(Func, false)` + `bOverrideFunction = true`.
+- **Executor**: `FindExistingEventNode` extended to search `ImplementedInterfaces` after parent class.
+- **BPI**: Use `SkeletonGeneratedClass` via `ClassGeneratedBy`. Native C++ interfaces use `InterfaceDesc.Interface` directly.
+
+### Enriched Wiring Error Messages - Mar 2026
+- `plans/error-messages-design.md` -- 6 tasks: diagnostic struct, BWR field, suggestion engine, PlanExecutor/connect_pins/self-correction integration
+- **FOliveWiringDiagnostic** in new `OliveWiringDiagnostic.h` (avoids circular dep). `EOliveWiringFailureReason` enum + `TArray<FOliveWiringAlternative>` ordered suggestions.
+- **New error codes**: `DATA_WIRE_INCOMPATIBLE` (PlanExecutor), `BP_CONNECT_PINS_INCOMPATIBLE` (connect_pins tool).
+- **`TOptional<FOliveWiringDiagnostic>`** added to `FOliveBlueprintWriteResult`. Non-breaking.
+- **Fires only on CONNECT_RESPONSE_DISALLOW** after autocast + SplitPin both fail.
+- **Depends on autocast integration** being complete first.

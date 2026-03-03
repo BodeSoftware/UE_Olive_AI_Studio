@@ -402,7 +402,108 @@ UK2Node* FOliveNodeFactory::CreateEventNode(
 	if (!EventFunction)
 	{
 		// ----------------------------------------------------------------
-		// FIX RC1: Check if this is a component delegate event (e.g.,
+		// Check 1b: Interface event -- a no-output function defined on
+		// an interface this Blueprint implements. These are placed as
+		// UK2Node_Event in EventGraph with bOverrideFunction = true
+		// and EventReference pointing to the interface class.
+		// ----------------------------------------------------------------
+		{
+			// Check if the resolver already tagged this as an interface event
+			const FString* InterfaceClassPath = Properties.Find(TEXT("interface_class"));
+
+			UClass* InterfaceClass = nullptr;
+			UFunction* InterfaceFunc = nullptr;
+
+			if (InterfaceClassPath && !InterfaceClassPath->IsEmpty())
+			{
+				// Fast path: resolver already did the search
+				InterfaceClass = FindObject<UClass>(nullptr, **InterfaceClassPath);
+				if (InterfaceClass)
+				{
+					// Resolve the function on the correct class (skeleton for BPI)
+					const UClass* SearchClass = InterfaceClass;
+					if (InterfaceClass->ClassGeneratedBy)
+					{
+						if (UBlueprint* IBP = Cast<UBlueprint>(InterfaceClass->ClassGeneratedBy))
+						{
+							if (IBP->SkeletonGeneratedClass)
+							{
+								SearchClass = IBP->SkeletonGeneratedClass;
+							}
+						}
+					}
+					InterfaceFunc = SearchClass->FindFunctionByName(EventName);
+				}
+			}
+			else
+			{
+				// Slow path: factory invoked directly (not via plan pipeline).
+				// Search all implemented interfaces.
+				for (const FBPInterfaceDescription& InterfaceDesc : Blueprint->ImplementedInterfaces)
+				{
+					if (!InterfaceDesc.Interface)
+					{
+						continue;
+					}
+
+					const UClass* SearchClass = InterfaceDesc.Interface;
+					if (InterfaceDesc.Interface->ClassGeneratedBy)
+					{
+						if (UBlueprint* IBP = Cast<UBlueprint>(InterfaceDesc.Interface->ClassGeneratedBy))
+						{
+							if (IBP->SkeletonGeneratedClass)
+							{
+								SearchClass = IBP->SkeletonGeneratedClass;
+							}
+						}
+					}
+
+					UFunction* Func = SearchClass->FindFunctionByName(EventName);
+					if (Func && UEdGraphSchema_K2::FunctionCanBePlacedAsEvent(Func))
+					{
+						InterfaceClass = InterfaceDesc.Interface;
+						InterfaceFunc = Func;
+						break;
+					}
+				}
+			}
+
+			if (InterfaceClass && InterfaceFunc)
+			{
+				// Duplicate check: use FindOverrideForFunction with the interface class
+				UK2Node_Event* ExistingInterfaceEvent = FBlueprintEditorUtils::FindOverrideForFunction(
+					Blueprint, InterfaceClass, EventName);
+
+				if (ExistingInterfaceEvent)
+				{
+					UE_LOG(LogOliveNodeFactory, Warning,
+						TEXT("CreateEventNode: interface event '%s' (from %s) already exists at (%d, %d)"),
+						**EventNamePtr, *InterfaceClass->GetName(),
+						ExistingInterfaceEvent->NodePosX, ExistingInterfaceEvent->NodePosY);
+					LastError = FString::Printf(
+						TEXT("Interface event '%s' already exists in this Blueprint (node at %d, %d). "
+							 "Each interface event can only appear once."),
+						**EventNamePtr, ExistingInterfaceEvent->NodePosX, ExistingInterfaceEvent->NodePosY);
+					return nullptr;
+				}
+
+				// Create the interface event node
+				UK2Node_Event* InterfaceEventNode = NewObject<UK2Node_Event>(Graph);
+				InterfaceEventNode->EventReference.SetFromField<UFunction>(InterfaceFunc, /*bIsSelfContext=*/false);
+				InterfaceEventNode->bOverrideFunction = true;
+				InterfaceEventNode->AllocateDefaultPins();
+				Graph->AddNode(InterfaceEventNode, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+
+				UE_LOG(LogOliveNodeFactory, Log,
+					TEXT("CreateEventNode: created interface event '%s' from interface '%s'"),
+					**EventNamePtr, *InterfaceClass->GetName());
+
+				return InterfaceEventNode;
+			}
+		}
+
+		// ----------------------------------------------------------------
+		// Check 2: Component delegate event (e.g.,
 		// OnComponentBeginOverlap, OnComponentEndOverlap, OnComponentHit).
 		// These are bound via UK2Node_ComponentBoundEvent, not regular
 		// event override nodes. Scan SCS components for a matching
@@ -520,10 +621,10 @@ UK2Node* FOliveNodeFactory::CreateEventNode(
 
 		UE_LOG(LogOliveNodeFactory, Warning,
 			TEXT("CreateEventNode: event '%s' not found via FindFunctionByName on '%s', "
-				 "not a component delegate, and not an Enhanced Input Action."),
+				 "not an interface event, not a component delegate, and not an Enhanced Input Action."),
 			**EventNamePtr, *Blueprint->ParentClass->GetName());
 		LastError = FString::Printf(
-			TEXT("Event '%s' not found in parent class, as a component delegate, "
+			TEXT("Event '%s' not found in parent class, as an interface event, as a component delegate, "
 				 "or as an Enhanced Input Action (IA_ asset). "
 				 "Verify the event name or use project.search with type 'InputAction' "
 				 "to find available Input Action assets."),
@@ -3043,6 +3144,12 @@ void FOliveNodeFactory::InitializeNodeCreators()
 	// Component Events
 	NodeCreators.Add(OliveNodeTypes::ComponentBoundEvent, [this](UBlueprint* BP, UEdGraph* G, const TMap<FString, FString>& P) -> UEdGraphNode* {
 		return CreateComponentBoundEventNode(BP, G, P);
+	});
+
+	// Timeline (guard -- directs to blueprint.create_timeline)
+	NodeCreators.Add(OliveNodeTypes::Timeline, [this](UBlueprint* BP, UEdGraph* G, const TMap<FString, FString>& P) -> UEdGraphNode* {
+		LastError = TEXT("Timeline nodes cannot be created via add_node because they require a UTimelineTemplate with tracks and curve data. Use blueprint.create_timeline instead.");
+		return nullptr;
 	});
 
 	// ============================================================================

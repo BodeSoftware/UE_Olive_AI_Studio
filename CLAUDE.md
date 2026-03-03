@@ -287,12 +287,13 @@ Factory templates create complete Blueprints from parameterized JSON. Reference 
 - **Catalog injection:** `FOliveTemplateSystem::GetCatalogBlock()` is appended to capability knowledge by `FOlivePromptAssembler::GetCapabilityKnowledge()` so AI agents always see available templates
 
 **Reference template rules (MUST follow):**
-- Target **60–120 lines** total. A new reference template exceeding 150 lines is wrong.
+- Target **60–120 lines** total. You may do more if complex.
 - **Descriptive, not prescriptive.** Templates teach *architecture* — asset structure, component layout, variable roles, interaction patterns. They do NOT dictate tool names, tool sequences, or step-by-step instructions.
 - Do **NOT** embed `plan_json_example` blocks, tool-specific `steps` arrays, or inline params. The AI decides which tools to use.
 - Each pattern: 1-2 sentence `description`, concise `notes` (2–4 sentences max) explaining the design and why it works.
 - If a pattern needs more than ~10 lines, split it or cut it. The AI reads the whole template in one `get_template` call — token budget matters.
 - Reference templates that violate these rules must be rewritten before merging.
+- Sometimes templates may require custom events instead of functions (exampe: delays, timelines) you should state this in the template.
 
 ### Safety Presets
 

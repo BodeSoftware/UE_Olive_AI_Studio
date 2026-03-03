@@ -246,6 +246,16 @@ public:
 	 */
 	bool HasCachedNode(const FString& BlueprintPath, const FString& NodeId) const;
 
+	/**
+	 * Cache an externally-created node and return a generated node ID.
+	 * Used by tool handlers that create nodes directly (e.g., create_timeline)
+	 * rather than through GraphWriter.AddNode().
+	 * @param BlueprintPath Full asset path to the Blueprint
+	 * @param Node The node to cache
+	 * @return Generated node ID for subsequent tool calls (e.g., "node_5")
+	 */
+	FString CacheExternalNode(const FString& BlueprintPath, UEdGraphNode* Node);
+
 private:
 	FOliveGraphWriter();
 	~FOliveGraphWriter() = default;

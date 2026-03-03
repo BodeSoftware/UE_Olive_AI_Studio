@@ -62,21 +62,30 @@ queries that need return values.
   You do NOT need to call add_function or override_function — the stubs already exist.
 
 ### Step D: Write Logic for Each Implementation
-Interact is an event (no outputs), so target EventGraph. Each BP gets its own implementation:
+Interact is an event (no outputs), so target EventGraph. Each BP gets its own implementation.
 
-  apply_plan_json on BP_Door, graph_target: "EventGraph" →
-  {"schema_version":"2.0","steps":[
-    {"step_id":"interact","op":"event","target":"Interact"},
-    {"step_id":"get_open","op":"get_var","target":"bIsOpen"},
-    {"step_id":"branch","op":"branch","inputs":{"Condition":"@get_open.auto"},
-     "exec_after":"interact","exec_outputs":{"True":"close","False":"open"}},
-    {"step_id":"open","op":"call","target":"SetRelativeRotation",
-     "inputs":{"Target":"@DoorMesh","NewRotation":"0,90,0"},"exec_after":"set_true"},
-    {"step_id":"set_true","op":"set_var","target":"bIsOpen","inputs":{"Value":"true"}},
-    {"step_id":"close","op":"call","target":"SetRelativeRotation",
-     "inputs":{"Target":"@DoorMesh","NewRotation":"0,0,0"},"exec_after":"set_false"},
-    {"step_id":"set_false","op":"set_var","target":"bIsOpen","inputs":{"Value":"false"}}
-  ]}
+A door that smoothly rotates (uses Timeline for animation, bIsOpen and OpenAngle variables, DoorPivot component):
+
+  1. Create the Timeline (before plan_json, so the node_id is available for wiring):
+     blueprint.create_timeline → {
+       "path": "/Game/BP_Door",
+       "timeline_name": "DoorTimeline",
+       "length": 1.0,
+       "tracks": [{"name": "Alpha", "type": "float", "keys": [[0.0, 0.0], [1.0, 1.0]]}]
+     }
+     Returns node_id (e.g., "node_5") with output pins: Alpha, Update, Finished, Play, Reverse, etc.
+
+  2. Wire the toggle logic and Timeline in EventGraph:
+     - Interact event → flip bIsOpen → Branch on new bIsOpen
+     - True branch → wire to Timeline's Play pin (node_5.Play)
+     - False branch → wire to Timeline's Reverse pin (node_5.Reverse)
+     - Timeline's Alpha output (node_5.Alpha) → Lerp between closed rotation and open rotation → SetRelativeRotation on DoorPivot
+     - Timeline's Finished output → Branch on bIsOpen → fire OnDoorOpened or OnDoorClosed dispatcher
+
+  Timeline is preferred over Tick+FInterpTo because it is idle when not playing (zero per-frame cost),
+  supports reverse playback natively, and has built-in Finished events for dispatchers.
+  Note: Timeline nodes require EventGraph, so use Custom Events or interface events (not functions) for the logic.
+  See interactable_door template and interactable_patterns reference for the full pattern.
 
   For functions WITH outputs (like GetInteractionText), target the function graph by name
   and use return ops as needed.

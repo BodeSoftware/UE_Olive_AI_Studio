@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "OliveBlueprintWriter.h"
+#include "OliveWiringDiagnostic.h"
 #include "EdGraph/EdGraphPin.h"
 
 // Forward declarations
@@ -12,6 +13,7 @@ class UEdGraphNode;
 class UEdGraphPin;
 class UEdGraphSchema_K2;
 struct FEdGraphPinType;
+struct FPinConnectionResponse;
 
 /**
  * FOlivePinConnector
@@ -73,30 +75,6 @@ public:
 		const UEdGraphPin* SourcePin,
 		const UEdGraphPin* TargetPin,
 		FString& OutReason) const;
-
-	/**
-	 * Get available conversion options between two pin types
-	 * @param FromType Source pin type
-	 * @param ToType Target pin type
-	 * @return Array of conversion node type names that can bridge these types
-	 */
-	TArray<FString> GetConversionOptions(
-		const FEdGraphPinType& FromType,
-		const FEdGraphPinType& ToType) const;
-
-	/**
-	 * Insert a conversion node between two pins and connect them
-	 * @param Graph The graph containing the pins
-	 * @param SourcePin The output pin
-	 * @param TargetPin The input pin
-	 * @param ConversionType Type of conversion to insert (from GetConversionOptions)
-	 * @return Result with the conversion node ID on success
-	 */
-	FOliveBlueprintWriteResult InsertConversionNode(
-		UEdGraph* Graph,
-		UEdGraphPin* SourcePin,
-		UEdGraphPin* TargetPin,
-		const FString& ConversionType);
 
 	// ============================================================================
 	// Batch Operations
@@ -163,32 +141,6 @@ private:
 	const UEdGraphSchema_K2* GetK2Schema() const;
 
 	/**
-	 * Check if automatic conversion is available between two types
-	 * @param FromType Source type
-	 * @param ToType Target type
-	 * @return True if auto-conversion is possible
-	 */
-	bool CanAutoConvert(
-		const FEdGraphPinType& FromType,
-		const FEdGraphPinType& ToType) const;
-
-	/**
-	 * Create and insert a conversion node
-	 * @param Graph The graph to add the node to
-	 * @param FromType Source type
-	 * @param ToType Target type
-	 * @param PosX X position
-	 * @param PosY Y position
-	 * @return The conversion node, or nullptr on failure
-	 */
-	UEdGraphNode* CreateConversionNode(
-		UEdGraph* Graph,
-		const FEdGraphPinType& FromType,
-		const FEdGraphPinType& ToType,
-		int32 PosX,
-		int32 PosY);
-
-	/**
 	 * Get a human-readable description of a pin type
 	 * @param PinType The pin type to describe
 	 * @return Type description string
@@ -216,4 +168,44 @@ private:
 	 * @return Asset path string
 	 */
 	FString GetAssetPathForPin(const UEdGraphPin* Pin) const;
+
+	// ============================================================================
+	// Wiring Diagnostic Methods
+	// ============================================================================
+
+	/**
+	 * Build a structured wiring diagnostic for a failed connection.
+	 * Called when TryCreateConnection returns false AND CanCreateConnection
+	 * returns CONNECT_RESPONSE_DISALLOW.
+	 *
+	 * Categorizes the failure reason based on pin types and probes for
+	 * available auto-fix paths (autocast, split pin) to explain why they failed.
+	 *
+	 * @param SourcePin The output pin that was being connected
+	 * @param TargetPin The input pin that was the target
+	 * @param Response The schema's connection response with message
+	 * @return Structured diagnostic with reason, type info, and alternatives
+	 */
+	FOliveWiringDiagnostic BuildWiringDiagnostic(
+		const UEdGraphPin* SourcePin,
+		const UEdGraphPin* TargetPin,
+		const FPinConnectionResponse& Response) const;
+
+	/**
+	 * Given source and target pin types, suggest ordered alternatives.
+	 * This is the "alternative suggestion engine" -- produces actionable
+	 * alternatives based on the categorized failure reason.
+	 *
+	 * Does NOT call any UE graph mutation APIs. May call Schema probes
+	 * (CanSplitStructPin, SearchForAutocastFunction) for diagnostic info only.
+	 *
+	 * @param SourcePin The output pin
+	 * @param TargetPin The input pin
+	 * @param Reason The categorized failure reason
+	 * @return Ordered array of alternatives from highest to lowest confidence
+	 */
+	TArray<FOliveWiringAlternative> SuggestAlternatives(
+		const UEdGraphPin* SourcePin,
+		const UEdGraphPin* TargetPin,
+		EOliveWiringFailureReason Reason) const;
 };

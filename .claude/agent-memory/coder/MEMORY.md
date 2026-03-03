@@ -51,38 +51,10 @@
 - **Float/Double PinType**: In UE 5.5, `PC_Float` and `PC_Double` must NOT be used as `PinCategory`. Instead use `PinCategory = PC_Real` with `PinSubCategory = PC_Float` (or `PC_Double`). Using `PC_Float` directly as category causes "Can't parse default value" compile warnings because the engine can't resolve an FProperty from a bare `PC_Float` category.
 - Source: `EdGraphSchema_K2.cpp` lines 3503-3512 (ConvertPropertyToPinType sets PC_Real+subcategory for both FFloatProperty and FDoubleProperty)
 - **FJsonValue::GetType()** is a **protected** virtual method in UE 5.5 (`JsonValue.h:117`). Cannot be called from outside the class. Use `Pair.Value->Type` (public `EJson` enum) instead with `static_cast<int32>()` for logging.
+- **FString::Printf requires literal format string**: In UE 5.5, `FString::Printf` uses a template with `static_assert` requiring the format string be a `TCHAR` literal (not a variable). Use two separate literal strings with a ternary selector instead of `Printf` with `%s` for SQL variants.
 
-## Phase 3: Error Recovery (Completed)
-- Progressive error disclosure, plan dedup, blueprint context injection in prompts
-- See `plans/` for full design details
-
-## Phase 4: Template System (Completed)
-- `FOliveTemplateSystem` singleton at `Blueprint/Public/Template/` and `Blueprint/Private/Template/`
-- Factory templates create BPs; reference templates provide pattern docs
-- `ApplyTemplate()` instantiates factory templates; `GetTemplateContent()` reads reference/factory content
-
-## Pipeline Reliability (Completed)
-- Phase 1: Granular fallback + retry policy (max 20 correction cycles, loop detection -> step-by-step fallback)
-- Phase 2: Graph context threading (FOliveGraphContext, function params, latent-in-function detection)
-
-## Phase 2 Task 6 (Large-Graph Read Mode)
-- Constants: `OLIVE_LARGE_GRAPH_THRESHOLD = 500`, `OLIVE_GRAPH_PAGE_SIZE = 100` in OliveGraphReader.h
-- `ReadGraphSummary()`: builds NodeIdMap, counts connections, but leaves Nodes array empty
-- `ReadGraphPage()`: builds FULL NodeIdMap, serializes only [Offset, Offset+Limit) slice
-- Tool handlers detect large graphs and auto-return summary; `page` param for paging; `mode=full` forces full read
-- Summary metadata (event_nodes, node_type_breakdown) built in anonymous namespace helper `AttachLargeGraphSummaryMetadata()`
-
-## NeoStack T0: Tool Resilience Hardening (Completed)
-- **0A**: `NormalizeBlueprintParams()` replaced by `NormalizeToolParams()` in `OliveToolRegistry.cpp` anonymous namespace
-  - Per-family normalizers: `NormalizeBlueprintParams`, `NormalizeBTParams`, `NormalizePCGParams`, `NormalizeCppParams`, `NormalizeProjectParams`
-  - Shared helpers: `TryApplyAlias()` (string fields), `TryApplyFieldAlias()` (object/array fields), `GetToolFamily()`
-  - Blueprint: path aliases + `plan_json<-plan/steps`, `function_name<-name/function`, `parent_class<-parent/base_class`, `template_id<-template/id`
-  - Cpp: tool-specific `name` disambiguation (class_name for read_class/create_class, property_name for add_property, etc.)
-- **0B**: All `GetStringField()` for required params replaced with `TryGetStringField()+empty check+3-part error` in BT/PCG/Cpp/CrossSystem handlers
-  - Files: `BehaviorTree/Private/MCP/OliveBTToolHandlers.cpp`, `PCG/Private/MCP/OlivePCGToolHandlers.cpp`, `Cpp/Private/MCP/OliveCppToolHandlers.cpp`, `CrossSystem/Private/MCP/OliveCrossSystemToolHandlers.cpp`
-- **0C**: Type parsing aliases expanded in `ParseTypeFromParams()` (str/fstring->string, fvector/vec/vec3->vector, etc.); BT `ParseKeyType()` made case-insensitive
-- **0D**: Suggestion strings added to all bare errors in `OliveGraphBatchExecutor.cpp` and non-blueprint handlers
-- Note: `FOliveBlueprintWriteResult::Error()` takes only message+path (no suggestion param), so batch executor errors embed suggestions in the message itself
+## Completed Phases (see plans/ for details)
+- Phase 3: Error Recovery, Phase 4: Template System, Pipeline Reliability, Large-Graph Paging, Tool Resilience (T0)
 
 ## Delegate Ops (call_delegate, call_dispatcher, bind_dispatcher)
 - `OlivePlanOps::CallDelegate = "call_delegate"` and `CallDispatcher = "call_dispatcher"` (alias) in BlueprintPlanIR.h
@@ -113,13 +85,26 @@
 - Plan syntax: `{"op":"event","target":"OnComponentBeginOverlap","properties":{"component_name":"CollisionComp"}}`
 - Fallback: if resolver can't find SCS match (e.g., no component_name hint, inherited components), passes through to NodeFactory's CreateEventNode which has its own SCS scan
 
+## Interface Event Support (UK2Node_Event with interface EventReference)
+- `FOliveResolvedStep.bIsInterfaceEvent` flag in OliveBlueprintPlanResolver.h, parallel to `bIsInterfaceCall`
+- Resolver: `ResolveEventOp` scans `BP->ImplementedInterfaces` after SCS delegate check, before pass-through
+- Uses `UEdGraphSchema_K2::FunctionCanBePlacedAsEvent()` to filter: only no-output interface functions match
+- For Blueprint Interfaces, functions live on `SkeletonGeneratedClass` (check `ClassGeneratedBy` for BPI vs native)
+- Stores `interface_class` (GetPathName) in Properties for factory fast-path
+- Factory: `CreateEventNode` has two paths: fast (resolver-tagged `interface_class` in Properties) and slow (direct `ImplementedInterfaces` scan for `blueprint.add_node` calls)
+- Node creation: `SetFromField<UFunction>(InterfaceFunc, false)` + `bOverrideFunction = true`
+- Duplicate detection: `FBlueprintEditorUtils::FindOverrideForFunction(Blueprint, InterfaceClass, EventName)`
+- Executor: `FindExistingEventNode` now also iterates `ImplementedInterfaces` after parent class check
+- Priority order: native events > SCS delegates > interface events > Enhanced Input Actions > error
+- Plan syntax: `{"op":"event","target":"Interact"}` (same as native events, auto-detected)
+
 ## Enhanced Input Action Support (K2Node_EnhancedInputAction)
 - `OliveNodeTypes::EnhancedInputAction = "EnhancedInputAction"` added to OliveNodeFactory.h
 - `CreateEnhancedInputActionNode()` on FOliveNodeFactory: searches AssetRegistry for UInputAction by name, creates UK2Node_EnhancedInputAction
 - Property: `TObjectPtr<const UInputAction> InputAction` (set BEFORE AllocateDefaultPins)
 - Headers: `K2Node_EnhancedInputAction.h` (from InputBlueprintNodes module), `InputAction.h` (from EnhancedInput module)
 - Build.cs deps: `EnhancedInput`, `InputBlueprintNodes`; uplugin dep: `EnhancedInput` plugin
-- Three-path resolution in CreateEventNode: (1) native function override, (2) component delegate, (3) Enhanced Input Action (IA_ prefix)
+- Four-path resolution in CreateEventNode: (1) native function override, (1b) interface event, (2) component delegate, (3) Enhanced Input Action (IA_ prefix)
 - Plan resolver: `ResolveEventOp` detects `IA_` prefix targets, sets NodeType to EnhancedInputAction + `input_action_name` property
 - Plan executor: `FindExistingEnhancedInputNode()` for reuse detection (matches by UInputAction asset name)
 - Asset search: AssetRegistry by class -> direct LoadObject with common paths (/Game/Input/Actions/, /Game/Input/, /Game/)
@@ -157,48 +142,9 @@
 - `FOliveToolAlias` struct + `GetToolAliases()` in OliveToolRegistry.cpp; `ResolveAlias()`/`IsToolAlias()` public
 - Aliases never appear in tools/list; `ExecuteTool()` resolves aliases before normalize+lookup
 
-## P2-2: Blueprint Read Tool Consolidation (Completed)
-- 7 tools merged into 1 unified `blueprint.read` with `section` param
-- `section` values: `all` (default), `summary`, `graph`, `variables`, `components`, `hierarchy`, `overridable_functions`
-- `graph_name` required when section="graph"; searches UbergraphPages + FunctionGraphs + MacroGraphs
-- Old tools (`read_function`, `read_event_graph`, `read_variables`, `read_components`, `read_hierarchy`, `list_overridable_functions`) redirect via alias map
-- Handler method names: `HandleBlueprintRead` (router) -> `HandleReadSectionAll`, `HandleReadSectionGraph`, etc.
-- Only 2 reader tools registered: `blueprint.read`, `blueprint.get_node_pins`
-- Updated: tool packs (OliveToolPacks.json + OliveToolPackManager.cpp fallback), PIE whitelist (OliveValidationEngine.cpp)
-
-## P2-3: Function Tool Consolidation (Completed)
-- `blueprint.add_function`: unified handler with `function_type` enum (function/custom_event/event_dispatcher/override)
-  - `HandleBlueprintAddFunction` validates path+BP, routes to `HandleAddFunctionType_*` helpers
-  - Old tools (add_custom_event, add_event_dispatcher, override_function) removed from registration
-  - Old tool names still work via redirect aliases in OliveToolRegistry.cpp (set function_type)
-  - Schema: path required, function_type optional (default "function"), accepts signature/name/params/function_name
-  - Validation engine updated: checks `function_type` param instead of old tool names for duplicate-layer rule
-  - Tool packs (OliveToolPacks.json + OliveToolPackManager.cpp) cleaned of old tool names
-  - System prompts updated to reference `function_type=` syntax
-
-## P2-4: Variable Upsert + Template Merge (Completed)
-- `blueprint.add_variable` is now upsert: creates if missing, updates if present
-  - Detects modify_variable alias format ({name, changes}) and routes to ModifyVariable writer
-  - `modify_only` bool param: when true, errors if variable doesn't exist
-  - When variable exists via standard format, extracts modifications from FOliveIRVariable fields
-  - `blueprint.modify_variable` registration REMOVED (alias in OliveToolRegistry redirects)
-  - `BlueprintModifyVariable` schema REMOVED from OliveBlueprintSchemas
-- `blueprint.create` now accepts optional `template_id` + `template_params` + `preset`
-  - When `template_id` set, delegates to `HandleBlueprintCreateFromTemplate(TemplateId, AssetPath, Params)`
-  - `parent_class` only required when NOT using template
-  - `blueprint.create_from_template` registration REMOVED (alias redirects)
-  - `BlueprintCreateFromTemplate` schema REMOVED
-  - `HandleBlueprintCreateFromTemplate` signature changed: takes (TemplateId, AssetPath, Params) not (Params)
-  - Accepts both `template_params` and `parameters` keys for backward compat
-- Updated: OliveToolPacks.json, OliveValidationEngine.h, OliveCLIProviderBase.cpp, OliveTemplateSystem.cpp
-
-## P2-5: BT/Blackboard Tool Consolidation (Completed)
-- `behaviortree.add_node`: unified handler with `node_kind` enum (composite/task/decorator/service)
-  - `HandleBehaviorTreeAddNode` routes to internal handlers; maps `class` -> kind-specific class param
-  - Old tools (add_composite, add_task, add_decorator, add_service) removed from registration
-  - Old tool names still work via redirect aliases in OliveToolRegistry.cpp
-- `blackboard.add_key` upsert: checks if key exists, delegates to `HandleBlackboardModifyKey` on match
-  - `blackboard.modify_key` registration removed; handler kept as private internal helper
+## Tool Consolidation (P2-2 through P2-5, Completed)
+- `blueprint.read` unified (section param), `blueprint.add_function` unified (function_type), `blueprint.add_variable` upsert, `behaviortree.add_node` unified (node_kind)
+- Old tool names work via redirect aliases in OliveToolRegistry.cpp
 
 ## Python Tool (editor.run_python) - Autonomy Phase A
 - Files: `Python/Public/MCP/OlivePythonSchemas.h`, `Python/Private/MCP/OlivePythonSchemas.cpp`, `Python/Public/MCP/OlivePythonToolHandlers.h`, `Python/Private/MCP/OlivePythonToolHandlers.cpp`
@@ -216,8 +162,39 @@
 - FindFunction Step 1: when specified class is UInterface or Blueprint Interface, reports InterfaceSearch (not ExactName)
 
 ## MakeStruct/BreakStruct Auto-Reroute (Resolver)
-- In `ResolveStructOp()`: structs not exposed as BlueprintType (FRotator, FColor/FLinearColor) auto-reroute to dedicated call ops
-- `make_struct Rotator` -> `call MakeRotator`, `break_struct Rotator` -> `call BreakRotator`, etc.
-- `MakeColor`/`BreakColor` in KismetMathLibrary operate on FLinearColor (not FColor); both Color and LinearColor map to same functions
-- Rerouted steps: `Out.NodeType = CallFunction`, `Out.bIsPure = true`, `function_name` property set
-- `MakeColor`/`BreakColor` added to alias map in OliveNodeFactory.cpp (MakeRotator/BreakRotator were already there)
+- `ResolveStructOp()`: non-BlueprintType structs auto-reroute to call ops (e.g., `make_struct Rotator` -> `call MakeRotator`)
+
+## blueprint.create_timeline Tool (Completed)
+- Handler: `HandleBlueprintCreateTimeline` in OliveBlueprintToolHandlers.cpp (~560 lines)
+- Schema: `BlueprintCreateTimeline()` in OliveBlueprintSchemas.cpp; `NumberProp()` helper for float-default params
+- Guard: `OliveNodeTypes::Timeline` in OliveNodeFactory.h; NodeCreators map returns nullptr with error directing to create_timeline
+- `CacheExternalNode()` on FOliveGraphWriter: generates ID + caches for nodes created outside AddNode
+- Registered in `RegisterGraphWriterTools()` with tags `{blueprint, write, graph, timeline}`
+- API gotchas from research: `GetTrackPin()` is NOT IMPLEMENTED (use `FindPin(TrackName)`); curve outer MUST be `Blueprint->GeneratedClass` with `RF_Public`; `AddDisplayTrack()` MUST be called per track; set `TimelineName` on node BEFORE `AllocateDefaultPins`; add ALL tracks to template BEFORE `AllocateDefaultPins`
+- Pre-pipeline checks: DoesSupportTimelines, duplicate name, reserved pin names, graph must be ubergraph
+- If GeneratedClass is null, auto-compiles via FOliveCompileManager before proceeding
+- Result includes pin manifest (via BuildPinManifest) + tracks_created array
+- Template files updated: interactable_door.json, interactable_gate.json prefer Timeline over Tick
+
+## Autocast / Auto-Conversion Integration (Completed)
+- **PinConnector::Connect()** now uses `CONNECT_RESPONSE_MAKE_WITH_CONVERSION_NODE` response classification instead of broken custom conversion path. UE's `TryCreateConnection()` handles both direct wires AND conversion node insertion automatically.
+- **Dead code removed**: `GetConversionOptions()`, `InsertConversionNode()`, `CanAutoConvert()`, `CreateConversionNode()` -- all deleted from both .h and .cpp
+- **CanConnect()** now returns true for autocast-compatible pairs (checks `CONNECT_RESPONSE_MAKE_WITH_CONVERSION_NODE` in addition to `CanSafeConnect()`)
+- **GraphWriter::ConnectPins** (`connect_pins` tool) now passes `bAllowConversion=true` (was false)
+- **PlanExecutor WireDataConnection**: probe-based conversion detection using `CanCreateConnection()` before `Connect()` -- more robust than post-hoc LinkedTo heuristics for multi-connection scenarios
+- **SplitPin fallback**: when `Connector.Connect()` fails and source is a splittable struct (`PC_Struct`, `CanSplitStructPin`), auto-splits via `K2Schema->SplitPin()` and connects appropriate sub-pin
+- **ResolveSubPinSuffix()**: static helper in OlivePlanExecutor.cpp anonymous namespace. Resolution: explicit hint suffix > target pin name exact match > target name ends-with > default first component. Known structs: Vector(X/Y/Z), Vector2D(X/Y), Rotator(Roll/Pitch/Yaw), LinearColor(R/G/B/A), etc.
+- Sub-pin naming: `{ParentPinName}_{ComponentName}` (e.g., `ReturnValue_X`, `Location_Pitch`)
+- ConversionNote for SplitPin: `ConversionNodeType = "SplitPin(X)"` etc.
+
+## Enriched Wiring Error Messages (Completed)
+- `OliveWiringDiagnostic.h` at `Blueprint/Public/Writer/` -- standalone header to avoid circular deps
+- `EOliveWiringFailureReason` enum: TypesIncompatible, StructToScalar, ScalarToStruct, ObjectCastRequired, ContainerMismatch, DirectionMismatch, SameNode, AlreadyConnected, Unknown
+- `FOliveWiringAlternative` struct: Label, Action, Confidence (high/medium/low)
+- `FOliveWiringDiagnostic`: Reason, SourceTypeName, TargetTypeName, pin names, SchemaMessage, WhyAutoFixFailed, Alternatives array, ToJson(), ToHumanReadable(), ReasonToString()
+- `FOliveBlueprintWriteResult.WiringDiagnostic` field: `TOptional<FOliveWiringDiagnostic>` (not a UPROPERTY)
+- `FOlivePinConnector::BuildWiringDiagnostic()` + `SuggestAlternatives()` private methods
+- `FOliveSmartWireResult.bIsTypeIncompatible` flag for error code selection in PhaseWireData
+- New error codes: `DATA_WIRE_INCOMPATIBLE` (plan_json), `BP_CONNECT_PINS_INCOMPATIBLE` (connect_pins tool)
+- Self-correction guidance for both new error codes in OliveSelfCorrectionPolicy.cpp
+- Both new error codes are Category A (FixableMistake) by default fallthrough

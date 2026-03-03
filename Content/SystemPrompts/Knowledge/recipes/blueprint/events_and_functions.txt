@@ -1,0 +1,79 @@
+TAGS: event function custom_event interface timeline delay latent async smooth movement tick door ability
+---
+CHOOSING EVENTS vs FUNCTIONS
+
+Functions are synchronous (single-frame). They CANNOT contain Timeline, Delay, or latent nodes.
+Events (Custom Events, interface implementable events) run in EventGraph and support multi-frame behavior.
+
+WHEN TO USE A FUNCTION:
+- Returns a value AND logic completes in one frame
+- Pure queries: GetHealth(), CanInteract():Bool, CalculateDamage():Float
+- Data transformation with no side effects
+
+WHEN TO USE A CUSTOM EVENT:
+- Logic spans multiple frames (door opening, ability activation, damage reactions)
+- Needs Timeline, Delay, SetTimerByFunctionName, or any latent action
+- Fire-and-forget actions where caller does not need a return value
+- Good examples: OpenDoor, StartAbility, PlayDeathAnimation, ApplyKnockback
+
+INTERFACE FUNCTIONS -- the key trap:
+- Interface function WITH outputs = synchronous function graph in ALL implementations
+- Interface function WITHOUT outputs = implementable event in EventGraph
+- Adding a Bool output to Interact() forces every door, chest, and switch into synchronous function graphs -- no smooth animations
+- Before adding outputs, ask: will ANY implementation need Timeline, Delay, or smooth movement?
+
+THE HYBRID PATTERN (when you need both):
+If you genuinely need a return value AND async behavior:
+1. Interface function returns immediate result (e.g., Bool for accepted/rejected)
+2. Inside the function body, call a Custom Event on Self
+3. Custom Event runs in EventGraph with full Timeline/Delay support
+Example: Interact():Bool checks CanToggle, returns false if locked, calls "DoInteraction" custom event, returns true
+DoInteraction event: runs Timeline for smooth door rotation
+
+Use hybrid ONLY when the caller genuinely needs the return value. Otherwise, just use an event (simpler).
+
+TIMELINE FOR FINITE ANIMATIONS (preferred for interactables):
+- Use blueprint.create_timeline to create a Timeline node with float/vector/event tracks
+- Timeline plays forward or in reverse -- ideal for doors, gates, elevators, UI fades
+- The toggle function calls Play/PlayFromStart or Reverse/ReverseFromEnd on the timeline
+- Wire the track output (0-to-1 alpha) into Lerp or SetRelativeRotation/SetRelativeLocation
+- Timeline Finished output fires dispatchers (OnDoorOpened, OnGateClosed)
+- Timelines are idle when not playing (zero per-frame cost)
+- Timeline length controls animation speed (1.0s = fast, 3.0s = slow)
+
+WIRING TIMELINE OUTPUTS (multiple approaches):
+After blueprint.create_timeline returns node_id and pin names:
+1. connect_pins: wire exec and data pins individually (source: 'node_id.Play', target: 'event.execute')
+2. plan_json @references: in a subsequent plan_json, reference track outputs as @node_id.TrackName
+3. Mixed: create timeline first, then plan_json for the logic chain using @node_id references for timeline pins
+All three are valid. Use whichever fits your current workflow.
+Timeline exec inputs: Play, PlayFromStart, Stop, Reverse, ReverseFromEnd
+Timeline data outputs: each track name is a pin (e.g., Alpha, Location), plus Update and Finished exec outputs
+
+TICK + FInterpTo FOR CONTINUOUS MOTION (alternative):
+- Use for motion that never stops: spinning fans, bobbing platforms, sine-wave effects
+- Pattern: store target state in variable, use Tick + FInterpTo/RInterpTo/VInterpTo to interpolate each frame
+- InterpSpeed controls how fast (higher = snappier, typical 2.0-5.0)
+- Only use for interactables if you need variable-speed or physics-driven motion
+
+EVENT TICK GUIDANCE:
+Tick runs every frame for every actor that has it enabled. This adds up with many actors.
+Consider whether your use case genuinely needs per-frame updates or if an event-driven alternative would work.
+
+When Tick IS the right choice:
+- Continuous motion that never stops (spinning fan, bobbing platform, orbiting object)
+- Physics-driven updates every frame
+- Constant monitoring with no clear start/end condition
+
+When alternatives are often better:
+- Finite animations (door opening, gate sliding) -- Timeline is better (zero cost when idle)
+- One-shot delayed actions -- Delay node or SetTimerByFunctionName
+- Periodic checks -- SetTimerByFunctionName with rate (cheaper than Tick)
+- Responding to state changes -- Event Dispatchers (reactive, not polling)
+
+Tick optimization (when you do use it):
+- Set Actor Tick Enabled = false by default, enable only when needed, disable when done
+- Use SetActorTickInterval for things that don't need every frame (e.g., 0.1 = 10 updates/sec)
+- Keep Tick logic lightweight -- just interpolation, not searches or spawns
+- For components, disable component tick independently (SetComponentTickEnabled)
+- Consider: if you enable Tick temporarily (e.g., during interpolation), a Timeline may be simpler

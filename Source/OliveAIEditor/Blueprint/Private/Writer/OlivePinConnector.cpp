@@ -59,70 +59,86 @@ FOliveBlueprintWriteResult FOlivePinConnector::Connect(
 		return FOliveBlueprintWriteResult::Error(TEXT("Failed to get K2 schema"));
 	}
 
-	// Check if connection is possible
+	// Check if connection is possible and classify the response
 	FPinConnectionResponse Response = K2Schema->CanCreateConnection(SourcePin, TargetPin);
 
-	if (Response.CanSafeConnect())
+	const bool bNeedsConversion =
+		(Response.Response == CONNECT_RESPONSE_MAKE_WITH_CONVERSION_NODE);
+	const bool bCanConnect =
+		Response.CanSafeConnect() || bNeedsConversion;
+
+	if (!bCanConnect)
 	{
-		// Get the Blueprint for transaction
-		UBlueprint* Blueprint = GetOwningBlueprint(SourcePin);
+		// Build structured diagnostic for type-incompatible connections
+		FOliveWiringDiagnostic Diagnostic = BuildWiringDiagnostic(SourcePin, TargetPin, Response);
+		FOliveBlueprintWriteResult ErrorResult = FOliveBlueprintWriteResult::Error(
+			Diagnostic.ToHumanReadable(), AssetPath);
+		ErrorResult.WiringDiagnostic = MoveTemp(Diagnostic);
+		return ErrorResult;
+	}
 
-		// Create transaction for undo support
-		OLIVE_SCOPED_TRANSACTION(FText::Format(
-			NSLOCTEXT("OlivePinConnector", "ConnectPins", "Connect Pins: {0} -> {1}"),
-			FText::FromString(SourcePin->GetName()),
-			FText::FromString(TargetPin->GetName())));
+	if (bNeedsConversion && !bAllowConversion)
+	{
+		return FOliveBlueprintWriteResult::Error(
+			FString::Printf(TEXT("Type conversion needed (%s -> %s) but not allowed. "
+				"Pass bAllowConversion=true or use compatible types."),
+				*GetPinTypeDescription(SourcePin->PinType),
+				*GetPinTypeDescription(TargetPin->PinType)),
+			AssetPath);
+	}
 
+	UBlueprint* Blueprint = GetOwningBlueprint(SourcePin);
+
+	// Create transaction for undo support
+	OLIVE_SCOPED_TRANSACTION(FText::Format(
+		NSLOCTEXT("OlivePinConnector", "ConnectPins", "Connect Pins: {0} -> {1}"),
+		FText::FromString(SourcePin->GetName()),
+		FText::FromString(TargetPin->GetName())));
+
+	if (Blueprint)
+	{
+		Blueprint->Modify();
+	}
+
+	// TryCreateConnection handles everything: direct wires, promotions,
+	// AND conversion node insertion (for MAKE_WITH_CONVERSION_NODE).
+	bool bSuccess = K2Schema->TryCreateConnection(SourcePin, TargetPin);
+
+	if (bSuccess)
+	{
 		if (Blueprint)
 		{
-			Blueprint->Modify();
+			FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
 		}
 
-		// Make the connection
-		bool bSuccess = K2Schema->TryCreateConnection(SourcePin, TargetPin);
+		UE_LOG(LogOlivePinConnector, Log, TEXT("Connected pins: %s -> %s%s"),
+			*SourcePin->GetName(), *TargetPin->GetName(),
+			bNeedsConversion ? TEXT(" (with conversion)") : TEXT(""));
 
-		if (bSuccess)
+		FOliveBlueprintWriteResult Result = FOliveBlueprintWriteResult::Success(AssetPath);
+
+		// Flag that conversion was inserted (caller can detect the intermediate node)
+		if (bNeedsConversion)
 		{
-			// Mark Blueprint as modified
-			if (Blueprint)
-			{
-				FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
-			}
+			Result.AddWarning(FString::Printf(
+				TEXT("Auto-conversion inserted: %s -> %s"),
+				*GetPinTypeDescription(SourcePin->PinType),
+				*GetPinTypeDescription(TargetPin->PinType)));
+		}
 
-			UE_LOG(LogOlivePinConnector, Log, TEXT("Connected pins: %s -> %s"),
-				*SourcePin->GetName(), *TargetPin->GetName());
-
-			return FOliveBlueprintWriteResult::Success(AssetPath);
-		}
-		else
-		{
-			return FOliveBlueprintWriteResult::Error(TEXT("TryCreateConnection returned false"), AssetPath);
-		}
-	}
-	else if (bAllowConversion)
-	{
-		// Try to insert a conversion node
-		TArray<FString> ConversionOptions = GetConversionOptions(SourcePin->PinType, TargetPin->PinType);
-
-		if (ConversionOptions.Num() > 0)
-		{
-			// Use the first available conversion
-			UEdGraph* Graph = SourcePin->GetOwningNode()->GetGraph();
-			return InsertConversionNode(Graph, SourcePin, TargetPin, ConversionOptions[0]);
-		}
-		else
-		{
-			return FOliveBlueprintWriteResult::Error(
-				FString::Printf(TEXT("Cannot connect pins and no conversion available: %s"),
-					*Response.Message.ToString()),
-				AssetPath);
-		}
+		return Result;
 	}
 	else
 	{
-		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Cannot connect pins: %s"), *Response.Message.ToString()),
-			AssetPath);
+		// TryCreateConnection failed even though CanCreateConnection said it was OK.
+		// Re-probe to get a fresh response for the diagnostic.
+		FPinConnectionResponse FailResponse = K2Schema->CanCreateConnection(SourcePin, TargetPin);
+		FOliveWiringDiagnostic Diagnostic = BuildWiringDiagnostic(SourcePin, TargetPin, FailResponse);
+		Diagnostic.WhyAutoFixFailed = TEXT("TryCreateConnection returned false unexpectedly despite CanCreateConnection passing");
+		FOliveBlueprintWriteResult ErrorResult = FOliveBlueprintWriteResult::Error(
+			Diagnostic.ToHumanReadable(), AssetPath);
+		ErrorResult.WiringDiagnostic = MoveTemp(Diagnostic);
+		return ErrorResult;
 	}
 }
 
@@ -153,10 +169,11 @@ bool FOlivePinConnector::CanConnect(
 		return false;
 	}
 
-	// Check connection validity
+	// Check connection validity (including autocast-compatible pairs)
 	FPinConnectionResponse Response = K2Schema->CanCreateConnection(SourcePin, TargetPin);
 
-	if (Response.CanSafeConnect())
+	if (Response.CanSafeConnect() ||
+		Response.Response == CONNECT_RESPONSE_MAKE_WITH_CONVERSION_NODE)
 	{
 		return true;
 	}
@@ -164,217 +181,6 @@ bool FOlivePinConnector::CanConnect(
 	{
 		OutReason = Response.Message.ToString();
 		return false;
-	}
-}
-
-TArray<FString> FOlivePinConnector::GetConversionOptions(
-	const FEdGraphPinType& FromType,
-	const FEdGraphPinType& ToType) const
-{
-	TArray<FString> Options;
-
-	const UEdGraphSchema_K2* K2Schema = GetK2Schema();
-	if (!K2Schema)
-	{
-		return Options;
-	}
-
-	// Check for auto-conversion support
-	if (CanAutoConvert(FromType, ToType))
-	{
-		// Build conversion name from types
-		FString FromTypeName = GetPinTypeDescription(FromType);
-		FString ToTypeName = GetPinTypeDescription(ToType);
-		Options.Add(FString::Printf(TEXT("Convert_%s_To_%s"), *FromTypeName, *ToTypeName));
-	}
-
-	// Check common conversion patterns
-	// Integer to Float/Double
-	if (FromType.PinCategory == UEdGraphSchema_K2::PC_Int)
-	{
-		if (ToType.PinCategory == UEdGraphSchema_K2::PC_Float ||
-			ToType.PinCategory == UEdGraphSchema_K2::PC_Double)
-		{
-			Options.AddUnique(TEXT("IntToFloat"));
-		}
-		if (ToType.PinCategory == UEdGraphSchema_K2::PC_String)
-		{
-			Options.AddUnique(TEXT("IntToString"));
-		}
-	}
-
-	// Float/Double to Integer
-	if (FromType.PinCategory == UEdGraphSchema_K2::PC_Float ||
-		FromType.PinCategory == UEdGraphSchema_K2::PC_Double)
-	{
-		if (ToType.PinCategory == UEdGraphSchema_K2::PC_Int)
-		{
-			Options.AddUnique(TEXT("FloatToInt"));
-		}
-		if (ToType.PinCategory == UEdGraphSchema_K2::PC_String)
-		{
-			Options.AddUnique(TEXT("FloatToString"));
-		}
-	}
-
-	// Boolean conversions
-	if (FromType.PinCategory == UEdGraphSchema_K2::PC_Boolean)
-	{
-		if (ToType.PinCategory == UEdGraphSchema_K2::PC_String)
-		{
-			Options.AddUnique(TEXT("BoolToString"));
-		}
-	}
-
-	// String conversions
-	if (FromType.PinCategory == UEdGraphSchema_K2::PC_String)
-	{
-		if (ToType.PinCategory == UEdGraphSchema_K2::PC_Name)
-		{
-			Options.AddUnique(TEXT("StringToName"));
-		}
-		if (ToType.PinCategory == UEdGraphSchema_K2::PC_Text)
-		{
-			Options.AddUnique(TEXT("StringToText"));
-		}
-	}
-
-	// Name conversions
-	if (FromType.PinCategory == UEdGraphSchema_K2::PC_Name)
-	{
-		if (ToType.PinCategory == UEdGraphSchema_K2::PC_String)
-		{
-			Options.AddUnique(TEXT("NameToString"));
-		}
-	}
-
-	// Vector conversions
-	if (FromType.PinCategory == UEdGraphSchema_K2::PC_Struct)
-	{
-		// Check for Vector to Rotator, etc.
-		if (FromType.PinSubCategoryObject.IsValid() && ToType.PinSubCategoryObject.IsValid())
-		{
-			FString FromStructName = FromType.PinSubCategoryObject->GetName();
-			FString ToStructName = ToType.PinSubCategoryObject->GetName();
-
-			if (FromStructName == TEXT("Vector") && ToStructName == TEXT("Rotator"))
-			{
-				Options.AddUnique(TEXT("VectorToRotator"));
-			}
-			if (FromStructName == TEXT("Rotator") && ToStructName == TEXT("Vector"))
-			{
-				Options.AddUnique(TEXT("RotatorToVector"));
-			}
-		}
-	}
-
-	// Object to interface/class conversions
-	if (FromType.PinCategory == UEdGraphSchema_K2::PC_Object)
-	{
-		if (ToType.PinCategory == UEdGraphSchema_K2::PC_Interface)
-		{
-			Options.AddUnique(TEXT("ObjectToInterface"));
-		}
-	}
-
-	return Options;
-}
-
-FOliveBlueprintWriteResult FOlivePinConnector::InsertConversionNode(
-	UEdGraph* Graph,
-	UEdGraphPin* SourcePin,
-	UEdGraphPin* TargetPin,
-	const FString& ConversionType)
-{
-	if (!Graph || !SourcePin || !TargetPin)
-	{
-		return FOliveBlueprintWriteResult::Error(TEXT("Invalid parameters for conversion node insertion"));
-	}
-
-	FString AssetPath = GetAssetPathForPin(SourcePin);
-
-	// Calculate position for conversion node (midpoint between source and target)
-	UEdGraphNode* SourceNode = SourcePin->GetOwningNode();
-	UEdGraphNode* TargetNode = TargetPin->GetOwningNode();
-
-	int32 PosX = (SourceNode->NodePosX + TargetNode->NodePosX) / 2;
-	int32 PosY = (SourceNode->NodePosY + TargetNode->NodePosY) / 2;
-
-	// Create the conversion node
-	UEdGraphNode* ConversionNode = CreateConversionNode(
-		Graph, SourcePin->PinType, TargetPin->PinType, PosX, PosY);
-
-	if (!ConversionNode)
-	{
-		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Failed to create conversion node for '%s'"), *ConversionType),
-			AssetPath);
-	}
-
-	UBlueprint* Blueprint = GetOwningBlueprint(SourcePin);
-
-	// Create transaction for undo support
-	OLIVE_SCOPED_TRANSACTION(FText::Format(
-		NSLOCTEXT("OlivePinConnector", "InsertConversion", "Insert Conversion Node: {0}"),
-		FText::FromString(ConversionType)));
-
-	if (Blueprint)
-	{
-		Blueprint->Modify();
-	}
-
-	const UEdGraphSchema_K2* K2Schema = GetK2Schema();
-
-	// Find input and output pins on conversion node
-	UEdGraphPin* ConversionInputPin = nullptr;
-	UEdGraphPin* ConversionOutputPin = nullptr;
-
-	for (UEdGraphPin* Pin : ConversionNode->Pins)
-	{
-		if (Pin->Direction == EGPD_Input && Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
-		{
-			ConversionInputPin = Pin;
-		}
-		else if (Pin->Direction == EGPD_Output && Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
-		{
-			ConversionOutputPin = Pin;
-		}
-	}
-
-	if (!ConversionInputPin || !ConversionOutputPin)
-	{
-		// Remove the conversion node since we can't wire it
-		Graph->RemoveNode(ConversionNode);
-		return FOliveBlueprintWriteResult::Error(
-			TEXT("Conversion node has unexpected pin layout"),
-			AssetPath);
-	}
-
-	// Connect source -> conversion -> target
-	bool bConnected1 = K2Schema->TryCreateConnection(SourcePin, ConversionInputPin);
-	bool bConnected2 = K2Schema->TryCreateConnection(ConversionOutputPin, TargetPin);
-
-	if (bConnected1 && bConnected2)
-	{
-		if (Blueprint)
-		{
-			FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
-		}
-
-		UE_LOG(LogOlivePinConnector, Log, TEXT("Inserted conversion node '%s' between %s and %s"),
-			*ConversionType, *SourcePin->GetName(), *TargetPin->GetName());
-
-		return FOliveBlueprintWriteResult::SuccessWithNode(
-			AssetPath,
-			ConversionNode->GetFName().ToString());
-	}
-	else
-	{
-		// Clean up on failure
-		Graph->RemoveNode(ConversionNode);
-		return FOliveBlueprintWriteResult::Error(
-			TEXT("Failed to connect conversion node"),
-			AssetPath);
 	}
 }
 
@@ -516,104 +322,6 @@ const UEdGraphSchema_K2* FOlivePinConnector::GetK2Schema() const
 	return GetDefault<UEdGraphSchema_K2>();
 }
 
-bool FOlivePinConnector::CanAutoConvert(
-	const FEdGraphPinType& FromType,
-	const FEdGraphPinType& ToType) const
-{
-	const UEdGraphSchema_K2* K2Schema = GetK2Schema();
-	if (!K2Schema)
-	{
-		return false;
-	}
-
-	// Check if the schema reports these as compatible with auto-conversion
-	// The schema has internal knowledge of available conversion functions
-
-	// For basic types, check common conversions
-	FName FromCategory = FromType.PinCategory;
-	FName ToCategory = ToType.PinCategory;
-
-	// Numeric conversions
-	bool bFromNumeric = (FromCategory == UEdGraphSchema_K2::PC_Int ||
-		FromCategory == UEdGraphSchema_K2::PC_Int64 ||
-		FromCategory == UEdGraphSchema_K2::PC_Float ||
-		FromCategory == UEdGraphSchema_K2::PC_Double ||
-		FromCategory == UEdGraphSchema_K2::PC_Byte);
-
-	bool bToNumeric = (ToCategory == UEdGraphSchema_K2::PC_Int ||
-		ToCategory == UEdGraphSchema_K2::PC_Int64 ||
-		ToCategory == UEdGraphSchema_K2::PC_Float ||
-		ToCategory == UEdGraphSchema_K2::PC_Double ||
-		ToCategory == UEdGraphSchema_K2::PC_Byte);
-
-	if (bFromNumeric && bToNumeric)
-	{
-		return true;
-	}
-
-	// String conversions
-	bool bFromText = (FromCategory == UEdGraphSchema_K2::PC_String ||
-		FromCategory == UEdGraphSchema_K2::PC_Name ||
-		FromCategory == UEdGraphSchema_K2::PC_Text);
-
-	bool bToText = (ToCategory == UEdGraphSchema_K2::PC_String ||
-		ToCategory == UEdGraphSchema_K2::PC_Name ||
-		ToCategory == UEdGraphSchema_K2::PC_Text);
-
-	if (bFromText && bToText)
-	{
-		return true;
-	}
-
-	// To string from anything
-	if (ToCategory == UEdGraphSchema_K2::PC_String)
-	{
-		return true; // Most types can convert to string
-	}
-
-	return false;
-}
-
-UEdGraphNode* FOlivePinConnector::CreateConversionNode(
-	UEdGraph* Graph,
-	const FEdGraphPinType& FromType,
-	const FEdGraphPinType& ToType,
-	int32 PosX,
-	int32 PosY)
-{
-	if (!Graph)
-	{
-		return nullptr;
-	}
-
-	const UEdGraphSchema_K2* K2Schema = GetK2Schema();
-	if (!K2Schema)
-	{
-		return nullptr;
-	}
-
-	// For now, use a reroute node as a simple passthrough
-	// In a full implementation, this would create the appropriate conversion function call
-	// based on FromType and ToType
-
-	// Try to find a conversion function
-	// This is a simplified implementation - full implementation would use
-	// K2Schema->FindSpecializedConversionNode or similar
-
-	// For basic conversions, we can use built-in conversion functions
-	// Example: For Int to Float, use Conv_IntToFloat from KismetMathLibrary
-
-	// For now, return nullptr to indicate we couldn't create a conversion
-	// The caller should handle this gracefully
-
-	UE_LOG(LogOlivePinConnector, Warning,
-		TEXT("Auto-conversion node creation not fully implemented for %s -> %s"),
-		*GetPinTypeDescription(FromType),
-		*GetPinTypeDescription(ToType));
-
-	return nullptr;
-}
-
 FString FOlivePinConnector::GetPinTypeDescription(const FEdGraphPinType& PinType) const
 {
 	FString Description;
@@ -705,4 +413,628 @@ FString FOlivePinConnector::GetAssetPathForPin(const UEdGraphPin* Pin) const
 		return Blueprint->GetPathName();
 	}
 	return TEXT("");
+}
+
+// ============================================================================
+// FOliveWiringDiagnostic Implementation
+// ============================================================================
+
+FString FOliveWiringDiagnostic::ReasonToString(EOliveWiringFailureReason InReason)
+{
+	switch (InReason)
+	{
+	case EOliveWiringFailureReason::TypesIncompatible:  return TEXT("TypesIncompatible");
+	case EOliveWiringFailureReason::StructToScalar:     return TEXT("StructToScalar");
+	case EOliveWiringFailureReason::ScalarToStruct:     return TEXT("ScalarToStruct");
+	case EOliveWiringFailureReason::ObjectCastRequired: return TEXT("ObjectCastRequired");
+	case EOliveWiringFailureReason::ContainerMismatch:  return TEXT("ContainerMismatch");
+	case EOliveWiringFailureReason::DirectionMismatch:  return TEXT("DirectionMismatch");
+	case EOliveWiringFailureReason::SameNode:           return TEXT("SameNode");
+	case EOliveWiringFailureReason::AlreadyConnected:   return TEXT("AlreadyConnected");
+	case EOliveWiringFailureReason::Unknown:
+	default:                                            return TEXT("Unknown");
+	}
+}
+
+TSharedPtr<FJsonObject> FOliveWiringDiagnostic::ToJson() const
+{
+	TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
+	Obj->SetStringField(TEXT("failure_reason"), ReasonToString(Reason));
+	Obj->SetStringField(TEXT("source_type"), SourceTypeName);
+	Obj->SetStringField(TEXT("target_type"), TargetTypeName);
+	Obj->SetStringField(TEXT("source_pin"), SourcePinName);
+	Obj->SetStringField(TEXT("target_pin"), TargetPinName);
+	Obj->SetStringField(TEXT("schema_message"), SchemaMessage);
+	Obj->SetStringField(TEXT("why_autofix_failed"), WhyAutoFixFailed);
+
+	TArray<TSharedPtr<FJsonValue>> AltArray;
+	for (const FOliveWiringAlternative& Alt : Alternatives)
+	{
+		TSharedPtr<FJsonObject> AltObj = MakeShared<FJsonObject>();
+		AltObj->SetStringField(TEXT("label"), Alt.Label);
+		AltObj->SetStringField(TEXT("action"), Alt.Action);
+		AltObj->SetStringField(TEXT("confidence"), Alt.Confidence);
+		AltArray.Add(MakeShared<FJsonValueObject>(AltObj));
+	}
+	Obj->SetArrayField(TEXT("alternatives"), AltArray);
+
+	return Obj;
+}
+
+FString FOliveWiringDiagnostic::ToHumanReadable() const
+{
+	FString Result = FString::Printf(
+		TEXT("Cannot connect %s to %s: %s. %s"),
+		*SourceTypeName, *TargetTypeName,
+		*ReasonToString(Reason),
+		*WhyAutoFixFailed);
+
+	if (Alternatives.Num() > 0)
+	{
+		Result += TEXT("\nAlternatives:");
+		for (const FOliveWiringAlternative& Alt : Alternatives)
+		{
+			Result += FString::Printf(TEXT("\n- [%s] %s: %s"),
+				*Alt.Confidence, *Alt.Label, *Alt.Action);
+		}
+	}
+
+	return Result;
+}
+
+// ============================================================================
+// Wiring Diagnostic Implementation
+// ============================================================================
+
+namespace
+{
+	/**
+	 * Get a human-readable type name for a pin, suitable for error messages.
+	 * More descriptive than GetPinTypeDescription -- includes "Object Reference" suffixes.
+	 */
+	FString GetReadablePinTypeName(const UEdGraphPin* Pin)
+	{
+		if (!Pin)
+		{
+			return TEXT("(null)");
+		}
+
+		const FName& Category = Pin->PinType.PinCategory;
+
+		// Exec pin
+		if (Category == UEdGraphSchema_K2::PC_Exec)
+		{
+			return TEXT("Exec");
+		}
+
+		// Struct
+		if (Category == UEdGraphSchema_K2::PC_Struct)
+		{
+			UScriptStruct* Struct = Cast<UScriptStruct>(Pin->PinType.PinSubCategoryObject.Get());
+			if (Struct)
+			{
+				return Struct->GetName();
+			}
+			return TEXT("Struct");
+		}
+
+		// Object / Interface
+		if (Category == UEdGraphSchema_K2::PC_Object
+			|| Category == UEdGraphSchema_K2::PC_Class
+			|| Category == UEdGraphSchema_K2::PC_SoftObject
+			|| Category == UEdGraphSchema_K2::PC_SoftClass)
+		{
+			UClass* ObjClass = Cast<UClass>(Pin->PinType.PinSubCategoryObject.Get());
+			FString ClassName = ObjClass ? ObjClass->GetName() : TEXT("Object");
+			return ClassName + TEXT(" Object Reference");
+		}
+
+		if (Category == UEdGraphSchema_K2::PC_Interface)
+		{
+			UClass* IntClass = Cast<UClass>(Pin->PinType.PinSubCategoryObject.Get());
+			FString IntName = IntClass ? IntClass->GetName() : TEXT("Interface");
+			return IntName + TEXT(" Interface");
+		}
+
+		// Real (Float/Double in UE 5.5)
+		if (Category == UEdGraphSchema_K2::PC_Real)
+		{
+			if (Pin->PinType.PinSubCategory == UEdGraphSchema_K2::PC_Double)
+			{
+				return TEXT("Double");
+			}
+			return TEXT("Float");
+		}
+
+		// Wildcard
+		if (Category == UEdGraphSchema_K2::PC_Wildcard)
+		{
+			return TEXT("Wildcard");
+		}
+
+		// Boolean, Int, Int64, Name, String, Text, Byte, Enum
+		if (Category == UEdGraphSchema_K2::PC_Boolean) return TEXT("Boolean");
+		if (Category == UEdGraphSchema_K2::PC_Int) return TEXT("Integer");
+		if (Category == UEdGraphSchema_K2::PC_Int64) return TEXT("Integer64");
+		if (Category == UEdGraphSchema_K2::PC_Name) return TEXT("Name");
+		if (Category == UEdGraphSchema_K2::PC_String) return TEXT("String");
+		if (Category == UEdGraphSchema_K2::PC_Text) return TEXT("Text");
+		if (Category == UEdGraphSchema_K2::PC_Byte)
+		{
+			UEnum* Enum = Cast<UEnum>(Pin->PinType.PinSubCategoryObject.Get());
+			if (Enum)
+			{
+				return Enum->GetName();
+			}
+			return TEXT("Byte");
+		}
+		if (Category == UEdGraphSchema_K2::PC_Enum)
+		{
+			UEnum* Enum = Cast<UEnum>(Pin->PinType.PinSubCategoryObject.Get());
+			if (Enum)
+			{
+				return Enum->GetName();
+			}
+			return TEXT("Enum");
+		}
+
+		// Fallback
+		return Category.ToString();
+	}
+
+	/**
+	 * Check if a pin category is a scalar numeric type.
+	 */
+	bool IsScalarNumeric(const FName& Category, const FName& SubCategory)
+	{
+		if (Category == UEdGraphSchema_K2::PC_Real
+			|| Category == UEdGraphSchema_K2::PC_Int
+			|| Category == UEdGraphSchema_K2::PC_Int64
+			|| Category == UEdGraphSchema_K2::PC_Byte)
+		{
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Check if a pin type is an object/class reference (including interface).
+	 */
+	bool IsObjectType(const FName& Category)
+	{
+		return Category == UEdGraphSchema_K2::PC_Object
+			|| Category == UEdGraphSchema_K2::PC_Class
+			|| Category == UEdGraphSchema_K2::PC_SoftObject
+			|| Category == UEdGraphSchema_K2::PC_SoftClass
+			|| Category == UEdGraphSchema_K2::PC_Interface;
+	}
+
+	/**
+	 * Get the known sub-pin suffixes for a struct type, if splittable.
+	 * Returns empty if not a known splittable struct.
+	 */
+	TArray<FString> GetKnownStructSubPins(const FString& StructName)
+	{
+		static const TMap<FString, TArray<FString>> KnownStructs = []()
+		{
+			TMap<FString, TArray<FString>> Map;
+			Map.Add(TEXT("Vector"),      { TEXT("X"), TEXT("Y"), TEXT("Z") });
+			Map.Add(TEXT("Vector2D"),    { TEXT("X"), TEXT("Y") });
+			Map.Add(TEXT("Rotator"),     { TEXT("Roll"), TEXT("Pitch"), TEXT("Yaw") });
+			Map.Add(TEXT("LinearColor"), { TEXT("R"), TEXT("G"), TEXT("B"), TEXT("A") });
+			Map.Add(TEXT("Color"),       { TEXT("R"), TEXT("G"), TEXT("B"), TEXT("A") });
+			return Map;
+		}();
+
+		const TArray<FString>* Found = KnownStructs.Find(StructName);
+		return Found ? *Found : TArray<FString>();
+	}
+}
+
+FOliveWiringDiagnostic FOlivePinConnector::BuildWiringDiagnostic(
+	const UEdGraphPin* SourcePin,
+	const UEdGraphPin* TargetPin,
+	const FPinConnectionResponse& Response) const
+{
+	FOliveWiringDiagnostic Diag;
+	Diag.SourcePinName = SourcePin->GetName();
+	Diag.TargetPinName = TargetPin->GetName();
+	Diag.SourceTypeName = GetReadablePinTypeName(SourcePin);
+	Diag.TargetTypeName = GetReadablePinTypeName(TargetPin);
+	Diag.SchemaMessage = Response.Message.ToString();
+
+	const FName& SrcCat = SourcePin->PinType.PinCategory;
+	const FName& TgtCat = TargetPin->PinType.PinCategory;
+	const EPinContainerType SrcContainer = SourcePin->PinType.ContainerType;
+	const EPinContainerType TgtContainer = TargetPin->PinType.ContainerType;
+
+	// Add container prefix to type names for clarity
+	if (SrcContainer == EPinContainerType::Array)
+	{
+		Diag.SourceTypeName = TEXT("Array<") + Diag.SourceTypeName + TEXT(">");
+	}
+	else if (SrcContainer == EPinContainerType::Set)
+	{
+		Diag.SourceTypeName = TEXT("Set<") + Diag.SourceTypeName + TEXT(">");
+	}
+	else if (SrcContainer == EPinContainerType::Map)
+	{
+		Diag.SourceTypeName = TEXT("Map<") + Diag.SourceTypeName + TEXT(">");
+	}
+	if (TgtContainer == EPinContainerType::Array)
+	{
+		Diag.TargetTypeName = TEXT("Array<") + Diag.TargetTypeName + TEXT(">");
+	}
+	else if (TgtContainer == EPinContainerType::Set)
+	{
+		Diag.TargetTypeName = TEXT("Set<") + Diag.TargetTypeName + TEXT(">");
+	}
+	else if (TgtContainer == EPinContainerType::Map)
+	{
+		Diag.TargetTypeName = TEXT("Map<") + Diag.TargetTypeName + TEXT(">");
+	}
+
+	// ---- Categorize the failure reason ----
+
+	// Same node check
+	if (SourcePin->GetOwningNode() == TargetPin->GetOwningNode())
+	{
+		Diag.Reason = EOliveWiringFailureReason::SameNode;
+		Diag.WhyAutoFixFailed = TEXT("Cannot connect a node to itself.");
+	}
+	// Direction mismatch
+	else if (SourcePin->Direction == TargetPin->Direction)
+	{
+		Diag.Reason = EOliveWiringFailureReason::DirectionMismatch;
+		Diag.WhyAutoFixFailed = FString::Printf(
+			TEXT("Both pins have direction %s. Source must be output, target must be input."),
+			SourcePin->Direction == EGPD_Output ? TEXT("Output") : TEXT("Input"));
+	}
+	// Container mismatch (Array<T> vs T, etc.)
+	else if (SrcContainer != TgtContainer)
+	{
+		Diag.Reason = EOliveWiringFailureReason::ContainerMismatch;
+		Diag.WhyAutoFixFailed = FString::Printf(
+			TEXT("Container types differ: source is %s, target is %s. No automatic container conversion exists."),
+			*Diag.SourceTypeName, *Diag.TargetTypeName);
+	}
+	// Struct -> Scalar
+	else if (SrcCat == UEdGraphSchema_K2::PC_Struct
+		&& (IsScalarNumeric(TgtCat, TargetPin->PinType.PinSubCategory)
+			|| TgtCat == UEdGraphSchema_K2::PC_Boolean
+			|| TgtCat == UEdGraphSchema_K2::PC_String))
+	{
+		Diag.Reason = EOliveWiringFailureReason::StructToScalar;
+
+		// Check if pin is splittable
+		const UEdGraphSchema_K2* K2Schema = GetK2Schema();
+		UScriptStruct* StructType = Cast<UScriptStruct>(SourcePin->PinType.PinSubCategoryObject.Get());
+		FString StructName = StructType ? StructType->GetName() : TEXT("unknown struct");
+
+		if (K2Schema && K2Schema->CanSplitStructPin(*SourcePin))
+		{
+			TArray<FString> SubPins = GetKnownStructSubPins(StructName);
+			if (SubPins.Num() > 0)
+			{
+				FString SubPinList;
+				for (const FString& SP : SubPins)
+				{
+					if (!SubPinList.IsEmpty()) SubPinList += TEXT(", ");
+					SubPinList += FString::Printf(TEXT("%s_%s (%s)"),
+						*SourcePin->GetName(), *SP, *Diag.TargetTypeName);
+				}
+				Diag.WhyAutoFixFailed = FString::Printf(
+					TEXT("No autocast for %s -> %s. Pin is splittable into: %s."),
+					*StructName, *Diag.TargetTypeName, *SubPinList);
+			}
+			else
+			{
+				Diag.WhyAutoFixFailed = FString::Printf(
+					TEXT("No autocast for %s -> %s. Pin is splittable (use break_struct to decompose)."),
+					*StructName, *Diag.TargetTypeName);
+			}
+		}
+		else
+		{
+			Diag.WhyAutoFixFailed = FString::Printf(
+				TEXT("No autocast for %s -> %s. Struct type %s does not support pin splitting."),
+				*StructName, *Diag.TargetTypeName, *StructName);
+		}
+	}
+	// Scalar -> Struct
+	else if ((IsScalarNumeric(SrcCat, SourcePin->PinType.PinSubCategory)
+			|| SrcCat == UEdGraphSchema_K2::PC_Boolean
+			|| SrcCat == UEdGraphSchema_K2::PC_String)
+		&& TgtCat == UEdGraphSchema_K2::PC_Struct)
+	{
+		Diag.Reason = EOliveWiringFailureReason::ScalarToStruct;
+
+		UScriptStruct* StructType = Cast<UScriptStruct>(TargetPin->PinType.PinSubCategoryObject.Get());
+		FString StructName = StructType ? StructType->GetName() : TEXT("unknown struct");
+
+		Diag.WhyAutoFixFailed = FString::Printf(
+			TEXT("No autocast for %s -> %s. Use make_struct to compose the struct from scalar inputs."),
+			*Diag.SourceTypeName, *StructName);
+	}
+	// Object type mismatch (both are object types but different classes)
+	else if (IsObjectType(SrcCat) && IsObjectType(TgtCat))
+	{
+		Diag.Reason = EOliveWiringFailureReason::ObjectCastRequired;
+
+		UClass* SrcClass = Cast<UClass>(SourcePin->PinType.PinSubCategoryObject.Get());
+		UClass* TgtClass = Cast<UClass>(TargetPin->PinType.PinSubCategoryObject.Get());
+
+		if (SrcClass && TgtClass && SrcClass->IsChildOf(TgtClass))
+		{
+			// Source is more derived than target -- should be safe. Unusual failure.
+			Diag.WhyAutoFixFailed = FString::Printf(
+				TEXT("%s is a child of %s, but the connection was still rejected. "
+				     "This may require an explicit cast or interface conversion."),
+				*SrcClass->GetName(), *TgtClass->GetName());
+		}
+		else if (SrcClass && TgtClass && TgtClass->IsChildOf(SrcClass))
+		{
+			// Target is more derived -- needs downcast
+			Diag.WhyAutoFixFailed = FString::Printf(
+				TEXT("Object types are not in a parent-child relationship in the required direction. "
+				     "%s is a parent of %s, but the pin expects the more derived type."),
+				*SrcClass->GetName(), *TgtClass->GetName());
+		}
+		else
+		{
+			Diag.WhyAutoFixFailed = FString::Printf(
+				TEXT("Object types %s and %s are not in the same class hierarchy. "
+				     "An explicit cast or interface is needed."),
+				SrcClass ? *SrcClass->GetName() : TEXT("(unknown)"),
+				TgtClass ? *TgtClass->GetName() : TEXT("(unknown)"));
+		}
+	}
+	// Generic incompatible (Exec->Data, Data->Exec, or truly unrelated types)
+	else
+	{
+		Diag.Reason = EOliveWiringFailureReason::TypesIncompatible;
+
+		if (SrcCat == UEdGraphSchema_K2::PC_Exec || TgtCat == UEdGraphSchema_K2::PC_Exec)
+		{
+			Diag.WhyAutoFixFailed = TEXT("Exec pins carry execution flow, not data. "
+				"You likely meant to connect a data output pin instead.");
+		}
+		else
+		{
+			Diag.WhyAutoFixFailed = FString::Printf(
+				TEXT("Types %s and %s have no known conversion path. "
+				     "This usually means the data flow is wrong at a design level."),
+				*Diag.SourceTypeName, *Diag.TargetTypeName);
+		}
+	}
+
+	// Build alternatives
+	Diag.Alternatives = SuggestAlternatives(SourcePin, TargetPin, Diag.Reason);
+
+	return Diag;
+}
+
+TArray<FOliveWiringAlternative> FOlivePinConnector::SuggestAlternatives(
+	const UEdGraphPin* SourcePin,
+	const UEdGraphPin* TargetPin,
+	EOliveWiringFailureReason Reason) const
+{
+	TArray<FOliveWiringAlternative> Alts;
+
+	switch (Reason)
+	{
+	case EOliveWiringFailureReason::StructToScalar:
+	{
+		const UEdGraphSchema_K2* K2Schema = GetK2Schema();
+		bool bIsSplittable = K2Schema && K2Schema->CanSplitStructPin(*SourcePin);
+
+		if (bIsSplittable)
+		{
+			UScriptStruct* StructType = Cast<UScriptStruct>(SourcePin->PinType.PinSubCategoryObject.Get());
+			FString StructName = StructType ? StructType->GetName() : TEXT("Struct");
+
+			Alts.Add({
+				TEXT("Use break_struct op"),
+				FString::Printf(TEXT("Add a break_struct step for the %s, then wire the specific "
+					"field (e.g., @break_step.X) to the %s input."),
+					*StructName, *GetReadablePinTypeName(TargetPin)),
+				TEXT("high")
+			});
+
+			// Build a ~suffix example from known sub-pins
+			TArray<FString> SubPins = GetKnownStructSubPins(StructName);
+			FString SuffixExample = SubPins.Num() > 0
+				? FString::Printf(TEXT("@source_step.~%s_%s"), *SourcePin->GetName(), *SubPins[0])
+				: FString::Printf(TEXT("@source_step.~%s_X"), *SourcePin->GetName());
+
+			Alts.Add({
+				TEXT("Use ~PinName suffix"),
+				FString::Printf(TEXT("In plan_json inputs, use %s to target a sub-component. "
+					"The ~ prefix triggers fuzzy match on split sub-pins."), *SuffixExample),
+				TEXT("high")
+			});
+		}
+
+		Alts.Add({
+			TEXT("Use get_node_pins + connect_pins"),
+			TEXT("Call blueprint.get_node_pins on the source node to see all pins "
+				"(including split sub-pins). Then use connect_pins with the exact sub-pin name."),
+			TEXT("medium")
+		});
+
+		Alts.Add({
+			TEXT("Use editor.run_python"),
+			TEXT("Schema->SplitPin(Pin) creates sub-pins programmatically. "
+				"Use editor.run_python to split the pin and wire the sub-pin."),
+			TEXT("low")
+		});
+		break;
+	}
+
+	case EOliveWiringFailureReason::ScalarToStruct:
+	{
+		UScriptStruct* StructType = Cast<UScriptStruct>(TargetPin->PinType.PinSubCategoryObject.Get());
+		FString StructName = StructType ? StructType->GetName() : TEXT("Struct");
+
+		Alts.Add({
+			TEXT("Use make_struct op"),
+			FString::Printf(TEXT("Add a make_struct step for the target type "
+				"(e.g., make_struct target:%s) to compose the struct from scalar inputs."),
+				*StructName),
+			TEXT("high")
+		});
+
+		// Check if a Conv_ function exists in the reverse direction
+		// (e.g., Conv_DoubleToVector when trying Float -> Vector)
+		// We probe reversed to find composition functions
+		Alts.Add({
+			TEXT("Use Conv_ function if available"),
+			FString::Printf(TEXT("If a Conv_ function exists (e.g., Conv_%sTo%s), add a call step "
+				"with the conversion function to transform the scalar to the struct type."),
+				*GetReadablePinTypeName(SourcePin), *StructName),
+			TEXT("medium")
+		});
+
+		Alts.Add({
+			TEXT("Use editor.run_python"),
+			TEXT("Compose the struct manually in Python."),
+			TEXT("low")
+		});
+		break;
+	}
+
+	case EOliveWiringFailureReason::ObjectCastRequired:
+	{
+		UClass* TgtClass = Cast<UClass>(TargetPin->PinType.PinSubCategoryObject.Get());
+		FString TargetClassName = TgtClass ? TgtClass->GetName() : TEXT("TargetClass");
+
+		Alts.Add({
+			TEXT("Add a cast step"),
+			FString::Printf(TEXT("Add a cast step in plan_json: "
+				"{\"op\":\"cast\",\"target\":\"%s\",\"inputs\":{\"Object\":\"@source_step\"}}. "
+				"Wire the output cast pin to the target input."), *TargetClassName),
+			TEXT("high")
+		});
+
+		Alts.Add({
+			TEXT("Use cast node via add_node"),
+			FString::Printf(TEXT("blueprint.add_node type:\"Cast\" "
+				"properties:{\"TargetType\":\"%s\"}, then connect_pins source -> Cast Object input, "
+				"Cast output -> target input."), *TargetClassName),
+			TEXT("medium")
+		});
+		break;
+	}
+
+	case EOliveWiringFailureReason::ContainerMismatch:
+	{
+		const EPinContainerType SrcContainer = SourcePin->PinType.ContainerType;
+
+		if (SrcContainer == EPinContainerType::Array)
+		{
+			Alts.Add({
+				TEXT("Add an array operation"),
+				TEXT("To get a single element from an Array, add a call step for \"Get\" "
+					"(array access by index) or \"GetCopy\" between the source and target."),
+				TEXT("high")
+			});
+		}
+		else if (SrcContainer == EPinContainerType::None)
+		{
+			Alts.Add({
+				TEXT("Add a MakeArray operation"),
+				TEXT("To convert a single item to an Array, add a call step for \"MakeArray\" "
+					"between the source and target."),
+				TEXT("high")
+			});
+		}
+		else
+		{
+			Alts.Add({
+				TEXT("Add a container conversion"),
+				TEXT("Container types differ. Add an intermediate step to convert between "
+					"container types (Array, Set, Map)."),
+				TEXT("high")
+			});
+		}
+
+		Alts.Add({
+			TEXT("Use editor.run_python"),
+			TEXT("For complex container transformations, use Python."),
+			TEXT("low")
+		});
+		break;
+	}
+
+	case EOliveWiringFailureReason::DirectionMismatch:
+	{
+		Alts.Add({
+			TEXT("Fix pin direction"),
+			TEXT("Source must be an output pin (EGPD_Output) and target must be an input pin "
+				"(EGPD_Input). Swap the source and target parameters."),
+			TEXT("high")
+		});
+		break;
+	}
+
+	case EOliveWiringFailureReason::SameNode:
+	{
+		Alts.Add({
+			TEXT("Use different nodes"),
+			TEXT("Source and target pins must be on different nodes. "
+				"Check your step references to ensure you are connecting between two distinct nodes."),
+			TEXT("high")
+		});
+		break;
+	}
+
+	case EOliveWiringFailureReason::AlreadyConnected:
+	{
+		Alts.Add({
+			TEXT("Disconnect existing connection first"),
+			TEXT("The target pin already has a connection. Use blueprint.disconnect_pins to remove "
+				"the existing connection, then retry."),
+			TEXT("high")
+		});
+		break;
+	}
+
+	case EOliveWiringFailureReason::TypesIncompatible:
+	case EOliveWiringFailureReason::Unknown:
+	default:
+	{
+		// Check for Exec -> Data mixup specifically
+		if (SourcePin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec
+			|| TargetPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+		{
+			Alts.Add({
+				TEXT("Check your pin selection"),
+				TEXT("You are connecting an execution flow pin to a data pin (or vice versa). "
+					"Use blueprint.get_node_pins on the source node to find the correct data output pin."),
+				TEXT("high")
+			});
+		}
+		else
+		{
+			Alts.Add({
+				TEXT("Check your plan logic"),
+				FString::Printf(TEXT("Types %s and %s have no known conversion path. "
+					"This usually means the data flow is wrong at a design level. "
+					"Reconsider which node outputs should feed this input."),
+					*GetReadablePinTypeName(SourcePin),
+					*GetReadablePinTypeName(TargetPin)),
+				TEXT("high")
+			});
+		}
+
+		Alts.Add({
+			TEXT("Use editor.run_python"),
+			TEXT("For unconventional type conversions, Python can bypass Blueprint type constraints."),
+			TEXT("low")
+		});
+		break;
+	}
+	}
+
+	return Alts;
 }

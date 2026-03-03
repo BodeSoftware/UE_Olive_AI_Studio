@@ -725,6 +725,26 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 			"it validates inline. If you do use preview, call it in a separate turn BEFORE apply, "
 			"never in the same batch.");
 	}
+	else if (ErrorCode == TEXT("BP_CONNECT_PINS_INCOMPATIBLE"))
+	{
+		Guidance = TEXT("Pin types are incompatible and no automatic conversion exists. "
+			"The error response includes 'alternatives' with specific fixes ordered by confidence. "
+			"Try the first 'high' confidence alternative. "
+			"Common patterns:\n"
+			"- Struct -> Scalar (e.g., Vector -> Float): use break_struct op or ~PinName_X suffix\n"
+			"- Scalar -> Struct (e.g., Float -> Vector): use make_struct op or Conv_ call\n"
+			"- Object type mismatch: add a cast step\n"
+			"- Container mismatch (Array -> single): add a Get/GetCopy call step\n"
+			"- If all alternatives fail, use editor.run_python");
+	}
+	else if (ErrorCode == TEXT("DATA_WIRE_INCOMPATIBLE"))
+	{
+		Guidance = TEXT("Two pins in the plan have incompatible types and no autocast exists. "
+			"The wiring_errors array contains specific alternatives. "
+			"Common fix: add a break_struct or make_struct intermediate step, "
+			"or change the input to use a ~suffix for a split sub-pin component "
+			"(e.g., '@get_loc.~ReturnValue_X' for Vector.X).");
+	}
 	else if (ErrorCode == TEXT("BP_CONNECT_PINS_FAILED"))
 	{
 		Guidance = TEXT("Pin connection failed. BEFORE RETRYING: call blueprint.read "
@@ -891,7 +911,8 @@ EOliveErrorCategory FOliveSelfCorrectionPolicy::ClassifyErrorCode(
 	// Everything else is treated as a fixable mistake:
 	// VALIDATION_MISSING_PARAM, ASSET_NOT_FOUND, NODE_TYPE_UNKNOWN,
 	// FUNCTION_NOT_FOUND, DUPLICATE_NATIVE_EVENT, DATA_PIN_NOT_FOUND,
-	// EXEC_PIN_NOT_FOUND, BP_CONNECT_PINS_FAILED, PLAN_RESOLVE_FAILED,
+	// DATA_WIRE_INCOMPATIBLE, EXEC_PIN_NOT_FOUND, BP_CONNECT_PINS_FAILED,
+	// BP_CONNECT_PINS_INCOMPATIBLE, PLAN_RESOLVE_FAILED,
 	// COMPILE_FAILED, COMPONENT_FUNCTION_ON_ACTOR, etc.
 	return EOliveErrorCategory::FixableMistake;
 }

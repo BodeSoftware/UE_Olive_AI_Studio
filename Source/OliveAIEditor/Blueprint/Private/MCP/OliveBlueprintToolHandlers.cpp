@@ -41,6 +41,12 @@
 #include "IR/OliveIRSchema.h"
 #include "IR/BlueprintPlanIR.h"
 #include "Template/OliveTemplateSystem.h"
+#include "K2Node_Timeline.h"
+#include "Engine/TimelineTemplate.h"
+#include "Curves/CurveFloat.h"
+#include "Curves/CurveVector.h"
+#include "Curves/CurveLinearColor.h"
+#include "Components/TimelineComponent.h"
 
 DEFINE_LOG_CATEGORY(LogOliveBPTools);
 
@@ -805,7 +811,18 @@ void FOliveBlueprintToolHandlers::RegisterGraphWriterTools()
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.set_node_property"));
 
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered 6 graph writer tools"));
+	// blueprint.create_timeline
+	Registry.RegisterTool(
+		TEXT("blueprint.create_timeline"),
+		TEXT("Create a Timeline node with tracks and curve data in a Blueprint event graph. Returns node_id and all pin names. Wire outputs with connect_pins (e.g., source: 'node_id.Play', target: 'other.execute') or reference track outputs in plan_json (e.g., inputs: {Alpha: '@node_id.TrackName'}). Exec inputs: Play, PlayFromStart, Stop, Reverse, ReverseFromEnd. Track outputs use the track name as pin name."),
+		OliveBlueprintSchemas::BlueprintCreateTimeline(),
+		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintCreateTimeline),
+		{TEXT("blueprint"), TEXT("write"), TEXT("graph"), TEXT("timeline")},
+		TEXT("blueprint")
+	);
+	RegisteredToolNames.Add(TEXT("blueprint.create_timeline"));
+
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered 7 graph writer tools"));
 }
 
 void FOliveBlueprintToolHandlers::RegisterAnimBPWriterTools()
@@ -4766,10 +4783,48 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintConnectPins(const T
 		if (!WriteResult.bSuccess)
 		{
 			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+
+			// Check for structured wiring diagnostic (type incompatibility)
+			if (WriteResult.WiringDiagnostic.IsSet())
+			{
+				const FOliveWiringDiagnostic& Diag = WriteResult.WiringDiagnostic.GetValue();
+
+				// Build rich error result with diagnostic JSON
+				TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
+				ErrorData->SetStringField(TEXT("source_type"), Diag.SourceTypeName);
+				ErrorData->SetStringField(TEXT("target_type"), Diag.TargetTypeName);
+				ErrorData->SetStringField(TEXT("source_pin"), Diag.SourcePinName);
+				ErrorData->SetStringField(TEXT("target_pin"), Diag.TargetPinName);
+				ErrorData->SetStringField(TEXT("failure_reason"),
+					FOliveWiringDiagnostic::ReasonToString(Diag.Reason));
+				ErrorData->SetStringField(TEXT("why_autofix_failed"), Diag.WhyAutoFixFailed);
+
+				TArray<TSharedPtr<FJsonValue>> AltArray;
+				for (const FOliveWiringAlternative& Alt : Diag.Alternatives)
+				{
+					TSharedPtr<FJsonObject> AltObj = MakeShared<FJsonObject>();
+					AltObj->SetStringField(TEXT("label"), Alt.Label);
+					AltObj->SetStringField(TEXT("action"), Alt.Action);
+					AltObj->SetStringField(TEXT("confidence"), Alt.Confidence);
+					AltArray.Add(MakeShared<FJsonValueObject>(AltObj));
+				}
+				ErrorData->SetArrayField(TEXT("alternatives"), AltArray);
+
+				FOliveWriteResult ErrResult = FOliveWriteResult::ExecutionError(
+					TEXT("BP_CONNECT_PINS_INCOMPATIBLE"),
+					Diag.ToHumanReadable(),
+					Diag.Alternatives.Num() > 0
+						? Diag.Alternatives[0].Action
+						: TEXT("Check pin types and plan logic"));
+				ErrResult.ResultData = ErrorData;
+				return ErrResult;
+			}
+
+			// Fallback for non-type errors (pin not found, etc.)
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_CONNECT_PINS_FAILED"),
 				ErrorMsg,
-				TEXT("Verify the pin references are valid and compatible")
+				TEXT("Call blueprint.get_node_pins on both nodes to verify pin names and types")
 			);
 		}
 
@@ -5099,6 +5154,575 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintSetNodeProperty(con
 		ResultData->SetStringField(TEXT("message"), FString::Printf(TEXT("Successfully set property '%s' of node '%s' to '%s'"), *PropertyName, *NodeId, *PropertyValue));
 
 		return FOliveWriteResult::Success(ResultData);
+	});
+
+	// Execute through pipeline
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
+
+	return Result.ToToolResult();
+}
+
+// ============================================================================
+// Timeline Tool Handler
+// ============================================================================
+
+FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreateTimeline(const TSharedPtr<FJsonObject>& Params)
+{
+	// ---- 1. Parse required parameters ----
+	FString AssetPath;
+	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'path'"),
+			TEXT("Provide the Blueprint asset path (e.g., '/Game/Blueprints/BP_Door')")
+		);
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* TracksArray = nullptr;
+	if (!Params->TryGetArrayField(TEXT("tracks"), TracksArray) || !TracksArray || TracksArray->Num() == 0)
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_TRACKS"),
+			TEXT("Missing or empty 'tracks' array"),
+			TEXT("Provide at least one track: {name, type (float/vector/color/event), keys}")
+		);
+	}
+
+	// ---- 2. Parse optional parameters ----
+	FString GraphName;
+	if (!Params->TryGetStringField(TEXT("graph"), GraphName) || GraphName.IsEmpty())
+	{
+		GraphName = TEXT("EventGraph");
+	}
+
+	FString UserTimelineName;
+	Params->TryGetStringField(TEXT("timeline_name"), UserTimelineName);
+
+	double Length = 5.0;
+	Params->TryGetNumberField(TEXT("length"), Length);
+
+	bool bAutoPlay = false;
+	Params->TryGetBoolField(TEXT("auto_play"), bAutoPlay);
+
+	bool bLoop = false;
+	Params->TryGetBoolField(TEXT("loop"), bLoop);
+
+	bool bReplicated = false;
+	Params->TryGetBoolField(TEXT("replicated"), bReplicated);
+
+	bool bIgnoreTimeDilation = false;
+	Params->TryGetBoolField(TEXT("ignore_time_dilation"), bIgnoreTimeDilation);
+
+	// ---- 3. Parse and validate tracks ----
+
+	// Reserved pin names that conflict with built-in timeline pins
+	static const TSet<FString> ReservedPinNames = {
+		TEXT("Play"), TEXT("PlayFromStart"), TEXT("Stop"),
+		TEXT("Reverse"), TEXT("ReverseFromEnd"),
+		TEXT("Update"), TEXT("Finished"),
+		TEXT("SetNewTime"), TEXT("NewTime"), TEXT("Direction")
+	};
+
+	struct FParsedTrack
+	{
+		FString Name;
+		FString Type; // "float", "vector", "color", "event"
+		ERichCurveInterpMode InterpMode;
+		TArray<TArray<double>> Keys; // Each inner array is one keyframe
+	};
+
+	TArray<FParsedTrack> ParsedTracks;
+	TSet<FString> TrackNames;
+
+	for (int32 TrackIdx = 0; TrackIdx < TracksArray->Num(); ++TrackIdx)
+	{
+		const TSharedPtr<FJsonObject>* TrackObjPtr = nullptr;
+		if (!(*TracksArray)[TrackIdx]->TryGetObject(TrackObjPtr) || !TrackObjPtr || !TrackObjPtr->IsValid())
+		{
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_INVALID_TRACKS"),
+				FString::Printf(TEXT("Track at index %d is not a valid object"), TrackIdx),
+				TEXT("Each track needs: {name: string, type: \"float\"|\"vector\"|\"color\"|\"event\", keys: array}")
+			);
+		}
+		const TSharedPtr<FJsonObject>& TrackObj = *TrackObjPtr;
+
+		FParsedTrack Track;
+
+		// Track name
+		if (!TrackObj->TryGetStringField(TEXT("name"), Track.Name) || Track.Name.IsEmpty())
+		{
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_INVALID_TRACKS"),
+				FString::Printf(TEXT("Track at index %d is missing 'name'"), TrackIdx),
+				TEXT("Each track needs a 'name' field (becomes the output pin name)")
+			);
+		}
+
+		// Check for duplicate track names
+		if (TrackNames.Contains(Track.Name))
+		{
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_DUPLICATE_TRACK_NAME"),
+				FString::Printf(TEXT("Duplicate track name '%s' at index %d"), *Track.Name, TrackIdx),
+				TEXT("Track names must be unique within a timeline")
+			);
+		}
+
+		// Check for reserved pin names
+		if (ReservedPinNames.Contains(Track.Name))
+		{
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_RESERVED_TRACK_NAME"),
+				FString::Printf(TEXT("Track name '%s' conflicts with a built-in timeline pin"), *Track.Name),
+				TEXT("Avoid these reserved names: Play, PlayFromStart, Stop, Reverse, ReverseFromEnd, Update, Finished, SetNewTime, NewTime, Direction")
+			);
+		}
+		TrackNames.Add(Track.Name);
+
+		// Track type
+		if (!TrackObj->TryGetStringField(TEXT("type"), Track.Type) || Track.Type.IsEmpty())
+		{
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_INVALID_TRACKS"),
+				FString::Printf(TEXT("Track '%s' is missing 'type'"), *Track.Name),
+				TEXT("Track type must be one of: float, vector, color, event")
+			);
+		}
+		Track.Type = Track.Type.ToLower();
+		if (Track.Type != TEXT("float") && Track.Type != TEXT("vector") &&
+			Track.Type != TEXT("color") && Track.Type != TEXT("event"))
+		{
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_INVALID_TRACKS"),
+				FString::Printf(TEXT("Track '%s' has invalid type '%s'"), *Track.Name, *Track.Type),
+				TEXT("Track type must be one of: float, vector, color, event")
+			);
+		}
+
+		// Interpolation mode (optional, default linear, ignored for event tracks)
+		Track.InterpMode = RCIM_Linear;
+		FString InterpStr;
+		if (TrackObj->TryGetStringField(TEXT("interp"), InterpStr) && Track.Type != TEXT("event"))
+		{
+			InterpStr = InterpStr.ToLower();
+			if (InterpStr == TEXT("cubic"))
+			{
+				Track.InterpMode = RCIM_Cubic;
+			}
+			else if (InterpStr == TEXT("constant"))
+			{
+				Track.InterpMode = RCIM_Constant;
+			}
+			// "linear" or anything else = default RCIM_Linear
+		}
+
+		// Keys
+		const TArray<TSharedPtr<FJsonValue>>* KeysArray = nullptr;
+		if (!TrackObj->TryGetArrayField(TEXT("keys"), KeysArray) || !KeysArray)
+		{
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_INVALID_TRACKS"),
+				FString::Printf(TEXT("Track '%s' is missing 'keys' array"), *Track.Name),
+				TEXT("Each track needs a 'keys' array of keyframes")
+			);
+		}
+
+		// Determine expected key element count per type
+		int32 ExpectedElements = 2; // float and event
+		if (Track.Type == TEXT("vector"))
+		{
+			ExpectedElements = 4; // [time, x, y, z]
+		}
+		else if (Track.Type == TEXT("color"))
+		{
+			ExpectedElements = 5; // [time, r, g, b, a]
+		}
+
+		// Parse each key
+		for (int32 KeyIdx = 0; KeyIdx < KeysArray->Num(); ++KeyIdx)
+		{
+			const TArray<TSharedPtr<FJsonValue>>* KeyElements = nullptr;
+			if (!(*KeysArray)[KeyIdx]->TryGetArray(KeyElements) || !KeyElements)
+			{
+				return FOliveToolResult::Error(
+					TEXT("VALIDATION_INVALID_KEY_FORMAT"),
+					FString::Printf(TEXT("Track '%s' key at index %d is not an array"), *Track.Name, KeyIdx),
+					FString::Printf(TEXT("Keys must be arrays. Float: [time, value]. Vector: [time, x, y, z]. Color: [time, r, g, b, a]. Event: [time, 0]."))
+				);
+			}
+
+			if (KeyElements->Num() != ExpectedElements)
+			{
+				return FOliveToolResult::Error(
+					TEXT("VALIDATION_INVALID_KEY_FORMAT"),
+					FString::Printf(TEXT("Track '%s' key at index %d has %d elements (expected %d for %s)"),
+						*Track.Name, KeyIdx, KeyElements->Num(), ExpectedElements, *Track.Type),
+					FString::Printf(TEXT("Float keys: [time, value]. Vector keys: [time, x, y, z]. Color keys: [time, r, g, b, a]. Event keys: [time, 0]."))
+				);
+			}
+
+			TArray<double> KeyValues;
+			for (int32 ElemIdx = 0; ElemIdx < KeyElements->Num(); ++ElemIdx)
+			{
+				double Val = 0.0;
+				if (!(*KeyElements)[ElemIdx]->TryGetNumber(Val))
+				{
+					return FOliveToolResult::Error(
+						TEXT("VALIDATION_INVALID_KEY_FORMAT"),
+						FString::Printf(TEXT("Track '%s' key[%d][%d] is not a number"), *Track.Name, KeyIdx, ElemIdx),
+						TEXT("All key values must be numbers")
+					);
+				}
+				KeyValues.Add(Val);
+			}
+			Track.Keys.Add(MoveTemp(KeyValues));
+		}
+
+		ParsedTracks.Add(MoveTemp(Track));
+	}
+
+	// ---- 4. Load Blueprint and pre-pipeline checks ----
+	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+	if (!Blueprint)
+	{
+		return FOliveToolResult::Error(
+			TEXT("ASSET_NOT_FOUND"),
+			FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
+			TEXT("Verify the asset path is correct and the asset exists")
+		);
+	}
+
+	// Check DoesSupportTimelines
+	if (!FBlueprintEditorUtils::DoesSupportTimelines(Blueprint))
+	{
+		return FOliveToolResult::Error(
+			TEXT("TIMELINE_NOT_SUPPORTED"),
+			FString::Printf(TEXT("Blueprint '%s' does not support Timelines"), *AssetPath),
+			TEXT("Timelines only work in Actor-based Blueprints (not Widget BPs, Component BPs, Interfaces, etc.)")
+		);
+	}
+
+	// Determine the timeline name
+	FName TimelineVarName;
+	if (!UserTimelineName.IsEmpty())
+	{
+		TimelineVarName = FName(*UserTimelineName);
+		// Check for duplicate
+		if (Blueprint->FindTimelineTemplateByVariableName(TimelineVarName) != nullptr)
+		{
+			return FOliveToolResult::Error(
+				TEXT("TIMELINE_DUPLICATE_NAME"),
+				FString::Printf(TEXT("A timeline named '%s' already exists in '%s'"), *UserTimelineName, *AssetPath),
+				TEXT("Choose a different name or omit timeline_name for auto-generation")
+			);
+		}
+	}
+
+	// Find the target graph and validate it is a ubergraph
+	UEdGraph* TargetGraph = nullptr;
+	for (UEdGraph* UG : Blueprint->UbergraphPages)
+	{
+		if (UG && (UG->GetName() == GraphName || (GraphName.Equals(TEXT("EventGraph"), ESearchCase::IgnoreCase) && UG == Blueprint->UbergraphPages[0])))
+		{
+			TargetGraph = UG;
+			break;
+		}
+	}
+	if (!TargetGraph)
+	{
+		return FOliveToolResult::Error(
+			TEXT("TIMELINE_GRAPH_NOT_FOUND"),
+			FString::Printf(TEXT("Event graph '%s' not found in '%s'"), *GraphName, *AssetPath),
+			TEXT("Timelines can only be placed in event graphs (UbergraphPages), not function or macro graphs")
+		);
+	}
+
+	// Ensure GeneratedClass exists (required by AddNewTimeline)
+	if (!Blueprint->GeneratedClass)
+	{
+		UE_LOG(LogOliveBPTools, Log, TEXT("HandleBlueprintCreateTimeline: Blueprint '%s' has no GeneratedClass, compiling first"), *AssetPath);
+		FOliveCompileManager& CompileManager = FOliveCompileManager::Get();
+		CompileManager.Compile(Blueprint);
+		if (!Blueprint->GeneratedClass)
+		{
+			return FOliveToolResult::Error(
+				TEXT("TIMELINE_CREATE_FAILED"),
+				FString::Printf(TEXT("Blueprint '%s' has no GeneratedClass and compilation failed"), *AssetPath),
+				TEXT("Compile the Blueprint first and retry")
+			);
+		}
+	}
+
+	// ---- 5. Build write request and executor ----
+	FOliveWriteRequest Request;
+	Request.ToolName = TEXT("blueprint.create_timeline");
+	Request.Params = Params;
+	Request.AssetPath = AssetPath;
+	Request.TargetAsset = Blueprint;
+	Request.OperationDescription = FText::FromString(
+		FString::Printf(TEXT("Create timeline in graph '%s' of '%s'"), *GraphName, *AssetPath)
+	);
+	Request.OperationCategory = TEXT("graph_editing");
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
+	Request.bAutoCompile = true;
+	Request.bSkipVerification = false;
+
+	// Capture parsed data for the lambda
+	FOliveWriteExecutor Executor;
+	Executor.BindLambda([AssetPath, GraphName, UserTimelineName, Length, bAutoPlay, bLoop, bReplicated, bIgnoreTimeDilation, ParsedTracks](const FOliveWriteRequest& Req, UObject* Target) -> FOliveWriteResult
+	{
+		UBlueprint* BP = Cast<UBlueprint>(Target);
+		if (!BP)
+		{
+			return FOliveWriteResult::ExecutionError(TEXT("TIMELINE_CREATE_FAILED"), TEXT("Invalid Blueprint target"), TEXT(""));
+		}
+
+		// Find the target graph
+		UEdGraph* Graph = nullptr;
+		for (UEdGraph* UG : BP->UbergraphPages)
+		{
+			if (UG && (UG->GetName() == GraphName || (GraphName.Equals(TEXT("EventGraph"), ESearchCase::IgnoreCase) && UG == BP->UbergraphPages[0])))
+			{
+				Graph = UG;
+				break;
+			}
+		}
+		if (!Graph)
+		{
+			return FOliveWriteResult::ExecutionError(TEXT("TIMELINE_GRAPH_NOT_FOUND"),
+				FString::Printf(TEXT("Event graph '%s' not found"), *GraphName),
+				TEXT("Timelines can only be placed in event graphs"));
+		}
+
+		// Generate timeline name if not provided
+		FName TLName;
+		if (UserTimelineName.IsEmpty())
+		{
+			TLName = FBlueprintEditorUtils::FindUniqueTimelineName(BP);
+		}
+		else
+		{
+			TLName = FName(*UserTimelineName);
+		}
+
+		// Create the UK2Node_Timeline (outer = Graph so GetBlueprint() works)
+		UK2Node_Timeline* TimelineNode = NewObject<UK2Node_Timeline>(Graph);
+		TimelineNode->TimelineName = TLName;
+		TimelineNode->CreateNewGuid();
+
+		// Create the template via the engine utility
+		UTimelineTemplate* Template = FBlueprintEditorUtils::AddNewTimeline(BP, TLName);
+		if (!Template)
+		{
+			// Cleanup the node we created
+			TimelineNode->MarkAsGarbage();
+			return FOliveWriteResult::ExecutionError(TEXT("TIMELINE_CREATE_FAILED"),
+				FString::Printf(TEXT("Failed to create timeline template '%s'"), *TLName.ToString()),
+				TEXT("Internal error creating timeline template. Compile the Blueprint and retry."));
+		}
+
+		// Configure template properties
+		Template->Modify();
+		Template->TimelineLength = static_cast<float>(Length);
+		Template->bAutoPlay = bAutoPlay;
+		Template->bLoop = bLoop;
+		Template->bReplicated = bReplicated;
+		Template->bIgnoreTimeDilation = bIgnoreTimeDilation;
+
+		// Add tracks
+		UClass* OwnerClass = BP->GeneratedClass;
+		check(OwnerClass);
+
+		TArray<TSharedPtr<FJsonValue>> TracksCreated;
+		TArray<FString> Warnings;
+		int32 FloatCount = 0, VectorCount = 0, ColorCount = 0, EventCount = 0;
+
+		for (const auto& ParsedTrack : ParsedTracks)
+		{
+			TSharedPtr<FJsonObject> TrackInfo = MakeShareable(new FJsonObject());
+			TrackInfo->SetStringField(TEXT("name"), ParsedTrack.Name);
+			TrackInfo->SetStringField(TEXT("type"), ParsedTrack.Type);
+			TrackInfo->SetNumberField(TEXT("keys"), ParsedTrack.Keys.Num());
+			TrackInfo->SetStringField(TEXT("pin_name"), ParsedTrack.Name);
+
+			if (ParsedTrack.Keys.Num() == 0)
+			{
+				Warnings.Add(FString::Printf(TEXT("Track '%s' has no keys -- output will be constant 0."), *ParsedTrack.Name));
+			}
+
+			if (ParsedTrack.Type == TEXT("float"))
+			{
+				FTTFloatTrack NewTrack;
+				NewTrack.SetTrackName(FName(*ParsedTrack.Name), Template);
+				NewTrack.CurveFloat = NewObject<UCurveFloat>(OwnerClass, NAME_None, RF_Public);
+
+				for (const TArray<double>& Key : ParsedTrack.Keys)
+				{
+					FKeyHandle H = NewTrack.CurveFloat->FloatCurve.AddKey(static_cast<float>(Key[0]), static_cast<float>(Key[1]));
+					if (ParsedTrack.InterpMode != RCIM_Linear)
+					{
+						NewTrack.CurveFloat->FloatCurve.SetKeyInterpMode(H, ParsedTrack.InterpMode);
+					}
+				}
+
+				int32 Idx = Template->FloatTracks.Num();
+				Template->FloatTracks.Add(NewTrack);
+				FTTTrackId TrackId;
+				TrackId.TrackType = FTTTrackBase::TT_FloatInterp;
+				TrackId.TrackIndex = Idx;
+				Template->AddDisplayTrack(TrackId);
+				FloatCount++;
+			}
+			else if (ParsedTrack.Type == TEXT("event"))
+			{
+				FTTEventTrack NewTrack;
+				NewTrack.SetTrackName(FName(*ParsedTrack.Name), Template);
+				NewTrack.CurveKeys = NewObject<UCurveFloat>(OwnerClass, NAME_None, RF_Public);
+				NewTrack.CurveKeys->bIsEventCurve = true;
+
+				for (const TArray<double>& Key : ParsedTrack.Keys)
+				{
+					NewTrack.CurveKeys->FloatCurve.AddKey(static_cast<float>(Key[0]), 0.0f);
+				}
+
+				int32 Idx = Template->EventTracks.Num();
+				Template->EventTracks.Add(NewTrack);
+				FTTTrackId TrackId;
+				TrackId.TrackType = FTTTrackBase::TT_Event;
+				TrackId.TrackIndex = Idx;
+				Template->AddDisplayTrack(TrackId);
+				EventCount++;
+			}
+			else if (ParsedTrack.Type == TEXT("vector"))
+			{
+				FTTVectorTrack NewTrack;
+				NewTrack.SetTrackName(FName(*ParsedTrack.Name), Template);
+				NewTrack.CurveVector = NewObject<UCurveVector>(OwnerClass, NAME_None, RF_Public);
+
+				for (const TArray<double>& Key : ParsedTrack.Keys)
+				{
+					FKeyHandle Hx = NewTrack.CurveVector->FloatCurves[0].AddKey(static_cast<float>(Key[0]), static_cast<float>(Key[1]));
+					FKeyHandle Hy = NewTrack.CurveVector->FloatCurves[1].AddKey(static_cast<float>(Key[0]), static_cast<float>(Key[2]));
+					FKeyHandle Hz = NewTrack.CurveVector->FloatCurves[2].AddKey(static_cast<float>(Key[0]), static_cast<float>(Key[3]));
+					if (ParsedTrack.InterpMode != RCIM_Linear)
+					{
+						NewTrack.CurveVector->FloatCurves[0].SetKeyInterpMode(Hx, ParsedTrack.InterpMode);
+						NewTrack.CurveVector->FloatCurves[1].SetKeyInterpMode(Hy, ParsedTrack.InterpMode);
+						NewTrack.CurveVector->FloatCurves[2].SetKeyInterpMode(Hz, ParsedTrack.InterpMode);
+					}
+				}
+
+				int32 Idx = Template->VectorTracks.Num();
+				Template->VectorTracks.Add(NewTrack);
+				FTTTrackId TrackId;
+				TrackId.TrackType = FTTTrackBase::TT_VectorInterp;
+				TrackId.TrackIndex = Idx;
+				Template->AddDisplayTrack(TrackId);
+				VectorCount++;
+			}
+			else if (ParsedTrack.Type == TEXT("color"))
+			{
+				FTTLinearColorTrack NewTrack;
+				NewTrack.SetTrackName(FName(*ParsedTrack.Name), Template);
+				NewTrack.CurveLinearColor = NewObject<UCurveLinearColor>(OwnerClass, NAME_None, RF_Public);
+
+				for (const TArray<double>& Key : ParsedTrack.Keys)
+				{
+					FKeyHandle Hr = NewTrack.CurveLinearColor->FloatCurves[0].AddKey(static_cast<float>(Key[0]), static_cast<float>(Key[1]));
+					FKeyHandle Hg = NewTrack.CurveLinearColor->FloatCurves[1].AddKey(static_cast<float>(Key[0]), static_cast<float>(Key[2]));
+					FKeyHandle Hb = NewTrack.CurveLinearColor->FloatCurves[2].AddKey(static_cast<float>(Key[0]), static_cast<float>(Key[3]));
+					FKeyHandle Ha = NewTrack.CurveLinearColor->FloatCurves[3].AddKey(static_cast<float>(Key[0]), static_cast<float>(Key[4]));
+					if (ParsedTrack.InterpMode != RCIM_Linear)
+					{
+						NewTrack.CurveLinearColor->FloatCurves[0].SetKeyInterpMode(Hr, ParsedTrack.InterpMode);
+						NewTrack.CurveLinearColor->FloatCurves[1].SetKeyInterpMode(Hg, ParsedTrack.InterpMode);
+						NewTrack.CurveLinearColor->FloatCurves[2].SetKeyInterpMode(Hb, ParsedTrack.InterpMode);
+						NewTrack.CurveLinearColor->FloatCurves[3].SetKeyInterpMode(Ha, ParsedTrack.InterpMode);
+					}
+				}
+
+				int32 Idx = Template->LinearColorTracks.Num();
+				Template->LinearColorTracks.Add(NewTrack);
+				FTTTrackId TrackId;
+				TrackId.TrackType = FTTTrackBase::TT_LinearColorInterp;
+				TrackId.TrackIndex = Idx;
+				Template->AddDisplayTrack(TrackId);
+				ColorCount++;
+			}
+
+			TracksCreated.Add(MakeShareable(new FJsonValueObject(TrackInfo)));
+		}
+
+		// Allocate pins (reads template to create track output pins)
+		TimelineNode->AllocateDefaultPins();
+
+		// Add node to graph
+		Graph->AddNode(TimelineNode, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+
+		// Position the node
+		TimelineNode->NodePosX = 0;
+		TimelineNode->NodePosY = 0;
+
+		// Cache node in GraphWriter for subsequent connect_pins/plan_json calls
+		FOliveGraphWriter& GW = FOliveGraphWriter::Get();
+		FString NodeId = GW.CacheExternalNode(AssetPath, TimelineNode);
+
+		// Build result data
+		TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
+		ResultData->SetStringField(TEXT("asset_path"), AssetPath);
+		ResultData->SetStringField(TEXT("graph"), GraphName);
+		ResultData->SetStringField(TEXT("node_id"), NodeId);
+		ResultData->SetStringField(TEXT("timeline_name"), TLName.ToString());
+
+		// Build summary message
+		TArray<FString> TypeCounts;
+		if (FloatCount > 0) TypeCounts.Add(FString::Printf(TEXT("%d float"), FloatCount));
+		if (VectorCount > 0) TypeCounts.Add(FString::Printf(TEXT("%d vector"), VectorCount));
+		if (ColorCount > 0) TypeCounts.Add(FString::Printf(TEXT("%d color"), ColorCount));
+		if (EventCount > 0) TypeCounts.Add(FString::Printf(TEXT("%d event"), EventCount));
+		FString TypeSummary = FString::Join(TypeCounts, TEXT(", "));
+		ResultData->SetStringField(TEXT("message"),
+			FString::Printf(TEXT("Created timeline '%s' with %d tracks (%s)"),
+				*TLName.ToString(), ParsedTracks.Num(), *TypeSummary));
+
+		// Tracks created
+		ResultData->SetArrayField(TEXT("tracks_created"), TracksCreated);
+
+		// Template properties
+		TSharedPtr<FJsonObject> TemplateProps = MakeShareable(new FJsonObject());
+		TemplateProps->SetNumberField(TEXT("length"), Length);
+		TemplateProps->SetBoolField(TEXT("auto_play"), bAutoPlay);
+		TemplateProps->SetBoolField(TEXT("loop"), bLoop);
+		TemplateProps->SetBoolField(TEXT("replicated"), bReplicated);
+		TemplateProps->SetBoolField(TEXT("ignore_time_dilation"), bIgnoreTimeDilation);
+		ResultData->SetObjectField(TEXT("template_properties"), TemplateProps);
+
+		// Pin manifest (using the existing helper)
+		ResultData->SetObjectField(TEXT("pins"), BuildPinManifest(TimelineNode));
+
+		// Add warnings
+		for (const FString& W : Warnings)
+		{
+			if (!ResultData->HasField(TEXT("warnings")))
+			{
+				ResultData->SetArrayField(TEXT("warnings"), TArray<TSharedPtr<FJsonValue>>());
+			}
+		}
+		if (Warnings.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> WarningsArray;
+			for (const FString& W : Warnings)
+			{
+				WarningsArray.Add(MakeShareable(new FJsonValueString(W)));
+			}
+			ResultData->SetArrayField(TEXT("warnings"), WarningsArray);
+		}
+
+		FOliveWriteResult Result = FOliveWriteResult::Success(ResultData);
+		Result.CreatedNodeIds.Add(NodeId);
+		return Result;
 	});
 
 	// Execute through pipeline
@@ -7558,16 +8182,30 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 					ResultData->SetArrayField(TEXT("wiring_errors"), ErrorsArr);
 				}
 
-				// Serialize warnings
-				if (PlanResult.Warnings.Num() > 0)
+				// Split warnings into regular warnings and design warnings
+				TArray<TSharedPtr<FJsonValue>> WarningsArr;
+				TArray<TSharedPtr<FJsonValue>> DesignWarningsArr;
+
+				for (const FString& Warn : PlanResult.Warnings)
 				{
-					TArray<TSharedPtr<FJsonValue>> WarningsArr;
-					WarningsArr.Reserve(PlanResult.Warnings.Num());
-					for (const FString& Warn : PlanResult.Warnings)
+					if (Warn.StartsWith(TEXT("INTERFACE_FUNCTION_HINT:")))
+					{
+						DesignWarningsArr.Add(MakeShared<FJsonValueString>(Warn));
+					}
+					else
 					{
 						WarningsArr.Add(MakeShared<FJsonValueString>(Warn));
 					}
+				}
+
+				if (WarningsArr.Num() > 0)
+				{
 					ResultData->SetArrayField(TEXT("warnings"), WarningsArr);
+				}
+				if (DesignWarningsArr.Num() > 0)
+				{
+					ResultData->SetArrayField(TEXT("design_warnings"), DesignWarningsArr);
+					ResultData->SetBoolField(TEXT("has_design_warnings"), true);
 				}
 
 				// Forward pin manifests for AI self-correction
@@ -7891,6 +8529,13 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 				ToolResult.Data->SetArrayField(TEXT("warnings"), *Warnings);
 			}
 
+			const TArray<TSharedPtr<FJsonValue>>* DesignWarnings = nullptr;
+			if (PipelineResult.ResultData->TryGetArrayField(TEXT("design_warnings"), DesignWarnings))
+			{
+				ToolResult.Data->SetArrayField(TEXT("design_warnings"), *DesignWarnings);
+				ToolResult.Data->SetBoolField(TEXT("has_design_warnings"), true);
+			}
+
 			FString SelfCorrectionHint;
 			if (PipelineResult.ResultData->TryGetStringField(TEXT("self_correction_hint"), SelfCorrectionHint))
 			{
@@ -7945,6 +8590,13 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 			if (PipelineResult.ResultData->TryGetArrayField(TEXT("warnings"), Warnings))
 			{
 				ToolResult.Data->SetArrayField(TEXT("warnings"), *Warnings);
+			}
+
+			const TArray<TSharedPtr<FJsonValue>>* DesignWarnings = nullptr;
+			if (PipelineResult.ResultData->TryGetArrayField(TEXT("design_warnings"), DesignWarnings))
+			{
+				ToolResult.Data->SetArrayField(TEXT("design_warnings"), *DesignWarnings);
+				ToolResult.Data->SetBoolField(TEXT("has_design_warnings"), true);
 			}
 
 			const TSharedPtr<FJsonObject>* PinManifests = nullptr;
@@ -8126,6 +8778,8 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintListTemplates(const
 
 	ResultData->SetArrayField(TEXT("templates"), TemplatesArray);
 	ResultData->SetNumberField(TEXT("count"), TemplatesArray.Num());
+	ResultData->SetStringField(TEXT("note"),
+		TEXT("Templates are curated patterns with tested structure. Consider using blueprint.get_template(template_id) to inspect one before building from scratch."));
 
 	return FOliveToolResult::Success(ResultData);
 }

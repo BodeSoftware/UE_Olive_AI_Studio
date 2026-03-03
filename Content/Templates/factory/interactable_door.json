@@ -1,0 +1,114 @@
+{
+    "template_id": "interactable_door",
+    "template_type": "factory",
+    "display_name": "Interactable Door",
+
+    "catalog_description": "Actor with pivot-based door, smooth rotation via Timeline, bIsOpen toggle, configurable angle. Use blueprint.create_timeline to add DoorTimeline after creation.",
+    "catalog_examples": "Door, Hatch, Flap, Drawbridge, Trapdoor",
+
+    "parameters": {
+        "door_name": {
+            "type": "string",
+            "default": "Door",
+            "description": "Name prefix for components and variables"
+        },
+        "open_angle": {
+            "type": "float",
+            "default": "90.0",
+            "description": "Yaw rotation when open (degrees)"
+        },
+        "start_open": {
+            "type": "bool",
+            "default": "false",
+            "description": "Start in the open position"
+        }
+    },
+
+    "presets": {
+        "StandardDoor": {
+            "door_name": "Door",
+            "open_angle": "90"
+        },
+        "SlowHeavyDoor": {
+            "door_name": "HeavyDoor",
+            "open_angle": "90"
+        },
+        "Hatch": {
+            "door_name": "Hatch",
+            "open_angle": "110"
+        },
+        "Trapdoor": {
+            "door_name": "Trapdoor",
+            "open_angle": "-90"
+        }
+    },
+
+    "blueprint": {
+        "type": "Actor",
+        "parent_class": "Actor",
+
+        "components": [
+            {
+                "class": "SceneComponent",
+                "name": "Root",
+                "is_root": true
+            },
+            {
+                "class": "StaticMeshComponent",
+                "name": "DoorFrame",
+                "parent": "Root",
+                "properties": {
+                    "CollisionProfileName": "BlockAll"
+                }
+            },
+            {
+                "class": "SceneComponent",
+                "name": "${door_name}Pivot",
+                "parent": "Root"
+            },
+            {
+                "class": "StaticMeshComponent",
+                "name": "${door_name}Mesh",
+                "parent": "${door_name}Pivot",
+                "properties": {
+                    "CollisionProfileName": "BlockAll"
+                }
+            }
+        ],
+
+        "variables": [
+            {
+                "name": "bIsOpen",
+                "type": "Boolean",
+                "default": "${start_open}",
+                "category": "${door_name}"
+            },
+            {
+                "name": "OpenAngle",
+                "type": "Float",
+                "default": "${open_angle}",
+                "category": "${door_name}"
+            }
+        ],
+
+        "event_dispatchers": [
+            {
+                "name": "On${door_name}Opened",
+                "params": []
+            },
+            {
+                "name": "On${door_name}Closed",
+                "params": []
+            }
+        ],
+
+        "functions": [
+            {
+                "name": "ToggleDoor",
+                "description": "Custom Event that toggles open/closed state. Flips bIsOpen and plays DoorTimeline forward (Play) or backward (Reverse). Must be a Custom Event (not a function) because Timeline nodes require EventGraph. If this Blueprint implements an interface like BPI_Interactable, the interface event (Interact) can call this directly since both live in EventGraph. After creating the timeline with blueprint.create_timeline, wire this event's exec to the timeline's Play or Reverse pin, and wire the track output through a Lerp into SetRelativeRotation -- using connect_pins or plan_json @references.",
+                "inputs": [],
+                "outputs": []
+            }
+        ]
+    }
+}

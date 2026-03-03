@@ -132,6 +132,15 @@ struct OLIVEAIEDITOR_API FOliveResolvedStep
 	 * Set by ResolveCallOp when FindFunction matches via InterfaceSearch.
 	 */
 	bool bIsInterfaceCall = false;
+
+	/**
+	 * Whether this event step resolved to an interface event.
+	 * When true, the executor should check for existing interface event nodes
+	 * via FindOverrideForFunction with the interface class, and CreateEventNode
+	 * should use SetFromField<UFunction> with bIsSelfContext=false.
+	 * Set by ResolveEventOp when a matching interface function is found.
+	 */
+	bool bIsInterfaceEvent = false;
 };
 
 /**

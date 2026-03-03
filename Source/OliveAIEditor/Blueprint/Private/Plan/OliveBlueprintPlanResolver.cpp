@@ -2127,24 +2127,90 @@ bool FOliveBlueprintPlanResolver::ResolveEventOp(
 		}
 	}
 
+	// ----------------------------------------------------------------
+	// Interface event detection: no-output interface functions are
+	// implemented as UK2Node_Event in EventGraph (not as function
+	// graphs). Search ImplementedInterfaces for a function matching
+	// the target name that passes FunctionCanBePlacedAsEvent.
+	// ----------------------------------------------------------------
+	if (!bIsNativeEvent && BP)
+	{
+		for (const FBPInterfaceDescription& InterfaceDesc : BP->ImplementedInterfaces)
+		{
+			if (!InterfaceDesc.Interface)
+			{
+				continue;
+			}
+
+			// For Blueprint Interfaces, functions live on SkeletonGeneratedClass.
+			// For native C++ interfaces, they live on InterfaceDesc.Interface directly.
+			const UClass* SearchClass = InterfaceDesc.Interface;
+			if (InterfaceDesc.Interface->ClassGeneratedBy)
+			{
+				UBlueprint* InterfaceBP = Cast<UBlueprint>(InterfaceDesc.Interface->ClassGeneratedBy);
+				if (InterfaceBP && InterfaceBP->SkeletonGeneratedClass)
+				{
+					SearchClass = InterfaceBP->SkeletonGeneratedClass;
+				}
+			}
+
+			UFunction* InterfaceFunc = SearchClass->FindFunctionByName(FName(*Step.Target));
+			if (!InterfaceFunc)
+			{
+				continue;
+			}
+
+			// Only match if this function can be placed as an event (no outputs).
+			// Interface functions WITH outputs are implemented as function graphs,
+			// not events. Those are handled by graph_target, not op: "event".
+			if (!UEdGraphSchema_K2::FunctionCanBePlacedAsEvent(InterfaceFunc))
+			{
+				UE_LOG(LogOlivePlanResolver, Log,
+					TEXT("Step '%s': Interface function '%s' on '%s' has outputs -- "
+						 "cannot be placed as event. Use graph_target instead."),
+					*Step.StepId, *Step.Target, *InterfaceDesc.Interface->GetName());
+				continue;
+			}
+
+			// Found a valid interface event.
+			Out.Properties.Add(TEXT("event_name"), InterfaceFunc->GetName());
+			Out.Properties.Add(TEXT("interface_class"), InterfaceDesc.Interface->GetPathName());
+			Out.bIsInterfaceEvent = true;
+
+			Out.ResolverNotes.Add(FOliveResolverNote{
+				TEXT("event_type"),
+				FString::Printf(TEXT("event: %s"), *Step.Target),
+				FString::Printf(TEXT("interface_event: %s on %s"),
+					*InterfaceFunc->GetName(), *InterfaceDesc.Interface->GetName()),
+				TEXT("Detected as interface event (no-output interface function placed as UK2Node_Event)")
+			});
+
+			UE_LOG(LogOlivePlanResolver, Log,
+				TEXT("Step '%s': Resolved as interface event '%s' on interface '%s'"),
+				*Step.StepId, *InterfaceFunc->GetName(), *InterfaceDesc.Interface->GetName());
+
+			return true;
+		}
+	}
+
 	// Native event or unresolved non-native event — pass through to NodeFactory
 	Out.Properties.Add(TEXT("event_name"), ResolvedEventName);
 
 	if (!bIsNativeEvent)
 	{
-		// Non-native event that didn't match any SCS delegate. NodeFactory's
-		// CreateEventNode has its own fallback SCS scan, so we pass through
-		// and let it try (it may find a match on parent class components, etc.).
+		// Non-native event that didn't match any SCS delegate or interface event.
+		// NodeFactory's CreateEventNode has its own fallback scans, so we pass
+		// through and let it try (it may find a match on parent class components, etc.).
 		FOliveResolverNote Note;
 		Note.Field = TEXT("event_name");
 		Note.OriginalValue = Step.Target;
 		Note.ResolvedValue = ResolvedEventName;
-		Note.Reason = TEXT("Not a native event override and no SCS delegate match found at resolve time. "
+		Note.Reason = TEXT("Not a native event override, SCS delegate, or interface event at resolve time. "
 			"Will be resolved by NodeFactory fallback.");
 		Out.ResolverNotes.Add(MoveTemp(Note));
 
 		UE_LOG(LogOlivePlanResolver, Log,
-			TEXT("Step '%s': Non-native event '%s' — no SCS delegate match, falling through to NodeFactory"),
+			TEXT("Step '%s': Non-native event '%s' — no SCS delegate or interface match, falling through to NodeFactory"),
 			*Step.StepId, *ResolvedEventName);
 	}
 

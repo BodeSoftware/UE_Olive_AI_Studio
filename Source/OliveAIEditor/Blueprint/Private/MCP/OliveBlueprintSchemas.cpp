@@ -41,6 +41,17 @@ namespace OliveBlueprintSchemas
 		Schema->SetArrayField(TEXT("required"), RequiredArray);
 	}
 
+	/**
+	 * Create a number (floating-point) property schema with a default value
+	 */
+	static TSharedPtr<FJsonObject> NumberProp(const FString& Description, double DefaultValue)
+	{
+		TSharedPtr<FJsonObject> Prop = MakeSchema(TEXT("number"));
+		Prop->SetStringField(TEXT("description"), Description);
+		Prop->SetNumberField(TEXT("default"), DefaultValue);
+		return Prop;
+	}
+
 	// ============================================================================
 	// Common Schema Components
 	// ============================================================================
@@ -975,6 +986,69 @@ namespace OliveBlueprintSchemas
 		Schema->SetStringField(TEXT("description"), TEXT("Set a property on a node. Pass routing_reason: 'op_unsupported' if plan path cannot express this operation."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path"), TEXT("graph"), TEXT("node_id"), TEXT("property"), TEXT("value")});
+
+		return Schema;
+	}
+
+	TSharedPtr<FJsonObject> BlueprintCreateTimeline()
+	{
+		TSharedPtr<FJsonObject> Properties = MakeProperties();
+
+		Properties->SetObjectField(TEXT("path"),
+			StringProp(TEXT("Blueprint asset path (e.g., '/Game/Blueprints/BP_Door')")));
+
+		Properties->SetObjectField(TEXT("graph"),
+			StringProp(TEXT("Event graph name (default: 'EventGraph'). Must be a ubergraph page.")));
+
+		Properties->SetObjectField(TEXT("timeline_name"),
+			StringProp(TEXT("Timeline variable name (e.g., 'DoorTimeline'). Auto-generated if omitted.")));
+
+		Properties->SetObjectField(TEXT("length"),
+			NumberProp(TEXT("Timeline length in seconds"), 5.0));
+
+		Properties->SetObjectField(TEXT("auto_play"),
+			BoolProp(TEXT("Start playing automatically on BeginPlay"), false));
+
+		Properties->SetObjectField(TEXT("loop"),
+			BoolProp(TEXT("Loop when finished"), false));
+
+		Properties->SetObjectField(TEXT("replicated"),
+			BoolProp(TEXT("Replicate timeline to clients"), false));
+
+		Properties->SetObjectField(TEXT("ignore_time_dilation"),
+			BoolProp(TEXT("Ignore global time dilation"), false));
+
+		// Track item schema
+		TSharedPtr<FJsonObject> TrackSchema = MakeSchema(TEXT("object"));
+		{
+			TSharedPtr<FJsonObject> TrackProps = MakeProperties();
+			TrackProps->SetObjectField(TEXT("name"),
+				StringProp(TEXT("Track name. Becomes the output pin name on the timeline node.")));
+			TrackProps->SetObjectField(TEXT("type"),
+				EnumProp(TEXT("Track type"), {TEXT("float"), TEXT("vector"), TEXT("color"), TEXT("event")}));
+			TrackProps->SetObjectField(TEXT("keys"),
+				ArrayProp(TEXT("Keyframe array. Float: [[time, value], ...]. Vector: [[time, x, y, z], ...]. "
+					"Color: [[time, r, g, b, a], ...]. Event: [[time, 0], ...]."),
+					MakeSchema(TEXT("array"))));
+			TrackProps->SetObjectField(TEXT("interp"),
+				EnumProp(TEXT("Interpolation mode (default: linear). Ignored for event tracks."),
+					{TEXT("linear"), TEXT("cubic"), TEXT("constant")}));
+			TrackSchema->SetStringField(TEXT("description"), TEXT("Track definition"));
+			TrackSchema->SetObjectField(TEXT("properties"), TrackProps);
+			AddRequired(TrackSchema, {TEXT("name"), TEXT("type"), TEXT("keys")});
+		}
+
+		Properties->SetObjectField(TEXT("tracks"),
+			ArrayProp(TEXT("Array of track definitions (at least one required). Each track produces an output pin on the timeline node."),
+				TrackSchema));
+
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		Schema->SetStringField(TEXT("description"),
+			TEXT("Create a Timeline node with tracks and curve data in a Blueprint event graph. "
+				"Returns the node ID and complete pin manifest for wiring with connect_pins or plan_json. "
+				"Timelines only work in Actor-based Blueprints (not Widget BPs, Component BPs, etc.)."));
+		Schema->SetObjectField(TEXT("properties"), Properties);
+		AddRequired(Schema, {TEXT("path"), TEXT("tracks")});
 
 		return Schema;
 	}

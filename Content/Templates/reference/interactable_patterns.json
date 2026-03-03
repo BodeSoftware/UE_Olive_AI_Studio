@@ -1,0 +1,38 @@
+{
+    "template_id": "interactable_patterns",
+    "template_type": "reference",
+    "display_name": "Interactable Architecture Patterns",
+
+    "catalog_description": "Architecture patterns for interactive objects: event-based interfaces, Timeline for smooth movement, state-driven toggles, pivot and slider components.",
+    "catalog_examples": "",
+
+    "tags": "interactable door gate switch lever chest interact interface event timeline smooth movement toggle async create_timeline",
+
+    "patterns": [
+        {
+            "name": "EventBasedInterfaces",
+            "description": "Interface functions without outputs become implementable events in EventGraph. This is critical for interactables because implementations often need multi-frame behavior (smooth rotation, animations, timed effects). Adding outputs forces synchronous function graphs on every implementation.",
+            "notes": "The most common mistake is adding a Bool output to Interact(). This prevents every implementing Blueprint from using Timeline, Delay, or Tick-driven interpolation. If you need a return value AND async behavior, use the hybrid pattern: the interface function returns immediately, then calls a Custom Event that handles the async work."
+        },
+        {
+            "name": "TimelineInterpolation",
+            "description": "For smooth finite animations (door rotation, gate sliding, platform lifting, UI fades), use a Timeline node created via blueprint.create_timeline. Timeline nodes have exec inputs (Play, PlayFromStart, Stop, Reverse, ReverseFromEnd) and track data outputs (each track name is a pin). The toggle event controls direction (Play vs Reverse based on state), while the track output feeds interpolation (alpha through Lerp into SetRelativeRotation/SetRelativeLocation). Timeline length controls animation speed.",
+            "notes": "Timelines are preferred over Tick+FInterpTo for interactables because they are idle when not playing (no per-frame cost), have built-in Finished events for triggering dispatchers, and support reverse playback natively. Wire timeline pins with connect_pins or reference them in plan_json via @node_id.TrackName. Use Tick+FInterpTo only for continuous motion that never stops (spinning fans, bobbing platforms)."
+        },
+        {
+            "name": "StateTogglePattern",
+            "description": "Interactables typically have a boolean state (bIsOpen, bIsActive, bIsLocked). The interact function checks the state, then plays the Timeline forward or in reverse. Event dispatchers notify listeners (UI, sound, other systems) when the Timeline finishes.",
+            "notes": "Separate the state change from the physical movement. ToggleDoor flips bIsOpen and calls Play/Reverse on the timeline. The Timeline's Finished output fires the Opened/Closed dispatcher. No Tick node needed."
+        },
+        {
+            "name": "PivotAndSliderComponents",
+            "description": "Rotating objects (doors, hatches) use a pivot SceneComponent as the rotation parent -- the mesh is a child of the pivot, so rotating the pivot swings the mesh. Sliding objects (gates, elevators) use a slider SceneComponent for the same reason with translation. This decouples the movement axis from the mesh's local origin.",
+            "notes": "Place the pivot at the hinge point (door edge, not center). Place the slider at the closed position. This way SetRelativeRotation(0,0,0) and SetRelativeLocation(0,0,0) both mean 'closed' regardless of where the actor is placed in the world."
+        },
+        {
+            "name": "InterfaceIntegration",
+            "description": "Interactables work best with a Blueprint Interface (e.g., BPI_Interactable) that declares Interact() with no outputs. The caller (player character) checks DoesImplementInterface or uses overlap events, then calls Interact via target_class -- no casting needed. Each interactable type implements the event differently.",
+            "notes": "Keep the interface minimal: one Interact event, optionally one pure function for UI text (GetInteractionText():String). The pure function is fine as a synchronous function graph. Do not add output pins to Interact unless you have a specific reason AND you accept that all implementations will be synchronous."
+        }
+    ]
+}

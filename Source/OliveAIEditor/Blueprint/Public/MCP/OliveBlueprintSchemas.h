@@ -260,6 +260,15 @@ namespace OliveBlueprintSchemas
 	 */
 	TSharedPtr<FJsonObject> BlueprintSetNodeProperty();
 
+	/**
+	 * Schema for blueprint.create_timeline
+	 * Create a Timeline node with tracks and curve data in an event graph.
+	 * Params: {path: string, graph?: string, timeline_name?: string, length?: number,
+	 *          auto_play?: bool, loop?: bool, replicated?: bool, ignore_time_dilation?: bool,
+	 *          tracks: [{name: string, type: "float"|"vector"|"color"|"event", keys: array, interp?: string}]}
+	 */
+	TSharedPtr<FJsonObject> BlueprintCreateTimeline();
+
 	// ============================================================================
 	// Plan JSON Tool Schemas
 	// ============================================================================

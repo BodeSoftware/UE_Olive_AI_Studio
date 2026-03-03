@@ -48,6 +48,180 @@
 DEFINE_LOG_CATEGORY(LogOlivePlanExecutor);
 
 // ============================================================================
+// ResolveSubPinSuffix — Static helper for SplitPin fallback
+// ============================================================================
+
+/**
+ * Determine which sub-pin suffix to use when splitting a struct pin.
+ * Checks for explicit hint from AI (e.g., @step.~Location_X -> "X"),
+ * then falls back to smart defaults based on target pin name or type.
+ *
+ * @param SourcePinHint The AI's original pin hint (may contain sub-pin suffix)
+ * @param StructPin The struct output pin that will be split
+ * @param TargetPin The scalar input pin we're trying to connect to
+ * @return Sub-pin suffix (e.g., "X", "Y", "Z", "Roll", "Pitch", "Yaw") or empty if undetermined
+ */
+static FString ResolveSubPinSuffix(
+    const FString& SourcePinHint,
+    const UEdGraphPin* StructPin,
+    const UEdGraphPin* TargetPin)
+{
+    // Known struct -> component name mappings (engine-stable)
+    struct FStructComponentMap
+    {
+        const TCHAR* StructName;
+        TArray<FString> Components;
+    };
+
+    // Build component lists for known structs
+    static const TMap<FString, TArray<FString>> KnownStructComponents = []()
+    {
+        TMap<FString, TArray<FString>> Map;
+        Map.Add(TEXT("Vector"),      { TEXT("X"), TEXT("Y"), TEXT("Z") });
+        Map.Add(TEXT("Vector2D"),    { TEXT("X"), TEXT("Y") });
+        Map.Add(TEXT("Vector4"),     { TEXT("X"), TEXT("Y"), TEXT("Z"), TEXT("W") });
+        Map.Add(TEXT("IntVector"),   { TEXT("X"), TEXT("Y"), TEXT("Z") });
+        Map.Add(TEXT("IntPoint"),    { TEXT("X"), TEXT("Y") });
+        Map.Add(TEXT("Rotator"),     { TEXT("Roll"), TEXT("Pitch"), TEXT("Yaw") });
+        Map.Add(TEXT("LinearColor"), { TEXT("R"), TEXT("G"), TEXT("B"), TEXT("A") });
+        Map.Add(TEXT("Color"),       { TEXT("R"), TEXT("G"), TEXT("B"), TEXT("A") });
+        return Map;
+    }();
+
+    // Collect all known suffixes for fast lookup
+    static const TSet<FString> AllKnownSuffixes = []()
+    {
+        TSet<FString> Set;
+        for (const auto& Pair : KnownStructComponents)
+        {
+            for (const FString& Comp : Pair.Value)
+            {
+                Set.Add(Comp);
+            }
+        }
+        return Set;
+    }();
+
+    // Get struct name from the pin's subcategory object
+    FString StructName;
+    if (StructPin->PinType.PinSubCategoryObject.IsValid())
+    {
+        StructName = StructPin->PinType.PinSubCategoryObject->GetName();
+    }
+
+    // Look up components for this struct type
+    const TArray<FString>* StructComponents = KnownStructComponents.Find(StructName);
+
+    // 1. Explicit hint from AI: check if hint ends with _Suffix
+    if (!SourcePinHint.IsEmpty())
+    {
+        FString CleanHint = SourcePinHint;
+        // Strip leading ~ for fuzzy hints
+        if (CleanHint.StartsWith(TEXT("~")))
+        {
+            CleanHint = CleanHint.Mid(1);
+        }
+
+        // Check for _Suffix pattern at the end of the hint
+        int32 LastUnderscore = INDEX_NONE;
+        CleanHint.FindLastChar(TEXT('_'), LastUnderscore);
+        if (LastUnderscore != INDEX_NONE && LastUnderscore < CleanHint.Len() - 1)
+        {
+            FString CandidateSuffix = CleanHint.Mid(LastUnderscore + 1);
+
+            // Check against known suffixes (case-insensitive)
+            for (const FString& Known : AllKnownSuffixes)
+            {
+                if (Known.Equals(CandidateSuffix, ESearchCase::IgnoreCase))
+                {
+                    UE_LOG(LogOlivePlanExecutor, Verbose,
+                        TEXT("  ResolveSubPinSuffix: explicit hint '%s' -> suffix '%s'"),
+                        *SourcePinHint, *Known);
+                    return Known;
+                }
+            }
+        }
+    }
+
+    // 2. Target pin name exact match: if target pin name IS a known component
+    if (TargetPin)
+    {
+        FString TargetName = TargetPin->PinName.ToString();
+
+        // Direct match against known suffixes
+        for (const FString& Known : AllKnownSuffixes)
+        {
+            if (Known.Equals(TargetName, ESearchCase::IgnoreCase))
+            {
+                // Verify this suffix belongs to the struct type (if known)
+                if (StructComponents)
+                {
+                    if (StructComponents->ContainsByPredicate(
+                        [&Known](const FString& C) { return C.Equals(Known, ESearchCase::IgnoreCase); }))
+                    {
+                        UE_LOG(LogOlivePlanExecutor, Verbose,
+                            TEXT("  ResolveSubPinSuffix: target pin '%s' exact match -> suffix '%s'"),
+                            *TargetName, *Known);
+                        return Known;
+                    }
+                }
+                else
+                {
+                    // Unknown struct but target name matches a known suffix -- use it
+                    UE_LOG(LogOlivePlanExecutor, Verbose,
+                        TEXT("  ResolveSubPinSuffix: target pin '%s' matches known suffix '%s' (unknown struct '%s')"),
+                        *TargetName, *Known, *StructName);
+                    return Known;
+                }
+            }
+        }
+
+        // 3. Target pin name ends with a component suffix
+        for (const FString& Known : AllKnownSuffixes)
+        {
+            if (TargetName.EndsWith(Known, ESearchCase::IgnoreCase) && TargetName.Len() > Known.Len())
+            {
+                // Verify this suffix belongs to the struct type (if known)
+                if (StructComponents)
+                {
+                    if (StructComponents->ContainsByPredicate(
+                        [&Known](const FString& C) { return C.Equals(Known, ESearchCase::IgnoreCase); }))
+                    {
+                        UE_LOG(LogOlivePlanExecutor, Verbose,
+                            TEXT("  ResolveSubPinSuffix: target pin '%s' ends with -> suffix '%s'"),
+                            *TargetName, *Known);
+                        return Known;
+                    }
+                }
+                else
+                {
+                    UE_LOG(LogOlivePlanExecutor, Verbose,
+                        TEXT("  ResolveSubPinSuffix: target pin '%s' ends with suffix '%s' (unknown struct '%s')"),
+                        *TargetName, *Known, *StructName);
+                    return Known;
+                }
+            }
+        }
+    }
+
+    // 4. Default first component for known struct types
+    if (StructComponents && StructComponents->Num() > 0)
+    {
+        const FString& DefaultSuffix = (*StructComponents)[0];
+        UE_LOG(LogOlivePlanExecutor, Verbose,
+            TEXT("  ResolveSubPinSuffix: defaulting to first component '%s' for struct '%s'"),
+            *DefaultSuffix, *StructName);
+        return DefaultSuffix;
+    }
+
+    // 5. Truly unknown struct -- no split attempted
+    UE_LOG(LogOlivePlanExecutor, Verbose,
+        TEXT("  ResolveSubPinSuffix: unknown struct '%s', cannot determine sub-pin suffix"),
+        *StructName);
+    return FString();
+}
+
+// ============================================================================
 // FOlivePlanExecutionContext Lookup Methods
 // ============================================================================
 
@@ -739,13 +913,30 @@ UEdGraphNode* FOlivePlanExecutor::FindExistingEventNode(
     }
     else
     {
-        // Search for UK2Node_Event override matching the event name.
-        // Use FBlueprintEditorUtils which is the same check as OliveNodeFactory.
+        const FName EventFName(*EventName);
+
+        // 1. Check parent class (native event overrides like ReceiveBeginPlay)
         if (Blueprint->ParentClass)
         {
-            const FName EventFName(*EventName);
             UK2Node_Event* ExistingEvent = FBlueprintEditorUtils::FindOverrideForFunction(
                 Blueprint, Blueprint->ParentClass, EventFName);
+
+            if (ExistingEvent && ExistingEvent->GetGraph() == Graph)
+            {
+                return ExistingEvent;
+            }
+        }
+
+        // 2. Check implemented interfaces (interface events like Interact, Execute)
+        for (const FBPInterfaceDescription& InterfaceDesc : Blueprint->ImplementedInterfaces)
+        {
+            if (!InterfaceDesc.Interface)
+            {
+                continue;
+            }
+
+            UK2Node_Event* ExistingEvent = FBlueprintEditorUtils::FindOverrideForFunction(
+                Blueprint, InterfaceDesc.Interface, EventFName);
 
             if (ExistingEvent && ExistingEvent->GetGraph() == Graph)
             {
@@ -2140,15 +2331,31 @@ void FOlivePlanExecutor::PhaseWireData(
             else
             {
                 Context.FailedConnectionCount++;
+
+                // Use DATA_WIRE_INCOMPATIBLE for type mismatches (diagnostic-enriched),
+                // DATA_PIN_NOT_FOUND for pin resolution failures (existing behavior)
+                const TCHAR* ErrorCode = Result.bIsTypeIncompatible
+                    ? TEXT("DATA_WIRE_INCOMPATIBLE")
+                    : TEXT("DATA_PIN_NOT_FOUND");
+
+                FString SuggestionText;
+                if (Result.bIsTypeIncompatible && Result.Suggestions.Num() > 0)
+                {
+                    // Alternatives are already formatted with [confidence] prefix
+                    SuggestionText = FString::Join(Result.Suggestions, TEXT("\n"));
+                }
+                else if (Result.Suggestions.Num() > 0)
+                {
+                    SuggestionText = FString::Printf(TEXT("Available pins: %s"),
+                        *FString::Join(Result.Suggestions, TEXT(", ")));
+                }
+
                 Context.WiringErrors.Add(FOliveIRBlueprintPlanError::MakeStepError(
-                    TEXT("DATA_PIN_NOT_FOUND"),
+                    ErrorCode,
                     Step.StepId,
                     FString::Printf(TEXT("/steps/inputs/%s"), *PinKey),
                     Result.ErrorMessage,
-                    Result.Suggestions.Num() > 0
-                        ? FString::Printf(TEXT("Available pins: %s"),
-                            *FString::Join(Result.Suggestions, TEXT(", ")))
-                        : TEXT("")));
+                    SuggestionText));
             }
         }
     }
@@ -2538,6 +2745,17 @@ FOliveSmartWireResult FOlivePlanExecutor::WireDataConnection(
     }
 
     FOlivePinConnector& Connector = FOlivePinConnector::Get();
+
+    // Probe to detect if conversion will be needed (for ConversionNote tracking).
+    // This is more robust than post-hoc LinkedTo heuristics, especially when
+    // the source pin already has connections from previous wiring iterations.
+    const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
+    FPinConnectionResponse ProbeResponse = K2Schema->CanCreateConnection(RealSourcePin, RealTargetPin);
+    const bool bWillNeedConversion =
+        (ProbeResponse.Response == CONNECT_RESPONSE_MAKE_WITH_CONVERSION_NODE);
+
+    const int32 SourceLinkCountBefore = RealSourcePin->LinkedTo.Num();
+
     FOliveBlueprintWriteResult ConnectResult = Connector.Connect(RealSourcePin, RealTargetPin, /*bAllowConversion=*/true);
 
     if (ConnectResult.bSuccess)
@@ -2548,20 +2766,10 @@ FOliveSmartWireResult FOlivePlanExecutor::WireDataConnection(
         Result.SourceMatchMethod = SourceMatchMethod;
         Result.TargetMatchMethod = TargetMatchMethod;
 
-        // Check if auto-conversion inserted a node.
-        // When PinConnector inserts a conversion node, the source pin is
-        // connected to the conversion node's input (not the original target).
-        //
-        // ASSUMPTION: After PinConnector::Connect with conversion, the conversion node's
-        // input pin is the first (and typically only new) entry in LinkedTo. This holds
-        // because InsertConversionNode connects Source->ConversionInput then
-        // ConversionOutput->Target, so Source.LinkedTo[0] is the conversion input pin.
-        // If InsertConversionNode ever changes link ordering, this detection will break.
-        // Verify if modifying PinConnector.
-        const bool bConversionInserted = (RealSourcePin->LinkedTo.Num() > 0 &&
-            RealSourcePin->LinkedTo[0] != RealTargetPin);
-
-        if (bConversionInserted)
+        // Record conversion note if a conversion node was auto-inserted.
+        // We use the probe result rather than post-hoc LinkedTo heuristics,
+        // which is robust against multi-connection and link ordering changes.
+        if (bWillNeedConversion)
         {
             FOliveConversionNote Note;
             Note.SourceStep = SourceStepId;
@@ -2571,12 +2779,17 @@ FOliveSmartWireResult FOlivePlanExecutor::WireDataConnection(
             Note.FromType = SourcePin->TypeDisplayString;
             Note.ToType = TargetPin->TypeDisplayString;
 
-            // The conversion node is the intermediate between source and target.
-            // RealSourcePin->LinkedTo[0] is the conversion node's input pin.
-            UEdGraphNode* ConvNode = RealSourcePin->LinkedTo[0]->GetOwningNode();
-            if (ConvNode)
+            // Find the conversion node: it's the new link that wasn't there before.
+            // After TryCreateConnection with conversion, SourcePin is linked to the
+            // conversion node's input (not TargetPin directly).
+            for (int32 i = SourceLinkCountBefore; i < RealSourcePin->LinkedTo.Num(); ++i)
             {
-                Note.ConversionNodeType = ConvNode->GetClass()->GetName();
+                UEdGraphNode* PossibleConv = RealSourcePin->LinkedTo[i]->GetOwningNode();
+                if (PossibleConv && PossibleConv != TargetNode)
+                {
+                    Note.ConversionNodeType = PossibleConv->GetClass()->GetName();
+                    break;
+                }
             }
 
             UE_LOG(LogOlivePlanExecutor, Log,
@@ -2603,11 +2816,118 @@ FOliveSmartWireResult FOlivePlanExecutor::WireDataConnection(
     }
     else
     {
-        Result.ErrorMessage = FString::Printf(
-            TEXT("Pin connection failed (%s.%s -> %s.%s): %s"),
-            *SourceStepId, *SourcePin->PinName,
-            *TargetStepId, *TargetPin->PinName,
-            ConnectResult.Errors.Num() > 0 ? *ConnectResult.Errors[0] : TEXT("Unknown"));
+        // --------------------------------------------------------
+        // SplitPin fallback: Struct output -> Scalar input
+        // When a struct output (Vector, Rotator, etc.) fails to
+        // connect to a scalar input (Float, Double), split the
+        // struct pin and connect the appropriate sub-pin.
+        // --------------------------------------------------------
+        bool bSplitPinRecovery = false;
+
+        if (RealSourcePin->PinType.PinCategory == UEdGraphSchema_K2::PC_Struct
+            && RealSourcePin->SubPins.Num() == 0  // Not already split
+            && !RealSourcePin->bHidden)            // Not hidden
+        {
+            if (K2Schema->CanSplitStructPin(*RealSourcePin))
+            {
+                // Determine which sub-pin to target
+                FString SubPinSuffix = ResolveSubPinSuffix(
+                    SourcePinHint, RealSourcePin, RealTargetPin);
+
+                if (!SubPinSuffix.IsEmpty())
+                {
+                    // Perform the split
+                    K2Schema->SplitPin(RealSourcePin, /*bNotify=*/true);
+
+                    // Find the sub-pin: format is {ParentPinName}_{ComponentName}
+                    FString SubPinName = FString::Printf(TEXT("%s_%s"),
+                        *RealSourcePin->PinName.ToString(), *SubPinSuffix);
+
+                    UEdGraphPin* SubPin = nullptr;
+                    for (UEdGraphPin* SP : RealSourcePin->SubPins)
+                    {
+                        if (SP && SP->PinName.ToString().Equals(SubPinName, ESearchCase::IgnoreCase))
+                        {
+                            SubPin = SP;
+                            break;
+                        }
+                    }
+
+                    if (SubPin)
+                    {
+                        // Re-attempt connection with the sub-pin
+                        FOliveBlueprintWriteResult SplitConnectResult =
+                            Connector.Connect(SubPin, RealTargetPin, /*bAllowConversion=*/true);
+
+                        if (SplitConnectResult.bSuccess)
+                        {
+                            bSplitPinRecovery = true;
+                            Result.bSuccess = true;
+                            Result.ResolvedSourcePin = SubPin->PinName.ToString();
+                            Result.ResolvedTargetPin = TargetPin->PinName;
+                            Result.SourceMatchMethod = SourceMatchMethod + TEXT("_split_pin");
+                            Result.TargetMatchMethod = TargetMatchMethod;
+
+                            // Log conversion note for SplitPin
+                            FOliveConversionNote Note;
+                            Note.SourceStep = SourceStepId;
+                            Note.TargetStep = TargetStepId;
+                            Note.SourcePinName = SourcePin->PinName;
+                            Note.TargetPinName = TargetPin->PinName;
+                            Note.FromType = SourcePin->TypeDisplayString;
+                            Note.ToType = TargetPin->TypeDisplayString;
+                            Note.ConversionNodeType = FString::Printf(
+                                TEXT("SplitPin(%s)"), *SubPinSuffix);
+
+                            UE_LOG(LogOlivePlanExecutor, Log,
+                                TEXT("SplitPin recovery: %s.%s -> %s.%s via sub-pin %s"),
+                                *SourceStepId, *SourcePin->PinName,
+                                *TargetStepId, *TargetPin->PinName,
+                                *SubPinName);
+
+                            Context.Warnings.Add(FString::Printf(
+                                TEXT("SplitPin: connected %s.%s (sub-pin %s) -> %s.%s"),
+                                *SourceStepId, *SourcePin->PinName,
+                                *SubPinSuffix,
+                                *TargetStepId, *TargetPin->PinName));
+
+                            Context.ConversionNotes.Add(MoveTemp(Note));
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!bSplitPinRecovery)
+        {
+            // Enriched failure path with structured wiring diagnostic
+            if (ConnectResult.WiringDiagnostic.IsSet())
+            {
+                const FOliveWiringDiagnostic& Diag = ConnectResult.WiringDiagnostic.GetValue();
+                Result.bIsTypeIncompatible = true;
+                Result.ErrorMessage = FString::Printf(
+                    TEXT("Pin connection failed (%s.%s [%s] -> %s.%s [%s]): %s"),
+                    *SourceStepId, *SourcePin->PinName, *Diag.SourceTypeName,
+                    *TargetStepId, *TargetPin->PinName, *Diag.TargetTypeName,
+                    *Diag.SchemaMessage);
+
+                // Surface alternatives as suggestions in the wiring error
+                for (const FOliveWiringAlternative& Alt : Diag.Alternatives)
+                {
+                    Result.Suggestions.Add(FString::Printf(TEXT("[%s] %s: %s"),
+                        *Alt.Confidence, *Alt.Label, *Alt.Action));
+                }
+            }
+            else
+            {
+                // Fallback to bare error string
+                Result.ErrorMessage = FString::Printf(
+                    TEXT("Pin connection failed (%s.%s -> %s.%s): %s"),
+                    *SourceStepId, *SourcePin->PinName,
+                    *TargetStepId, *TargetPin->PinName,
+                    ConnectResult.Errors.Num() > 0 ? *ConnectResult.Errors[0] : TEXT("Unknown"));
+            }
+        }
     }
 
     return Result;
@@ -3178,10 +3498,13 @@ void FOlivePlanExecutor::PhasePreCompileValidation(
                 if (bIsInterfaceGraph)
                 {
                     Context.PreCompileIssues.Add(FString::Printf(
-                        TEXT("INTERFACE_FUNCTION_HINT: This is an interface function with an unwired return value '%s'. "
-                             "If you don't need a return value, consider redesigning the interface function without outputs — "
-                             "this makes it an implementable event that supports Timelines, Delays, and latent actions."),
-                        *Pin->GetName()));
+                        TEXT("INTERFACE_FUNCTION_HINT: Interface function '%s' has unwired return pin '%s' (%s). "
+                             "Functions WITH outputs become synchronous function graphs -- no Timelines, Delays, or latent nodes allowed. "
+                             "If this function's implementations need smooth movement, animations, or multi-frame behavior, "
+                             "remove the outputs from the interface to make it an implementable event instead. "
+                             "If you genuinely need BOTH a return value AND async behavior, use the hybrid pattern: "
+                             "function returns immediately, then calls a Custom Event for the async work."),
+                        *Context.GraphName, *Pin->GetName(), *TypeName));
                 }
 
                 UE_LOG(LogOlivePlanExecutor, Warning,

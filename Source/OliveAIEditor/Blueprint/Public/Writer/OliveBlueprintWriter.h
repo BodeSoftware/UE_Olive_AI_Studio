@@ -7,6 +7,7 @@
 #include "IR/BlueprintIR.h"
 #include "OliveBlueprintTypes.h"
 #include "Services/OliveValidationEngine.h"
+#include "OliveWiringDiagnostic.h"
 #include "OliveBlueprintWriter.generated.h"
 
 // Forward declarations
@@ -62,6 +63,11 @@ struct OLIVEAIEDITOR_API FOliveBlueprintWriteResult
 	/** Compile errors if compilation failed */
 	UPROPERTY()
 	TArray<FString> CompileErrors;
+
+	/** Structured wiring diagnostic when a pin connection fails.
+	 *  Only populated by FOlivePinConnector::Connect() on CONNECT_RESPONSE_DISALLOW.
+	 *  Not a UPROPERTY -- only used in C++ code paths. */
+	TOptional<FOliveWiringDiagnostic> WiringDiagnostic;
 
 	// ============================================================================
 	// Factory Methods

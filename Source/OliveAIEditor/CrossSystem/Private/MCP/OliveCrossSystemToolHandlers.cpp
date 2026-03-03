@@ -1475,13 +1475,12 @@ void FOliveCrossSystemToolHandlers::RegisterCommunityTools()
 
 	Registry.RegisterTool(
 		TEXT("olive.search_community_blueprints"),
-		TEXT("Search ~150K real-world community Blueprints for gameplay patterns like weapons, pickups, "
-			"inventory, interaction, AI, movement, doors, health systems, and more. "
-			"Returns compact graph summaries showing node flow, data wiring, and pin defaults "
-			"so you can see how other developers structured similar systems. "
-			"Useful when building gameplay systems to discover common variable layouts, "
-			"component choices, and wiring patterns you might not think of. "
-			"Results prefer UE 5.0+ examples. Quality varies — adapt rather than copy."),
+		TEXT("Search ~150K real-world community Blueprints for gameplay patterns. "
+			"Two modes: 'browse' returns compact summaries (title, type, node_count, description snippet) "
+			"for scanning many results quickly. 'detail' (default) returns full graph data. "
+			"Recommended workflow: browse first with max_results:15-20, then fetch full detail "
+			"on 3-5 promising entries using the 'ids' parameter. "
+			"Results prefer UE 5.0+ examples. Quality varies -- adapt rather than copy."),
 		OliveCrossSystemSchemas::CommunitySearch(),
 		FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleSearchCommunityBlueprints),
 		{TEXT("crosssystem"), TEXT("read")},
@@ -1494,22 +1493,51 @@ void FOliveCrossSystemToolHandlers::RegisterCommunityTools()
 
 FOliveToolResult FOliveCrossSystemToolHandlers::HandleSearchCommunityBlueprints(const TSharedPtr<FJsonObject>& Params)
 {
-	// --- Parameter extraction ---
+	// --- Mode extraction ---
+	FString Mode = TEXT("detail");
+	Params->TryGetStringField(TEXT("mode"), Mode);
+	Mode = Mode.ToLower();
+	const bool bIsBrowseMode = (Mode == TEXT("browse"));
+
+	// --- IDs extraction (for targeted detail fetch) ---
+	TArray<FString> RequestedIds;
+	const TArray<TSharedPtr<FJsonValue>>* IdsArray = nullptr;
+	if (Params->TryGetArrayField(TEXT("ids"), IdsArray) && IdsArray)
+	{
+		for (const TSharedPtr<FJsonValue>& Val : *IdsArray)
+		{
+			FString Id;
+			if (Val->TryGetString(Id) && !Id.IsEmpty())
+			{
+				RequestedIds.Add(Id);
+			}
+		}
+	}
+	const bool bHasIds = RequestedIds.Num() > 0;
+
+	// --- Query extraction ---
 	FString Query;
-	if (!Params->TryGetStringField(TEXT("query"), Query) || Query.IsEmpty())
+	Params->TryGetStringField(TEXT("query"), Query);
+
+	// query is required unless ids are provided
+	if (Query.IsEmpty() && !bHasIds)
 	{
 		return FOliveToolResult::Error(TEXT("MISSING_PARAM"),
-			TEXT("'query' is required"),
-			TEXT("Provide search terms like 'gun fire reload'"));
+			TEXT("'query' is required (unless 'ids' is provided)"),
+			TEXT("Provide search terms like 'gun fire reload' or use 'ids' to fetch specific entries"));
 	}
 
 	FString TypeFilter;
 	Params->TryGetStringField(TEXT("type"), TypeFilter);
 
-	int32 MaxResults = 5;
+	// Browse mode allows more results (compact, low token cost)
+	const int32 MaxResultsCap = bIsBrowseMode ? 20 : 10;
+	int32 MaxResults = bIsBrowseMode ? 10 : 5; // default differs by mode
 	if (Params->HasField(TEXT("max_results")))
 	{
-		MaxResults = FMath::Clamp(static_cast<int32>(Params->GetNumberField(TEXT("max_results"))), 1, 10);
+		MaxResults = FMath::Clamp(
+			static_cast<int32>(Params->GetNumberField(TEXT("max_results"))),
+			1, MaxResultsCap);
 	}
 
 	int32 Offset = 0;
@@ -1522,14 +1550,98 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleSearchCommunityBlueprints(
 	OpenCommunityDatabase();
 	if (!CommunityDb.IsValid())
 	{
-		// Database not available — return empty result, NOT an error
+		// Database not available -- return empty result, NOT an error
 		TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
 		TArray<TSharedPtr<FJsonValue>> EmptyArray;
 		Result->SetArrayField(TEXT("results"), EmptyArray);
 		Result->SetNumberField(TEXT("count"), 0);
 		Result->SetStringField(TEXT("note"),
-			TEXT("Community blueprint index not found. This is an optional feature — place community_blueprints.db in Content/CommunityBlueprints/."));
+			TEXT("Community blueprint index not found. This is an optional feature -- place community_blueprints.db in Content/CommunityBlueprints/."));
 		return FOliveToolResult::Success(Result);
+	}
+
+	// --- IDs fetch path (direct slug lookup, no FTS) ---
+	if (bHasIds)
+	{
+		// Clamp to max 10 IDs per request
+		if (RequestedIds.Num() > 10)
+		{
+			RequestedIds.SetNum(10);
+		}
+
+		// Build SQL with IN clause using placeholders
+		FString Placeholders;
+		for (int32 i = 0; i < RequestedIds.Num(); ++i)
+		{
+			if (i > 0) Placeholders += TEXT(",");
+			Placeholders += TEXT("?");
+		}
+
+		const FString IdSql = FString::Printf(TEXT(
+			"SELECT b.slug, b.title, b.type, b.ue_version, b.node_count, "
+			"b.functions, b.variables, b.components, b.compact, b.url "
+			"FROM blueprints b "
+			"WHERE b.slug IN (%s)"), *Placeholders);
+
+		FSQLitePreparedStatement IdStmt = CommunityDb->PrepareStatement(
+			*IdSql, ESQLitePreparedStatementFlags::None);
+
+		if (!IdStmt.IsValid())
+		{
+			return FOliveToolResult::Error(TEXT("DB_ERROR"),
+				FString::Printf(TEXT("Failed to prepare ID lookup: %s"),
+					*CommunityDb->GetLastError()),
+				TEXT("Check database integrity"));
+		}
+
+		for (int32 i = 0; i < RequestedIds.Num(); ++i)
+		{
+			IdStmt.SetBindingValueByIndex(i + 1, RequestedIds[i]);
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Results;
+		IdStmt.Execute([&Results](const FSQLitePreparedStatement& Row)
+			-> ESQLitePreparedStatementExecuteRowResult
+		{
+			// Same column extraction as the full detail path
+			TSharedPtr<FJsonObject> Entry = MakeShared<FJsonObject>();
+			FString Slug, Title, Type, UeVersion, Functions, Variables, Components, Compact, Url;
+			int32 NodeCount = 0;
+
+			Row.GetColumnValueByIndex(0, Slug);
+			Row.GetColumnValueByIndex(1, Title);
+			Row.GetColumnValueByIndex(2, Type);
+			Row.GetColumnValueByIndex(3, UeVersion);
+			Row.GetColumnValueByIndex(4, NodeCount);
+			Row.GetColumnValueByIndex(5, Functions);
+			Row.GetColumnValueByIndex(6, Variables);
+			Row.GetColumnValueByIndex(7, Components);
+			Row.GetColumnValueByIndex(8, Compact);
+			Row.GetColumnValueByIndex(9, Url);
+
+			Entry->SetStringField(TEXT("id"), Slug);
+			Entry->SetStringField(TEXT("title"), Title);
+			Entry->SetStringField(TEXT("type"), Type);
+			Entry->SetStringField(TEXT("ue_version"), UeVersion);
+			Entry->SetNumberField(TEXT("node_count"), NodeCount);
+			Entry->SetStringField(TEXT("functions"), Functions);
+			Entry->SetStringField(TEXT("variables"), Variables);
+			if (!Components.IsEmpty())
+			{
+				Entry->SetStringField(TEXT("components"), Components);
+			}
+			Entry->SetStringField(TEXT("compact"), Compact);
+			Entry->SetStringField(TEXT("url"), Url);
+
+			Results.Add(MakeShared<FJsonValueObject>(Entry));
+			return ESQLitePreparedStatementExecuteRowResult::Continue;
+		});
+
+		TSharedPtr<FJsonObject> Response = MakeShared<FJsonObject>();
+		Response->SetArrayField(TEXT("results"), Results);
+		Response->SetNumberField(TEXT("count"), Results.Num());
+		Response->SetStringField(TEXT("mode"), TEXT("detail"));
+		return FOliveToolResult::Success(Response);
 	}
 
 	// --- Build FTS5 query string ---
@@ -1586,6 +1698,106 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleSearchCommunityBlueprints(
 		// If count fails, TotalMatches stays 0 -- we'll omit it from the response
 	}
 
+	// --- Browse mode (compact summaries) ---
+	if (bIsBrowseMode)
+	{
+		const TCHAR* BrowseSqlWithoutType = TEXT(
+			"SELECT b.slug, b.title, b.type, b.ue_version, b.node_count, "
+			"SUBSTR(b.compact, 1, 150) "
+			"FROM blueprints_fts fts "
+			"JOIN blueprints b ON b.slug = fts.slug "
+			"WHERE blueprints_fts MATCH ? "
+			"ORDER BY "
+			"CASE WHEN CAST(b.ue_version AS REAL) >= 5.0 THEN 0 ELSE 1 END, "
+			"rank "
+			"LIMIT ? OFFSET ?");
+
+		const TCHAR* BrowseSqlWithType = TEXT(
+			"SELECT b.slug, b.title, b.type, b.ue_version, b.node_count, "
+			"SUBSTR(b.compact, 1, 150) "
+			"FROM blueprints_fts fts "
+			"JOIN blueprints b ON b.slug = fts.slug "
+			"WHERE blueprints_fts MATCH ? AND b.type = ? "
+			"ORDER BY "
+			"CASE WHEN CAST(b.ue_version AS REAL) >= 5.0 THEN 0 ELSE 1 END, "
+			"rank "
+			"LIMIT ? OFFSET ?");
+
+		FSQLitePreparedStatement BrowseStmt = CommunityDb->PrepareStatement(
+			bHasTypeFilter ? BrowseSqlWithType : BrowseSqlWithoutType,
+			ESQLitePreparedStatementFlags::None);
+
+		if (!BrowseStmt.IsValid())
+		{
+			return FOliveToolResult::Error(TEXT("DB_ERROR"),
+				FString::Printf(TEXT("Failed to prepare browse query: %s"),
+					*CommunityDb->GetLastError()),
+				TEXT("Check database integrity"));
+		}
+
+		int32 BrowseBindIdx = 1;
+		BrowseStmt.SetBindingValueByIndex(BrowseBindIdx++, FtsQuery);
+		if (bHasTypeFilter)
+		{
+			BrowseStmt.SetBindingValueByIndex(BrowseBindIdx++, TypeFilter);
+		}
+		BrowseStmt.SetBindingValueByIndex(BrowseBindIdx++, MaxResults);
+		BrowseStmt.SetBindingValueByIndex(BrowseBindIdx++, Offset);
+
+		TArray<TSharedPtr<FJsonValue>> Results;
+
+		BrowseStmt.Execute([&Results](const FSQLitePreparedStatement& Row)
+			-> ESQLitePreparedStatementExecuteRowResult
+		{
+			TSharedPtr<FJsonObject> Entry = MakeShared<FJsonObject>();
+			FString Slug, Title, Type, UeVersion, DescSnippet;
+			int32 NodeCount = 0;
+
+			Row.GetColumnValueByIndex(0, Slug);
+			Row.GetColumnValueByIndex(1, Title);
+			Row.GetColumnValueByIndex(2, Type);
+			Row.GetColumnValueByIndex(3, UeVersion);
+			Row.GetColumnValueByIndex(4, NodeCount);
+			Row.GetColumnValueByIndex(5, DescSnippet);
+
+			Entry->SetStringField(TEXT("id"), Slug);
+			Entry->SetStringField(TEXT("title"), Title);
+			Entry->SetStringField(TEXT("type"), Type);
+			Entry->SetStringField(TEXT("ue_version"), UeVersion);
+			Entry->SetNumberField(TEXT("node_count"), NodeCount);
+			if (!DescSnippet.IsEmpty())
+			{
+				Entry->SetStringField(TEXT("description"), DescSnippet);
+			}
+
+			Results.Add(MakeShared<FJsonValueObject>(Entry));
+			return ESQLitePreparedStatementExecuteRowResult::Continue;
+		});
+
+		TSharedPtr<FJsonObject> Response = MakeShared<FJsonObject>();
+		Response->SetArrayField(TEXT("results"), Results);
+		Response->SetNumberField(TEXT("count"), Results.Num());
+		Response->SetStringField(TEXT("mode"), TEXT("browse"));
+
+		if (TotalMatches > 0)
+		{
+			Response->SetNumberField(TEXT("total_matches"), static_cast<double>(TotalMatches));
+			Response->SetBoolField(TEXT("has_more"), (Offset + Results.Num()) < TotalMatches);
+		}
+
+		if (TotalMatches > 0 && (Offset + Results.Num()) < TotalMatches)
+		{
+			Response->SetStringField(TEXT("note"),
+				FString::Printf(TEXT("Showing %d of %lld matches (browse mode). "
+					"Use 'ids' with mode:'detail' to fetch full data for specific entries. "
+					"Use offset=%d for more results."),
+					Results.Num(), TotalMatches, Offset + Results.Num()));
+		}
+
+		return FOliveToolResult::Success(Response);
+	}
+
+	// --- Detail mode with query (existing path) ---
 	const TCHAR* SqlWithoutType = TEXT(
 		"SELECT b.slug, b.title, b.type, b.ue_version, b.node_count, "
 		"b.functions, b.variables, b.components, b.compact, b.url "
@@ -1638,11 +1850,12 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleSearchCommunityBlueprints(
 		TSharedPtr<FJsonObject> Entry = MakeShared<FJsonObject>();
 
 		// Column indices match SELECT order:
-		// 0=slug (skip), 1=title, 2=type, 3=ue_version, 4=node_count,
+		// 0=slug, 1=title, 2=type, 3=ue_version, 4=node_count,
 		// 5=functions, 6=variables, 7=components, 8=compact, 9=url
-		FString Title, Type, UeVersion, Functions, Variables, Components, Compact, Url;
+		FString Slug, Title, Type, UeVersion, Functions, Variables, Components, Compact, Url;
 		int32 NodeCount = 0;
 
+		Row.GetColumnValueByIndex(0, Slug);
 		Row.GetColumnValueByIndex(1, Title);
 		Row.GetColumnValueByIndex(2, Type);
 		Row.GetColumnValueByIndex(3, UeVersion);
@@ -1653,6 +1866,7 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleSearchCommunityBlueprints(
 		Row.GetColumnValueByIndex(8, Compact);
 		Row.GetColumnValueByIndex(9, Url);
 
+		Entry->SetStringField(TEXT("id"), Slug);
 		Entry->SetStringField(TEXT("title"), Title);
 		Entry->SetStringField(TEXT("type"), Type);
 		Entry->SetStringField(TEXT("ue_version"), UeVersion);
@@ -1681,6 +1895,7 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleSearchCommunityBlueprints(
 	TSharedPtr<FJsonObject> Response = MakeShared<FJsonObject>();
 	Response->SetArrayField(TEXT("results"), Results);
 	Response->SetNumberField(TEXT("count"), Results.Num());
+	Response->SetStringField(TEXT("mode"), TEXT("detail"));
 
 	// Total matches and pagination hint
 	if (TotalMatches > 0)
@@ -1694,13 +1909,13 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleSearchCommunityBlueprints(
 	if (bHasMore)
 	{
 		Response->SetStringField(TEXT("note"),
-			FString::Printf(TEXT("Showing %d of %lld matches. Quality varies — browse 2-3 pages before committing to a pattern. Use offset=%d for next page."),
+			FString::Printf(TEXT("Showing %d of %lld matches. Quality varies -- browse 2-3 pages before committing to a pattern. Use offset=%d for next page."),
 				Results.Num(), TotalMatches, Offset + Results.Num()));
 	}
 	else
 	{
 		Response->SetStringField(TEXT("note"),
-			TEXT("Community examples from blueprintue.com. Quality varies — use your judgment on which patterns to follow."));
+			TEXT("Community examples from blueprintue.com. Quality varies -- use your judgment on which patterns to follow."));
 	}
 
 	return FOliveToolResult::Success(Response);

@@ -323,13 +323,21 @@ namespace OliveCrossSystemSchemas
 		Props->SetObjectField(TEXT("query"),
 			OliveBlueprintSchemas::StringProp(TEXT("Search terms (e.g. 'gun fire reload', 'pickup overlap interact', 'health damage')")));
 		Props->SetObjectField(TEXT("type"),
-			OliveBlueprintSchemas::StringProp(TEXT("Optional: filter by asset type — 'blueprint', 'material', 'pcg'. Omit to search all types.")));
+			OliveBlueprintSchemas::StringProp(TEXT("Optional: filter by asset type -- 'blueprint', 'material', 'pcg'. Omit to search all types.")));
 		Props->SetObjectField(TEXT("max_results"),
-			OliveBlueprintSchemas::IntProp(TEXT("Maximum results to return (1-10, default 5)"), 1, 10));
+			OliveBlueprintSchemas::IntProp(TEXT("Maximum results to return (1-20 for browse, 1-10 for detail, default 5)"), 1, 20));
 		Props->SetObjectField(TEXT("offset"),
-			OliveBlueprintSchemas::IntProp(TEXT("Skip this many results for pagination (default 0). Use offset=5 to get the next batch if first results aren't useful."), 0, 10000));
+			OliveBlueprintSchemas::IntProp(TEXT("Skip this many results for pagination (default 0)"), 0, 10000));
+		Props->SetObjectField(TEXT("mode"),
+			OliveBlueprintSchemas::StringProp(TEXT("'browse' returns compact summaries (title, type, description, node_count) for scanning many results. 'detail' (default) returns full graph data. Use browse first to scan, then detail with ids to fetch specific entries.")));
+		Props->SetObjectField(TEXT("ids"),
+			OliveBlueprintSchemas::ArrayProp(TEXT("Fetch specific entries by slug. Use with mode:'detail' after browsing. Overrides query when provided."),
+				OliveBlueprintSchemas::StringProp(TEXT("Blueprint slug/ID from browse results"))));
 
 		Schema->SetObjectField(TEXT("properties"), Props);
+		// query is no longer strictly required when ids is provided
+		// But we keep it in required for backwards compatibility --
+		// the handler will check: if ids is provided, query is optional
 		AddRequired(Schema, { TEXT("query") });
 		return Schema;
 	}

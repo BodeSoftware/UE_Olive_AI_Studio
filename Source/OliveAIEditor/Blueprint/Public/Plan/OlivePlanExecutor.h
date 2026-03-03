@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Plan/OlivePinManifest.h"
 #include "IR/BlueprintPlanIR.h"
+#include "Writer/OliveWiringDiagnostic.h"
 #include "Dom/JsonObject.h"
 
 // Forward declarations
@@ -179,6 +180,10 @@ struct OLIVEAIEDITOR_API FOliveSmartWireResult
 
     /** Suggestions if failed (actual available pin names) */
     TArray<FString> Suggestions;
+
+    /** Whether the failure was due to type incompatibility (vs pin not found).
+     *  When true, error code should be DATA_WIRE_INCOMPATIBLE instead of DATA_PIN_NOT_FOUND. */
+    bool bIsTypeIncompatible = false;
 };
 
 /**

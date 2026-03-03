@@ -193,7 +193,8 @@ void FOliveToolPackManager::RegisterDefaultPacks()
 		TEXT("blueprint.preview_plan_json"), TEXT("blueprint.apply_plan_json"),
 		TEXT("blueprint.add_node"), TEXT("blueprint.remove_node"),
 		TEXT("blueprint.connect_pins"), TEXT("blueprint.disconnect_pins"),
-		TEXT("blueprint.set_pin_default"), TEXT("blueprint.set_node_property")
+		TEXT("blueprint.set_pin_default"), TEXT("blueprint.set_node_property"),
+		TEXT("blueprint.create_timeline")
 	};
 
 	PackDefinitions.FindOrAdd(EOliveToolPack::DangerPack) = {

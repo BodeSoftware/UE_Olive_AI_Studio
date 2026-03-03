@@ -1,0 +1,42 @@
+TAGS: event function interface async timeline delay latent synchronous return output implementable
+---
+## Events vs Functions
+
+### Decision Framework
+USE A FUNCTION when you need to return a value to the caller AND the logic is synchronous (completes in one frame).
+Examples: GetHealth(), CalculateDamage(), IsAlive(), CanInteract():Bool
+
+USE AN EVENT when the logic might span multiple frames OR the caller doesn't need a return value.
+Events support Timelines, Delays, and latent actions. Functions do NOT.
+Examples: Interact(), OnDeath(), OpenDoor(), StartAbility()
+
+KEY CONSTRAINT: Function graphs are synchronous-only. They CANNOT contain Timeline nodes, Delay nodes, or any latent action. If your implementation needs any of these, it must be an event.
+
+### Interface Functions vs Interface Events
+When defining functions in a Blueprint Interface:
+- NO outputs = implementable EVENT (lives in EventGraph, supports async)
+- HAS outputs = implementable FUNCTION (lives in synchronous function graph)
+
+Adding outputs to an interface function forces ALL implementations into synchronous function graphs.
+Before adding a return value, ask: will any implementation need Timelines, Delays, or multi-frame behavior?
+If yes, omit the outputs to get an implementable event.
+
+COMMON MISTAKE: Adding Bool Success output to Interact(). This forces synchronous function graphs on every implementing Blueprint, preventing smooth door rotations, animation playback, or timed effects.
+
+### Hybrid Pattern: Function + Event
+When you genuinely need BOTH a return value AND async behavior:
+1. Interface function returns a synchronous result immediately (e.g., Bool for accepted/rejected)
+2. Inside the function, call a Custom Event on Self
+3. The Custom Event runs in EventGraph with full Timeline/Delay support
+
+Example: Interact():Bool that also opens a door smoothly
+- Function checks CanToggle -> if no, return false
+- Function calls Custom Event "DoOpenClose", returns true
+- DoOpenClose (EventGraph): Timeline -> Lerp -> SetRelativeRotation
+
+Use this pattern ONLY when the caller needs the return value. If not, just use an event (simpler).
+
+### Event Tick vs Alternatives
+EVENT TICK runs every frame. Good for continuous motion that never stops (spinning fans, orbiting objects).
+For finite animations (doors, fades), prefer Timeline (zero cost when idle). For periodic checks, prefer SetTimerByFunctionName.
+Disable tick on actors that don't need per-frame updates (SetActorTickEnabled, SetActorTickInterval).
