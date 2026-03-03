@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -348,34 +348,6 @@ Unreal's startup popup ("rebuild from source") is generic. Treat it as a symptom
 - `K2Node::AllocateDefaultPins()` on many subclasses calls `FindBlueprintForNodeChecked()` — nodes on transient graphs MUST have a `UBlueprint` outer, not `GetTransientPackage()`. Use a scratch Blueprint as the graph's outer.
 - `UK2Node_ComponentBoundEvent::InitializeComponentBoundEventParams()` takes `(FObjectProperty*, FMulticastDelegateProperty*)` — find both via class reflection
 - Always confirm current symbols in UE 5.5 source for Blueprint/editor APIs
-
----
-
-## Subagent System
-
-This project uses specialized subagents. USE THEM — do not try to do everything in the main conversation.
-
-| Situation | Agent |
-|-----------|-------|
-| "Where is X defined?" / file lookups | `explorer` (fast, cheap) |
-| UE API research, protocol specs | `researcher` |
-| New module or feature design | `architect` (design before code, always) |
-| Writing .h / .cpp files, Slate widgets | `coder` (opus) or `coder_sonnet` (lighter tasks) |
-
-### Feature Implementation Workflow
-
-1. **Research** (if needed) → `researcher` subagent
-2. **Design** → `architect` subagent → produces `plans/{module}-design.md` → **wait for user approval**
-3. **Implement** → `coder` subagent (follows architect's design)
-4. **Debug** (if needed) → `coder` subagent with explicit "fix only, no refactoring" instruction
-5. **Review** (optional) → `architect` subagent
-
-### Rules
-
-- **Never skip the architect for new modules.**
-- **One explorer at a time. NEVER spawn multiple.** Give it ALL questions in one invocation.
-- The coder follows the architect's design. Gaps get `// DESIGN NOTE` comments, not ad-hoc decisions.
-- Design documents and architectural decisions go in `plans/` (e.g., `plans/{module}-design.md`).
 
 ---
 

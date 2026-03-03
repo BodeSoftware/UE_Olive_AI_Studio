@@ -2248,6 +2248,104 @@ bool FOliveBlueprintPlanResolver::ResolveStructOp(
 		return false;
 	}
 
+	// Auto-reroute: common structs that aren't BlueprintType but have dedicated Make/Break functions.
+	// FRotator, FQuat, FColor etc. cannot be used with MakeStruct/BreakStruct nodes because they
+	// aren't exposed as BlueprintType. Instead, UE provides dedicated pure functions (MakeRotator,
+	// MakeColor, etc.). This auto-reroute follows the same philosophy as call -> call_delegate.
+	if (NodeType == OliveNodeTypes::MakeStruct)
+	{
+		// Map of struct names that aren't BlueprintType -> their dedicated Make function.
+		// MakeRotator is in KismetMathLibrary and already in the FindFunction alias map.
+		// MakeColor produces FLinearColor (UE names it "MakeColor" even though it's LinearColor).
+		static const TMap<FString, FString> MakeStructReroutes = {
+			{ TEXT("Rotator"),      TEXT("MakeRotator") },
+			{ TEXT("FRotator"),     TEXT("MakeRotator") },
+			{ TEXT("Rot"),          TEXT("MakeRotator") },
+			{ TEXT("Color"),        TEXT("MakeColor") },
+			{ TEXT("FColor"),       TEXT("MakeColor") },
+			{ TEXT("LinearColor"),  TEXT("MakeColor") },
+			{ TEXT("FLinearColor"), TEXT("MakeColor") },
+			{ TEXT("Vector"),       TEXT("MakeVector") },
+			{ TEXT("FVector"),      TEXT("MakeVector") },
+			{ TEXT("Vec"),          TEXT("MakeVector") },
+			{ TEXT("Vec3"),         TEXT("MakeVector") },
+			{ TEXT("Transform"),    TEXT("MakeTransform") },
+			{ TEXT("FTransform"),   TEXT("MakeTransform") },
+			{ TEXT("Vector2D"),     TEXT("MakeVector2D") },
+			{ TEXT("FVector2D"),    TEXT("MakeVector2D") },
+			{ TEXT("Vec2"),         TEXT("MakeVector2D") },
+		};
+
+		const FString* RerouteTo = MakeStructReroutes.Find(StructType);
+		if (RerouteTo)
+		{
+			UE_LOG(LogOlivePlanResolver, Log,
+				TEXT("Step '%s': Auto-rerouting make_struct '%s' -> call '%s' (not a BlueprintType struct)"),
+				*Step.StepId, *StructType, **RerouteTo);
+
+			// Convert this step from make_struct to a call op
+			Out.NodeType = OliveNodeTypes::CallFunction;
+			Out.Properties.Add(TEXT("function_name"), *RerouteTo);
+			Out.bIsPure = true; // MakeRotator, MakeColor, etc. are pure functions
+
+			// Add a resolver note for transparency
+			Out.ResolverNotes.Add(FOliveResolverNote{
+				TEXT("op"),
+				FString::Printf(TEXT("make_struct %s"), *StructType),
+				FString::Printf(TEXT("call %s"), **RerouteTo),
+				FString::Printf(TEXT("'%s' is not a BlueprintType struct; using dedicated Make function instead"), *StructType)
+			});
+
+			return true; // Early return — skip the struct_type property, it's now a call
+		}
+	}
+	else if (NodeType == OliveNodeTypes::BreakStruct)
+	{
+		// Map of struct names that aren't BlueprintType -> their dedicated Break function.
+		// BreakRotator is in KismetMathLibrary. BreakColor decomposes FLinearColor.
+		static const TMap<FString, FString> BreakStructReroutes = {
+			{ TEXT("Rotator"),      TEXT("BreakRotator") },
+			{ TEXT("FRotator"),     TEXT("BreakRotator") },
+			{ TEXT("Rot"),          TEXT("BreakRotator") },
+			{ TEXT("Color"),        TEXT("BreakColor") },
+			{ TEXT("FColor"),       TEXT("BreakColor") },
+			{ TEXT("LinearColor"),  TEXT("BreakColor") },
+			{ TEXT("FLinearColor"), TEXT("BreakColor") },
+			{ TEXT("Vector"),       TEXT("BreakVector") },
+			{ TEXT("FVector"),      TEXT("BreakVector") },
+			{ TEXT("Vec"),          TEXT("BreakVector") },
+			{ TEXT("Vec3"),         TEXT("BreakVector") },
+			{ TEXT("Transform"),    TEXT("BreakTransform") },
+			{ TEXT("FTransform"),   TEXT("BreakTransform") },
+			{ TEXT("Vector2D"),     TEXT("BreakVector2D") },
+			{ TEXT("FVector2D"),    TEXT("BreakVector2D") },
+			{ TEXT("Vec2"),         TEXT("BreakVector2D") },
+		};
+
+		const FString* RerouteTo = BreakStructReroutes.Find(StructType);
+		if (RerouteTo)
+		{
+			UE_LOG(LogOlivePlanResolver, Log,
+				TEXT("Step '%s': Auto-rerouting break_struct '%s' -> call '%s' (not a BlueprintType struct)"),
+				*Step.StepId, *StructType, **RerouteTo);
+
+			// Convert this step from break_struct to a call op
+			Out.NodeType = OliveNodeTypes::CallFunction;
+			Out.Properties.Add(TEXT("function_name"), *RerouteTo);
+			Out.bIsPure = true; // BreakRotator, BreakColor, etc. are pure functions
+
+			// Add a resolver note for transparency
+			Out.ResolverNotes.Add(FOliveResolverNote{
+				TEXT("op"),
+				FString::Printf(TEXT("break_struct %s"), *StructType),
+				FString::Printf(TEXT("call %s"), **RerouteTo),
+				FString::Printf(TEXT("'%s' is not a BlueprintType struct; using dedicated Break function instead"), *StructType)
+			});
+
+			return true; // Early return — skip the struct_type property, it's now a call
+		}
+	}
+
 	Out.Properties.Add(TEXT("struct_type"), StructType);
 
 	UE_LOG(LogOlivePlanResolver, Verbose,

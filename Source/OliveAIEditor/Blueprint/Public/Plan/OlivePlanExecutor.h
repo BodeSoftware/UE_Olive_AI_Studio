@@ -114,6 +114,12 @@ struct OLIVEAIEDITOR_API FOlivePlanExecutionContext
     /** Step IDs that reuse pre-existing event nodes (do NOT remove on rollback) */
     TSet<FString> ReusedStepIds;
 
+    /** Step IDs whose exec_after was successfully wired in Phase 3.
+     *  Used to build TargetedStepIds accurately — only successfully wired
+     *  steps are considered "targeted"; failed wires leave the step as an
+     *  orphan so auto-chain can rescue it. */
+    TSet<FString> SuccessfulExecAfterStepIds;
+
     /** Function names resolved in this plan (for stale error detection) */
     TSet<FString> ResolvedFunctionNames;
 

@@ -1549,9 +1549,46 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleSearchCommunityBlueprints(
 	// --- Build and execute SQL ---
 	const bool bHasTypeFilter = !TypeFilter.IsEmpty();
 
+	// --- Count total matches (before applying LIMIT/OFFSET) ---
+	int64 TotalMatches = 0;
+	{
+		const TCHAR* CountSqlWithoutType = TEXT(
+			"SELECT COUNT(*) "
+			"FROM blueprints_fts fts "
+			"JOIN blueprints b ON b.slug = fts.slug "
+			"WHERE blueprints_fts MATCH ?");
+
+		const TCHAR* CountSqlWithType = TEXT(
+			"SELECT COUNT(*) "
+			"FROM blueprints_fts fts "
+			"JOIN blueprints b ON b.slug = fts.slug "
+			"WHERE blueprints_fts MATCH ? AND b.type = ?");
+
+		FSQLitePreparedStatement CountStmt = CommunityDb->PrepareStatement(
+			bHasTypeFilter ? CountSqlWithType : CountSqlWithoutType,
+			ESQLitePreparedStatementFlags::None);
+
+		if (CountStmt.IsValid())
+		{
+			int32 CountBindIdx = 1;
+			CountStmt.SetBindingValueByIndex(CountBindIdx++, FtsQuery);
+			if (bHasTypeFilter)
+			{
+				CountStmt.SetBindingValueByIndex(CountBindIdx++, TypeFilter);
+			}
+
+			CountStmt.Execute([&TotalMatches](const FSQLitePreparedStatement& Row) -> ESQLitePreparedStatementExecuteRowResult
+			{
+				Row.GetColumnValueByIndex(0, TotalMatches);
+				return ESQLitePreparedStatementExecuteRowResult::Stop;
+			});
+		}
+		// If count fails, TotalMatches stays 0 -- we'll omit it from the response
+	}
+
 	const TCHAR* SqlWithoutType = TEXT(
 		"SELECT b.slug, b.title, b.type, b.ue_version, b.node_count, "
-		"b.functions, b.variables, b.compact, b.url "
+		"b.functions, b.variables, b.components, b.compact, b.url "
 		"FROM blueprints_fts fts "
 		"JOIN blueprints b ON b.slug = fts.slug "
 		"WHERE blueprints_fts MATCH ? "
@@ -1562,7 +1599,7 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleSearchCommunityBlueprints(
 
 	const TCHAR* SqlWithType = TEXT(
 		"SELECT b.slug, b.title, b.type, b.ue_version, b.node_count, "
-		"b.functions, b.variables, b.compact, b.url "
+		"b.functions, b.variables, b.components, b.compact, b.url "
 		"FROM blueprints_fts fts "
 		"JOIN blueprints b ON b.slug = fts.slug "
 		"WHERE blueprints_fts MATCH ? AND b.type = ? "
@@ -1601,8 +1638,9 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleSearchCommunityBlueprints(
 		TSharedPtr<FJsonObject> Entry = MakeShared<FJsonObject>();
 
 		// Column indices match SELECT order:
-		// 0=slug (skip), 1=title, 2=type, 3=ue_version, 4=node_count, 5=functions, 6=variables, 7=compact, 8=url
-		FString Title, Type, UeVersion, Functions, Variables, Compact, Url;
+		// 0=slug (skip), 1=title, 2=type, 3=ue_version, 4=node_count,
+		// 5=functions, 6=variables, 7=components, 8=compact, 9=url
+		FString Title, Type, UeVersion, Functions, Variables, Components, Compact, Url;
 		int32 NodeCount = 0;
 
 		Row.GetColumnValueByIndex(1, Title);
@@ -1611,8 +1649,9 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleSearchCommunityBlueprints(
 		Row.GetColumnValueByIndex(4, NodeCount);
 		Row.GetColumnValueByIndex(5, Functions);
 		Row.GetColumnValueByIndex(6, Variables);
-		Row.GetColumnValueByIndex(7, Compact);
-		Row.GetColumnValueByIndex(8, Url);
+		Row.GetColumnValueByIndex(7, Components);
+		Row.GetColumnValueByIndex(8, Compact);
+		Row.GetColumnValueByIndex(9, Url);
 
 		Entry->SetStringField(TEXT("title"), Title);
 		Entry->SetStringField(TEXT("type"), Type);
@@ -1620,6 +1659,10 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleSearchCommunityBlueprints(
 		Entry->SetNumberField(TEXT("node_count"), NodeCount);
 		Entry->SetStringField(TEXT("functions"), Functions);
 		Entry->SetStringField(TEXT("variables"), Variables);
+		if (!Components.IsEmpty())
+		{
+			Entry->SetStringField(TEXT("components"), Components);
+		}
 		Entry->SetStringField(TEXT("compact"), Compact);
 		Entry->SetStringField(TEXT("url"), Url);
 
@@ -1638,8 +1681,27 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleSearchCommunityBlueprints(
 	TSharedPtr<FJsonObject> Response = MakeShared<FJsonObject>();
 	Response->SetArrayField(TEXT("results"), Results);
 	Response->SetNumberField(TEXT("count"), Results.Num());
-	Response->SetStringField(TEXT("note"),
-		TEXT("Community examples from blueprintue.com. Quality varies — use your judgment on which patterns to follow."));
+
+	// Total matches and pagination hint
+	if (TotalMatches > 0)
+	{
+		Response->SetNumberField(TEXT("total_matches"), static_cast<double>(TotalMatches));
+		Response->SetBoolField(TEXT("has_more"), (Offset + Results.Num()) < TotalMatches);
+	}
+
+	// Dynamic note with pagination hint when more results exist
+	const bool bHasMore = TotalMatches > 0 && (Offset + Results.Num()) < TotalMatches;
+	if (bHasMore)
+	{
+		Response->SetStringField(TEXT("note"),
+			FString::Printf(TEXT("Showing %d of %lld matches. Quality varies — browse 2-3 pages before committing to a pattern. Use offset=%d for next page."),
+				Results.Num(), TotalMatches, Offset + Results.Num()));
+	}
+	else
+	{
+		Response->SetStringField(TEXT("note"),
+			TEXT("Community examples from blueprintue.com. Quality varies — use your judgment on which patterns to follow."));
+	}
 
 	return FOliveToolResult::Success(Response);
 }

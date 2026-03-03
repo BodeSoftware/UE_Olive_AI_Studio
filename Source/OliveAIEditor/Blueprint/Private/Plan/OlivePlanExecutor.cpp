@@ -1090,6 +1090,7 @@ void FOlivePlanExecutor::PhaseWireExec(
                 {
                     UE_LOG(LogOlivePlanExecutor, Log, TEXT("    -> OK"));
                     Context.SuccessfulConnectionCount++;
+                    Context.SuccessfulExecAfterStepIds.Add(Step.StepId);
                 }
                 else
                 {
@@ -1177,23 +1178,22 @@ void FOlivePlanExecutor::PhaseWireExec(
             TargetedStepIds.Add(ExecOut.Value);
         }
     }
-    // Steps that have exec_after set already have an incoming exec wire
-    // from their declared predecessor.
-    for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
+    // Steps whose exec_after was successfully wired have an incoming exec
+    // connection.  Only mark these as targeted — steps with failed wiring
+    // remain orphans so the auto-chain can rescue them.
+    for (const FString& WiredStepId : Context.SuccessfulExecAfterStepIds)
     {
-        if (!Step.ExecAfter.IsEmpty())
-        {
-            TargetedStepIds.Add(Step.StepId);
-        }
+        TargetedStepIds.Add(WiredStepId);
     }
 
     // ----------------------------------------------------------------
-    // Auto-chain: Wire function entry node to first impure orphan step.
+    // Pre-auto-chain: Break direct FunctionEntry → FunctionResult stub wire.
     //
-    // In function graphs, the UK2Node_FunctionEntry "then" pin must be
-    // wired to the first executable step.  When the plan omits explicit
-    // exec_after for the root step, the entry node is left dangling.
-    // This block detects that case and auto-wires it.
+    // Interface implementation graphs (and some other sources) come with
+    // FunctionEntry.PN_Then wired directly to FunctionResult.PN_Execute
+    // as a placeholder.  If we're about to add new nodes between them,
+    // the direct wire must be broken or both auto-chains will see
+    // "already connected" and skip, leaving the new logic orphaned.
     // ----------------------------------------------------------------
     UK2Node_FunctionEntry* EntryNode = nullptr;
     for (UEdGraphNode* Node : Context.Graph->Nodes)
@@ -1210,6 +1210,23 @@ void FOlivePlanExecutor::PhaseWireExec(
 
     if (EntryNode)
     {
+        // Break direct FunctionEntry → FunctionResult stub wire if present.
+        UEdGraphPin* EntryThenPin = EntryNode->FindPin(UEdGraphSchema_K2::PN_Then);
+        if (EntryThenPin)
+        {
+            for (int32 i = EntryThenPin->LinkedTo.Num() - 1; i >= 0; --i)
+            {
+                UEdGraphPin* LinkedPin = EntryThenPin->LinkedTo[i];
+                if (LinkedPin && Cast<UK2Node_FunctionResult>(LinkedPin->GetOwningNode()))
+                {
+                    EntryThenPin->BreakLinkTo(LinkedPin);
+                    Context.AutoFixCount++;
+                    UE_LOG(LogOlivePlanExecutor, Log,
+                        TEXT("Phase 3: Broke pre-existing FunctionEntry -> FunctionResult stub wire"));
+                }
+            }
+        }
+
         // Find the first impure orphan step:
         //   - Has no exec_after
         //   - Is not targeted by any other step's exec_outputs
@@ -1829,6 +1846,78 @@ FOliveSmartWireResult FOlivePlanExecutor::WireExecConnection(
     // Get manifests
     const FOlivePinManifest* SourceManifest = Context.GetManifest(SourceStepId);
     const FOlivePinManifest* TargetManifest = Context.GetManifest(TargetStepId);
+
+    // --------------------------------------------------------------------
+    // Reserved alias: "entry" → wire directly from UK2Node_FunctionEntry.
+    // The AI often writes exec_after:"entry" without an explicit event step
+    // (especially for interface implementation graphs where the entry node
+    // already exists).  When "entry" is not a known step ID, resolve it
+    // directly to the graph's FunctionEntry node and wire its PN_Then pin.
+    // --------------------------------------------------------------------
+    if (!SourceManifest && SourceStepId.Equals(TEXT("entry"), ESearchCase::IgnoreCase))
+    {
+        UK2Node_FunctionEntry* EntryNode = nullptr;
+        for (UEdGraphNode* Node : Context.Graph->Nodes)
+        {
+            EntryNode = Cast<UK2Node_FunctionEntry>(Node);
+            if (EntryNode) break;
+        }
+
+        if (EntryNode && TargetManifest)
+        {
+            const FOlivePinManifestEntry* TargetExecIn = TargetManifest->FindExecInput();
+            if (TargetExecIn)
+            {
+                UEdGraphPin* EntryExecOut = EntryNode->FindPin(UEdGraphSchema_K2::PN_Then);
+                if (!EntryExecOut)
+                {
+                    // Fallback: any exec output on the entry node
+                    for (UEdGraphPin* Pin : EntryNode->Pins)
+                    {
+                        if (Pin && Pin->Direction == EGPD_Output &&
+                            Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+                        {
+                            EntryExecOut = Pin;
+                            break;
+                        }
+                    }
+                }
+
+                UEdGraphNode* TargetNode = Context.GetNodePtr(TargetStepId);
+                UEdGraphPin* TargetPin = TargetNode
+                    ? TargetNode->FindPin(FName(*TargetExecIn->PinName))
+                    : nullptr;
+
+                if (EntryExecOut && TargetPin)
+                {
+                    FOlivePinConnector& Connector = FOlivePinConnector::Get();
+                    FOliveBlueprintWriteResult ConnectResult = Connector.Connect(
+                        EntryExecOut, TargetPin, false);
+
+                    if (ConnectResult.bSuccess)
+                    {
+                        Result.bSuccess = true;
+                        Result.ResolvedSourcePin = EntryExecOut->GetName();
+                        Result.ResolvedTargetPin = TargetExecIn->PinName;
+                        Result.SourceMatchMethod = TEXT("entry_alias");
+                        Result.TargetMatchMethod = TEXT("exec_primary");
+
+                        UE_LOG(LogOlivePlanExecutor, Log,
+                            TEXT("Exec wire via 'entry' alias: FunctionEntry.%s -> %s.%s"),
+                            *EntryExecOut->GetName(), *TargetStepId, *TargetExecIn->PinName);
+                        return Result;
+                    }
+                }
+            }
+
+            // If we found the entry node but couldn't wire, fall through to
+            // the normal error path with a more specific message.
+            Result.ErrorMessage = FString::Printf(
+                TEXT("Found FunctionEntry for 'entry' alias but could not wire to step '%s'"),
+                *TargetStepId);
+            return Result;
+        }
+    }
 
     if (!SourceManifest)
     {
@@ -3041,6 +3130,21 @@ void FOlivePlanExecutor::PhasePreCompileValidation(
 
         if (EntryNode && ResultNode)
         {
+            // Check if this is an interface implementation graph — nudge toward events if so
+            bool bIsInterfaceGraph = false;
+            for (const FBPInterfaceDescription& Desc : Context.Blueprint->ImplementedInterfaces)
+            {
+                for (UEdGraph* InterfaceGraph : Desc.Graphs)
+                {
+                    if (InterfaceGraph == Context.Graph)
+                    {
+                        bIsInterfaceGraph = true;
+                        break;
+                    }
+                }
+                if (bIsInterfaceGraph) break;
+            }
+
             for (UEdGraphPin* Pin : ResultNode->Pins)
             {
                 if (!Pin || Pin->bHidden)
@@ -3070,6 +3174,15 @@ void FOlivePlanExecutor::PhasePreCompileValidation(
                     TEXT("UNWIRED_RETURN_PIN: Function output '%s' (%s) on FunctionResult is not wired. "
                          "Add a 'return' step with inputs mapping to output pins, or use connect_pins to wire it manually."),
                     *Pin->GetName(), *TypeName));
+
+                if (bIsInterfaceGraph)
+                {
+                    Context.PreCompileIssues.Add(FString::Printf(
+                        TEXT("INTERFACE_FUNCTION_HINT: This is an interface function with an unwired return value '%s'. "
+                             "If you don't need a return value, consider redesigning the interface function without outputs — "
+                             "this makes it an implementable event that supports Timelines, Delays, and latent actions."),
+                        *Pin->GetName()));
+                }
 
                 UE_LOG(LogOlivePlanExecutor, Warning,
                     TEXT("Phase 5.5: Unwired FunctionResult data pin '%s' (%s) in function '%s'"),

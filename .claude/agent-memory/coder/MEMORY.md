@@ -214,5 +214,10 @@
 
 ## FindFunction Interface Fix (Autonomy Phase A, T7)
 - FindFunction Step 1: when specified class is UInterface or Blueprint Interface, reports InterfaceSearch (not ExactName)
-- Two-part check: `Class->IsChildOf(UInterface::StaticClass())` for native interfaces, `Cast<UBlueprint>(ClassGeneratedBy)->BlueprintType == BPTYPE_Interface` for Blueprint Interfaces
-- Bypasses `ReportMatch` lambda (which would override to AliasMap if alias was used) by setting `*OutMatchMethod` directly
+
+## MakeStruct/BreakStruct Auto-Reroute (Resolver)
+- In `ResolveStructOp()`: structs not exposed as BlueprintType (FRotator, FColor/FLinearColor) auto-reroute to dedicated call ops
+- `make_struct Rotator` -> `call MakeRotator`, `break_struct Rotator` -> `call BreakRotator`, etc.
+- `MakeColor`/`BreakColor` in KismetMathLibrary operate on FLinearColor (not FColor); both Color and LinearColor map to same functions
+- Rerouted steps: `Out.NodeType = CallFunction`, `Out.bIsPure = true`, `function_name` property set
+- `MakeColor`/`BreakColor` added to alias map in OliveNodeFactory.cpp (MakeRotator/BreakRotator were already there)

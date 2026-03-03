@@ -34,8 +34,7 @@ Each function the interface declares:
     "path": "/Game/Interfaces/BPI_Interactable",
     "signature": {
       "name": "Interact",
-      "inputs": [{"name": "Caller", "type": {"category": "object", "class_name": "Actor"}}],
-      "outputs": [{"name": "ReturnValue", "type": "Boolean"}]
+      "inputs": [{"name": "Caller", "type": {"category": "object", "class_name": "Actor"}}]
     }
   }
 
@@ -48,30 +47,39 @@ Each function the interface declares:
     }
   }
 
+NOTE on outputs vs events: Functions WITH outputs become synchronous function graphs —
+no Timelines, Delays, or latent nodes allowed. For actions that might need async behavior
+(smooth door rotations, timed effects, animations), consider omitting outputs to get an
+implementable event instead. Use a separate pure function (like GetInteractionText) for
+queries that need return values.
+
 ### Step C: Implement the Interface on Target Blueprints
   blueprint.add_interface → {"path": "/Game/BP_Door", "interface": "BPI_Interactable"}
   blueprint.add_interface → {"path": "/Game/BP_Chest", "interface": "BPI_Interactable"}
 
-  This AUTOMATICALLY creates empty function graph stubs (Interact, GetInteractionText) on each BP.
+  This AUTOMATICALLY creates stubs on each BP. Interact (no outputs) becomes an implementable
+  event in EventGraph. GetInteractionText (has outputs) becomes a function graph.
   You do NOT need to call add_function or override_function — the stubs already exist.
 
 ### Step D: Write Logic for Each Implementation
-Target the function graph BY NAME. Each BP gets its own implementation:
+Interact is an event (no outputs), so target EventGraph. Each BP gets its own implementation:
 
-  apply_plan_json on BP_Door, function: "Interact" →
+  apply_plan_json on BP_Door, graph_target: "EventGraph" →
   {"schema_version":"2.0","steps":[
+    {"step_id":"interact","op":"event","target":"Interact"},
     {"step_id":"get_open","op":"get_var","target":"bIsOpen"},
-    {"step_id":"toggle","op":"set_var","target":"bIsOpen",
-     "inputs":{"Value":"@get_open.auto"},"exec_after":"entry"},
-    {"step_id":"ret","op":"return","inputs":{"ReturnValue":"true"},"exec_after":"toggle"}
+    {"step_id":"branch","op":"branch","inputs":{"Condition":"@get_open.auto"},
+     "exec_after":"interact","exec_outputs":{"True":"close","False":"open"}},
+    {"step_id":"open","op":"call","target":"SetRelativeRotation",
+     "inputs":{"Target":"@DoorMesh","NewRotation":"0,90,0"},"exec_after":"set_true"},
+    {"step_id":"set_true","op":"set_var","target":"bIsOpen","inputs":{"Value":"true"}},
+    {"step_id":"close","op":"call","target":"SetRelativeRotation",
+     "inputs":{"Target":"@DoorMesh","NewRotation":"0,0,0"},"exec_after":"set_false"},
+    {"step_id":"set_false","op":"set_var","target":"bIsOpen","inputs":{"Value":"false"}}
   ]}
 
-  apply_plan_json on BP_Chest, function: "Interact" →
-  {"schema_version":"2.0","steps":[
-    {"step_id":"open","op":"call","target":"OpenChestAnimation","exec_after":"entry"},
-    {"step_id":"spawn","op":"call","target":"SpawnLoot","exec_after":"open"},
-    {"step_id":"ret","op":"return","inputs":{"ReturnValue":"true"},"exec_after":"spawn"}
-  ]}
+  For functions WITH outputs (like GetInteractionText), target the function graph by name
+  and use return ops as needed.
 
 ### Step E: Call Interface Functions (From the Caller)
 In the CALLER's plan_json, use op:"call" with target_class set to the interface name.

@@ -160,6 +160,14 @@
 - **New recipe**: `Content/SystemPrompts/Knowledge/recipes/blueprint/interface_pattern.txt`
 - **Tags for registration**: `{blueprint, write, create, interface}`, family `blueprint`
 
+### Phase 5.5 Warning Escalation + Events Knowledge + Community Browse - Mar 2026
+- `plans/phase5-5-knowledge-browse-design.md` -- 3 features, 8 tasks
+- **Feature 1 (Warning Escalation)**: `INTERFACE_FUNCTION_HINT` strings split from `warnings` into `design_warnings` top-level array + `has_design_warnings` boolean. NOT a new result status; plan genuinely succeeded. Self-correction policy NOT triggered (no retry, just informational). Two locations in BlueprintToolHandlers.cpp: executor lambda where PlanResult.Warnings -> ResultData, and pipeline forwarding section.
+- **Feature 2 (Events vs Functions Knowledge)**: New `Content/SystemPrompts/Knowledge/events_vs_functions.txt`. Pack ID `events_vs_functions` added to Auto/Blueprint in `ProfileCapabilityPackIds` (OlivePromptAssembler.cpp line 544). ~400 tokens. TAGS: event function interface async timeline delay latent synchronous return output implementable.
+- **Feature 3 (Community Browse)**: `mode` param ("browse"/"detail") + `ids` param (array of slugs) on `olive.search_community_blueprints`. Browse: SUBSTR(compact,1,150) as description, slug as id, no functions/variables/components. IDs fetch: direct SQL IN clause, no FTS. Browse max_results cap 20, detail cap 10. Default mode "detail" for backward compat.
+- **Key design decision**: No `SUCCESS_WITH_WARNINGS` status. `has_design_warnings: true` at top level is the visibility forcing function. LLMs notice top-level booleans more reliably than array contents.
+- **All 3 features independent** -- can implement in parallel.
+
 ### Auto-Wire Type Fixes - Feb 2026
 - `plans/auto-wire-type-fixes-design.md` -- 3 issues: type matching, JSON array coercion, exec chain inference
 - **Issue 1 (type matching)**: 3 sites in OlivePlanExecutor.cpp use exact `PinCategory == && PinSubCategoryObject ==` comparisons. Replace with `GetDefault<UEdGraphSchema_K2>()->ArePinTypesCompatible(Output, Input, CallingContext)`. Note: first arg is Output pin type, second is Input pin type. For `FindTypeCompatibleOutput` (manifest-level), add schema-based fallback in `WireDataConnection` using real `UEdGraphPin*` from context nodes.

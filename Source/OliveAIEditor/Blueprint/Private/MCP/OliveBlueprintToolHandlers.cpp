@@ -6524,6 +6524,49 @@ UEdGraph* FindOrCreateFunctionGraph(UBlueprint* Blueprint, const FString& GraphN
 		return Existing;
 	}
 
+	// Interface function graph race condition guard:
+	// When add_interface is called, ImplementNewInterface creates stub graphs in
+	// ImplementedInterfaces[i].Graphs, but they may not be materialized yet.
+	// If this graph name matches an interface function, force conformance and retry.
+	{
+		bool bIsInterfaceFunction = false;
+		for (const FBPInterfaceDescription& InterfaceDesc : Blueprint->ImplementedInterfaces)
+		{
+			if (InterfaceDesc.Interface)
+			{
+				for (TFieldIterator<UFunction> FuncIt(InterfaceDesc.Interface); FuncIt; ++FuncIt)
+				{
+					if ((*FuncIt)->GetFName() == FName(*GraphName))
+					{
+						bIsInterfaceFunction = true;
+						break;
+					}
+				}
+			}
+			if (bIsInterfaceFunction) break;
+		}
+
+		if (bIsInterfaceFunction)
+		{
+			UE_LOG(LogOliveBPTools, Log,
+				TEXT("'%s' matches interface function — forcing ConformImplementedInterfaces on '%s'"),
+				*GraphName, *Blueprint->GetName());
+			FBlueprintEditorUtils::ConformImplementedInterfaces(Blueprint);
+
+			UEdGraph* ConformedGraph = FindGraphByName(Blueprint, GraphName);
+			if (ConformedGraph)
+			{
+				UE_LOG(LogOliveBPTools, Log,
+					TEXT("ConformImplementedInterfaces materialized graph '%s' successfully"),
+					*GraphName);
+				return ConformedGraph;
+			}
+			UE_LOG(LogOliveBPTools, Warning,
+				TEXT("ConformImplementedInterfaces did not materialize graph '%s' — falling through to creation"),
+				*GraphName);
+		}
+	}
+
 	// EventGraph must already exist — we don't create new ubergraph pages
 	if (GraphName == TEXT("EventGraph"))
 	{
@@ -7389,6 +7432,32 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 				UEdGraph* ExecutionGraph = FindOrCreateFunctionGraph(BP, GraphTarget, bGraphCreatedInTxn);
 				if (!ExecutionGraph)
 				{
+					// Check if target is an interface function to provide better guidance
+					bool bIsIfaceFunc = false;
+					for (const FBPInterfaceDescription& Desc : BP->ImplementedInterfaces)
+					{
+						if (Desc.Interface)
+						{
+							for (TFieldIterator<UFunction> It(Desc.Interface); It; ++It)
+							{
+								if ((*It)->GetFName() == FName(*GraphTarget))
+								{
+									bIsIfaceFunc = true;
+									break;
+								}
+							}
+						}
+						if (bIsIfaceFunc) break;
+					}
+
+					if (bIsIfaceFunc)
+					{
+						return FOliveWriteResult::ExecutionError(
+							TEXT("INTERFACE_GRAPH_NOT_READY"),
+							FString::Printf(TEXT("Interface function graph '%s' exists as an interface function but the graph has not materialized after conformance."), *GraphTarget),
+							FString::Printf(TEXT("Try calling blueprint.compile on this Blueprint first, then retry apply_plan_json targeting graph '%s'."), *GraphTarget));
+					}
+
 					return FOliveWriteResult::ExecutionError(
 						TEXT("GRAPH_NOT_FOUND"),
 						FString::Printf(TEXT("Graph '%s' not found and could not be created"), *GraphTarget),
@@ -7652,6 +7721,32 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 				UEdGraph* ExecutionGraph = FindOrCreateFunctionGraph(BP, GraphTarget, bGraphCreatedInTxn);
 				if (!ExecutionGraph)
 				{
+					// Check if target is an interface function to provide better guidance
+					bool bIsIfaceFunc = false;
+					for (const FBPInterfaceDescription& Desc : BP->ImplementedInterfaces)
+					{
+						if (Desc.Interface)
+						{
+							for (TFieldIterator<UFunction> It(Desc.Interface); It; ++It)
+							{
+								if ((*It)->GetFName() == FName(*GraphTarget))
+								{
+									bIsIfaceFunc = true;
+									break;
+								}
+							}
+						}
+						if (bIsIfaceFunc) break;
+					}
+
+					if (bIsIfaceFunc)
+					{
+						return FOliveWriteResult::ExecutionError(
+							TEXT("INTERFACE_GRAPH_NOT_READY"),
+							FString::Printf(TEXT("Interface function graph '%s' exists as an interface function but the graph has not materialized after conformance."), *GraphTarget),
+							FString::Printf(TEXT("Try calling blueprint.compile on this Blueprint first, then retry apply_plan_json targeting graph '%s'."), *GraphTarget));
+					}
+
 					return FOliveWriteResult::ExecutionError(
 						TEXT("GRAPH_NOT_FOUND"),
 						FString::Printf(TEXT("Graph '%s' not found and could not be created"), *GraphTarget),

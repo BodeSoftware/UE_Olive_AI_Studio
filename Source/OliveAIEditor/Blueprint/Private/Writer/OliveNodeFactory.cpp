@@ -2741,6 +2741,8 @@ const TMap<FString, FString>& FOliveNodeFactory::GetAliasMap()
 		Map.Add(TEXT("BreakVector"), TEXT("BreakVector"));
 		Map.Add(TEXT("MakeRotator"), TEXT("MakeRotator"));
 		Map.Add(TEXT("BreakRotator"), TEXT("BreakRotator"));
+		Map.Add(TEXT("MakeColor"), TEXT("MakeColor"));
+		Map.Add(TEXT("BreakColor"), TEXT("BreakColor"));
 		Map.Add(TEXT("MakeVector2D"), TEXT("MakeVector2D"));
 		Map.Add(TEXT("BreakVector2D"), TEXT("BreakVector2D"));
 

@@ -1,5 +1,5 @@
 ---
-name: coder
+name: junior_coder
 description: C++ software engineer implementing the UE AI Agent Plugin. Use PROACTIVELY for all code writing, file creation, and implementation tasks. Handles Unreal Engine C++, python, Slate UI, HTTP servers, JSON parsing, and Blueprint graph manipulation. MUST BE USED for writing .h and .cpp files.
 tools: Read, Write, Edit, Bash, Grep, Glob
 permissionMode: default
