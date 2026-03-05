@@ -1,0 +1,4485 @@
+{
+  "schema_version": "1.0",
+  "name": "UE5_AnimFPP_Arms_Replicated",
+  "path": "/Game/FPS_Game/Character/UE5_AnimFPP_Arms_Replicated.UE5_AnimFPP_Arms_Replicated",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "AnimInstance",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": true,
+    "has_widget_tree": false,
+    "has_state_machine": true
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "IsMoving",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "bIsInAir",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "IsSprinting",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "isAiming",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ADS_Position_Override",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "LeftHandPosition",
+      "type": {
+        "category": "struct",
+        "struct_name": "Vector"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "RightArmPosition",
+      "type": {
+        "category": "struct",
+        "struct_name": "Vector"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "LeftHandIK_Enabled",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "WeaponAnimationCategory",
+      "type": {
+        "category": "byte"
+      },
+      "category": "Default",
+      "description": "ENUM for pre-made animations.",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "RightArmRotation",
+      "type": {
+        "category": "struct",
+        "struct_name": "Rotator"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ADS_X",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "description": "Fine-tunes the ADS left or right.",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ADS_Y",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "description": "Fine-tunes the ADS position forwards and backwards.",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "IsSwimming",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CharacterState",
+      "type": {
+        "category": "byte"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "NearWall",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Speed",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Left_HandRotation",
+      "type": {
+        "category": "struct",
+        "struct_name": "Rotator"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ADS_BlendSpeed",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Direction",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "HasWeapon_PreviouslyENUM",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "LeftHandIK_Socket",
+      "type": {
+        "category": "struct",
+        "struct_name": "Transform"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MouseX",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MouseY",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AimingForSpine",
+      "type": {
+        "category": "struct",
+        "struct_name": "Rotator"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Legacy_IK",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Aiming_IK",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Aiming_LeftHand_Socket",
+      "type": {
+        "category": "struct",
+        "struct_name": "Transform"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Climbing",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 63,
+        "connection_count": 128,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "BlueprintUpdateAnimation",
+            "owning_class": "AnimInstance",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DeltaTimeX",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "TryGetPawnOwner",
+            "owning_class": "AnimInstance",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "AnimInstance"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                },
+                "connections": [
+                  "node_3.RotationFromOwner",
+                  "node_3.VelocityFromOwner",
+                  "node_17.Object",
+                  "node_9.self",
+                  "node_11.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "K2Node_Composite",
+            "title": "CalculateSpeedAndDirection\nCollapsed Graph",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "RotationFromOwner",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "VelocityFromOwner",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_17.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "VariableSet",
+            "variable": "bIsInAir",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "bIsInAir",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "VariableSet",
+            "variable": "IsMoving",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsMoving",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_40.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "CallFunction",
+            "function": "VSize",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_8.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "CallFunction",
+            "function": "Greater_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_6.IsMoving"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "CallFunction",
+            "function": "GetMovementComponent",
+            "owning_class": "Pawn",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "PawnMovementComponent"
+                },
+                "connections": [
+                  "node_10.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "CallFunction",
+            "function": "IsFalling",
+            "owning_class": "NavMovementComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "NavMovementComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_5.bIsInAir"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "CallFunction",
+            "function": "GetVelocity",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_7.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "VariableSet",
+            "variable": "IsSprinting",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSprinting",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_14.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "VariableSet",
+            "variable": "isAiming",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "isAiming",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_39.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "VariableSet",
+            "variable": "ADS_Position_Override",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ADS_Position_Override",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_16.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "VariableSet",
+            "variable": "WeaponAnimationCategory",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "WeaponAnimationCategory",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_30.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "byte"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "Cast",
+            "title": "Cast To Replicated_Character",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AsReplicated Character",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Character_C"
+                },
+                "connections": [
+                  "node_18.self",
+                  "node_19.self",
+                  "node_20.self",
+                  "node_25.self",
+                  "node_26.self",
+                  "node_38.self",
+                  "node_42.self",
+                  "node_43.self",
+                  "node_61.self"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "Replicated_Character_C",
+              "TargetClassPath": "/Game/FPS_Game/Blueprints/Bonus/Replication/System/Replicated_Character.Replicated_Character_C"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "VariableGet",
+            "variable": "IsADS",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Character_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "IsADS",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_27.Option 0"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Character_C"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "VariableGet",
+            "variable": "IsSprint",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Character_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "IsSprint",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_13.IsSprinting"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Character_C"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "VariableGet",
+            "variable": "EquippedWeapon",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Character_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "EquippedWeapon",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Weapon_C"
+                },
+                "connections": [
+                  "node_23.self",
+                  "node_24.self",
+                  "node_28.self",
+                  "node_29.self",
+                  "node_32.self",
+                  "node_35.self",
+                  "node_45.self",
+                  "node_47.self",
+                  "node_48.self",
+                  "node_50.self",
+                  "node_54.self",
+                  "node_55.self",
+                  "node_58.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Character_C"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "VariableGet",
+            "variable": "ADS_Correction",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Weapon_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ADS_Correction",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_15.ADS_Position_Override"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Weapon_C"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "VariableGet",
+            "variable": "AnimCategory",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Weapon_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "AnimCategory",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_16.WeaponAnimationCategory"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Weapon_C"
+            }
+          },
+          {
+            "id": "node_25",
+            "type": "VariableGet",
+            "variable": "IsADS_Local",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Character_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "IsADS_Local",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_27.Option 1"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Character_C"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "CallFunction",
+            "function": "IsLocallyControlled",
+            "owning_class": "Pawn",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_27.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_14.isAiming"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_28",
+            "type": "VariableGet",
+            "variable": "ADS_Correction_X",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Weapon_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ADS_Correction_X",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_30.ADS_X"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Weapon_C"
+            }
+          },
+          {
+            "id": "node_29",
+            "type": "VariableGet",
+            "variable": "ADS_Correction_Y",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Weapon_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ADS_Correction_Y",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_31.ADS_Y"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Weapon_C"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "VariableSet",
+            "variable": "ADS_X",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ADS_X",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_31.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_31",
+            "type": "VariableSet",
+            "variable": "ADS_Y",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ADS_Y",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_33.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_32",
+            "type": "VariableGet",
+            "variable": "UseLeftHand_IK",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Weapon_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "UseLeftHand_IK",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_33.LeftHandIK_Enabled"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Weapon_C"
+            }
+          },
+          {
+            "id": "node_33",
+            "type": "VariableSet",
+            "variable": "LeftHandIK_Enabled",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "LeftHandIK_Enabled",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_46.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_34",
+            "type": "VariableSet",
+            "variable": "LeftHandPosition",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "LeftHandPosition",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_51.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_35",
+            "type": "VariableGet",
+            "variable": "Legacy_Left_Hand_IK",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Weapon_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Legacy_Left_Hand_IK",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_34.LeftHandPosition"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Weapon_C"
+            }
+          },
+          {
+            "id": "node_36",
+            "type": "VariableSet",
+            "variable": "HasWeapon_PreviouslyENUM",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "HasWeapon_PreviouslyENUM",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_15.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_37",
+            "type": "VariableSet",
+            "variable": "HasWeapon_PreviouslyENUM",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "HasWeapon_PreviouslyENUM",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_38",
+            "type": "VariableGet",
+            "variable": "IsClimbing",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Character_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "IsClimbing",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_39.Climbing"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Character_C"
+            }
+          },
+          {
+            "id": "node_39",
+            "type": "VariableSet",
+            "variable": "Climbing",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Climbing",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_40",
+            "type": "VariableSet",
+            "variable": "MouseX",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "MouseX",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_41.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_41",
+            "type": "VariableSet",
+            "variable": "MouseY",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "MouseY",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_62.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_42",
+            "type": "VariableGet",
+            "variable": "Mouse_X_Value",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Character_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Mouse_X_Value",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_40.MouseX"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Character_C"
+            }
+          },
+          {
+            "id": "node_43",
+            "type": "VariableGet",
+            "variable": "Mouse_Y_Value",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Character_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Mouse_Y_Value",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_41.MouseY"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Character_C"
+            }
+          },
+          {
+            "id": "node_44",
+            "type": "CallFunction",
+            "function": "GetSocketTransform",
+            "owning_class": "SceneComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              },
+              {
+                "name": "InSocketName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "None"
+              },
+              {
+                "name": "TransformSpace",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "RTS_World"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Transform"
+                },
+                "connections": [
+                  "node_46.LeftHandIK_Socket"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_45",
+            "type": "VariableGet",
+            "variable": "FPP_WeaponMesh",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Weapon_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "FPP_WeaponMesh",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                },
+                "connections": [
+                  "node_44.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Weapon_C"
+            }
+          },
+          {
+            "id": "node_46",
+            "type": "VariableSet",
+            "variable": "LeftHandIK_Socket",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "LeftHandIK_Socket",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Transform"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_59.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Transform"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_47",
+            "type": "VariableGet",
+            "variable": "Left_Hand_IK_Socket_Name",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Weapon_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Left_Hand_IK_Socket_Name",
+                "type": {
+                  "category": "name"
+                },
+                "connections": [
+                  "node_44.InSocketName"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Weapon_C"
+            }
+          },
+          {
+            "id": "node_48",
+            "type": "VariableGet",
+            "variable": "Use_Legacy_IK",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Weapon_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Use_Legacy_IK",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_49.Legacy_IK"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Weapon_C"
+            }
+          },
+          {
+            "id": "node_49",
+            "type": "VariableSet",
+            "variable": "Legacy_IK",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Legacy_IK",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_34.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_50",
+            "type": "VariableGet",
+            "variable": "Legacy_Left_Hand_Rotation",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Weapon_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Legacy_Left_Hand_Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "connections": [
+                  "node_51.Left_HandRotation"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Weapon_C"
+            }
+          },
+          {
+            "id": "node_51",
+            "type": "VariableSet",
+            "variable": "Left_HandRotation",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Left_HandRotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0, 0, 0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_54",
+            "type": "VariableGet",
+            "variable": "Left_Hand_IK_Socket_Name_Aiming",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Weapon_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Left_Hand_IK_Socket_Name_Aiming",
+                "type": {
+                  "category": "name"
+                },
+                "connections": [
+                  "node_57.InSocketName"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Weapon_C"
+            }
+          },
+          {
+            "id": "node_55",
+            "type": "VariableGet",
+            "variable": "UseLeftHand_IK_Aiming",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Weapon_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "UseLeftHand_IK_Aiming",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_56.Aiming_IK"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Weapon_C"
+            }
+          },
+          {
+            "id": "node_56",
+            "type": "VariableSet",
+            "variable": "Aiming_IK",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Aiming_IK",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_49.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_57",
+            "type": "CallFunction",
+            "function": "GetSocketTransform",
+            "owning_class": "SceneComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              },
+              {
+                "name": "InSocketName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "None"
+              },
+              {
+                "name": "TransformSpace",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "RTS_World"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Transform"
+                },
+                "connections": [
+                  "node_59.Aiming_LeftHand_Socket"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_58",
+            "type": "VariableGet",
+            "variable": "FPP_WeaponMesh",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Weapon_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "FPP_WeaponMesh",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                },
+                "connections": [
+                  "node_57.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Weapon_C"
+            }
+          },
+          {
+            "id": "node_59",
+            "type": "VariableSet",
+            "variable": "Aiming_LeftHand_Socket",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Aiming_LeftHand_Socket",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Transform"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_56.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Transform"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_61",
+            "type": "VariableGet",
+            "variable": "E_CharacterStates",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Replicated_Character_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "E_CharacterStates",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_62.CharacterState"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Replicated_Character_C"
+            }
+          },
+          {
+            "id": "node_62",
+            "type": "VariableSet",
+            "variable": "CharacterState",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "CharacterState",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_13.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "byte"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "AnimGraph",
+        "graph_type": "Function",
+        "node_count": 86,
+        "connection_count": 135,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "AnimGraphNode_Root",
+            "title": "Output Pose\nAnimGraph",
+            "pins_in": [
+              {
+                "name": "Result",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "AnimGraphNode_StateMachine",
+            "title": "Locomotion_Unarmed\nState Machine",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_43.Pose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "HasWeapon_PreviouslyENUM",
+            "pins_out": [
+              {
+                "name": "HasWeapon_PreviouslyENUM",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_3.bActiveValue"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "AnimGraphNode_BlendListByBool",
+            "title": "Blend Poses by bool",
+            "pins_in": [
+              {
+                "name": "BlendPose_0",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "BlendPose_1",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "BlendTime_0",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "BlendTime_1",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "bActiveValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_83.Pose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "AnimGraphNode_StateMachine",
+            "title": "Locomotion_Rifle\nState Machine",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_45.Pose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "AnimGraphNode_Slot",
+            "title": "Slot 'DefaultSlot'\nGroup 'DefaultGroup'",
+            "pins_in": [
+              {
+                "name": "Source",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_0.Result"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "isAiming",
+            "pins_out": [
+              {
+                "name": "isAiming",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_7.bActiveValue"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "AnimGraphNode_BlendListByBool",
+            "title": "Blend Poses by bool",
+            "pins_in": [
+              {
+                "name": "BlendPose_0",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "BlendPose_1",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "BlendTime_0",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "BlendTime_1",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "bActiveValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_77.LocalPose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_8",
+            "type": "VariableGet",
+            "variable": "ADS_BlendSpeed",
+            "pins_out": [
+              {
+                "name": "ADS_BlendSpeed",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_7.BlendTime_0",
+                  "node_7.BlendTime_1"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "AnimGraphNode_TwoBoneIK",
+            "title": "Two Bone IK\nBone: hand_l",
+            "pins_in": [
+              {
+                "name": "ComponentPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "Alpha",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "EffectorLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0.000000,0.000000,0.000000"
+              },
+              {
+                "name": "JointTargetLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0.000000,0.000000,0.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "connections": [
+                  "node_13.ComponentPose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_10",
+            "type": "AnimGraphNode_ModifyBone",
+            "title": "Transform (Modify) Bone\nBone: clavicle_r",
+            "pins_in": [
+              {
+                "name": "ComponentPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "Translation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0.000000,0.000000,0.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "connections": [
+                  "node_15.ComponentPose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_11",
+            "type": "VariableGet",
+            "variable": "RightArmPosition",
+            "pins_out": [
+              {
+                "name": "RightArmPosition",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_10.Translation"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "AnimGraphNode_LocalToComponentSpace",
+            "title": "Local To Component",
+            "pins_in": [
+              {
+                "name": "LocalPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ComponentPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "connections": [
+                  "node_10.ComponentPose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_13",
+            "type": "AnimGraphNode_ComponentToLocalSpace",
+            "title": "Component To Local",
+            "pins_in": [
+              {
+                "name": "ComponentPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_30.BlendPose_0"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_14",
+            "type": "VariableGet",
+            "variable": "LeftHandPosition",
+            "pins_out": [
+              {
+                "name": "LeftHandPosition",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_9.EffectorLocation"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "AnimGraphNode_ModifyBone",
+            "title": "Transform (Modify) Bone\nBone: clavicle_r",
+            "pins_in": [
+              {
+                "name": "ComponentPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0.000000,0.000000,0.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "connections": [
+                  "node_17.ComponentPose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_16",
+            "type": "VariableGet",
+            "variable": "RightArmRotation",
+            "pins_out": [
+              {
+                "name": "RightArmRotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "connections": [
+                  "node_15.Rotation"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "AnimGraphNode_ModifyBone",
+            "title": "Transform (Modify) Bone\nBone: hand_l",
+            "pins_in": [
+              {
+                "name": "ComponentPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0.000000,0.000000,0.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "connections": [
+                  "node_9.ComponentPose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_18",
+            "type": "VariableGet",
+            "variable": "Left_HandRotation",
+            "pins_out": [
+              {
+                "name": "Left_HandRotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "connections": [
+                  "node_17.Rotation"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "VariableGet",
+            "variable": "WeaponAnimationCategory",
+            "pins_out": [
+              {
+                "name": "WeaponAnimationCategory",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_42.ActiveEnumValue"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "AnimGraphNode_StateMachine",
+            "title": "Locomotion_Pistol\nState Machine",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_48.Pose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_21",
+            "type": "VariableGet",
+            "variable": "LeftHandIK_Enabled",
+            "pins_out": [
+              {
+                "name": "LeftHandIK_Enabled",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_22.bActiveValue"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_22",
+            "type": "AnimGraphNode_BlendListByBool",
+            "title": "Blend Poses by bool",
+            "pins_in": [
+              {
+                "name": "BlendPose_0",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "BlendPose_1",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "BlendTime_0",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "BlendTime_1",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "bActiveValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_7.BlendPose_1"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_23",
+            "type": "AnimGraphNode_Slot",
+            "title": "Slot 'BeforeLeftHandIK'\nGroup 'DefaultGroup'",
+            "pins_in": [
+              {
+                "name": "Source",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_35.Pose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_24",
+            "type": "AnimGraphNode_Fabrik",
+            "title": "FABRIK",
+            "pins_in": [
+              {
+                "name": "ComponentPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "Alpha",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "EffectorTransform",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Transform"
+                },
+                "default": "0.000000,0.000000,0.000000|0.000000,0.000000,-0.000000|1.000000,1.000000,1.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "connections": [
+                  "node_27.ComponentPose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_25",
+            "type": "VariableGet",
+            "variable": "LeftHandIK_Socket",
+            "pins_out": [
+              {
+                "name": "LeftHandIK_Socket",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Transform"
+                },
+                "connections": [
+                  "node_24.EffectorTransform"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "AnimGraphNode_LocalToComponentSpace",
+            "title": "Local To Component",
+            "pins_in": [
+              {
+                "name": "LocalPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ComponentPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "connections": [
+                  "node_24.ComponentPose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_27",
+            "type": "AnimGraphNode_ComponentToLocalSpace",
+            "title": "Component To Local",
+            "pins_in": [
+              {
+                "name": "ComponentPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_30.BlendPose_1"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_28",
+            "type": "AnimGraphNode_StateMachine",
+            "title": "Locomotion_Melee\nState Machine",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_49.Pose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_30",
+            "type": "AnimGraphNode_BlendListByBool",
+            "title": "Blend Poses by bool",
+            "pins_in": [
+              {
+                "name": "BlendPose_0",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "BlendPose_1",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "BlendTime_0",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "BlendTime_1",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "bActiveValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_22.BlendPose_0"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_31",
+            "type": "VariableGet",
+            "variable": "Legacy_IK",
+            "pins_out": [
+              {
+                "name": "Legacy_IK",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_30.bActiveValue"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_35",
+            "type": "AnimGraphNode_SaveCachedPose",
+            "title": "Save cached pose 'Cached_Locomotion'",
+            "pins_in": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ]
+          },
+          {
+            "id": "node_36",
+            "type": "AnimGraphNode_UseCachedPose",
+            "title": "Use cached pose 'Cached_Locomotion'",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_22.BlendPose_1"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_37",
+            "type": "AnimGraphNode_UseCachedPose",
+            "title": "Use cached pose 'Cached_Locomotion'",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_12.LocalPose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_38",
+            "type": "AnimGraphNode_UseCachedPose",
+            "title": "Use cached pose 'Cached_Locomotion'",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_26.LocalPose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_42",
+            "type": "AnimGraphNode_BlendListByEnum",
+            "title": "Blend Poses (E_WeaponAnimCategory)",
+            "pins_in": [
+              {
+                "name": "BlendPose_0",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "BlendPose_1",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                }
+              },
+              {
+                "name": "BlendPose_2",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                }
+              },
+              {
+                "name": "BlendPose_3",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                }
+              },
+              {
+                "name": "BlendTime_0",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "BlendTime_1",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "BlendTime_2",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "BlendTime_3",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "ActiveEnumValue",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_23.Source"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_43",
+            "type": "AnimGraphNode_SaveCachedPose",
+            "title": "Save cached pose 'CachedPose_Unarmed'",
+            "pins_in": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ]
+          },
+          {
+            "id": "node_44",
+            "type": "AnimGraphNode_UseCachedPose",
+            "title": "Use cached pose 'CachedPose_Unarmed'",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_3.BlendPose_1"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_45",
+            "type": "AnimGraphNode_SaveCachedPose",
+            "title": "Save cached pose 'CachedPose_Rifle'",
+            "pins_in": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ]
+          },
+          {
+            "id": "node_46",
+            "type": "AnimGraphNode_UseCachedPose",
+            "title": "Use cached pose 'CachedPose_Rifle'",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_42.BlendPose_1"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_47",
+            "type": "AnimGraphNode_UseCachedPose",
+            "title": "Use cached pose 'CachedPose_Rifle'",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_42.BlendPose_0"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_48",
+            "type": "AnimGraphNode_SaveCachedPose",
+            "title": "Save cached pose 'CachedPose_Pistol'",
+            "pins_in": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ]
+          },
+          {
+            "id": "node_49",
+            "type": "AnimGraphNode_SaveCachedPose",
+            "title": "Save cached pose 'CachedPose_Melee'",
+            "pins_in": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ]
+          },
+          {
+            "id": "node_50",
+            "type": "AnimGraphNode_UseCachedPose",
+            "title": "Use cached pose 'CachedPose_Pistol'",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_42.BlendPose_2"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_51",
+            "type": "AnimGraphNode_UseCachedPose",
+            "title": "Use cached pose 'CachedPose_Melee'",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_42.BlendPose_3"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_53",
+            "type": "AnimGraphNode_BlendListByBool",
+            "title": "Blend Poses by bool",
+            "pins_in": [
+              {
+                "name": "BlendPose_0",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "BlendPose_1",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "BlendTime_0",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "BlendTime_1",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "bActiveValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_7.BlendPose_0"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_54",
+            "type": "VariableGet",
+            "variable": "Aiming_IK",
+            "pins_out": [
+              {
+                "name": "Aiming_IK",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_53.bActiveValue"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_55",
+            "type": "AnimGraphNode_SequencePlayer",
+            "title": "UE5_FPP_Rifle_Aim\nSequence Player",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_59.BlendPose_0"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_56",
+            "type": "AnimGraphNode_ComponentToLocalSpace",
+            "title": "Component To Local",
+            "pins_in": [
+              {
+                "name": "ComponentPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_53.BlendPose_0"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_57",
+            "type": "AnimGraphNode_Slot",
+            "title": "Slot 'Aiming'\nGroup 'DefaultGroup'",
+            "pins_in": [
+              {
+                "name": "Source",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_71.LocalPose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_58",
+            "type": "VariableGet",
+            "variable": "WeaponAnimationCategory",
+            "pins_out": [
+              {
+                "name": "WeaponAnimationCategory",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_59.ActiveEnumValue"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_59",
+            "type": "AnimGraphNode_BlendListByEnum",
+            "title": "Blend Poses (E_WeaponAnimCategory)",
+            "pins_in": [
+              {
+                "name": "BlendPose_0",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "BlendPose_1",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                }
+              },
+              {
+                "name": "BlendPose_2",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                }
+              },
+              {
+                "name": "BlendTime_0",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "BlendTime_1",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "BlendTime_2",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "ActiveEnumValue",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_57.Source"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_60",
+            "type": "AnimGraphNode_SequencePlayer",
+            "title": "UE5_FPP_Pistol_Aim\nSequence Player",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_59.BlendPose_1"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_61",
+            "type": "AnimGraphNode_Fabrik",
+            "title": "FABRIK",
+            "pins_in": [
+              {
+                "name": "ComponentPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "Alpha",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "EffectorTransform",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Transform"
+                },
+                "default": "0.000000,0.000000,0.000000|0.000000,0.000000,-0.000000|1.000000,1.000000,1.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "connections": [
+                  "node_56.ComponentPose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_62",
+            "type": "VariableGet",
+            "variable": "Aiming_LeftHand_Socket",
+            "pins_out": [
+              {
+                "name": "Aiming_LeftHand_Socket",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Transform"
+                },
+                "connections": [
+                  "node_61.EffectorTransform"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_63",
+            "type": "AnimGraphNode_SequencePlayer",
+            "title": "UE5_FPP_Swim\nSequence Player",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_82.BlendPose_2"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_64",
+            "type": "AnimGraphNode_SaveCachedPose",
+            "title": "Save cached pose 'Aiming_Cached_Pose'",
+            "pins_in": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ]
+          },
+          {
+            "id": "node_66",
+            "type": "AnimGraphNode_ModifyBone",
+            "title": "Transform (Modify) Bone\nBone: spine_01",
+            "pins_in": [
+              {
+                "name": "ComponentPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "Translation_X",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "Translation_Y",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "Translation_Z",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "connections": [
+                  "node_70.ComponentPose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_67",
+            "type": "VariableGet",
+            "variable": "ADS_Position_Override",
+            "pins_out": [
+              {
+                "name": "ADS_Position_Override",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_66.Translation_Z"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_68",
+            "type": "VariableGet",
+            "variable": "ADS_X",
+            "pins_out": [
+              {
+                "name": "ADS_X",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_66.Translation_X"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_69",
+            "type": "VariableGet",
+            "variable": "ADS_Y",
+            "pins_out": [
+              {
+                "name": "ADS_Y",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_66.Translation_Y"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_70",
+            "type": "AnimGraphNode_ComponentToLocalSpace",
+            "title": "Component To Local",
+            "pins_in": [
+              {
+                "name": "ComponentPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_64.Pose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_71",
+            "type": "AnimGraphNode_LocalToComponentSpace",
+            "title": "Local To Component",
+            "pins_in": [
+              {
+                "name": "LocalPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ComponentPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "connections": [
+                  "node_66.ComponentPose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_73",
+            "type": "AnimGraphNode_UseCachedPose",
+            "title": "Use cached pose 'Aiming_Cached_Pose'",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_74.LocalPose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_74",
+            "type": "AnimGraphNode_LocalToComponentSpace",
+            "title": "Local To Component",
+            "pins_in": [
+              {
+                "name": "LocalPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ComponentPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "connections": [
+                  "node_61.ComponentPose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_75",
+            "type": "AnimGraphNode_UseCachedPose",
+            "title": "Use cached pose 'Aiming_Cached_Pose'",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_53.BlendPose_1"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_76",
+            "type": "AnimGraphNode_ModifyBone",
+            "title": "Transform (Modify) Bone\nBone: clavicle_l",
+            "pins_in": [
+              {
+                "name": "ComponentPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "Translation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "-6.403,-4.158,2.096"
+              },
+              {
+                "name": "Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0.000000,0.000000,0.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "connections": [
+                  "node_78.ComponentPose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_77",
+            "type": "AnimGraphNode_LocalToComponentSpace",
+            "title": "Local To Component",
+            "pins_in": [
+              {
+                "name": "LocalPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ComponentPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "connections": [
+                  "node_76.ComponentPose"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_78",
+            "type": "AnimGraphNode_ComponentToLocalSpace",
+            "title": "Component To Local",
+            "pins_in": [
+              {
+                "name": "ComponentPose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "ComponentSpacePoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_3.BlendPose_0"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_80",
+            "type": "AnimGraphNode_SequencePlayer",
+            "title": "UE5_FPP_MeleeSword_Idle\nSequence Player",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_59.BlendPose_2"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_81",
+            "type": "VariableGet",
+            "variable": "CharacterState",
+            "pins_out": [
+              {
+                "name": "CharacterState",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_82.ActiveEnumValue"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_82",
+            "type": "AnimGraphNode_BlendListByEnum",
+            "title": "Blend Poses (E_CharacterStates)",
+            "pins_in": [
+              {
+                "name": "BlendPose_0",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "BlendPose_1",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                }
+              },
+              {
+                "name": "BlendPose_2",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                }
+              },
+              {
+                "name": "BlendTime_0",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "BlendTime_1",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "BlendTime_2",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "ActiveEnumValue",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_5.Source"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_83",
+            "type": "AnimGraphNode_SaveCachedPose",
+            "title": "Save cached pose 'All_Cached'",
+            "pins_in": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ]
+          },
+          {
+            "id": "node_84",
+            "type": "AnimGraphNode_UseCachedPose",
+            "title": "Use cached pose 'All_Cached'",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_82.BlendPose_0"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_85",
+            "type": "AnimGraphNode_UseCachedPose",
+            "title": "Use cached pose 'All_Cached'",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_82.BlendPose_1"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}
