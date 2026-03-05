@@ -2782,6 +2782,11 @@ const TMap<FString, FString>& FOliveNodeFactory::GetAliasMap()
 		Map.Add(TEXT("SetVelocity"), TEXT("SetPhysicsLinearVelocity"));
 
 		// ================================================================
+		// Projectile Movement (UProjectileMovementComponent)
+		// ================================================================
+		Map.Add(TEXT("SetVelocityInLocalSpace"), TEXT("SetVelocityInLocalSpace"));
+
+		// ================================================================
 		// Collision / Trace (UKismetSystemLibrary)
 		// ================================================================
 		Map.Add(TEXT("LineTrace"), TEXT("LineTraceSingle"));

@@ -97,19 +97,10 @@ FString FOliveClaudeCodeProvider::GetClaudeExecutablePath()
 	// This avoids issues with .cmd files on Windows
 
 #if PLATFORM_WINDOWS
-	// Look for the npm global install location
-	FString NpmPath = FPaths::Combine(FPlatformProcess::UserDir(), TEXT("AppData/Roaming/npm"));
-	FString ClaudeCliJs = FPaths::Combine(NpmPath, TEXT("node_modules/@anthropic-ai/claude-code/cli.js"));
-
-	if (IFileManager::Get().FileExists(*ClaudeCliJs))
-	{
-		return ClaudeCliJs;
-	}
-
-	// Try finding via where command
+	// 1. where.exe finds claude.exe/.cmd anywhere on PATH — most reliable
 	FString WhichOutput;
 	int32 ReturnCode;
-	FPlatformProcess::ExecProcess(TEXT("where"), TEXT("claude.cmd"), &ReturnCode, &WhichOutput, nullptr);
+	FPlatformProcess::ExecProcess(TEXT("where"), TEXT("claude"), &ReturnCode, &WhichOutput, nullptr);
 	if (ReturnCode == 0 && !WhichOutput.IsEmpty())
 	{
 		WhichOutput.TrimStartAndEndInline();
@@ -120,8 +111,13 @@ FString FOliveClaudeCodeProvider::GetClaudeExecutablePath()
 		}
 		WhichOutput.TrimStartAndEndInline();
 
-		// Convert .cmd path to cli.js path
-		// e.g., C:\Users\X\AppData\Roaming\npm\claude.cmd -> C:\Users\X\AppData\Roaming\npm\node_modules\@anthropic-ai\claude-code\cli.js
+		// If it's a native .exe, use it directly
+		if (WhichOutput.EndsWith(TEXT(".exe")))
+		{
+			return WhichOutput;
+		}
+
+		// If it's a .cmd shim (npm install), resolve to the underlying cli.js
 		FString NpmDir = FPaths::GetPath(WhichOutput);
 		FString CliJsPath = FPaths::Combine(NpmDir, TEXT("node_modules/@anthropic-ai/claude-code/cli.js"));
 		if (IFileManager::Get().FileExists(*CliJsPath))
@@ -130,17 +126,36 @@ FString FOliveClaudeCodeProvider::GetClaudeExecutablePath()
 		}
 	}
 
-	// Try common installation paths
-	TArray<FString> CommonPaths = {
-		FPaths::Combine(FPlatformProcess::UserDir(), TEXT("AppData/Roaming/npm/node_modules/@anthropic-ai/claude-code/cli.js")),
-		FPaths::Combine(FPlatformProcess::UserDir(), TEXT("AppData/Local/Programs/claude/claude.exe")),
-	};
-
-	for (const FString& Path : CommonPaths)
+	// 2. %USERPROFILE%\.local\bin (Claude CLI default install location)
+	const FString UserProfile = FPlatformMisc::GetEnvironmentVariable(TEXT("USERPROFILE"));
+	if (!UserProfile.IsEmpty())
 	{
-		if (IFileManager::Get().FileExists(*Path))
+		FString ClaudeExe = FPaths::Combine(UserProfile, TEXT(".local/bin/claude.exe"));
+		if (IFileManager::Get().FileExists(*ClaudeExe))
 		{
-			return Path;
+			return ClaudeExe;
+		}
+	}
+
+	// 3. npm global install via %APPDATA%
+	const FString AppData = FPlatformMisc::GetEnvironmentVariable(TEXT("APPDATA"));
+	if (!AppData.IsEmpty())
+	{
+		FString ClaudeCliJs = FPaths::Combine(AppData, TEXT("npm/node_modules/@anthropic-ai/claude-code/cli.js"));
+		if (IFileManager::Get().FileExists(*ClaudeCliJs))
+		{
+			return ClaudeCliJs;
+		}
+	}
+
+	// 4. Standalone installer via %LOCALAPPDATA%
+	const FString LocalAppData = FPlatformMisc::GetEnvironmentVariable(TEXT("LOCALAPPDATA"));
+	if (!LocalAppData.IsEmpty())
+	{
+		FString ClaudeExe = FPaths::Combine(LocalAppData, TEXT("Programs/claude/claude.exe"));
+		if (IFileManager::Get().FileExists(*ClaudeExe))
+		{
+			return ClaudeExe;
 		}
 	}
 #else

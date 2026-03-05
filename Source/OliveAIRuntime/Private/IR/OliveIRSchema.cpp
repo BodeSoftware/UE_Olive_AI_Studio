@@ -897,10 +897,14 @@ FOliveIRResult FOliveIRValidator::ValidateBlueprintPlanJson(
 			FString ExecAfter = Step->GetStringField(TEXT("exec_after"));
 			if (!ExecAfter.IsEmpty())
 			{
+				// 'entry' is a valid virtual target — refers to FunctionEntry node
+				// in function graphs. The executor's auto-chain handles wiring.
+				const bool bIsEntryRef = ExecAfter.Equals(TEXT("entry"), ESearchCase::IgnoreCase);
+
 				// Check that the referenced step exists earlier in the array
 				// (StepIdOrder contains IDs of steps processed so far, EXCLUDING current step)
 				int32 CurrentStepOrderIndex = StepIdOrder.Find(StepId);
-				bool bFoundEarlier = false;
+				bool bFoundEarlier = bIsEntryRef; // 'entry' is always valid
 
 				for (int32 j = 0; j < StepIdOrder.Num(); ++j)
 				{

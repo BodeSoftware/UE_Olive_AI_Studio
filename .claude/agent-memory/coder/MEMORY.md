@@ -164,6 +164,18 @@
 ## MakeStruct/BreakStruct Auto-Reroute (Resolver)
 - `ResolveStructOp()`: non-BlueprintType structs auto-reroute to call ops (e.g., `make_struct Rotator` -> `call MakeRotator`)
 
+## Alias Pin Validation Fallback (ResolveCallOp)
+- When `MatchMethod == AliasMap`, post-resolve checks step's input pin names against resolved function's params
+- If any input pin has no matching param, searches `UKismetMathLibrary`, `UKismetSystemLibrary`, `UKismetStringLibrary`, `UGameplayStatics` for the ORIGINAL target name (bypassing alias map)
+- Fallback only triggers when candidate has ALL missing pins; otherwise keeps alias result
+- Example: `GetForwardVector` alias -> `GetActorForwardVector` (no InRot pin) -> fallback finds `UKismetMathLibrary::GetForwardVector(InRot)`
+- Helper functions in anonymous namespace: `FunctionHasInputParam()`, `CollectPinNameCandidates()`, `GetFallbackLibraryClasses()`
+- Includes added: `Kismet/KismetMathLibrary.h`, `KismetSystemLibrary.h`, `KismetStringLibrary.h`, `GameplayStatics.h`
+
+## ExpandPlanInputs Default SpawnTransform (Fix)
+- `ExpandPlanInputs()` now synthesizes identity MakeTransform when spawn_actor has NO Location/Rotation/SpawnTransform
+- Previously skipped with `continue`; now always ensures SpawnTransform pin is wired (prevents compile failure)
+
 ## blueprint.create_timeline Tool (Completed)
 - Handler: `HandleBlueprintCreateTimeline` in OliveBlueprintToolHandlers.cpp (~560 lines)
 - Schema: `BlueprintCreateTimeline()` in OliveBlueprintSchemas.cpp; `NumberProp()` helper for float-default params

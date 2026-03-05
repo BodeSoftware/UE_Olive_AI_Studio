@@ -136,7 +136,12 @@ UOliveAISettings* UOliveAISettings::Get()
 
 FString UOliveAISettings::GetCurrentApiKey() const
 {
-	switch (Provider)
+	return GetApiKeyForProvider(Provider);
+}
+
+FString UOliveAISettings::GetApiKeyForProvider(EOliveAIProvider InProvider) const
+{
+	switch (InProvider)
 	{
 		case EOliveAIProvider::ClaudeCode:
 			return TEXT(""); // Claude Code CLI uses subscription, no API key needed
@@ -159,16 +164,15 @@ FString UOliveAISettings::GetCurrentApiKey() const
 	}
 }
 
-FString UOliveAISettings::GetCurrentBaseUrl() const
+FString UOliveAISettings::GetBaseUrlForProvider(EOliveAIProvider InProvider) const
 {
-	switch (Provider)
+	switch (InProvider)
 	{
 		case EOliveAIProvider::ClaudeCode:
 			return TEXT(""); // Claude Code CLI is a local process, no URL
 		case EOliveAIProvider::OpenRouter:
 			return TEXT("https://openrouter.ai/api/v1/chat/completions");
 		case EOliveAIProvider::ZAI:
-			// Z.ai OpenAI-compatible base URL (completions path added by provider if needed)
 			return bZaiUseCodingEndpoint
 				? TEXT("https://api.z.ai/api/coding/paas/v4")
 				: TEXT("https://api.z.ai/api/paas/v4");
@@ -185,6 +189,11 @@ FString UOliveAISettings::GetCurrentBaseUrl() const
 		default:
 			return TEXT("");
 	}
+}
+
+FString UOliveAISettings::GetCurrentBaseUrl() const
+{
+	return GetBaseUrlForProvider(Provider);
 }
 
 bool UOliveAISettings::IsProviderConfigured() const

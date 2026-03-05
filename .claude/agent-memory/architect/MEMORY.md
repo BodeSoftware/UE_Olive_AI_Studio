@@ -186,6 +186,17 @@
 - **Fires only on CONNECT_RESPONSE_DISALLOW** after autocast + SplitPin both fail.
 - **Depends on autocast integration** being complete first.
 
+### Utility Model + Template Pre-Search - Mar 2026
+- `plans/utility-model-presearch-design.md` -- 5 tasks (T1-T5)
+- **T1 (Utility Model)**: New `FOliveUtilityModel` static helper (NOT singleton). `SendSimpleCompletion()` synchronous with game-thread tick-pumping. `ExtractSearchKeywords()` with LLM expansion + basic tokenizer fallback. New files: `Services/OliveUtilityModel.h/.cpp`.
+- **T1 settings**: 5 new UPROPERTYs on `UOliveAISettings`: `UtilityModelProvider` (EOliveAIProvider), `UtilityModelId`, `UtilityModelApiKey` (optional, falls back to provider's key), `UtilityModelTimeoutSeconds` (10), `bEnableLLMKeywordExpansion` (true).
+- **T1 key constraint**: ClaudeCode rejected as utility provider (CLI providers cannot do simple HTTP completions). Uses `FOliveProviderFactory::CreateProvider()` for transient provider.
+- **T2 (Pre-Search Injection)**: Replaces generic nudge at lines 509-515 of `OliveCLIProviderBase.cpp::SendMessageAutonomous()`. Keywords extracted -> `SearchTemplates(query, 8)` -> formatted Markdown with matched function names -> appended to stdin EffectiveMessage.
+- **T3 (Catalog in Sandbox)**: `GetCatalogBlock()` added to sandbox CLAUDE.md in `SetupAutonomousSandbox()`, after design patterns, before file write. Imperative wrapper text.
+- **T4 (AGENTS.md Dedup)**: Remove loading + writing of AGENTS.md to sandbox. Saves ~5,300 tokens. Net context savings ~3,900 tokens after catalog/pre-search additions.
+- **T5 (Stronger Nudge)**: Imperative framing: "REQUIRED: Study at least one relevant function". Both in pre-search block and catalog wrapper.
+- **Implementation order**: T4 (trivial) -> T3+T5 (15min) -> T2 with fallback only (30min) -> T1 (2-3hr) -> T2 upgraded with LLM.
+
 ### Log Improvements - Mar 2026
 - `plans/log-improvements-design.md` -- 6 tasks (T1-T6), 4 items
 - **modify_component fix**: `modified_properties_count` now reports `Properties.Num() - WriteResult.Warnings.Num()` (actual successes). Adds `requested_properties_count` and `failed_properties_count`. Guard: `FMath::Max(0, ...)` for edge case.
