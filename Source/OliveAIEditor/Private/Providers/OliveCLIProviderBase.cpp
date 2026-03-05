@@ -411,6 +411,15 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 		ClaudeMd += TEXT("\n\n");
 	}
 
+	ClaudeMd += TEXT("- Use Blueprint Interfaces (not cast loops) when 2+ types share a behavior. Use overlap events (not GetOverlappingActors+ForEach) for detection zones. Use call_delegate (not call_dispatcher) to broadcast event dispatchers. See blueprint_design_patterns knowledge pack for exact tool call sequences.\n");
+
+	// Append the full AGENTS.md content which has workflow patterns, plan JSON format, etc.
+	if (!AgentsContent.IsEmpty())
+	{
+		ClaudeMd += TEXT("---\n\n");
+		ClaudeMd += AgentsContent;
+	}
+
 	const FString ClaudeMdPath = FPaths::Combine(AutonomousSandboxDir, TEXT("CLAUDE.md"));
 	FFileHelper::SaveStringToFile(ClaudeMd, *ClaudeMdPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 
@@ -511,7 +520,7 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 	// more reliably. Only inject on initial messages, not continuations.
 	if (!IsContinuationMessage(UserMessage))
 	{
-		EffectiveMessage += TEXT("\n\nBefore building, research patterns from Library templates: search blueprint.list_templates(query=\"...\") for proven reference patterns from real projects, specific function templates may be available by blueprint.get_template(id, pattern=\"FuncName\") to study matching functions. Supplement with olive.search_community_blueprints if needed — community examples are mixed quality, compare several before using. These are references — adapt, simplify, or combine patterns to fit the user's needs. Then build the complete system using the MCP tools.\n");
+		EffectiveMessage += TEXT("\n\nBefore building, research patterns from Library templates: search blueprint.list_templates(query=\"...\") for proven reference patterns from real projects, specific function templates may be available by blueprint.get_template(id, pattern=\"FuncName\") to study matching functions. Supplement with olive.search_community_blueprints if needed — community examples are mixed quality, compare several before using. These are references — adapt, simplify, or combine patterns to fit the user's needs.\n");
 	}
 
 	// Initialize run context tracking for this new run

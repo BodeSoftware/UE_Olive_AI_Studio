@@ -1,0 +1,2280 @@
+{
+  "template_id": "bp_anim_notify_foley_event",
+  "display_name": "BP_AnimNotify_FoleyEvent",
+  "tags": "anim notify foley event side volume multiplier pitch bank vis log debug color audio mesh",
+  "catalog_description": "BP_AnimNotify_FoleyEvent: AnimNotify-based blueprint with 3 functions. Handles animation, audio, actor, and debug.",
+  "source_project": "CombatFS",
+  "depends_on": null,
+  "schema_version": "1.0",
+  "name": "BP_AnimNotify_FoleyEvent",
+  "path": "/Game/FlexibleCombatSystem/GASP/Blueprints/AnimNotifies/BP_AnimNotify_FoleyEvent.BP_AnimNotify_FoleyEvent",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "AnimNotify",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": false,
+    "has_functions": false,
+    "has_variables": false,
+    "has_components": false,
+    "has_macros": false,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "Event",
+      "type": {
+        "category": "struct",
+        "struct_name": "GameplayTag"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Side",
+      "type": {
+        "category": "byte"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "VolumeMultiplier",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "PitchMultiplier",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DefaultBank",
+      "type": {
+        "category": "object",
+        "class": "DABP_FoleyAudioBank_C"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "VisLogDebugColor",
+      "type": {
+        "category": "struct",
+        "struct_name": "LinearColor"
+      },
+      "category": "Debug",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "VisLogDebugText",
+      "type": {
+        "category": "string"
+      },
+      "category": "Debug",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [],
+    "functions": [
+      {
+        "name": "Received_Notify",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "MeshComp",
+            "display_name": "Mesh Comp",
+            "type": {
+              "category": "object",
+              "class": "SkeletalMeshComponent"
+            }
+          },
+          {
+            "name": "Animation",
+            "display_name": "Animation",
+            "type": {
+              "category": "object",
+              "class": "AnimSequenceBase"
+            }
+          },
+          {
+            "name": "EventReference",
+            "display_name": "Event Reference",
+            "type": {
+              "category": "struct",
+              "struct_name": "AnimNotifyEventReference",
+              "is_reference": true,
+              "is_const": true
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "public",
+        "const": true,
+        "node_count": 31,
+        "connection_count": 67,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "Received_Notify",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_12.execute"
+                ]
+              },
+              {
+                "name": "MeshComp",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                },
+                "connections": [
+                  "node_12.MeshComponent"
+                ]
+              },
+              {
+                "name": "Animation",
+                "type": {
+                  "category": "object",
+                  "class": "AnimSequenceBase"
+                }
+              },
+              {
+                "name": "EventReference",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "AnimNotifyEventReference",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "Received_Notify",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "GetSoundFromFoleyEvent",
+            "owning_class": "SKEL_DABP_FoleyAudioBank_C",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "DABP_FoleyAudioBank_C"
+                }
+              },
+              {
+                "name": "Event",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTag",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Sound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_3.Sound"
+                ]
+              },
+              {
+                "name": "Success",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "PlaySoundAtLocation",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Sound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "VolumeMultiplier",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "PitchMultiplier",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "StartTime",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "AttenuationSettings",
+                "type": {
+                  "category": "object",
+                  "class": "SoundAttenuation"
+                }
+              },
+              {
+                "name": "ConcurrencySettings",
+                "type": {
+                  "category": "object",
+                  "class": "SoundConcurrency"
+                }
+              },
+              {
+                "name": "OwningActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor",
+                  "is_const": true
+                }
+              },
+              {
+                "name": "InitialParams",
+                "type": {
+                  "category": "object",
+                  "class": "InitialActiveSoundParams",
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_19.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "VolumeMultiplier",
+            "pins_out": [
+              {
+                "name": "VolumeMultiplier",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_3.VolumeMultiplier"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "PitchMultiplier",
+            "pins_out": [
+              {
+                "name": "PitchMultiplier",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_3.PitchMultiplier"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "Event",
+            "pins_out": [
+              {
+                "name": "Event",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTag"
+                },
+                "connections": [
+                  "node_2.Event"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "VariableGet",
+            "variable": "MeshComponent",
+            "pins_out": [
+              {
+                "name": "MeshComponent",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                },
+                "connections": [
+                  "node_8.MeshComponent"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_8",
+            "type": "CallFunction",
+            "function": "GetAudioBank",
+            "owning_class": "SKEL_BP_AnimNotify_FoleyEvent_C",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "MeshComponent",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Bank",
+                "type": {
+                  "category": "object",
+                  "class": "DABP_FoleyAudioBank_C"
+                },
+                "connections": [
+                  "node_2.self"
+                ]
+              },
+              {
+                "name": "CanPlaySound",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_18.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "MeshComponent",
+            "pins_out": [
+              {
+                "name": "MeshComponent",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                },
+                "connections": [
+                  "node_10.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_10",
+            "type": "CallFunction",
+            "function": "K2_GetComponentLocation",
+            "owning_class": "SceneComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_3.Location"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "FunctionResult",
+            "function": "Received_Notify",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          },
+          {
+            "id": "node_12",
+            "type": "VariableSet",
+            "variable": "MeshComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "MeshComponent",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_13",
+            "type": "CallFunction",
+            "function": "LogSphere",
+            "owning_class": "VisualLoggerKismetLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "WorldContextObject",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              },
+              {
+                "name": "Center",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "Radius",
+                "type": {
+                  "category": "float"
+                },
+                "default": "5.000000"
+              },
+              {
+                "name": "Text",
+                "type": {
+                  "category": "string"
+                }
+              },
+              {
+                "name": "ObjectColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=0.000000,G=0.000000,B=1.000000,A=1.000000)"
+              },
+              {
+                "name": "LogCategory",
+                "type": {
+                  "category": "name"
+                },
+                "default": "VisLogFoley"
+              },
+              {
+                "name": "bAddToMessageLog",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "bWireframe",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_23.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "VariableGet",
+            "variable": "VisLogDebugColor",
+            "pins_out": [
+              {
+                "name": "VisLogDebugColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "connections": [
+                  "node_13.ObjectColor"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "VariableGet",
+            "variable": "VisLogDebugText",
+            "pins_out": [
+              {
+                "name": "VisLogDebugText",
+                "type": {
+                  "category": "string"
+                },
+                "connections": [
+                  "node_13.Text"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "VariableGet",
+            "variable": "MeshComponent",
+            "pins_out": [
+              {
+                "name": "MeshComponent",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                },
+                "connections": [
+                  "node_13.WorldContextObject"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_17",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_19",
+            "type": "CallFunction",
+            "function": "GetConsoleVariableBoolValue",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "VariableName",
+                "type": {
+                  "category": "string"
+                },
+                "default": "DDCvar.DrawVisLogShapesForFoleySounds"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_20.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_20.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_13.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_21.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_23",
+            "type": "CallFunction",
+            "function": "DrawDebugSphere",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Center",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector",
+                  "is_const": true
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "Radius",
+                "type": {
+                  "category": "float"
+                },
+                "default": "10.000000"
+              },
+              {
+                "name": "Segments",
+                "type": {
+                  "category": "int"
+                },
+                "default": "12"
+              },
+              {
+                "name": "LineColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=1.000000,G=1.000000,B=1.000000,A=1.000000)"
+              },
+              {
+                "name": "Duration",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.250000"
+              },
+              {
+                "name": "Thickness",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "CallFunction",
+            "function": "GetSocketLocation",
+            "owning_class": "SceneComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              },
+              {
+                "name": "InSocketName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "foot_l"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_26.NewEnumerator0"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_25",
+            "type": "VariableGet",
+            "variable": "Side",
+            "pins_out": [
+              {
+                "name": "Side",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_26.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "NewEnumerator4",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "NewEnumerator0",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "NewEnumerator2",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator4"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_13.Center",
+                  "node_23.Center"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_27",
+            "type": "CallFunction",
+            "function": "GetSocketLocation",
+            "owning_class": "SceneComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              },
+              {
+                "name": "InSocketName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "foot_r"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_26.NewEnumerator2"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_28",
+            "type": "VariableGet",
+            "variable": "MeshComponent",
+            "pins_out": [
+              {
+                "name": "MeshComponent",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                },
+                "connections": [
+                  "node_29.self",
+                  "node_24.self",
+                  "node_27.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_29",
+            "type": "CallFunction",
+            "function": "K2_GetComponentLocation",
+            "owning_class": "SceneComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_26.NewEnumerator4"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "VariableGet",
+            "variable": "VisLogDebugColor",
+            "pins_out": [
+              {
+                "name": "VisLogDebugColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "connections": [
+                  "node_23.LineColor"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ],
+        "tags": "notify sound foley event play location audio bank",
+        "description": "Received_Notify: Notifies notify audio debug."
+      },
+      {
+        "name": "GetNotifyName",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "string"
+            }
+          }
+        ],
+        "access": "public",
+        "const": true,
+        "node_count": 7,
+        "connection_count": 12,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "GetNotifyName",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "GetNotifyName",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "string"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "Conv_TextToString",
+            "owning_class": "KismetTextLibrary",
+            "pins_in": [
+              {
+                "name": "InText",
+                "type": {
+                  "category": "text",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "string"
+                },
+                "connections": [
+                  "node_1.ReturnValue"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "K2Node_FormatText",
+            "title": "Format Text",
+            "pins_in": [
+              {
+                "name": "Format",
+                "type": {
+                  "category": "text"
+                },
+                "default": "FoleyEvent: {Type}"
+              },
+              {
+                "name": "Type",
+                "type": {
+                  "category": "string"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Result",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_2.InText"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "Event",
+            "pins_out": [
+              {
+                "name": "Event",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTag"
+                },
+                "connections": [
+                  "node_5.GameplayTag"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "GetDebugStringFromGameplayTag",
+            "owning_class": "BlueprintGameplayTagLibrary",
+            "pins_in": [
+              {
+                "name": "GameplayTag",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTag"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "string"
+                },
+                "connections": [
+                  "node_6.SourceString"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "Split",
+            "owning_class": "KismetStringLibrary",
+            "pins_in": [
+              {
+                "name": "SourceString",
+                "type": {
+                  "category": "string"
+                }
+              },
+              {
+                "name": "InStr",
+                "type": {
+                  "category": "string"
+                },
+                "default": "."
+              },
+              {
+                "name": "SearchCase",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "IgnoreCase"
+              },
+              {
+                "name": "SearchDir",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "FromEnd"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "LeftS",
+                "type": {
+                  "category": "string"
+                }
+              },
+              {
+                "name": "RightS",
+                "type": {
+                  "category": "string"
+                },
+                "connections": [
+                  "node_3.Type"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "tags": "notify conv debug gameplay split event",
+        "description": "GetNotifyName: Notifies notify."
+      },
+      {
+        "name": "GetAudioBank",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "MeshComponent",
+            "display_name": "Mesh Component",
+            "type": {
+              "category": "object",
+              "class": "SkeletalMeshComponent"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Bank",
+            "display_name": "Bank",
+            "type": {
+              "category": "object",
+              "class": "DABP_FoleyAudioBank_C"
+            }
+          },
+          {
+            "name": "CanPlaySound",
+            "display_name": "Can Play Sound",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "public",
+        "pure": true,
+        "const": true,
+        "node_count": 26,
+        "connection_count": 61,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "GetAudioBank",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "MeshComponent",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                },
+                "connections": [
+                  "node_8.self",
+                  "node_9.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "Cast",
+            "title": "Cast To AnimationEditorPreviewActor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_10.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_23.execute"
+                ]
+              },
+              {
+                "name": "AsAnimation Editor Preview Actor",
+                "type": {
+                  "category": "object",
+                  "class": "AnimationEditorPreviewActor"
+                }
+              }
+            ],
+            "properties": {
+              "TargetClass": "AnimationEditorPreviewActor",
+              "TargetClassPath": "/Script/Persona.AnimationEditorPreviewActor"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "DoesImplementInterface",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "TestObject",
+                "type": {
+                  "category": "object",
+                  "class": "Object",
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Interface",
+                "type": {
+                  "category": "class",
+                  "class": "Interface"
+                },
+                "default": "/Game/FlexibleCombatSystem/GASP/Audio/Foley/I_FoleyAudioBankInterface.I_FoleyAudioBankInterface_C"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_3.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "GetFoleyAudioBank",
+            "owning_class": "SKEL_I_FoleyAudioBankInterface_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_12.execute"
+                ]
+              },
+              {
+                "name": "FoleyAudioBank",
+                "type": {
+                  "category": "object",
+                  "class": "DABP_FoleyAudioBank_C"
+                },
+                "connections": [
+                  "node_20.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "FunctionResult",
+            "function": "GetAudioBank",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Bank",
+                "type": {
+                  "category": "object",
+                  "class": "DABP_FoleyAudioBank_C"
+                }
+              },
+              {
+                "name": "CanPlaySound",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ]
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "DefaultBank",
+            "pins_out": [
+              {
+                "name": "DefaultBank",
+                "type": {
+                  "category": "object",
+                  "class": "DABP_FoleyAudioBank_C"
+                },
+                "connections": [
+                  "node_5.Bank"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "FunctionResult",
+            "function": "GetAudioBank",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Bank",
+                "type": {
+                  "category": "object",
+                  "class": "DABP_FoleyAudioBank_C"
+                }
+              },
+              {
+                "name": "CanPlaySound",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          },
+          {
+            "id": "node_8",
+            "type": "CallFunction",
+            "function": "GetOwner",
+            "owning_class": "ActorComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ActorComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_1.Object",
+                  "node_2.TestObject",
+                  "node_17.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "CallFunction",
+            "function": "IsPlaying",
+            "owning_class": "SkeletalMeshComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_10.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_11",
+            "type": "CallFunction",
+            "function": "CanPlayFootstepSounds",
+            "owning_class": "SKEL_I_FoleyAudioBankInterface_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_7.CanPlaySound"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_11.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_16.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_13",
+            "type": "CallFunction",
+            "function": "HasTag",
+            "owning_class": "BlueprintGameplayTagLibrary",
+            "pins_in": [
+              {
+                "name": "TagContainer",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTagContainer",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Tag",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTag"
+                }
+              },
+              {
+                "name": "bExactMatch",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_12.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "VariableGet",
+            "variable": "Event",
+            "pins_out": [
+              {
+                "name": "Event",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTag"
+                },
+                "connections": [
+                  "node_13.Tag"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "CallFunction",
+            "function": "MakeLiteralGameplayTagContainer",
+            "owning_class": "BlueprintGameplayTagLibrary",
+            "pins_in": [
+              {
+                "name": "Value",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTagContainer"
+                },
+                "default": "(GameplayTags=((TagName=\"Foley.Event.Run\"),(TagName=\"Foley.Event.Scuff\"),(TagName=\"Foley.Event.Walk\"),(TagName=\"Foley.Event.RunBackwds\"),(TagName=\"Foley.Event.RunStrafe\"),(TagName=\"Foley.Event.WalkBackwds\"),(TagName=\"Foley.Event.ScuffPivot\")))"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTagContainer"
+                },
+                "connections": [
+                  "node_13.TagContainer"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "FunctionResult",
+            "function": "GetAudioBank",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Bank",
+                "type": {
+                  "category": "object",
+                  "class": "DABP_FoleyAudioBank_C"
+                }
+              },
+              {
+                "name": "CanPlaySound",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ]
+          },
+          {
+            "id": "node_21",
+            "type": "VariableGet",
+            "variable": "Event",
+            "pins_out": [
+              {
+                "name": "Event",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTag"
+                },
+                "connections": [
+                  "node_22.Tag"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_22",
+            "type": "CallFunction",
+            "function": "HasTag",
+            "owning_class": "BlueprintGameplayTagLibrary",
+            "pins_in": [
+              {
+                "name": "TagContainer",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTagContainer",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Tag",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTag"
+                }
+              },
+              {
+                "name": "bExactMatch",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_24.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_24",
+            "type": "CallFunction",
+            "function": "Not_PreBool",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_23.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_25",
+            "type": "CallFunction",
+            "function": "MakeLiteralGameplayTagContainer",
+            "owning_class": "BlueprintGameplayTagLibrary",
+            "pins_in": [
+              {
+                "name": "Value",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTagContainer"
+                },
+                "default": "(GameplayTags=((TagName=\"Foley.Event.Jump\"),(TagName=\"Foley.Event.Land\")))"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTagContainer"
+                },
+                "connections": [
+                  "node_22.TagContainer"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "tags": "audio bank does implement interface foley owner playing",
+        "description": "GetAudioBank: Handles bank actor animation."
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

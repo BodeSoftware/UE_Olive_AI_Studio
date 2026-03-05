@@ -1,0 +1,4912 @@
+{
+  "template_id": "hit_stop_component",
+  "display_name": "HitStopComponent",
+  "tags": "hit stop component actor ended affected targets timeline curve track player tag owner pc camera",
+  "catalog_description": "HitStopComponent: ActorComponent-based blueprint with 6 functions. Handles targeting, timer, player, and character.",
+  "source_project": "CombatFS",
+  "depends_on": null,
+  "schema_version": "1.0",
+  "name": "HitStopComponent",
+  "path": "/Game/FlexibleCombatSystem/Blueprints/Components/HitStopComponent.HitStopComponent",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "ActorComponent",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "interfaces": [
+    {
+      "name": "I_HitStop_C",
+      "path": "/Game/FlexibleCombatSystem/Blueprints/Interfaces/I_HitStop.I_HitStop",
+      "required_functions": [
+        "ResetHitStopCount",
+        "NotifyReceivedHit",
+        "ExecuteUbergraph"
+      ]
+    }
+  ],
+  "variables": [
+    {
+      "name": "OnHitStopEnded",
+      "type": {
+        "category": "multicastdelegate"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "affectedTargets",
+      "type": {
+        "category": "set",
+        "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"HitStopComponent_C\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "hitStopTimeline",
+      "type": {
+        "category": "object",
+        "class": "TimelineComponent"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "HitStopCurve",
+      "type": {
+        "category": "object",
+        "class": "CurveFloat"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "TimelineTrackName",
+      "type": {
+        "category": "name"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "PlayerTag",
+      "type": {
+        "category": "name"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ownerPC",
+      "type": {
+        "category": "object",
+        "class": "PlayerController"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "cameraShakeCooldown",
+      "type": {
+        "category": "float"
+      },
+      "category": "Hit Stop Parameters",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "bIsCameraShakeInCooldown",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "maxHitStopCountPerAttack",
+      "type": {
+        "category": "int"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "currentAttackHitStopCount",
+      "type": {
+        "category": "int"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Hit Stop Info",
+      "type": {
+        "category": "struct",
+        "struct_name": "S_HitStopInfo"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 90,
+        "connection_count": 173,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "CustomEvent",
+            "function": "ListenHitStopEnd",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              },
+              {
+                "name": "affectedComponent",
+                "type": {
+                  "category": "object",
+                  "class": "HitStopComponent_C"
+                },
+                "connections": [
+                  "node_2.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CustomEvent",
+            "function": "OnTargetHitStopEndedEvent",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                },
+                "connections": [
+                  "node_2.Delegate",
+                  "node_4.Delegate"
+                ]
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              },
+              {
+                "name": "AffectedComponent",
+                "type": {
+                  "category": "object",
+                  "class": "HitStopComponent_C"
+                },
+                "connections": [
+                  "node_4.self",
+                  "node_6.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "K2Node_AssignDelegate",
+            "title": "Bind Event to On Hit Stop Ended",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "HitStopComponent_C"
+                }
+              },
+              {
+                "name": "Delegate",
+                "type": {
+                  "category": "delegate",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "affectedTargets",
+            "pins_out": [
+              {
+                "name": "affectedTargets",
+                "type": {
+                  "category": "set",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"HitStopComponent_C\"\r\n}"
+                },
+                "connections": [
+                  "node_5.TargetSet"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "K2Node_RemoveDelegate",
+            "title": "Unbind Event from On Hit Stop Ended",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "HitStopComponent_C"
+                }
+              },
+              {
+                "name": "Delegate",
+                "type": {
+                  "category": "delegate",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "Set_Remove",
+            "owning_class": "BlueprintSetLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetSet",
+                "type": {
+                  "category": "set",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"HitStopComponent_C\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Item",
+                "type": {
+                  "category": "object",
+                  "class": "HitStopComponent_C",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "CustomEvent",
+            "function": "StartHitStop",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_70.execute"
+                ]
+              },
+              {
+                "name": "hitStopInfoIn",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                },
+                "connections": [
+                  "node_70.Hit Stop Info"
+                ]
+              },
+              {
+                "name": "ApplyTimeDilation",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_87.Condition"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_8",
+            "type": "Event",
+            "function": "ReceiveBeginPlay",
+            "owning_class": "ActorComponent",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_37.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "K2Node_AddComponentByClass",
+            "title": "Add Timeline Component",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "Class",
+                "type": {
+                  "category": "class",
+                  "class": "ActorComponent"
+                },
+                "default": "/Script/Engine.TimelineComponent"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_11.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "TimelineComponent"
+                },
+                "connections": [
+                  "node_11.hitStopTimeline"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_10",
+            "type": "CallFunction",
+            "function": "GetOwner",
+            "owning_class": "ActorComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ActorComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_9.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "VariableSet",
+            "variable": "hitStopTimeline",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "hitStopTimeline",
+                "type": {
+                  "category": "object",
+                  "class": "TimelineComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_17.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "TimelineComponent"
+                },
+                "connections": [
+                  "node_17.self",
+                  "node_22.self",
+                  "node_35.self",
+                  "node_36.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "VariableGet",
+            "variable": "hitStopTimeline",
+            "pins_out": [
+              {
+                "name": "hitStopTimeline",
+                "type": {
+                  "category": "object",
+                  "class": "TimelineComponent"
+                },
+                "connections": [
+                  "node_19.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "CustomEvent",
+            "function": "SetCustomTimeDilation",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_21.execute"
+                ]
+              },
+              {
+                "name": "TimeDilationIn",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_21.CustomTimeDilation"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_14",
+            "type": "K2Node_CreateDelegate",
+            "title": "Create Event",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                },
+                "connections": [
+                  "node_17.InterpFunc"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_15",
+            "type": "VariableGet",
+            "variable": "TimelineTrackName",
+            "pins_out": [
+              {
+                "name": "TimelineTrackName",
+                "type": {
+                  "category": "name"
+                },
+                "connections": [
+                  "node_19.FloatTrackName"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "VariableGet",
+            "variable": "TimelineTrackName",
+            "pins_out": [
+              {
+                "name": "TimelineTrackName",
+                "type": {
+                  "category": "name"
+                },
+                "connections": [
+                  "node_17.TrackName"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "CallFunction",
+            "function": "AddInterpFloat",
+            "owning_class": "TimelineComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TimelineComponent"
+                }
+              },
+              {
+                "name": "FloatCurve",
+                "type": {
+                  "category": "object",
+                  "class": "CurveFloat"
+                },
+                "default": "/Niagara/DefaultAssets/Curves/Templates/LinearRampUp.LinearRampUp"
+              },
+              {
+                "name": "InterpFunc",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "PropertyName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "TimeDilation"
+              },
+              {
+                "name": "TrackName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "None"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_22.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "CallFunction",
+            "function": "SetFloatCurve",
+            "owning_class": "TimelineComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TimelineComponent"
+                }
+              },
+              {
+                "name": "NewFloatCurve",
+                "type": {
+                  "category": "object",
+                  "class": "CurveFloat"
+                }
+              },
+              {
+                "name": "FloatTrackName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "None"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_29.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "CallFunction",
+            "function": "GetOwner",
+            "owning_class": "ActorComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ActorComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_21.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_21",
+            "type": "VariableSet",
+            "variable": "CustomTimeDilation",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "CustomTimeDilation",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "Actor"
+            }
+          },
+          {
+            "id": "node_22",
+            "type": "CallFunction",
+            "function": "SetTimelineFinishedFunc",
+            "owning_class": "TimelineComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TimelineComponent"
+                }
+              },
+              {
+                "name": "NewTimelineFinishedFunc",
+                "type": {
+                  "category": "delegate"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_35.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "CustomEvent",
+            "function": "OnHitStopTimelineEnd",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_26.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_24",
+            "type": "K2Node_CreateDelegate",
+            "title": "Create Event",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                },
+                "connections": [
+                  "node_22.NewTimelineFinishedFunc"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_25",
+            "type": "CallFunction",
+            "function": "GetOwner",
+            "owning_class": "ActorComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ActorComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_26.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "VariableSet",
+            "variable": "CustomTimeDilation",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "CustomTimeDilation",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_33.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "Actor"
+            }
+          },
+          {
+            "id": "node_28",
+            "type": "VariableGet",
+            "variable": "hitStopTimeline",
+            "pins_out": [
+              {
+                "name": "hitStopTimeline",
+                "type": {
+                  "category": "object",
+                  "class": "TimelineComponent"
+                },
+                "connections": [
+                  "node_29.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_29",
+            "type": "CallFunction",
+            "function": "PlayFromStart",
+            "owning_class": "TimelineComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TimelineComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_33",
+            "type": "K2Node_CallDelegate",
+            "title": "Call On Hit Stop Ended",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "HitStopComponent_C"
+                }
+              },
+              {
+                "name": "AffectedComponent",
+                "type": {
+                  "category": "object",
+                  "class": "HitStopComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_34",
+            "type": "K2Node_Self",
+            "title": "Self-Reference",
+            "pins_out": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                },
+                "connections": [
+                  "node_33.AffectedComponent"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_35",
+            "type": "CallFunction",
+            "function": "SetTimelineLengthMode",
+            "owning_class": "TimelineComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TimelineComponent"
+                }
+              },
+              {
+                "name": "NewLengthMode",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "TL_LastKeyFrame"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_36.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_36",
+            "type": "CallFunction",
+            "function": "SetIgnoreTimeDilation",
+            "owning_class": "TimelineComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TimelineComponent"
+                }
+              },
+              {
+                "name": "bNewIgnoreTimeDilation",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_37",
+            "type": "Sequence",
+            "title": "Sequence",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then_0",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_39.execute"
+                ]
+              },
+              {
+                "name": "then_1",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_9.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "OutputCount": "2"
+            }
+          },
+          {
+            "id": "node_38",
+            "type": "CallFunction",
+            "function": "GetOwner",
+            "owning_class": "ActorComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ActorComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_39.Object"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_39",
+            "type": "Cast",
+            "title": "Cast To Pawn",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_46.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AsPawn",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                },
+                "connections": [
+                  "node_45.self"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "Pawn",
+              "TargetClassPath": "/Script/Engine.Pawn"
+            }
+          },
+          {
+            "id": "node_40",
+            "type": "Sequence",
+            "title": "Sequence",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then_0",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_87.execute"
+                ]
+              },
+              {
+                "name": "then_1",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_43.execute"
+                ]
+              },
+              {
+                "name": "then_2",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_75.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "OutputCount": "3"
+            }
+          },
+          {
+            "id": "node_42",
+            "type": "CallFunction",
+            "function": "IsOwnedByPlayer",
+            "owning_class": "SKEL_HitStopComponent_C",
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_43.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_43",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_48.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_44",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_60.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_45",
+            "type": "CallFunction",
+            "function": "GetController",
+            "owning_class": "Pawn",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Controller"
+                },
+                "connections": [
+                  "node_46.Object"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_46",
+            "type": "Cast",
+            "title": "Cast To PlayerController",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_47.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AsPlayer Controller",
+                "type": {
+                  "category": "object",
+                  "class": "PlayerController"
+                },
+                "connections": [
+                  "node_47.ownerPC"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "PlayerController",
+              "TargetClassPath": "/Script/Engine.PlayerController"
+            }
+          },
+          {
+            "id": "node_47",
+            "type": "VariableSet",
+            "variable": "ownerPC",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ownerPC",
+                "type": {
+                  "category": "object",
+                  "class": "PlayerController"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "PlayerController"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_48",
+            "type": "VariableGet",
+            "variable": "ownerPC",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_44.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ownerPC",
+                "type": {
+                  "category": "object",
+                  "class": "PlayerController"
+                },
+                "connections": [
+                  "node_49.self",
+                  "node_51.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_49",
+            "type": "CallFunction",
+            "function": "IsLocalController",
+            "owning_class": "Controller",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Controller"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_44.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_50",
+            "type": "CallFunction",
+            "function": "ClientStartCameraShake",
+            "owning_class": "PlayerController",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "PlayerController"
+                }
+              },
+              {
+                "name": "Shake",
+                "type": {
+                  "category": "class",
+                  "class": "CameraShakeBase"
+                }
+              },
+              {
+                "name": "Scale",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "PlaySpace",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "CameraLocal"
+              },
+              {
+                "name": "UserPlaySpaceRot",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0, 0, 0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_56.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_53",
+            "type": "CallFunction",
+            "function": "K2_SetTimerDelegate",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Delegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "Time",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "bLooping",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "bMaxOncePerFrame",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "InitialStartDelay",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "InitialStartDelayVariance",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "TimerHandle"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_54",
+            "type": "VariableGet",
+            "variable": "cameraShakeCooldown",
+            "pins_out": [
+              {
+                "name": "cameraShakeCooldown",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_53.Time"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_55",
+            "type": "CustomEvent",
+            "function": "CameraShakeCooldownEndEvent",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                },
+                "connections": [
+                  "node_53.Delegate"
+                ]
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_57.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_56",
+            "type": "VariableSet",
+            "variable": "bIsCameraShakeInCooldown",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "bIsCameraShakeInCooldown",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_53.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_57",
+            "type": "VariableSet",
+            "variable": "bIsCameraShakeInCooldown",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "bIsCameraShakeInCooldown",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_58",
+            "type": "VariableGet",
+            "variable": "bIsCameraShakeInCooldown",
+            "pins_out": [
+              {
+                "name": "bIsCameraShakeInCooldown",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_59.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_59",
+            "type": "CallFunction",
+            "function": "Not_PreBool",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_60.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_60",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_50.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_62",
+            "type": "Event",
+            "function": "ResetHitStopCount",
+            "owning_class": "SKEL_I_HitStop_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_63.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_63",
+            "type": "CallFunction",
+            "function": "Internal_ResetHitStopCount",
+            "owning_class": "SKEL_HitStopComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_64",
+            "type": "Event",
+            "function": "NotifyReceivedHit",
+            "owning_class": "SKEL_I_HitStop_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_65.execute"
+                ]
+              },
+              {
+                "name": "hitCauser",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_65.hitCauser"
+                ]
+              },
+              {
+                "name": "HitStopInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                },
+                "connections": [
+                  "node_65.hitStopInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_65",
+            "type": "CallFunction",
+            "function": "Internal_NotifyReceivedHit",
+            "owning_class": "SKEL_HitStopComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "hitCauser",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "hitStopInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_70",
+            "type": "VariableSet",
+            "variable": "Hit Stop Info",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Hit Stop Info",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_40.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_71",
+            "type": "VariableGet",
+            "variable": "Hit Stop Info",
+            "pins_out": [
+              {
+                "name": "Hit Stop Info",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                },
+                "connections": [
+                  "node_72.S_HitStopInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_72",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Hit Stop Info",
+            "pins_in": [
+              {
+                "name": "S_HitStopInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "TimeDilationCurve_15_731FCC3443136D1BF2CA7EAA8646E3AE",
+                "type": {
+                  "category": "object",
+                  "class": "CurveFloat"
+                },
+                "connections": [
+                  "node_19.NewFloatCurve"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_73",
+            "type": "VariableGet",
+            "variable": "Hit Stop Info",
+            "pins_out": [
+              {
+                "name": "Hit Stop Info",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                },
+                "connections": [
+                  "node_74.S_HitStopInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_74",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Hit Stop Info",
+            "pins_in": [
+              {
+                "name": "S_HitStopInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "CameraShakeClass_17_CB9C692B44B7F4E27198C2BC6C9C905F",
+                "type": {
+                  "category": "class",
+                  "class": "CameraShakeBase"
+                },
+                "connections": [
+                  "node_50.Shake"
+                ]
+              },
+              {
+                "name": "CameraShakeScale_18_C9E2A2394DDA9D9F5E3126878064FF2F",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_50.Scale"
+                ]
+              },
+              {
+                "name": "AffectAttacker_28_3EFFD07C48491ADAAE2BF6B50528A382",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_75",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_78.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_76",
+            "type": "CallFunction",
+            "function": "IsOwnedByPlayer",
+            "owning_class": "SKEL_HitStopComponent_C",
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_75.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_77",
+            "type": "CallFunction",
+            "function": "GetOwner",
+            "owning_class": "ActorComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ActorComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_78.Object"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_78",
+            "type": "Cast",
+            "title": "Cast To Character",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_79.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AsCharacter",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                },
+                "connections": [
+                  "node_80.self"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "Character",
+              "TargetClassPath": "/Script/Engine.Character"
+            }
+          },
+          {
+            "id": "node_79",
+            "type": "CallFunction",
+            "function": "SetOverlayMaterial",
+            "owning_class": "MeshComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "MeshComponent"
+                }
+              },
+              {
+                "name": "NewOverlayMaterial",
+                "type": {
+                  "category": "object",
+                  "class": "MaterialInterface"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_81.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_80",
+            "type": "VariableGet",
+            "variable": "Mesh",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Mesh",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                },
+                "connections": [
+                  "node_79.self",
+                  "node_85.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Character"
+            }
+          },
+          {
+            "id": "node_81",
+            "type": "CallFunction",
+            "function": "RetriggerableDelay",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Duration",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.2"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_82.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "true"
+            }
+          },
+          {
+            "id": "node_82",
+            "type": "CallFunction",
+            "function": "SetOverlayMaterial",
+            "owning_class": "MeshComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "MeshComponent"
+                }
+              },
+              {
+                "name": "NewOverlayMaterial",
+                "type": {
+                  "category": "object",
+                  "class": "MaterialInterface"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_83",
+            "type": "VariableGet",
+            "variable": "Hit Stop Info",
+            "pins_out": [
+              {
+                "name": "Hit Stop Info",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                },
+                "connections": [
+                  "node_84.S_HitStopInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_84",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Hit Stop Info",
+            "pins_in": [
+              {
+                "name": "S_HitStopInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "BlinkOverlayMaterial_21_341D7635474B4F7C5593D5853CB1BA10",
+                "type": {
+                  "category": "object",
+                  "class": "Material"
+                },
+                "connections": [
+                  "node_79.NewOverlayMaterial"
+                ]
+              },
+              {
+                "name": "BlinkDuration_24_AB25444B4488206BCAA4A88927B1F284",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_81.Duration"
+                ]
+              },
+              {
+                "name": "AffectAttacker_28_3EFFD07C48491ADAAE2BF6B50528A382",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_87",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_88",
+            "type": "VariableGet",
+            "variable": "Hit Stop Info",
+            "pins_out": [
+              {
+                "name": "Hit Stop Info",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                },
+                "connections": [
+                  "node_89.S_HitStopInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_89",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Hit Stop Info",
+            "pins_in": [
+              {
+                "name": "S_HitStopInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "TimeDilationCurve_15_731FCC3443136D1BF2CA7EAA8646E3AE",
+                "type": {
+                  "category": "object",
+                  "class": "CurveFloat"
+                }
+              }
+            ]
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "ListenHitStopEnd",
+            "type": "CustomEvent",
+            "tags": "listen hit stop end"
+          },
+          {
+            "name": "OnTargetHitStopEndedEvent",
+            "type": "CustomEvent",
+            "tags": "target hit stop ended event targeting"
+          },
+          {
+            "name": "StartHitStop",
+            "type": "CustomEvent",
+            "tags": "start hit stop"
+          },
+          {
+            "name": "ReceiveBeginPlay",
+            "type": "Event",
+            "tags": "receive begin play"
+          },
+          {
+            "name": "SetCustomTimeDilation",
+            "type": "CustomEvent",
+            "tags": "custom time dilation"
+          },
+          {
+            "name": "OnHitStopTimelineEnd",
+            "type": "CustomEvent",
+            "tags": "hit stop timeline end"
+          },
+          {
+            "name": "CameraShakeCooldownEndEvent",
+            "type": "CustomEvent",
+            "tags": "camera shake cooldown end event"
+          },
+          {
+            "name": "ResetHitStopCount",
+            "type": "Event",
+            "tags": "reset hit stop"
+          },
+          {
+            "name": "NotifyReceivedHit",
+            "type": "Event",
+            "tags": "notify hit"
+          }
+        ],
+        "tags": "listen hit stop end target ended event targeting"
+      }
+    ],
+    "functions": [
+      {
+        "name": "Internal_NotifyReceivedHit",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "hitCauser",
+            "display_name": "Hit Causer",
+            "type": {
+              "category": "object",
+              "class": "Actor"
+            }
+          },
+          {
+            "name": "hitStopInfo",
+            "display_name": "Hit Stop Info",
+            "type": {
+              "category": "struct",
+              "struct_name": "S_HitStopInfo"
+            }
+          }
+        ],
+        "access": "private",
+        "description": "Internal_NotifyReceivedHit: Handles notify hit.",
+        "category": "Private",
+        "node_count": 12,
+        "connection_count": 18,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "Internal_NotifyReceivedHit",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "hitCauser",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "hitStopInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                },
+                "connections": [
+                  "node_11.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Private",
+              "Description": "Called when the owner receives damage"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "GetComponentByClass",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "ComponentClass",
+                "type": {
+                  "category": "class",
+                  "class": "ActorComponent"
+                },
+                "default": "/Game/FlexibleCombatSystem/Blueprints/Components/HitStopComponent.HitStopComponent_C"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "HitStopComponent_C"
+                },
+                "connections": [
+                  "node_3.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "TriggerHitStop",
+            "owning_class": "SKEL_HitStopComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "damagedActorComponent",
+                "type": {
+                  "category": "object",
+                  "class": "HitStopComponent_C"
+                }
+              },
+              {
+                "name": "HitStopInfoIn",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "InterruptHitStop",
+            "owning_class": "SKEL_HitStopComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "hitCauser",
+            "pins_out": [
+              {
+                "name": "hitCauser",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_2.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_8",
+            "type": "K2Node_Self",
+            "title": "Self-Reference",
+            "pins_out": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                },
+                "connections": [
+                  "node_3.damagedActorComponent"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_9",
+            "type": "CallFunction",
+            "function": "IsOwnedByPlayer",
+            "owning_class": "SKEL_HitStopComponent_C",
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_1.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "tags": "internal notify hit component trigger stop interrupt owned"
+      },
+      {
+        "name": "TriggerHitStop",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "damagedActorComponent",
+            "display_name": "Damaged Actor Component",
+            "type": {
+              "category": "object",
+              "class": "HitStopComponent_C"
+            }
+          },
+          {
+            "name": "HitStopInfoIn",
+            "display_name": "Hit Stop Info In",
+            "type": {
+              "category": "struct",
+              "struct_name": "S_HitStopInfo"
+            }
+          }
+        ],
+        "access": "private",
+        "category": "Private",
+        "node_count": 42,
+        "connection_count": 68,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "TriggerHitStop",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_27.execute"
+                ]
+              },
+              {
+                "name": "damagedActorComponent",
+                "type": {
+                  "category": "object",
+                  "class": "HitStopComponent_C"
+                }
+              },
+              {
+                "name": "HitStopInfoIn",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                },
+                "connections": [
+                  "node_32.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Private"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_33.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "affectedTargets",
+            "pins_out": [
+              {
+                "name": "affectedTargets",
+                "type": {
+                  "category": "set",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"HitStopComponent_C\"\r\n}"
+                },
+                "connections": [
+                  "node_4.TargetSet"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "Set_Contains",
+            "owning_class": "BlueprintSetLibrary",
+            "pins_in": [
+              {
+                "name": "TargetSet",
+                "type": {
+                  "category": "set",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"HitStopComponent_C\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "ItemToFind",
+                "type": {
+                  "category": "object",
+                  "class": "HitStopComponent_C",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_5.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_25.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_7",
+            "type": "CallFunction",
+            "function": "ListenHitStopEnd",
+            "owning_class": "SKEL_HitStopComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "affectedComponent",
+                "type": {
+                  "category": "object",
+                  "class": "HitStopComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_11.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "VariableGet",
+            "variable": "damagedActorComponent",
+            "pins_out": [
+              {
+                "name": "damagedActorComponent",
+                "type": {
+                  "category": "object",
+                  "class": "HitStopComponent_C"
+                },
+                "connections": [
+                  "node_4.ItemToFind"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "damagedActorComponent",
+            "pins_out": [
+              {
+                "name": "damagedActorComponent",
+                "type": {
+                  "category": "object",
+                  "class": "HitStopComponent_C"
+                },
+                "connections": [
+                  "node_7.affectedComponent"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "damagedActorComponent",
+            "pins_out": [
+              {
+                "name": "damagedActorComponent",
+                "type": {
+                  "category": "object",
+                  "class": "HitStopComponent_C"
+                },
+                "connections": [
+                  "node_11.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_11",
+            "type": "CallFunction",
+            "function": "StartHitStop",
+            "owning_class": "SKEL_HitStopComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "hitStopInfoIn",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                }
+              },
+              {
+                "name": "ApplyTimeDilation",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_12.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "CallFunction",
+            "function": "StartHitStop",
+            "owning_class": "SKEL_HitStopComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "hitStopInfoIn",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                }
+              },
+              {
+                "name": "ApplyTimeDilation",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "CallFunction",
+            "function": "IsOwnedByPlayer",
+            "owning_class": "SKEL_HitStopComponent_C",
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_1.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "VariableGet",
+            "variable": "currentAttackHitStopCount",
+            "pins_out": [
+              {
+                "name": "currentAttackHitStopCount",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_15.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "CallFunction",
+            "function": "Less_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_17.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "VariableGet",
+            "variable": "maxHitStopCountPerAttack",
+            "pins_out": [
+              {
+                "name": "maxHitStopCountPerAttack",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_15.B"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_18",
+            "type": "VariableGet",
+            "variable": "currentAttackHitStopCount",
+            "pins_out": [
+              {
+                "name": "currentAttackHitStopCount",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_21",
+            "type": "VariableGet",
+            "variable": "HitStopInfoIn",
+            "pins_out": [
+              {
+                "name": "HitStopInfoIn",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                },
+                "connections": [
+                  "node_11.hitStopInfoIn"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_22",
+            "type": "VariableGet",
+            "variable": "HitStopInfoIn",
+            "pins_out": [
+              {
+                "name": "HitStopInfoIn",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                },
+                "connections": [
+                  "node_12.hitStopInfoIn"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_23",
+            "type": "VariableGet",
+            "variable": "HitStopInfoIn",
+            "pins_out": [
+              {
+                "name": "HitStopInfoIn",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                },
+                "connections": [
+                  "node_24.S_HitStopInfo"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_24",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Hit Stop Info",
+            "pins_in": [
+              {
+                "name": "S_HitStopInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "MaxHitStopNumberPerAttack_16_CD51CD2F4D45314395C2A1A060F664BD",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_25.maxHitStopCountPerAttack"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_25",
+            "type": "VariableSet",
+            "variable": "maxHitStopCountPerAttack",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "maxHitStopCountPerAttack",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_17.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "CallFunction",
+            "function": "IsActive",
+            "owning_class": "ActorComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ActorComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_27.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_28",
+            "type": "VariableGet",
+            "variable": "affectedTargets",
+            "pins_out": [
+              {
+                "name": "affectedTargets",
+                "type": {
+                  "category": "set",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"HitStopComponent_C\"\r\n}"
+                },
+                "connections": [
+                  "node_30.TargetSet"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_29",
+            "type": "VariableGet",
+            "variable": "damagedActorComponent",
+            "pins_out": [
+              {
+                "name": "damagedActorComponent",
+                "type": {
+                  "category": "object",
+                  "class": "HitStopComponent_C"
+                },
+                "connections": [
+                  "node_30.NewItem"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_30",
+            "type": "CallFunction",
+            "function": "Set_Add",
+            "owning_class": "BlueprintSetLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetSet",
+                "type": {
+                  "category": "set",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"HitStopComponent_C\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "NewItem",
+                "type": {
+                  "category": "object",
+                  "class": "HitStopComponent_C",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_31",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Hit Stop Info",
+            "pins_in": [
+              {
+                "name": "S_HitStopInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "AffectAttacker_28_3EFFD07C48491ADAAE2BF6B50528A382",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_33.Condition"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_33",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_39.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_35",
+            "type": "VariableGet",
+            "variable": "damagedActorComponent",
+            "pins_out": [
+              {
+                "name": "damagedActorComponent",
+                "type": {
+                  "category": "object",
+                  "class": "HitStopComponent_C"
+                },
+                "connections": [
+                  "node_36.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_36",
+            "type": "CallFunction",
+            "function": "StartHitStop",
+            "owning_class": "SKEL_HitStopComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "hitStopInfoIn",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                }
+              },
+              {
+                "name": "ApplyTimeDilation",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_37",
+            "type": "VariableGet",
+            "variable": "HitStopInfoIn",
+            "pins_out": [
+              {
+                "name": "HitStopInfoIn",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                },
+                "connections": [
+                  "node_36.hitStopInfoIn"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_40",
+            "type": "CallFunction",
+            "function": "StartHitStop",
+            "owning_class": "SKEL_HitStopComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "hitStopInfoIn",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                }
+              },
+              {
+                "name": "ApplyTimeDilation",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_36.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_41",
+            "type": "VariableGet",
+            "variable": "HitStopInfoIn",
+            "pins_out": [
+              {
+                "name": "HitStopInfoIn",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                },
+                "connections": [
+                  "node_40.hitStopInfoIn"
+                ]
+              }
+            ]
+          }
+        ],
+        "tags": "trigger hit stop contains listen start owned player",
+        "description": "TriggerHitStop: Triggers hit stop."
+      },
+      {
+        "name": "InterruptHitStop",
+        "graph_type": "Function",
+        "access": "private",
+        "description": "InterruptHitStop: Handles hit stop.",
+        "category": "Private",
+        "node_count": 6,
+        "connection_count": 4,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "InterruptHitStop",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Private",
+              "Description": "Stop ongoing hit-stop effect for player character and affected enemies"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableGet",
+            "variable": "affectedTargets",
+            "pins_out": [
+              {
+                "name": "affectedTargets",
+                "type": {
+                  "category": "set",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"HitStopComponent_C\"\r\n}"
+                },
+                "connections": [
+                  "node_2.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "Set_ToArray",
+            "owning_class": "BlueprintSetLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "A",
+                "type": {
+                  "category": "set",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"HitStopComponent_C\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Result",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"HitStopComponent_C\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "StopCurrentHitStop",
+            "owning_class": "SKEL_HitStopComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "StopCurrentHitStop",
+            "owning_class": "SKEL_HitStopComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "tags": "interrupt hit stop current affected targets"
+      },
+      {
+        "name": "IsOwnedByPlayer",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "private",
+        "pure": true,
+        "category": "Private",
+        "node_count": 6,
+        "connection_count": 8,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "IsOwnedByPlayer",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Private"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "IsOwnedByPlayer",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "ActorHasTag",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "Tag",
+                "type": {
+                  "category": "name"
+                },
+                "default": "None"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_1.ReturnValue"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "GetOwner",
+            "owning_class": "ActorComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ActorComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_2.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "PlayerTag",
+            "pins_out": [
+              {
+                "name": "PlayerTag",
+                "type": {
+                  "category": "name"
+                },
+                "connections": [
+                  "node_2.Tag"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ],
+        "tags": "owned by player actor owner tag",
+        "description": "IsOwnedByPlayer: Handles by player."
+      },
+      {
+        "name": "Internal_ResetHitStopCount",
+        "graph_type": "Function",
+        "access": "private",
+        "description": "Internal_ResetHitStopCount: Handles reset hit stop.",
+        "category": "Private",
+        "node_count": 3,
+        "connection_count": 2,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "Internal_ResetHitStopCount",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Private",
+              "Description": "Reset hit stop count check"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableSet",
+            "variable": "currentAttackHitStopCount",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "currentAttackHitStopCount",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ],
+        "tags": "internal reset hit stop current attack"
+      },
+      {
+        "name": "StopCurrentHitStop",
+        "graph_type": "Function",
+        "access": "private",
+        "category": "Private",
+        "node_count": 4,
+        "connection_count": 6,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "StopCurrentHitStop",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Private"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableGet",
+            "variable": "hitStopTimeline",
+            "pins_out": [
+              {
+                "name": "hitStopTimeline",
+                "type": {
+                  "category": "object",
+                  "class": "TimelineComponent"
+                },
+                "connections": [
+                  "node_2.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "Stop",
+            "owning_class": "TimelineComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TimelineComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "OnHitStopTimelineEnd",
+            "owning_class": "SKEL_HitStopComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "tags": "stop current hit timeline",
+        "description": "StopCurrentHitStop: Stops current hit stop."
+      }
+    ],
+    "macros": []
+  },
+  "event_dispatchers": [
+    {
+      "name": "OnHitStopEnded",
+      "category": "Default",
+      "tags": "hit stop ended"
+    }
+  ],
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

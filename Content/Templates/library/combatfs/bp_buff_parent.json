@@ -1,0 +1,572 @@
+{
+  "template_id": "bp_buff_parent",
+  "display_name": "BP_BuffParent",
+  "tags": "buff ps status",
+  "catalog_description": "BP_BuffParent: BP_AbilitySelfCast-based (child of BP_AbilitySelfCast) blueprint with 1 function. Handles ability and status.",
+  "inherited_tags": "cast timer niagara ability actor character mesh follow camera velocity magic component equipment spell placement location shield damage",
+  "source_project": "CombatFS",
+  "depends_on": "bp_ability_self_cast",
+  "schema_version": "1.0",
+  "name": "BP_BuffParent",
+  "path": "/Game/FlexibleCombatSystem/Blueprints/Abilities/Children/BP_BuffParent.BP_BuffParent",
+  "type": "Normal",
+  "parent_class": {
+    "name": "BP_AbilitySelfCast_C",
+    "source": "blueprint",
+    "path": "/Game/FlexibleCombatSystem/Blueprints/Abilities/BP_AbilitySelfCast.BP_AbilitySelfCast"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "BuffPS",
+      "type": {
+        "category": "object",
+        "class": "NiagaraComponent"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SpellPlacementTimer",
+      "type": {
+        "category": "struct",
+        "struct_name": "TimerHandle"
+      },
+      "category": "Default",
+      "defined_in": "BP_AbilitySelfCast",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 13,
+        "connection_count": 34,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "ActivateBuff",
+            "owning_class": "SKEL_BuffComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BuffComponent_C"
+                }
+              },
+              {
+                "name": "NiagaraSystem",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "CharacterActorRef",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "BuffType",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator3"
+              },
+              {
+                "name": "BuffDuration",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "BuffAmount",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "BarrierHitDamage",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "BarrierDamageType",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              },
+              {
+                "name": "SpecialDamageInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpecialDamageInfo"
+                }
+              },
+              {
+                "name": "Spawned Weapon",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_12.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "CharacterRef",
+            "pins_out": [
+              {
+                "name": "CharacterRef",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                },
+                "connections": [
+                  "node_3.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "GetComponentByClass",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "ComponentClass",
+                "type": {
+                  "category": "class",
+                  "class": "ActorComponent"
+                },
+                "default": "/Game/FlexibleCombatSystem/Blueprints/Components/BuffComponent.BuffComponent_C"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "BuffComponent_C"
+                },
+                "connections": [
+                  "node_1.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Spell Info",
+            "pins_in": [
+              {
+                "name": "S_SpellInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpellInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "DamageType_80_CE826A504792B4A2C801578AAA92DA0E",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_8.InputPin"
+                ]
+              },
+              {
+                "name": "SpecialDamageInfo_104_70183354402279A6A2D1E3B1FB525598",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpecialDamageInfo"
+                },
+                "connections": [
+                  "node_1.SpecialDamageInfo"
+                ]
+              },
+              {
+                "name": "SpellDurations_81_2875A643430498F77DE83F992BB88911",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_DurationSpells"
+                },
+                "connections": [
+                  "node_5.S_DurationSpells"
+                ]
+              },
+              {
+                "name": "DoesNotAllowLockOnCast_139_E9B36A49463B770F83B4AE995B9F8C14",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Duration Spells",
+            "pins_in": [
+              {
+                "name": "S_DurationSpells",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_DurationSpells",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SpellPS_19_0DAC0A1E4DFE099CE6BF8DB269FA16B2",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_1.NiagaraSystem"
+                ]
+              },
+              {
+                "name": "SpellDuration_15_C4117A934D33CAEA5D263C95E1659227",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_1.BuffDuration"
+                ]
+              },
+              {
+                "name": "SpellAmount_13_1001190B43D29CBAC0450B81ADF9BB66",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_1.BuffAmount"
+                ]
+              },
+              {
+                "name": "SpellDurationType_21_14489CA64D555635734C6C9B3700113F",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_1.BuffType"
+                ]
+              },
+              {
+                "name": "BarrierReflectDamage_24_3864D971489B3FDD5FE4A58D3D5E7A84",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_1.BarrierHitDamage"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "CharacterRef",
+            "pins_out": [
+              {
+                "name": "CharacterRef",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                },
+                "connections": [
+                  "node_1.CharacterActorRef"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "Event",
+            "function": "MC_SpellEffect",
+            "owning_class": "SKEL_BP_AbilitySelfCast_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "AbilityInfo",
+            "pins_out": [
+              {
+                "name": "AbilityInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                },
+                "connections": [
+                  "node_11.DataSetup"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "CallFunction",
+            "function": "Get Ability Data",
+            "owning_class": "SKEL_FunctionLibrary_C",
+            "pins_in": [
+              {
+                "name": "DataSetup",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SlotData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpellInfo"
+                },
+                "connections": [
+                  "node_4.S_SpellInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "CallFunction",
+            "function": "DestroyAbility",
+            "owning_class": "SKEL_BP_AbilityParent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_AbilityParent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "MC_SpellEffect",
+            "type": "Event",
+            "tags": "mc spell effect ability"
+          }
+        ],
+        "tags": "mc spell effect ability"
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 2,
+        "connection_count": 2,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "UserConstructionScript",
+            "owning_class": "SKEL_BP_AbilitySelfCast_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

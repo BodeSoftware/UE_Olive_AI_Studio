@@ -1,0 +1,2678 @@
+{
+  "template_id": "bp_climbable_wall",
+  "display_name": "BP_ClimbableWall",
+  "tags": "climbable wall actor mesh ignore collision sides highest point offset lowest max close corner distance",
+  "catalog_description": "BP_ClimbableWall: Actor-based blueprint with 5 functions. Handles movement.",
+  "source_project": "CombatFS",
+  "depends_on": null,
+  "schema_version": "1.0",
+  "name": "BP_ClimbableWall",
+  "path": "/Game/FlexibleCombatSystem/Climbing/BPClimbingObjects/BP_ClimbableWall.BP_ClimbableWall",
+  "type": "Normal",
+  "parent_class": {
+    "name": "Actor",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "interfaces": [
+    {
+      "name": "I_Climbable_C",
+      "path": "/Game/FlexibleCombatSystem/Climbing/I_Climbable.I_Climbable",
+      "required_functions": [
+        "GetIsCircular",
+        "GetLastSplinePointLocation",
+        "GetFirstSplinePointLocation",
+        "GetCanJumpOffLeft",
+        "GetCanJumpOffRight",
+        "GetAssociatedMesh",
+        "GetTraceLocationZ",
+        "GetForceWithoutFeet",
+        "GetCanStandOn",
+        "GetPlayerOffsetForward",
+        "GetPlayerOffsetForUp",
+        "GetFacingSideLocationPole",
+        "GetMaxCloseToCornerDistance",
+        "GetShouldIgnoreCorners",
+        "GetTopSpline",
+        "GetSpline",
+        "GetType",
+        "ExecuteUbergraph"
+      ]
+    }
+  ],
+  "variables": [
+    {
+      "name": "Mesh To Ignore Collision From",
+      "type": {
+        "category": "object",
+        "class": "StaticMeshActor"
+      },
+      "category": "Climbable Settings",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ClimbableSides",
+      "type": {
+        "category": "byte"
+      },
+      "category": "Climbable Settings",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "HighestClimbablePointOffset",
+      "type": {
+        "category": "float"
+      },
+      "category": "Climbable Settings",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "LowestClimbablePointOffset",
+      "type": {
+        "category": "float"
+      },
+      "category": "Climbable Settings",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MaxCloseToCornerDistance",
+      "type": {
+        "category": "float"
+      },
+      "category": "Climbable Settings",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "bCanStandOn",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Climbable Settings",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ClimbableType",
+      "type": {
+        "category": "byte"
+      },
+      "category": "Climbable Settings",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "PlayerOffsetForward",
+      "type": {
+        "category": "float"
+      },
+      "category": "Climbable Settings",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "PlayerOffsetUp",
+      "type": {
+        "category": "float"
+      },
+      "category": "Climbable Settings",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ActiveSpline",
+      "type": {
+        "category": "object",
+        "class": "SplineComponent"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "PointsBottom",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"SplinePoint\"\r\n}"
+      },
+      "category": "Debug Mesh",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SplinePointsNum",
+      "type": {
+        "category": "int"
+      },
+      "category": "Debug Mesh",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "PointsTop",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"SplinePoint\"\r\n}"
+      },
+      "category": "Debug Mesh",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "OffsetForward_Base",
+      "type": {
+        "category": "float"
+      },
+      "category": "Climbable Settings",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "OffsetForUp_Base",
+      "type": {
+        "category": "float"
+      },
+      "category": "Climbable Settings",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Root",
+      "type": {
+        "category": "object",
+        "class": "SceneComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "StaticMesh",
+      "type": {
+        "category": "object",
+        "class": "StaticMeshComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "BottomSpline",
+      "type": {
+        "category": "object",
+        "class": "SplineComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "TopSpline",
+      "type": {
+        "category": "object",
+        "class": "SplineComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Billboard",
+      "type": {
+        "category": "object",
+        "class": "BillboardComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Billboard1",
+      "type": {
+        "category": "object",
+        "class": "BillboardComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Billboard2",
+      "type": {
+        "category": "object",
+        "class": "BillboardComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Billboard3",
+      "type": {
+        "category": "object",
+        "class": "BillboardComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "components": {
+    "root": "DefaultSceneRoot",
+    "tree": [
+      {
+        "name": "Root",
+        "class": "SceneComponent",
+        "children": [
+          {
+            "name": "StaticMesh",
+            "class": "StaticMeshComponent",
+            "properties": {
+              "StaticMesh": "/Script/Engine.StaticMesh'/Game/FlexibleCombatSystem/DemoFolder/DemoContent/DemoRoom/Meshes/SM_Cube.SM_Cube'",
+              "OverrideMaterials": "(\"/Script/Engine.MaterialInstanceConstant'/Game/FlexibleCombatSystem/Climbing/Materials/MI_ClimbWall.MI_ClimbWall'\")",
+              "BodyInstance": "(PositionSolverIterationCount=8,VelocitySolverIterationCount=2,ProjectionSolverIterationCount=1,ObjectType=ECC_GameTraceChannel6,CollisionEnabled=QueryOnly,bLockTranslation=True,bLockRotation=True,bInterpolateWhenSubStepping=True,bInertiaConditioning=True,SolverAsyncDeltaTime=0.016667,CollisionProfileName=\"Custom\",CollisionResponses=(ResponseArray=((Channel=\"WorldStatic\",Response=ECR_Ignore),(Channel=\"WorldDynamic\",Response=ECR_Ignore),(Channel=\"Visibility\",Response=ECR_Ignore),(Channel=\"Camera\",Response=ECR_Ignore),(Channel=\"PhysicsBody\",Response=ECR_Ignore),(Channel=\"Vehicle\",Response=ECR_Ignore),(Channel=\"Destructible\",Response=ECR_Ignore),(Channel=\"Projectile\",Response=ECR_Ignore),(Channel=\"DamageTraceHit\",Response=ECR_Ignore),(Channel=\"Traversable\"),(Channel=\"Pawn\",Response=ECR_Ignore),(Channel=\"Climbing\",Response=ECR_Ignore))),MassInKgOverride=100.000000,LinearDamping=0.010000,CustomDOFPlaneNormal=(X=0.000000,Y=0.000000,Z=0.000000),COMNudge=(X=0.000000,Y=0.000000,Z=0.000000),MassScale=1.000000,InertiaTensorScale=(X=1.000000,Y=1.000000,Z=1.000000),WalkableSlopeOverride=(),MaxAngularVelocity=3600.000000,CustomSleepThresholdMultiplier=1.000000,StabilizationThresholdMultiplier=1.000000,bEnableGravity=True,bAutoWeld=True,bStartAwake=True,bUpdateMassWhenScaleChanges=True)"
+            }
+          },
+          {
+            "name": "BottomSpline",
+            "class": "SplineComponent",
+            "properties": {
+              "Spline": "SplineData SplineDataLen=4 SplineData=AA==\r\n",
+              "SplineCurves": "(Position=(Points=((LeaveTangent=(X=-100.000000,Y=0.000000,Z=0.000000)),(InVal=1.000000,OutVal=(X=-100.000000,Y=0.000000,Z=0.000000),ArriveTangent=(X=-100.000000,Y=0.000000,Z=0.000000)))),Rotation=(Points=((OutVal=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),ArriveTangent=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),LeaveTangent=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),InterpMode=CIM_CurveAuto),(InVal=1.000000,OutVal=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),ArriveTangent=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),LeaveTangent=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),InterpMode=CIM_CurveAuto))),Scale=(Points=((OutVal=(X=1.000000,Y=1.000000,Z=1.000000),InterpMode=CIM_CurveAuto),(InVal=1.000000,OutVal=(X=1.000000,Y=1.000000,Z=1.000000),InterpMode=CIM_CurveAuto))),ReparamTable=(Points=((),(InVal=10.000000,OutVal=0.100000),(InVal=20.000000,OutVal=0.200000),(InVal=30.000002,OutVal=0.300000),(InVal=40.000000,OutVal=0.400000),(InVal=50.000000,OutVal=0.500000),(InVal=60.000004,OutVal=0.600000),(InVal=70.000000,OutVal=0.700000),(InVal=80.000000,OutVal=0.800000),(InVal=90.000000,OutVal=0.900000),(InVal=100.000000,OutVal=1.000000))))",
+              "EditorSelectedSplineSegmentColor": "(R=0.828000,G=0.364000,B=0.003000,A=1.000000)"
+            }
+          },
+          {
+            "name": "TopSpline",
+            "class": "SplineComponent",
+            "properties": {
+              "Spline": "SplineData SplineDataLen=4 SplineData=AA==\r\n",
+              "SplineCurves": "(Position=(Points=((LeaveTangent=(X=-100.000000,Y=0.000000,Z=0.000000)),(InVal=1.000000,OutVal=(X=-100.000000,Y=0.000000,Z=0.000000),ArriveTangent=(X=-100.000000,Y=0.000000,Z=0.000000)))),Rotation=(Points=((OutVal=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),ArriveTangent=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),LeaveTangent=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),InterpMode=CIM_CurveAuto),(InVal=1.000000,OutVal=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),ArriveTangent=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),LeaveTangent=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),InterpMode=CIM_CurveAuto))),Scale=(Points=((OutVal=(X=1.000000,Y=1.000000,Z=1.000000),InterpMode=CIM_CurveAuto),(InVal=1.000000,OutVal=(X=1.000000,Y=1.000000,Z=1.000000),InterpMode=CIM_CurveAuto))),ReparamTable=(Points=((),(InVal=10.000000,OutVal=0.100000),(InVal=20.000000,OutVal=0.200000),(InVal=30.000002,OutVal=0.300000),(InVal=40.000000,OutVal=0.400000),(InVal=50.000000,OutVal=0.500000),(InVal=60.000004,OutVal=0.600000),(InVal=70.000000,OutVal=0.700000),(InVal=80.000000,OutVal=0.800000),(InVal=90.000000,OutVal=0.900000),(InVal=100.000000,OutVal=1.000000))))",
+              "EditorSelectedSplineSegmentColor": "(R=0.828000,G=0.364000,B=0.003000,A=1.000000)",
+              "RelativeLocation": "(X=0.000000,Y=0.000000,Z=100.000000)"
+            }
+          },
+          {
+            "name": "Billboard",
+            "class": "BillboardComponent",
+            "properties": {
+              "Sprite": "/Script/Engine.Texture2D'/Engine/EditorResources/S_ReflActorIcon.S_ReflActorIcon'",
+              "RelativeLocation": "(X=50.000000,Y=0.000000,Z=50.000000)",
+              "RelativeScale3D": "(X=0.400000,Y=0.400000,Z=0.400000)"
+            }
+          },
+          {
+            "name": "Billboard1",
+            "class": "BillboardComponent",
+            "properties": {
+              "Sprite": "/Script/Engine.Texture2D'/Engine/EditorResources/S_ReflActorIcon.S_ReflActorIcon'",
+              "RelativeLocation": "(X=50.000000,Y=100.000000,Z=50.000000)",
+              "RelativeScale3D": "(X=0.400000,Y=0.400000,Z=0.400000)"
+            }
+          },
+          {
+            "name": "Billboard2",
+            "class": "BillboardComponent",
+            "properties": {
+              "Sprite": "/Script/Engine.Texture2D'/Engine/EditorResources/S_ReflActorIcon.S_ReflActorIcon'",
+              "RelativeLocation": "(X=100.000000,Y=50.000000,Z=50.000000)",
+              "RelativeScale3D": "(X=0.400000,Y=0.400000,Z=0.400000)"
+            }
+          },
+          {
+            "name": "Billboard3",
+            "class": "BillboardComponent",
+            "properties": {
+              "Sprite": "/Script/Engine.Texture2D'/Engine/EditorResources/S_ReflActorIcon.S_ReflActorIcon'",
+              "RelativeLocation": "(X=0.000000,Y=50.000000,Z=50.000000)",
+              "RelativeScale3D": "(X=0.400000,Y=0.400000,Z=0.400000)"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 0,
+        "connection_count": 0,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 0,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": []
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 7,
+        "connection_count": 12,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "GenerateSpline",
+            "owning_class": "SKEL_BP_ClimbableWall_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "Update Spline Points Offset",
+            "owning_class": "SKEL_BP_ClimbableWall_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "Spline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "TopSpline",
+            "pins_out": [
+              {
+                "name": "TopSpline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_5.Spline"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "BottomSpline",
+            "pins_out": [
+              {
+                "name": "BottomSpline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_2.Spline"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "Update Spline Points Offset",
+            "owning_class": "SKEL_BP_ClimbableWall_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "Spline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "OffsetSplines",
+            "owning_class": "SKEL_BP_ClimbableWall_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "tags": "generate spline update points offset splines top bottom",
+        "description": "UserConstructionScript: Handles logic."
+      },
+      {
+        "name": "GetClimbableType",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "ClimbableType",
+            "display_name": "Climbable Type",
+            "type": {
+              "category": "byte"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 3,
+        "connection_count": 4,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "GetClimbableType",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "GetClimbableType",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ClimbableType",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "ClimbableType",
+            "pins_out": [
+              {
+                "name": "ClimbableType",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_1.ClimbableType"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ],
+        "tags": "climbable",
+        "description": "GetClimbableType: Handles climbable."
+      },
+      {
+        "name": "GenerateSpline",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 13,
+        "connection_count": 22,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "GenerateSpline",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "ClearSplinePoints",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "bUpdateSpline",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "BottomSpline",
+            "pins_out": [
+              {
+                "name": "BottomSpline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_9.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "PointsBottom",
+            "pins_out": [
+              {
+                "name": "PointsBottom",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"SplinePoint\"\r\n}"
+                },
+                "connections": [
+                  "node_8.Array"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "ClimbableSides",
+            "pins_out": [
+              {
+                "name": "ClimbableSides",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_5.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "NewEnumerator0",
+                "type": {
+                  "category": "int"
+                },
+                "default": "2"
+              },
+              {
+                "name": "NewEnumerator1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "3"
+              },
+              {
+                "name": "NewEnumerator2",
+                "type": {
+                  "category": "int"
+                },
+                "default": "4"
+              },
+              {
+                "name": "NewEnumerator3",
+                "type": {
+                  "category": "int"
+                },
+                "default": "5"
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_6.SplinePointsNum"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_6",
+            "type": "VariableSet",
+            "variable": "SplinePointsNum",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SplinePointsNum",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_7.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "CallFunction",
+            "function": "Subtract_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"SplinePoint\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SplinePoint",
+                  "is_reference": true
+                },
+                "connections": [
+                  "node_9.Point"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_9",
+            "type": "CallFunction",
+            "function": "AddPoint",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "Point",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SplinePoint",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "bUpdateSpline",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "BottomSpline",
+            "pins_out": [
+              {
+                "name": "BottomSpline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_1.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "VariableGet",
+            "variable": "TopSpline",
+            "pins_out": [
+              {
+                "name": "TopSpline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_9.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "VariableGet",
+            "variable": "TopSpline",
+            "pins_out": [
+              {
+                "name": "TopSpline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_1.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ],
+        "tags": "generate spline clear points subtract point bottom climbable",
+        "description": "GenerateSpline: Handles spline."
+      },
+      {
+        "name": "Update Spline Points Offset",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "Spline",
+            "display_name": "Spline",
+            "type": {
+              "category": "object",
+              "class": "SplineComponent"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 17,
+        "connection_count": 28,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "Update Spline Points Offset",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "Spline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "SetLocationAtSplinePoint",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "PointIndex",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "InLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "CoordinateSpace",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Local"
+              },
+              {
+                "name": "bUpdateSpline",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_8.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "GetSplinePointAt",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "PointIndex",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "CoordinateSpace",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Local"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SplinePoint"
+                },
+                "connections": [
+                  "node_3.SplinePoint"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "K2Node_BreakStruct",
+            "title": "Break Spline Point",
+            "pins_in": [
+              {
+                "name": "SplinePoint",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SplinePoint",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "InputKey",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "Position",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_1.InLocation"
+                ]
+              },
+              {
+                "name": "ArriveTangent",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "LeaveTangent",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                }
+              },
+              {
+                "name": "Scale",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "Type",
+                "type": {
+                  "category": "byte"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "GetSplinePointAt",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "PointIndex",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "CoordinateSpace",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Local"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SplinePoint"
+                },
+                "connections": [
+                  "node_5.SplinePoint"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "K2Node_BreakStruct",
+            "title": "Break Spline Point",
+            "pins_in": [
+              {
+                "name": "SplinePoint",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SplinePoint",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "InputKey",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "Position",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_8.InLocation"
+                ]
+              },
+              {
+                "name": "ArriveTangent",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "LeaveTangent",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                }
+              },
+              {
+                "name": "Scale",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "Type",
+                "type": {
+                  "category": "byte"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "SplinePointsNum",
+            "pins_out": [
+              {
+                "name": "SplinePointsNum",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_7.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "CallFunction",
+            "function": "Subtract_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_4.PointIndex"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "CallFunction",
+            "function": "SetLocationAtSplinePoint",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "PointIndex",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "InLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "CoordinateSpace",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Local"
+              },
+              {
+                "name": "bUpdateSpline",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "SplinePointsNum",
+            "pins_out": [
+              {
+                "name": "SplinePointsNum",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_10.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "CallFunction",
+            "function": "Subtract_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_8.PointIndex"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "VariableGet",
+            "variable": "Spline",
+            "pins_out": [
+              {
+                "name": "Spline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_2.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_14",
+            "type": "VariableGet",
+            "variable": "Spline",
+            "pins_out": [
+              {
+                "name": "Spline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_1.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_15",
+            "type": "VariableGet",
+            "variable": "Spline",
+            "pins_out": [
+              {
+                "name": "Spline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_4.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_16",
+            "type": "VariableGet",
+            "variable": "Spline",
+            "pins_out": [
+              {
+                "name": "Spline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_8.self"
+                ]
+              }
+            ]
+          }
+        ],
+        "tags": "update spline points offset location point subtract",
+        "description": "Update Spline Points Offset: Updates spline points offset."
+      },
+      {
+        "name": "OffsetSplines",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 23,
+        "connection_count": 54,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "OffsetSplines",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "VariableGet",
+            "variable": "TopSpline",
+            "pins_out": [
+              {
+                "name": "TopSpline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_3.self",
+                  "node_4.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "BottomSpline",
+            "pins_out": [
+              {
+                "name": "BottomSpline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_9.self",
+                  "node_10.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "K2_SetRelativeLocation",
+            "owning_class": "SceneComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              },
+              {
+                "name": "NewLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "bSweep",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "bTeleport",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_9.execute"
+                ]
+              },
+              {
+                "name": "SweepHitResult",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "HitResult"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "RelativeLocation",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "RelativeLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_5.InVec"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "SceneComponent"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "BreakVector",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "InVec",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "X",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_6.X"
+                ]
+              },
+              {
+                "name": "Y",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_6.Y"
+                ]
+              },
+              {
+                "name": "Z",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_7.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "MakeVector",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "X",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "Y",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "Z",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_3.NewLocation"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "CallFunction",
+            "function": "Subtract_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_6.Z"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "VariableGet",
+            "variable": "HighestClimbablePointOffset",
+            "pins_out": [
+              {
+                "name": "HighestClimbablePointOffset",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_18.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "CallFunction",
+            "function": "K2_SetRelativeLocation",
+            "owning_class": "SceneComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              },
+              {
+                "name": "NewLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "bSweep",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "bTeleport",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SweepHitResult",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "HitResult"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "RelativeLocation",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "RelativeLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_11.InVec"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "SceneComponent"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "CallFunction",
+            "function": "BreakVector",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "InVec",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "X",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_12.X"
+                ]
+              },
+              {
+                "name": "Y",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_12.Y"
+                ]
+              },
+              {
+                "name": "Z",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_13.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "CallFunction",
+            "function": "MakeVector",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "X",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "Y",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "Z",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_9.NewLocation"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "CallFunction",
+            "function": "Add_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_12.Z"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "VariableGet",
+            "variable": "LowestClimbablePointOffset",
+            "pins_out": [
+              {
+                "name": "LowestClimbablePointOffset",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_22.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "CallFunction",
+            "function": "K2_GetComponentScale",
+            "owning_class": "SceneComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_17.InVec"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "VariableGet",
+            "variable": "Root",
+            "pins_out": [
+              {
+                "name": "Root",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                },
+                "connections": [
+                  "node_15.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "CallFunction",
+            "function": "BreakVector",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "InVec",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "X",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "Y",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "Z",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_18.B"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "CallFunction",
+            "function": "Divide_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_7.B"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "CallFunction",
+            "function": "K2_GetComponentScale",
+            "owning_class": "SceneComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_21.InVec"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "VariableGet",
+            "variable": "Root",
+            "pins_out": [
+              {
+                "name": "Root",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                },
+                "connections": [
+                  "node_19.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_21",
+            "type": "CallFunction",
+            "function": "BreakVector",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "InVec",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "X",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "Y",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "Z",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_22.B"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_22",
+            "type": "CallFunction",
+            "function": "Divide_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_13.B"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "tags": "offset splines relative location break make subtract component",
+        "description": "OffsetSplines: Handles splines movement."
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}
