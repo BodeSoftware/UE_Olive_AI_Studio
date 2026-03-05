@@ -1,15 +1,19 @@
 #!/usr/bin/env python
 """
-auto_tagger.py -- Processes combatfs Blueprint JSON library files and adds
+auto_tagger.py -- Processes Blueprint JSON library files and adds
 searchable tags, descriptions, and entry_points metadata.
 
-Reads the manifest (tools/combatfs_manifest.json) to process files in
+Reads the manifest (tools/{project}_manifest.json) to process files in
 dependency order (parents before children), propagating inherited tags.
 
 Usage:
-    python tools/auto_tagger.py
+    python tools/auto_tagger.py [project]
 
-Output: Updated JSON files in-place under Content/Templates/library/combatfs/.
+    project: Name of the library project (default: combatfs).
+             Must have a manifest at tools/{project}_manifest.json
+             and templates at Content/Templates/library/{project}/.
+
+Output: Updated JSON files in-place under Content/Templates/library/{project}/.
 """
 
 import json
@@ -25,8 +29,11 @@ from collections import Counter, OrderedDict
 # ---------------------------------------------------------------------------
 
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # up from tools/
-MANIFEST_PATH = os.path.join(PLUGIN_ROOT, "tools", "combatfs_manifest.json")
-LIBRARY_DIR = os.path.join(PLUGIN_ROOT, "Content", "Templates", "library", "combatfs")
+
+# Project name from CLI argument (default: combatfs)
+PROJECT = sys.argv[1] if len(sys.argv) > 1 else "combatfs"
+MANIFEST_PATH = os.path.join(PLUGIN_ROOT, "tools", f"{PROJECT}_manifest.json")
+LIBRARY_DIR = os.path.join(PLUGIN_ROOT, "Content", "Templates", "library", PROJECT)
 
 # Tag limits
 MIN_BLUEPRINT_TAGS = 3

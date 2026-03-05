@@ -1,0 +1,924 @@
+{
+  "template_id": "combatfs_bp_container_set_mesh",
+  "display_name": "BP_ContainerSetMesh",
+  "tags": "scale container mesh",
+  "catalog_description": "BP_ContainerSetMesh: BP_ContainerParent-based (child of BP_ContainerParent) blueprint with 2 functions. Handles visual.",
+  "inherited_tags": "container actor character mesh player image rarity inventory table guaranteed dt loot size open tracking",
+  "source_project": "CombatFS",
+  "depends_on": "combatfs_bp_container_parent",
+  "schema_version": "1.0",
+  "name": "BP_ContainerSetMesh",
+  "path": "/Game/FlexibleCombatSystem/Blueprints/Items/Containers/BP_ContainerSetMesh.BP_ContainerSetMesh",
+  "type": "Normal",
+  "parent_class": {
+    "name": "BP_ContainerParent_C",
+    "source": "blueprint",
+    "path": "/Game/FlexibleCombatSystem/Blueprints/Items/Containers/BP_ContainerParent.BP_ContainerParent"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "ContainerMesh",
+      "type": {
+        "category": "object",
+        "class": "StaticMesh"
+      },
+      "category": "Setup In Game",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ContainerScale",
+      "type": {
+        "category": "struct",
+        "struct_name": "Vector"
+      },
+      "category": "Setup in Game",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CharacterMesh",
+      "type": {
+        "category": "object",
+        "class": "SkeletalMeshComponent"
+      },
+      "category": "Default",
+      "defined_in": "BP_ContainerParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "PlayerRef",
+      "type": {
+        "category": "object",
+        "class": "Actor"
+      },
+      "category": "References",
+      "defined_in": "BP_ContainerParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ContainerName",
+      "type": {
+        "category": "text"
+      },
+      "category": "Setup in Game",
+      "defined_in": "BP_ContainerParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ContainerImage",
+      "type": {
+        "category": "object",
+        "class": "Texture2D"
+      },
+      "category": "Setup in Game",
+      "defined_in": "BP_ContainerParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ContainerType",
+      "type": {
+        "category": "byte"
+      },
+      "category": "Setup in Game",
+      "defined_in": "BP_ContainerParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ContainerRarity",
+      "type": {
+        "category": "byte"
+      },
+      "category": "Setup in Game",
+      "defined_in": "BP_ContainerParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ContainerInventory",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_ItemSetupData\"\r\n}"
+      },
+      "category": "Setup in Game",
+      "defined_in": "BP_ContainerParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "UseDataTable?",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Setup in Game",
+      "defined_in": "BP_ContainerParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "GuaranteedDTLoot",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Setup In Game",
+      "defined_in": "BP_ContainerParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ContainerDataTable",
+      "type": {
+        "category": "object",
+        "class": "DataTable"
+      },
+      "category": "Setup In Game",
+      "defined_in": "BP_ContainerParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ContainerSize",
+      "type": {
+        "category": "int"
+      },
+      "category": "Setup In Game",
+      "defined_in": "BP_ContainerParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Open",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "BP_ContainerParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "Character",
+      "type": {
+        "category": "object",
+        "class": "Character"
+      },
+      "category": "Default",
+      "defined_in": "BP_ContainerParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "TrackingInfo",
+      "type": {
+        "category": "struct",
+        "struct_name": "S_ObjectTrackingInfo"
+      },
+      "category": "Setup In Game",
+      "defined_in": "BP_ContainerParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 3,
+        "connection_count": 0,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "ReceiveBeginPlay",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "Event",
+            "function": "ReceiveActorBeginOverlap",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "OtherActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "Event",
+            "function": "ReceiveTick",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DeltaSeconds",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "ReceiveBeginPlay",
+            "type": "Event",
+            "tags": "receive begin play"
+          },
+          {
+            "name": "ReceiveActorBeginOverlap",
+            "type": "Event",
+            "tags": "receive actor begin overlap"
+          },
+          {
+            "name": "ReceiveTick",
+            "type": "Event",
+            "tags": "receive tick"
+          }
+        ],
+        "tags": "receive begin play actor overlap tick"
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 7,
+        "connection_count": 13,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "UserConstructionScript",
+            "owning_class": "SKEL_BP_ContainerParent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "Item",
+            "pins_out": [
+              {
+                "name": "Item",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMeshComponent"
+                },
+                "connections": [
+                  "node_3.self",
+                  "node_5.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "SetStaticMesh",
+            "owning_class": "StaticMeshComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMeshComponent"
+                }
+              },
+              {
+                "name": "NewMesh",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMesh"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "ContainerMesh",
+            "pins_out": [
+              {
+                "name": "ContainerMesh",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMesh"
+                },
+                "connections": [
+                  "node_3.NewMesh"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "SetWorldScale3D",
+            "owning_class": "SceneComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              },
+              {
+                "name": "NewScale",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "ContainerScale",
+            "pins_out": [
+              {
+                "name": "ContainerScale",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_5.NewScale"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ],
+        "tags": "static mesh world scale item container visual",
+        "description": "UserConstructionScript: Handles visual."
+      },
+      {
+        "name": "RetrieveOutlineInfo",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "Actor Name",
+            "display_name": "Actor Name",
+            "type": {
+              "category": "text"
+            }
+          },
+          {
+            "name": "Actor Rarity",
+            "display_name": "Actor Rarity",
+            "type": {
+              "category": "byte"
+            }
+          },
+          {
+            "name": "Actor Tag Type",
+            "display_name": "Actor Tag Type",
+            "type": {
+              "category": "byte"
+            }
+          },
+          {
+            "name": "Quantity",
+            "display_name": "Quantity",
+            "type": {
+              "category": "int"
+            }
+          },
+          {
+            "name": "Mesh 1",
+            "display_name": "Mesh 1",
+            "type": {
+              "category": "object",
+              "class": "StaticMeshComponent"
+            }
+          },
+          {
+            "name": "Mesh 2",
+            "display_name": "Mesh 2",
+            "type": {
+              "category": "object",
+              "class": "StaticMeshComponent"
+            }
+          },
+          {
+            "name": "Skeletal Mesh",
+            "display_name": "Skeletal Mesh",
+            "type": {
+              "category": "object",
+              "class": "SkeletalMeshComponent"
+            }
+          },
+          {
+            "name": "IgnoreOutline",
+            "display_name": "Ignore Outline",
+            "type": {
+              "category": "bool"
+            }
+          },
+          {
+            "name": "Item Data",
+            "display_name": "Item Data",
+            "type": {
+              "category": "struct",
+              "struct_name": "S_SlotInfo"
+            }
+          },
+          {
+            "name": "Image",
+            "display_name": "Image",
+            "type": {
+              "category": "object",
+              "class": "Texture2D"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 6,
+        "connection_count": 10,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "RetrieveOutlineInfo",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "RetrieveOutlineInfo",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Actor Name",
+                "type": {
+                  "category": "text"
+                }
+              },
+              {
+                "name": "Actor Rarity",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              },
+              {
+                "name": "Actor Tag Type",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator1"
+              },
+              {
+                "name": "Quantity",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "Mesh 1",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMeshComponent"
+                }
+              },
+              {
+                "name": "Mesh 2",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMeshComponent"
+                }
+              },
+              {
+                "name": "Skeletal Mesh",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                }
+              },
+              {
+                "name": "IgnoreOutline",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "Item Data",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo"
+                }
+              },
+              {
+                "name": "Image",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Textures/Looting/T_Tag-Chest.T_Tag-Chest"
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "ContainerName",
+            "pins_out": [
+              {
+                "name": "ContainerName",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_1.Actor Name"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "ContainerRarity",
+            "pins_out": [
+              {
+                "name": "ContainerRarity",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_1.Actor Rarity"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "Item",
+            "pins_out": [
+              {
+                "name": "Item",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMeshComponent"
+                },
+                "connections": [
+                  "node_1.Mesh 1"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "Item2",
+            "pins_out": [
+              {
+                "name": "Item2",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMeshComponent"
+                },
+                "connections": [
+                  "node_1.Mesh 2"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ],
+        "tags": "retrieve outline container rarity item",
+        "description": "RetrieveOutlineInfo: Handles outline."
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

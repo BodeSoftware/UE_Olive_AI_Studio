@@ -1,0 +1,1537 @@
+{
+  "template_id": "combatfs_cr_bone_transform_ue4",
+  "display_name": "CR_BoneTransformUE4",
+  "tags": "bone control rig names foot location after scale character creator before off bones",
+  "catalog_description": "CR_BoneTransformUE4: ControlRig-based blueprint with no functions.",
+  "source_project": "CombatFS",
+  "depends_on": null,
+  "schema_version": "1.0",
+  "name": "CR_BoneTransformUE4",
+  "path": "/Game/FlexibleCombatSystem/Animation/ControlRig/CR_BoneTransformUE4.CR_BoneTransformUE4",
+  "type": "Normal",
+  "parent_class": {
+    "name": "ControlRig",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "BoneNames",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "FootLocationAfterScale",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CharacterCreator",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "FootLocationBeforeScale",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "OffSet",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "BoneScale",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Vector\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "BonesSet",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "Rig",
+        "graph_type": "EventGraph",
+        "node_count": 39,
+        "connection_count": 74,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "ControlRigGraphNode",
+            "title": "Forwards Solve",
+            "pins_out": [
+              {
+                "name": "RigUnit_BeginExecution.ExecuteContext",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "connections": [
+                  "node_32.RigVMFunction_ControlFlowBranch_3.ExecuteContext"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "ControlRigGraphNode",
+            "title": "Get Transform - Bone",
+            "pins_in": [
+              {
+                "name": "GetTransform_2_1.Item",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigElementKey"
+                }
+              },
+              {
+                "name": "GetTransform_2_1.Item.Type",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Bone"
+              },
+              {
+                "name": "GetTransform_2_1.Item.Name",
+                "type": {
+                  "category": "name"
+                },
+                "default": "ball_l"
+              },
+              {
+                "name": "GetTransform_2_1.Space",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "GlobalSpace"
+              },
+              {
+                "name": "GetTransform_2_1.bInitial",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "GetTransform_2_1.Transform",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Transform"
+                }
+              },
+              {
+                "name": "GetTransform_2_1.Transform.Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Quat"
+                }
+              },
+              {
+                "name": "GetTransform_2_1.Transform.Translation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "GetTransform_2_1.Transform.Translation.X",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "GetTransform_2_1.Transform.Translation.Y",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "GetTransform_2_1.Transform.Translation.Z",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_19.VariableNode_3.Value"
+                ]
+              },
+              {
+                "name": "GetTransform_2_1.Transform.Scale3D",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "GetTransform_2_1.Transform.Scale3D.X",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "GetTransform_2_1.Transform.Scale3D.Y",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "GetTransform_2_1.Transform.Scale3D.Z",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "ControlRigGraphNode",
+            "title": "Subtract",
+            "pins_in": [
+              {
+                "name": "Subtract.A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "Subtract.B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Subtract.Result",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_24.VariableNode_8.Value"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "ControlRigGraphNode",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "RigVMFunction_ControlFlowBranch_1.ExecuteContext",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "default": "()"
+              },
+              {
+                "name": "RigVMFunction_ControlFlowBranch_1.Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "RigVMFunction_ControlFlowBranch_1.True",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "connections": [
+                  "node_17.Set Transform_1_1.ExecuteContext"
+                ]
+              },
+              {
+                "name": "RigVMFunction_ControlFlowBranch_1.False",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "connections": [
+                  "node_24.VariableNode_8.ExecuteContext"
+                ]
+              },
+              {
+                "name": "RigVMFunction_ControlFlowBranch_1.Completed",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "ControlRigGraphNode",
+            "title": "Get Transform - Bone",
+            "pins_in": [
+              {
+                "name": "GetTransform_2_1_1.Item",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigElementKey"
+                }
+              },
+              {
+                "name": "GetTransform_2_1_1.Item.Type",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Bone"
+              },
+              {
+                "name": "GetTransform_2_1_1.Item.Name",
+                "type": {
+                  "category": "name"
+                },
+                "default": "root"
+              },
+              {
+                "name": "GetTransform_2_1_1.Space",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "GlobalSpace"
+              },
+              {
+                "name": "GetTransform_2_1_1.bInitial",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "GetTransform_2_1_1.Transform",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Transform"
+                }
+              },
+              {
+                "name": "GetTransform_2_1_1.Transform.Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Quat"
+                }
+              },
+              {
+                "name": "GetTransform_2_1_1.Transform.Translation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "GetTransform_2_1_1.Transform.Translation.X",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_6.Set Transform_1.Value.X"
+                ]
+              },
+              {
+                "name": "GetTransform_2_1_1.Transform.Translation.Y",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_6.Set Transform_1.Value.Y"
+                ]
+              },
+              {
+                "name": "GetTransform_2_1_1.Transform.Translation.Z",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_5.Add.A"
+                ]
+              },
+              {
+                "name": "GetTransform_2_1_1.Transform.Scale3D",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "GetTransform_2_1_1.Transform.Scale3D.X",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "GetTransform_2_1_1.Transform.Scale3D.Y",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "GetTransform_2_1_1.Transform.Scale3D.Z",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "ControlRigGraphNode",
+            "title": "Add",
+            "pins_in": [
+              {
+                "name": "Add.A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "Add.B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "50.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Add.Result",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_6.Set Transform_1.Value.Z"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_6",
+            "type": "ControlRigGraphNode",
+            "title": "Set Translation - Bone",
+            "pins_in": [
+              {
+                "name": "Set Transform_1.ExecuteContext",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "default": "()"
+              },
+              {
+                "name": "Set Transform_1.Item",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigElementKey"
+                }
+              },
+              {
+                "name": "Set Transform_1.Item.Type",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Bone"
+              },
+              {
+                "name": "Set Transform_1.Item.Name",
+                "type": {
+                  "category": "name"
+                },
+                "default": "root"
+              },
+              {
+                "name": "Set Transform_1.Space",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "GlobalSpace"
+              },
+              {
+                "name": "Set Transform_1.bInitial",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              },
+              {
+                "name": "Set Transform_1.Value",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "Set Transform_1.Value.X",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "Set Transform_1.Value.Y",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "Set Transform_1.Value.Z",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "Set Transform_1.Weight",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "Set Transform_1.bPropagateToChildren",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "True"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Set Transform_1.ExecuteContext",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_7",
+            "type": "ControlRigGraphNode",
+            "title": "Not Equals",
+            "pins_in": [
+              {
+                "name": "DISPATCH_RigVMDispatch_CoreNotEquals.A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "DISPATCH_RigVMDispatch_CoreNotEquals.B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "DISPATCH_RigVMDispatch_CoreNotEquals.Result",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_3.RigVMFunction_ControlFlowBranch_1.Condition"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_12",
+            "type": "ControlRigGraphNode",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "RigVMFunction_ControlFlowBranch_2.ExecuteContext",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "default": "()"
+              },
+              {
+                "name": "RigVMFunction_ControlFlowBranch_2.Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "RigVMFunction_ControlFlowBranch_2.True",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "connections": [
+                  "node_23.VariableNode_7.ExecuteContext"
+                ]
+              },
+              {
+                "name": "RigVMFunction_ControlFlowBranch_2.False",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "connections": [
+                  "node_3.RigVMFunction_ControlFlowBranch_1.ExecuteContext"
+                ]
+              },
+              {
+                "name": "RigVMFunction_ControlFlowBranch_2.Completed",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_13",
+            "type": "ControlRigGraphNode",
+            "title": "Subtract",
+            "pins_in": [
+              {
+                "name": "Subtract_1.A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "Subtract_1.B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Subtract_1.Result",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_23.VariableNode_7.Value"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_15",
+            "type": "ControlRigGraphNode",
+            "title": "Get Transform - Bone",
+            "pins_in": [
+              {
+                "name": "GetTransform_2_1_1_1.Item",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigElementKey"
+                }
+              },
+              {
+                "name": "GetTransform_2_1_1_1.Item.Type",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Bone"
+              },
+              {
+                "name": "GetTransform_2_1_1_1.Item.Name",
+                "type": {
+                  "category": "name"
+                },
+                "default": "root"
+              },
+              {
+                "name": "GetTransform_2_1_1_1.Space",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "GlobalSpace"
+              },
+              {
+                "name": "GetTransform_2_1_1_1.bInitial",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "GetTransform_2_1_1_1.Transform",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Transform"
+                }
+              },
+              {
+                "name": "GetTransform_2_1_1_1.Transform.Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Quat"
+                }
+              },
+              {
+                "name": "GetTransform_2_1_1_1.Transform.Translation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "GetTransform_2_1_1_1.Transform.Translation.X",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_17.Set Transform_1_1.Value.X"
+                ]
+              },
+              {
+                "name": "GetTransform_2_1_1_1.Transform.Translation.Y",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_17.Set Transform_1_1.Value.Y"
+                ]
+              },
+              {
+                "name": "GetTransform_2_1_1_1.Transform.Translation.Z",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_16.Add_1.A"
+                ]
+              },
+              {
+                "name": "GetTransform_2_1_1_1.Transform.Scale3D",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "GetTransform_2_1_1_1.Transform.Scale3D.X",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "GetTransform_2_1_1_1.Transform.Scale3D.Y",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "GetTransform_2_1_1_1.Transform.Scale3D.Z",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_16",
+            "type": "ControlRigGraphNode",
+            "title": "Add",
+            "pins_in": [
+              {
+                "name": "Add_1.A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "Add_1.B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "50.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Add_1.Result",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_17.Set Transform_1_1.Value.Z"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_17",
+            "type": "ControlRigGraphNode",
+            "title": "Set Translation - Bone",
+            "pins_in": [
+              {
+                "name": "Set Transform_1_1.ExecuteContext",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "default": "()"
+              },
+              {
+                "name": "Set Transform_1_1.Item",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigElementKey"
+                }
+              },
+              {
+                "name": "Set Transform_1_1.Item.Type",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Bone"
+              },
+              {
+                "name": "Set Transform_1_1.Item.Name",
+                "type": {
+                  "category": "name"
+                },
+                "default": "root"
+              },
+              {
+                "name": "Set Transform_1_1.Space",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "GlobalSpace"
+              },
+              {
+                "name": "Set Transform_1_1.bInitial",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              },
+              {
+                "name": "Set Transform_1_1.Value",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "Set Transform_1_1.Value.X",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "Set Transform_1_1.Value.Y",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "Set Transform_1_1.Value.Z",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "Set Transform_1_1.Weight",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "Set Transform_1_1.bPropagateToChildren",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "True"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Set Transform_1_1.ExecuteContext",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_19",
+            "type": "ControlRigGraphNode",
+            "title": "Set FootLocationAfterScale\nVariable",
+            "pins_in": [
+              {
+                "name": "VariableNode_3.ExecuteContext",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "default": "()"
+              },
+              {
+                "name": "VariableNode_3.Value",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "VariableNode_3.ExecuteContext",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "connections": [
+                  "node_12.RigVMFunction_ControlFlowBranch_2.ExecuteContext"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_20",
+            "type": "ControlRigGraphNode",
+            "title": "Get CharacterCreator\nVariable",
+            "pins_out": [
+              {
+                "name": "VariableNode_4.Value",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_12.RigVMFunction_ControlFlowBranch_2.Condition"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_21",
+            "type": "ControlRigGraphNode",
+            "title": "Get FootLocationAfterScale\nVariable",
+            "pins_out": [
+              {
+                "name": "VariableNode_5.Value",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_13.Subtract_1.B"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_22",
+            "type": "ControlRigGraphNode",
+            "title": "Get FootLocationBeforeScale\nVariable",
+            "pins_out": [
+              {
+                "name": "VariableNode_6.Value",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_13.Subtract_1.A"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_23",
+            "type": "ControlRigGraphNode",
+            "title": "Set OffSet\nVariable",
+            "pins_in": [
+              {
+                "name": "VariableNode_7.ExecuteContext",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "default": "()"
+              },
+              {
+                "name": "VariableNode_7.Value",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "VariableNode_7.ExecuteContext",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "connections": [
+                  "node_6.Set Transform_1.ExecuteContext"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_24",
+            "type": "ControlRigGraphNode",
+            "title": "Set OffSet\nVariable",
+            "pins_in": [
+              {
+                "name": "VariableNode_8.ExecuteContext",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "default": "()"
+              },
+              {
+                "name": "VariableNode_8.Value",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "VariableNode_8.ExecuteContext",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_25",
+            "type": "ControlRigGraphNode",
+            "title": "Get OffSet\nVariable",
+            "pins_out": [
+              {
+                "name": "VariableNode_9.Value",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_7.DISPATCH_RigVMDispatch_CoreNotEquals.A"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_26",
+            "type": "ControlRigGraphNode",
+            "title": "Get FootLocationBeforeScale\nVariable",
+            "pins_out": [
+              {
+                "name": "VariableNode_10.Value",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_2.Subtract.A"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_27",
+            "type": "ControlRigGraphNode",
+            "title": "Get FootLocationAfterScale\nVariable",
+            "pins_out": [
+              {
+                "name": "VariableNode_11.Value",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_2.Subtract.B"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_28",
+            "type": "ControlRigGraphNode",
+            "title": "Get OffSet\nVariable",
+            "pins_out": [
+              {
+                "name": "VariableNode_12.Value",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_16.Add_1.B"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_29",
+            "type": "ControlRigGraphNode",
+            "title": "Set Scale - Bone",
+            "pins_in": [
+              {
+                "name": "SetScale_1.ExecuteContext",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "default": "()"
+              },
+              {
+                "name": "SetScale_1.Item",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigElementKey"
+                }
+              },
+              {
+                "name": "SetScale_1.Item.Type",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Bone"
+              },
+              {
+                "name": "SetScale_1.Item.Name",
+                "type": {
+                  "category": "name"
+                },
+                "default": "pelvis"
+              },
+              {
+                "name": "SetScale_1.Space",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "LocalSpace"
+              },
+              {
+                "name": "SetScale_1.bInitial",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              },
+              {
+                "name": "SetScale_1.Scale",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "SetScale_1.Scale.X",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "SetScale_1.Scale.Y",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "SetScale_1.Scale.Z",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "SetScale_1.Weight",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "SetScale_1.bPropagateToChildren",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SetScale_1.ExecuteContext",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_32",
+            "type": "ControlRigGraphNode",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "RigVMFunction_ControlFlowBranch_3.ExecuteContext",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "default": "()"
+              },
+              {
+                "name": "RigVMFunction_ControlFlowBranch_3.Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "RigVMFunction_ControlFlowBranch_3.True",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "connections": [
+                  "node_34.DISPATCH_RigVMDispatch_ArrayIterator.ExecuteContext"
+                ]
+              },
+              {
+                "name": "RigVMFunction_ControlFlowBranch_3.False",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                }
+              },
+              {
+                "name": "RigVMFunction_ControlFlowBranch_3.Completed",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_34",
+            "type": "ControlRigGraphNode",
+            "title": "For Each",
+            "pins_in": [
+              {
+                "name": "DISPATCH_RigVMDispatch_ArrayIterator.ExecuteContext",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "default": "()"
+              },
+              {
+                "name": "DISPATCH_RigVMDispatch_ArrayIterator.Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                },
+                "default": "()"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "DISPATCH_RigVMDispatch_ArrayIterator.ExecuteContext",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "connections": [
+                  "node_29.SetScale_1.ExecuteContext"
+                ]
+              },
+              {
+                "name": "DISPATCH_RigVMDispatch_ArrayIterator.Element",
+                "type": {
+                  "category": "name"
+                },
+                "connections": [
+                  "node_29.SetScale_1.Item.Name"
+                ]
+              },
+              {
+                "name": "DISPATCH_RigVMDispatch_ArrayIterator.Index",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_35.DISPATCH_RigVMDispatch_ArrayGetAtIndex.Index"
+                ]
+              },
+              {
+                "name": "DISPATCH_RigVMDispatch_ArrayIterator.Count",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "DISPATCH_RigVMDispatch_ArrayIterator.Ratio",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "DISPATCH_RigVMDispatch_ArrayIterator.Completed",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RigVMExecuteContext"
+                },
+                "connections": [
+                  "node_19.VariableNode_3.ExecuteContext"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_35",
+            "type": "ControlRigGraphNode",
+            "title": "At",
+            "pins_in": [
+              {
+                "name": "DISPATCH_RigVMDispatch_ArrayGetAtIndex.Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Vector\"\r\n}"
+                },
+                "default": "()"
+              },
+              {
+                "name": "DISPATCH_RigVMDispatch_ArrayGetAtIndex.Index",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "DISPATCH_RigVMDispatch_ArrayGetAtIndex.Element",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "DISPATCH_RigVMDispatch_ArrayGetAtIndex.Element.X",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_29.SetScale_1.Scale.Z"
+                ]
+              },
+              {
+                "name": "DISPATCH_RigVMDispatch_ArrayGetAtIndex.Element.Y",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_29.SetScale_1.Scale.Y"
+                ]
+              },
+              {
+                "name": "DISPATCH_RigVMDispatch_ArrayGetAtIndex.Element.Z",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_29.SetScale_1.Scale.X"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_36",
+            "type": "ControlRigGraphNode",
+            "title": "Get BonesSet\nVariable",
+            "pins_out": [
+              {
+                "name": "VariableNode_13.Value",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_32.RigVMFunction_ControlFlowBranch_3.Condition"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_37",
+            "type": "ControlRigGraphNode",
+            "title": "Get BoneNames\nVariable",
+            "pins_out": [
+              {
+                "name": "VariableNode_14.Value",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                },
+                "connections": [
+                  "node_34.DISPATCH_RigVMDispatch_ArrayIterator.Array"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_38",
+            "type": "ControlRigGraphNode",
+            "title": "Get BoneScale\nVariable",
+            "pins_out": [
+              {
+                "name": "VariableNode_15.Value",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Vector\"\r\n}"
+                },
+                "connections": [
+                  "node_35.DISPATCH_RigVMDispatch_ArrayGetAtIndex.Array"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "functions": [],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

@@ -1,0 +1,382 @@
+{
+  "template_id": "fps_shooter_ai_soldier",
+  "display_name": "AI_Soldier",
+  "tags": "aim ai soldier",
+  "catalog_description": "AI_Soldier: BP_AI_CharSoldier-based (child of BP_AI_CharSoldier_C) blueprint with 1 function.",
+  "inherited_tags": "ai char soldier character health dead sprinting key target actor follow aiming current ammo max",
+  "source_project": "FPS_Shooter",
+  "depends_on": "fps_shooter_bp_ai_char_soldier",
+  "schema_version": "1.0",
+  "name": "AI_Soldier",
+  "path": "/Game/FPS_Game/Blueprints/Bonus/AI/AI_Soldier.AI_Soldier",
+  "type": "Normal",
+  "parent_class": {
+    "name": "BP_AI_CharSoldier_C",
+    "source": "blueprint",
+    "path": "/Game/FPS_Game/Blueprints/Bonus/AI/Soldier/BP_AI_CharSoldier.BP_AI_CharSoldier"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "Health",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_CharSoldier",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "isDead",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_CharSoldier",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "isSprinting",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_CharSoldier",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "isDeadKey",
+      "type": {
+        "category": "name"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_CharSoldier",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "TargetActorToFollowKey",
+      "type": {
+        "category": "name"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_CharSoldier",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "isAiming",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_CharSoldier",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CurrentAmmo",
+      "type": {
+        "category": "int"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_CharSoldier",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MaxAmmo",
+      "type": {
+        "category": "int"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_CharSoldier",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AimRotation",
+      "type": {
+        "category": "struct",
+        "struct_name": "Rotator"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_CharSoldier",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "PlayerCast",
+      "type": {
+        "category": "object",
+        "class": "BP_CharacterBase_C"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_CharSoldier",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "GotShotByPlayerKey",
+      "type": {
+        "category": "name"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_CharSoldier",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ReloadMontage",
+      "type": {
+        "category": "object",
+        "class": "AnimMontage"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_CharSoldier",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "FiringSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_CharSoldier",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ProjectileClass",
+      "type": {
+        "category": "class",
+        "class": "Actor"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_CharSoldier",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MuzzleParticle",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_CharSoldier",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MuzzleNiagara",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_CharSoldier",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 0,
+        "connection_count": 0,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 0,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": []
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 2,
+        "connection_count": 2,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "UserConstructionScript",
+            "owning_class": "SKEL_BP_AI_CharSoldier_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

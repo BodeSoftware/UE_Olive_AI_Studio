@@ -1,0 +1,4612 @@
+{
+  "template_id": "fps_shooter_bp_projectile_base",
+  "display_name": "BP_ProjectileBase",
+  "tags": "projectile actor bullet hole decal lifespan material impact sound weapon damage impulse strenght critical multiplier",
+  "catalog_description": "BP_ProjectileBase: Actor-based blueprint with 1 function. Handles damage, movement, spawning, and audio.",
+  "source_project": "FPS_Shooter",
+  "depends_on": null,
+  "schema_version": "1.0",
+  "name": "BP_ProjectileBase",
+  "path": "/Game/FPS_Game/Blueprints/Weapons/Base/BP_ProjectileBase.BP_ProjectileBase",
+  "type": "Normal",
+  "parent_class": {
+    "name": "Actor",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "BulletHoleDecalLifespan",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "BulletHoleDecalMaterial",
+      "type": {
+        "category": "object",
+        "class": "MaterialInterface"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DefaultImpactSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "ImpactSounds",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Default",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Impact_FX",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "WeaponSetProjectileDamage",
+      "type": {
+        "category": "float"
+      },
+      "category": "DoNotTouch",
+      "description": "This variable gets set from the weapons.",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ProjectileImpulseStrenght",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ProjectileDamageCriticalMultiplier",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Flesh",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Impact_FX",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Metal",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Impact_FX",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Rock",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Impact_FX",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Wood",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Impact_FX",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Ground",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Impact_FX",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Glass",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Impact_FX",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Water",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Impact_FX",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "FleshImpactSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "ImpactSounds",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MetalImpactSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "ImpactSounds",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "RockImpactSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "ImpactSounds",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "WoodImpactSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "ImpactSounds",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "GroundImpactSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "ImpactSounds",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "GlassImpactSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "ImpactSounds",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "WaterImpactSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "ImpactSounds",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DestroyOnImpact",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DecalSize",
+      "type": {
+        "category": "struct",
+        "struct_name": "Vector"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "IceImpactSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "ImpactSounds",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SnowImpactSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "ImpactSounds",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "LavaImpactSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "ImpactSounds",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "BrickImpactSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "ImpactSounds",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ConcreteImpactSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "ImpactSounds",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AsphaltImpactSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "ImpactSounds",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SandImpactSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "ImpactSounds",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Custom_A_ImpactSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "ImpactSounds",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Custom_B_ImpactSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "ImpactSounds",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Custom_C_ImpactSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "ImpactSounds",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Ice",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Impact_FX",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Snow",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Impact_FX",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Lava",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Impact_FX",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Brick",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Impact_FX",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Concrete",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Impact_FX",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Asphalt",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Impact_FX",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Sand",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Impact_FX",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Custom_A",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Impact_FX",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Custom_B",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Impact_FX",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Custom_C",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Impact_FX",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Default_Impact_Niagara",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Niagara",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Flesh_Niagara",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Niagara",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Metal_Niagara",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Niagara",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Rock_Niagara",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Niagara",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Wood_Niagara",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Niagara",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Ground_Niagara",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Niagara",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Glass_Niagara",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Niagara",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Water_Niagara",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Niagara",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Ice_Niagara",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Niagara",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Snow_Niagara",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Niagara",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Lava_Niagara",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Niagara",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Brick_Niagara",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Niagara",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Concrete_Niagara",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Niagara",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Asphalt_Niagara",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Niagara",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Sand_Niagara",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Niagara",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Custom_A_Niagara",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Niagara",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Custom_B_Niagara",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Niagara",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Custom_C_Niagara",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Niagara",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CollisionComponent",
+      "type": {
+        "category": "object",
+        "class": "SphereComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ProjectileMesh",
+      "type": {
+        "category": "object",
+        "class": "StaticMeshComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Projectile",
+      "type": {
+        "category": "object",
+        "class": "ProjectileMovementComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Tracer",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystemComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "RadialForce",
+      "type": {
+        "category": "object",
+        "class": "RadialForceComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "components": {
+    "root": "DefaultSceneRoot",
+    "tree": [
+      {
+        "name": "CollisionComponent",
+        "class": "SphereComponent",
+        "children": [
+          {
+            "name": "ProjectileMesh",
+            "class": "StaticMeshComponent",
+            "children": [
+              {
+                "name": "Tracer",
+                "class": "ParticleSystemComponent",
+                "properties": {
+                  "Template": "/Script/Engine.ParticleSystem'/Game/FPS_Game/Particles/P_AssaultRifle_MF_LoopingVersion.P_AssaultRifle_MF_LoopingVersion'",
+                  "RelativeLocation": "(X=-166.666656,Y=-0.000159,Z=0.002841)",
+                  "RelativeRotation": "(Pitch=-0.000977,Yaw=179.999939,Roll=179.999954)",
+                  "RelativeScale3D": "(X=5.000000,Y=5.000000,Z=5.000000)",
+                  "PrimaryComponentTick": "(TickGroup=TG_DuringPhysics,bCanEverTick=True)"
+                }
+              }
+            ],
+            "properties": {
+              "StaticMesh": "/Script/Engine.StaticMesh'/Game/FPS_Game/Weapons/FPProjectile/FirstPersonProjectileMesh.FirstPersonProjectileMesh'",
+              "BodyInstance": "(PositionSolverIterationCount=8,VelocitySolverIterationCount=2,ProjectionSolverIterationCount=1,bLockTranslation=True,bLockRotation=True,bInterpolateWhenSubStepping=True,bInertiaConditioning=True,SolverAsyncDeltaTime=0.016667,CollisionProfileName=\"NoCollision\",CollisionResponses=(ResponseArray=((Channel=\"Visibility\",Response=ECR_Ignore),(Channel=\"Camera\",Response=ECR_Ignore))),MassInKgOverride=1499.092041,LinearDamping=0.010000,CustomDOFPlaneNormal=(X=0.000000,Y=0.000000,Z=0.000000),COMNudge=(X=0.000000,Y=0.000000,Z=0.000000),MassScale=1.000000,InertiaTensorScale=(X=1.000000,Y=1.000000,Z=1.000000),WalkableSlopeOverride=(),MaxAngularVelocity=3600.000000,CustomSleepThresholdMultiplier=1.000000,StabilizationThresholdMultiplier=1.000000,bEnableGravity=True,bStartAwake=True,bUpdateMassWhenScaleChanges=True)",
+              "RelativeLocation": "(X=0.000000,Y=0.000000,Z=0.893873)",
+              "RelativeScale3D": "(X=0.030000,Y=0.030000,Z=0.030000)",
+              "bHiddenInGame": "True",
+              "bCanEverAffectNavigation": "False"
+            }
+          },
+          {
+            "name": "RadialForce",
+            "class": "RadialForceComponent",
+            "properties": {
+              "Radius": "1000.000000",
+              "DestructibleDamage": "1.000000",
+              "ObjectTypesToAffect": "(ObjectTypeQuery6)",
+              "bAutoActivate": "False"
+            }
+          }
+        ],
+        "properties": {
+          "SphereRadius": "7.000000",
+          "bUseSystemDefaultObstacleAreaClass": "False",
+          "AreaClassOverride": "/Script/CoreUObject.Class'/Script/NavigationSystem.NavArea_Obstacle'",
+          "bReturnMaterialOnMove": "True",
+          "BodyInstance": "(PositionSolverIterationCount=8,VelocitySolverIterationCount=2,ProjectionSolverIterationCount=1,ObjectType=ECC_GameTraceChannel3,CollisionEnabled=QueryOnly,bUseCCD=True,bNotifyRigidBodyCollision=True,bLockTranslation=True,bLockRotation=True,bOverrideWalkableSlopeOnInstance=True,bInterpolateWhenSubStepping=True,bInertiaConditioning=True,SolverAsyncDeltaTime=0.016667,CollisionProfileName=\"ProjectileProfile\",CollisionResponses=(ResponseArray=((Channel=\"Pawn\",Response=ECR_Ignore),(Channel=\"Visibility\",Response=ECR_Ignore),(Channel=\"Camera\",Response=ECR_Ignore),(Channel=\"Projectile\",Response=ECR_Ignore),(Channel=\"Water\"))),MassInKgOverride=13.927586,LinearDamping=0.010000,CustomDOFPlaneNormal=(X=0.000000,Y=0.000000,Z=0.000000),COMNudge=(X=0.000000,Y=0.000000,Z=0.000000),MassScale=1.000000,InertiaTensorScale=(X=1.000000,Y=1.000000,Z=1.000000),WalkableSlopeOverride=(WalkableSlopeBehavior=WalkableSlope_Unwalkable),MaxAngularVelocity=3600.000000,CustomSleepThresholdMultiplier=1.000000,StabilizationThresholdMultiplier=1.000000,bEnableGravity=True,bAutoWeld=True,bStartAwake=True,bUpdateMassWhenScaleChanges=True)",
+          "bCanEverAffectNavigation": "False"
+        }
+      },
+      {
+        "name": "Projectile",
+        "class": "ProjectileMovementComponent",
+        "properties": {
+          "InitialSpeed": "20000.000000",
+          "MaxSpeed": "20000.000000",
+          "ProjectileGravityScale": "0.000000",
+          "Velocity": "(X=3000.000000,Y=0.000000,Z=0.000000)"
+        }
+      }
+    ]
+  },
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 120,
+        "connection_count": 271,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "CallFunction",
+            "function": "K2_DestroyActor",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "K2_GetActorLocation",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_2.Location"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "AddImpulseAtLocation",
+            "owning_class": "PrimitiveComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "PrimitiveComponent"
+                }
+              },
+              {
+                "name": "Impulse",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "BoneName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "None"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_56.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "GetVelocity",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_4.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "Multiply_VectorFloat",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_2.Impulse"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "Event",
+            "function": "ReceiveHit",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_15.execute"
+                ]
+              },
+              {
+                "name": "MyComp",
+                "type": {
+                  "category": "object",
+                  "class": "PrimitiveComponent"
+                }
+              },
+              {
+                "name": "Other",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "OtherComp",
+                "type": {
+                  "category": "object",
+                  "class": "PrimitiveComponent"
+                },
+                "connections": [
+                  "node_15.AttachToComponent",
+                  "node_20.InputPin"
+                ]
+              },
+              {
+                "name": "bSelfMoved",
+                "type": {
+                  "category": "bool"
+                }
+              },
+              {
+                "name": "HitLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_15.HitLocation",
+                  "node_21.InputPin"
+                ]
+              },
+              {
+                "name": "HitNormal",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_15.HitNormal"
+                ]
+              },
+              {
+                "name": "NormalImpulse",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "Hit_bBlockingHit",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_45.bBlockingHit"
+                ]
+              },
+              {
+                "name": "Hit_bInitialOverlap",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_45.bInitialOverlap"
+                ]
+              },
+              {
+                "name": "Hit_Time",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_45.Time"
+                ]
+              },
+              {
+                "name": "Hit_Distance",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "Hit_Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_45.Location"
+                ]
+              },
+              {
+                "name": "Hit_ImpactPoint",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_45.ImpactPoint"
+                ]
+              },
+              {
+                "name": "Hit_Normal",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_45.Normal"
+                ]
+              },
+              {
+                "name": "Hit_ImpactNormal",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_45.ImpactNormal"
+                ]
+              },
+              {
+                "name": "Hit_PhysMat",
+                "type": {
+                  "category": "object",
+                  "class": "PhysicalMaterial"
+                },
+                "connections": [
+                  "node_42.InputPin",
+                  "node_45.PhysMat"
+                ]
+              },
+              {
+                "name": "Hit_HitActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_26.InputPin",
+                  "node_40.InputPin",
+                  "node_45.HitActor"
+                ]
+              },
+              {
+                "name": "Hit_HitComponent",
+                "type": {
+                  "category": "object",
+                  "class": "PrimitiveComponent"
+                },
+                "connections": [
+                  "node_45.HitComponent"
+                ]
+              },
+              {
+                "name": "Hit_HitBoneName",
+                "type": {
+                  "category": "name"
+                },
+                "connections": [
+                  "node_29.InputPin",
+                  "node_45.HitBoneName"
+                ]
+              },
+              {
+                "name": "Hit_BoneName",
+                "type": {
+                  "category": "name"
+                }
+              },
+              {
+                "name": "Hit_HitItem",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_45.HitItem"
+                ]
+              },
+              {
+                "name": "Hit_ElementIndex",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "Hit_FaceIndex",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_45.FaceIndex"
+                ]
+              },
+              {
+                "name": "Hit_TraceStart",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_45.TraceStart"
+                ]
+              },
+              {
+                "name": "Hit_TraceEnd",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_45.TraceEnd"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "IsSimulatingPhysics",
+            "owning_class": "SceneComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              },
+              {
+                "name": "BoneName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "None"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_7.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_13.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_8",
+            "type": "CallFunction",
+            "function": "PlaySoundAtLocation",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Sound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "VolumeMultiplier",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "PitchMultiplier",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "StartTime",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "AttenuationSettings",
+                "type": {
+                  "category": "object",
+                  "class": "SoundAttenuation"
+                }
+              },
+              {
+                "name": "ConcurrencySettings",
+                "type": {
+                  "category": "object",
+                  "class": "SoundConcurrency"
+                }
+              },
+              {
+                "name": "OwningActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor",
+                  "is_const": true
+                }
+              },
+              {
+                "name": "InitialParams",
+                "type": {
+                  "category": "object",
+                  "class": "InitialActiveSoundParams",
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "VariableGet",
+            "variable": "DefaultImpactSound",
+            "pins_out": [
+              {
+                "name": "DefaultImpactSound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_8.Sound"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "K2Node_Composite",
+            "title": "SpawnBulletHoleDecal\nCollapsed Graph",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DecalMaterial",
+                "type": {
+                  "category": "object",
+                  "class": "MaterialInterface"
+                }
+              },
+              {
+                "name": "LifeSpan",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "AttachToComponent",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              },
+              {
+                "name": "HitLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "HitNormal",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector",
+                  "is_reference": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_16",
+            "type": "VariableGet",
+            "variable": "BulletHoleDecalLifespan",
+            "pins_out": [
+              {
+                "name": "BulletHoleDecalLifespan",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_15.LifeSpan"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "VariableGet",
+            "variable": "BulletHoleDecalMaterial",
+            "pins_out": [
+              {
+                "name": "BulletHoleDecalMaterial",
+                "type": {
+                  "category": "object",
+                  "class": "MaterialInterface"
+                },
+                "connections": [
+                  "node_15.DecalMaterial"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "VariableGet",
+            "variable": "ProjectileImpulseStrenght",
+            "pins_out": [
+              {
+                "name": "ProjectileImpulseStrenght",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_4.B"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "K2Node_Composite",
+            "title": "CriticalHitCheck\nCollapsed Graph",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Critical",
+                "type": {
+                  "category": "name"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_43.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_31",
+            "type": "VariableGet",
+            "variable": "SurfaceType",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "PhysicalMaterial"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SurfaceType",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_76.Index",
+                  "node_101.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "PhysicalMaterial"
+            }
+          },
+          {
+            "id": "node_32",
+            "type": "CallFunction",
+            "function": "RandomRotator",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "bRoll",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "connections": [
+                  "node_77.Rotation",
+                  "node_100.Rotation"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_34",
+            "type": "K2Node_Composite",
+            "title": "OldParticleSystem\nCollapsed Graph",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "CheckIfActor",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              },
+              {
+                "name": "EnemyActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_30.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_41",
+            "type": "VariableGet",
+            "variable": "SurfaceType",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "PhysicalMaterial"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SurfaceType",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_57.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "PhysicalMaterial"
+            }
+          },
+          {
+            "id": "node_43",
+            "type": "CallFunction",
+            "function": "ApplyPointDamage",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DamagedActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "BaseDamage",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "HitFromDirection",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "HitInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "HitResult",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "EventInstigator",
+                "type": {
+                  "category": "object",
+                  "class": "Controller"
+                }
+              },
+              {
+                "name": "DamageCauser",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "DamageTypeClass",
+                "type": {
+                  "category": "class",
+                  "class": "DamageType"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_45",
+            "type": "CallFunction",
+            "function": "MakeHitResult",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "bBlockingHit",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "bInitialOverlap",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "Time",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "Distance",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "ImpactPoint",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "Normal",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0,0,1"
+              },
+              {
+                "name": "ImpactNormal",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0,0,1"
+              },
+              {
+                "name": "PhysMat",
+                "type": {
+                  "category": "object",
+                  "class": "PhysicalMaterial"
+                }
+              },
+              {
+                "name": "HitActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "HitComponent",
+                "type": {
+                  "category": "object",
+                  "class": "PrimitiveComponent"
+                }
+              },
+              {
+                "name": "HitBoneName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "None"
+              },
+              {
+                "name": "BoneName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "None"
+              },
+              {
+                "name": "HitItem",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "ElementIndex",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "FaceIndex",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "TraceStart",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "TraceEnd",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "HitResult"
+                },
+                "connections": [
+                  "node_46.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_47",
+            "type": "VariableGet",
+            "variable": "WeaponSetProjectileDamage",
+            "pins_out": [
+              {
+                "name": "WeaponSetProjectileDamage",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_43.BaseDamage"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_48",
+            "type": "VariableGet",
+            "variable": "DestroyOnImpact",
+            "pins_out": [
+              {
+                "name": "DestroyOnImpact",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_49.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_49",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_56.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_50",
+            "type": "VariableGet",
+            "variable": "SurfaceType",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "PhysicalMaterial"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SurfaceType",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_51.Selection"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "PhysicalMaterial"
+            }
+          },
+          {
+            "id": "node_51",
+            "type": "K2Node_SwitchEnum",
+            "title": "Switch on EPhysicalSurface",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Selection",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "SurfaceType_Default"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SurfaceType_Default",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SurfaceType1",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_0.execute"
+                ]
+              },
+              {
+                "name": "SurfaceType2",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SurfaceType3",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SurfaceType4",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SurfaceType5",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SurfaceType6",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SurfaceType7",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SurfaceType8",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SurfaceType9",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SurfaceType10",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SurfaceType11",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SurfaceType12",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SurfaceType13",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SurfaceType14",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SurfaceType15",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SurfaceType16",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SurfaceType17",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_54",
+            "type": "K2Node_Self",
+            "title": "Self-Reference",
+            "pins_out": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                },
+                "connections": [
+                  "node_43.DamageCauser"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_55",
+            "type": "VariableGet",
+            "variable": "RadialForce",
+            "pins_out": [
+              {
+                "name": "RadialForce",
+                "type": {
+                  "category": "object",
+                  "class": "RadialForceComponent"
+                },
+                "connections": [
+                  "node_56.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_56",
+            "type": "CallFunction",
+            "function": "FireImpulse",
+            "owning_class": "RadialForceComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RadialForceComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_0.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_57",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "SurfaceType_Default",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "SurfaceType1",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "SurfaceType2",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "SurfaceType3",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "SurfaceType4",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "SurfaceType5",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "SurfaceType6",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "SurfaceType7",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "SurfaceType8",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "SurfaceType9",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "SurfaceType10",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "SurfaceType11",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "SurfaceType12",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "SurfaceType13",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "SurfaceType14",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "SurfaceType15",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "SurfaceType16",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "SurfaceType17",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "SurfaceType_Default"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_58.Sound"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_58",
+            "type": "CallFunction",
+            "function": "PlaySoundAtLocation",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Sound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "VolumeMultiplier",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "PitchMultiplier",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "StartTime",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "AttenuationSettings",
+                "type": {
+                  "category": "object",
+                  "class": "SoundAttenuation"
+                }
+              },
+              {
+                "name": "ConcurrencySettings",
+                "type": {
+                  "category": "object",
+                  "class": "SoundConcurrency"
+                }
+              },
+              {
+                "name": "OwningActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor",
+                  "is_const": true
+                }
+              },
+              {
+                "name": "InitialParams",
+                "type": {
+                  "category": "object",
+                  "class": "InitialActiveSoundParams",
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_59",
+            "type": "VariableGet",
+            "variable": "DefaultImpactSound",
+            "pins_out": [
+              {
+                "name": "DefaultImpactSound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_57.SurfaceType_Default"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_60",
+            "type": "VariableGet",
+            "variable": "FleshImpactSound",
+            "pins_out": [
+              {
+                "name": "FleshImpactSound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_57.SurfaceType1"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_61",
+            "type": "VariableGet",
+            "variable": "MetalImpactSound",
+            "pins_out": [
+              {
+                "name": "MetalImpactSound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_57.SurfaceType2"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_62",
+            "type": "VariableGet",
+            "variable": "RockImpactSound",
+            "pins_out": [
+              {
+                "name": "RockImpactSound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_57.SurfaceType3"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_63",
+            "type": "VariableGet",
+            "variable": "WoodImpactSound",
+            "pins_out": [
+              {
+                "name": "WoodImpactSound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_57.SurfaceType4"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_64",
+            "type": "VariableGet",
+            "variable": "GroundImpactSound",
+            "pins_out": [
+              {
+                "name": "GroundImpactSound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_57.SurfaceType5"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_65",
+            "type": "VariableGet",
+            "variable": "GlassImpactSound",
+            "pins_out": [
+              {
+                "name": "GlassImpactSound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_57.SurfaceType6"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_66",
+            "type": "VariableGet",
+            "variable": "IceImpactSound",
+            "pins_out": [
+              {
+                "name": "IceImpactSound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_57.SurfaceType8"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_67",
+            "type": "VariableGet",
+            "variable": "SnowImpactSound",
+            "pins_out": [
+              {
+                "name": "SnowImpactSound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_57.SurfaceType9"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_68",
+            "type": "VariableGet",
+            "variable": "LavaImpactSound",
+            "pins_out": [
+              {
+                "name": "LavaImpactSound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_57.SurfaceType10"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_69",
+            "type": "VariableGet",
+            "variable": "BrickImpactSound",
+            "pins_out": [
+              {
+                "name": "BrickImpactSound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_57.SurfaceType11"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_70",
+            "type": "VariableGet",
+            "variable": "ConcreteImpactSound",
+            "pins_out": [
+              {
+                "name": "ConcreteImpactSound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_57.SurfaceType12"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_71",
+            "type": "VariableGet",
+            "variable": "AsphaltImpactSound",
+            "pins_out": [
+              {
+                "name": "AsphaltImpactSound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_57.SurfaceType13"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_72",
+            "type": "VariableGet",
+            "variable": "SandImpactSound",
+            "pins_out": [
+              {
+                "name": "SandImpactSound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_57.SurfaceType14"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_73",
+            "type": "VariableGet",
+            "variable": "Custom_A_ImpactSound",
+            "pins_out": [
+              {
+                "name": "Custom_A_ImpactSound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_57.SurfaceType15"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_74",
+            "type": "VariableGet",
+            "variable": "Custom_B_ImpactSound",
+            "pins_out": [
+              {
+                "name": "Custom_B_ImpactSound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_57.SurfaceType16"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_75",
+            "type": "VariableGet",
+            "variable": "Custom_C_ImpactSound",
+            "pins_out": [
+              {
+                "name": "Custom_C_ImpactSound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_57.SurfaceType17"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_76",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "SurfaceType_Default",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                }
+              },
+              {
+                "name": "SurfaceType1",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                }
+              },
+              {
+                "name": "SurfaceType2",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                }
+              },
+              {
+                "name": "SurfaceType3",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                }
+              },
+              {
+                "name": "SurfaceType4",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                }
+              },
+              {
+                "name": "SurfaceType5",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                }
+              },
+              {
+                "name": "SurfaceType6",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                }
+              },
+              {
+                "name": "SurfaceType7",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                }
+              },
+              {
+                "name": "SurfaceType8",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                }
+              },
+              {
+                "name": "SurfaceType9",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                }
+              },
+              {
+                "name": "SurfaceType10",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                }
+              },
+              {
+                "name": "SurfaceType11",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                }
+              },
+              {
+                "name": "SurfaceType12",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                }
+              },
+              {
+                "name": "SurfaceType13",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                }
+              },
+              {
+                "name": "SurfaceType14",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                }
+              },
+              {
+                "name": "SurfaceType15",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                }
+              },
+              {
+                "name": "SurfaceType16",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                }
+              },
+              {
+                "name": "SurfaceType17",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "SurfaceType_Default"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "connections": [
+                  "node_77.EmitterTemplate"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_77",
+            "type": "CallFunction",
+            "function": "SpawnEmitterAtLocation",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "EmitterTemplate",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                }
+              },
+              {
+                "name": "Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "Scale",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "1.000000,1.000000,1.000000"
+              },
+              {
+                "name": "bAutoDestroy",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "PoolingMethod",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "None"
+              },
+              {
+                "name": "bAutoActivateSystem",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_100.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystemComponent"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_78",
+            "type": "VariableGet",
+            "variable": "Default",
+            "pins_out": [
+              {
+                "name": "Default",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "connections": [
+                  "node_76.SurfaceType_Default"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_79",
+            "type": "VariableGet",
+            "variable": "WaterImpactSound",
+            "pins_out": [
+              {
+                "name": "WaterImpactSound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_57.SurfaceType7"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_80",
+            "type": "VariableGet",
+            "variable": "Flesh",
+            "pins_out": [
+              {
+                "name": "Flesh",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "connections": [
+                  "node_76.SurfaceType1"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_81",
+            "type": "VariableGet",
+            "variable": "Metal",
+            "pins_out": [
+              {
+                "name": "Metal",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "connections": [
+                  "node_76.SurfaceType2"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_82",
+            "type": "VariableGet",
+            "variable": "Rock",
+            "pins_out": [
+              {
+                "name": "Rock",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "connections": [
+                  "node_76.SurfaceType3"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_83",
+            "type": "VariableGet",
+            "variable": "Wood",
+            "pins_out": [
+              {
+                "name": "Wood",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "connections": [
+                  "node_76.SurfaceType4"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_84",
+            "type": "VariableGet",
+            "variable": "Ground",
+            "pins_out": [
+              {
+                "name": "Ground",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "connections": [
+                  "node_76.SurfaceType5"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_85",
+            "type": "VariableGet",
+            "variable": "Glass",
+            "pins_out": [
+              {
+                "name": "Glass",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "connections": [
+                  "node_76.SurfaceType6"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_86",
+            "type": "VariableGet",
+            "variable": "Water",
+            "pins_out": [
+              {
+                "name": "Water",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "connections": [
+                  "node_76.SurfaceType7"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_87",
+            "type": "VariableGet",
+            "variable": "Ice",
+            "pins_out": [
+              {
+                "name": "Ice",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "connections": [
+                  "node_76.SurfaceType8"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_88",
+            "type": "VariableGet",
+            "variable": "Snow",
+            "pins_out": [
+              {
+                "name": "Snow",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "connections": [
+                  "node_76.SurfaceType9"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_89",
+            "type": "VariableGet",
+            "variable": "Lava",
+            "pins_out": [
+              {
+                "name": "Lava",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "connections": [
+                  "node_76.SurfaceType10"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_90",
+            "type": "VariableGet",
+            "variable": "Brick",
+            "pins_out": [
+              {
+                "name": "Brick",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "connections": [
+                  "node_76.SurfaceType11"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_91",
+            "type": "VariableGet",
+            "variable": "Concrete",
+            "pins_out": [
+              {
+                "name": "Concrete",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "connections": [
+                  "node_76.SurfaceType12"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_92",
+            "type": "VariableGet",
+            "variable": "Asphalt",
+            "pins_out": [
+              {
+                "name": "Asphalt",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "connections": [
+                  "node_76.SurfaceType13"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_93",
+            "type": "VariableGet",
+            "variable": "Sand",
+            "pins_out": [
+              {
+                "name": "Sand",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "connections": [
+                  "node_76.SurfaceType14"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_94",
+            "type": "VariableGet",
+            "variable": "Custom_A",
+            "pins_out": [
+              {
+                "name": "Custom_A",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "connections": [
+                  "node_76.SurfaceType15"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_95",
+            "type": "VariableGet",
+            "variable": "Custom_B",
+            "pins_out": [
+              {
+                "name": "Custom_B",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "connections": [
+                  "node_76.SurfaceType16"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_96",
+            "type": "VariableGet",
+            "variable": "Custom_C",
+            "pins_out": [
+              {
+                "name": "Custom_C",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "connections": [
+                  "node_76.SurfaceType17"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_99",
+            "type": "VariableGet",
+            "variable": "Default_Impact_Niagara",
+            "pins_out": [
+              {
+                "name": "Default_Impact_Niagara",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_101.SurfaceType_Default"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_100",
+            "type": "CallFunction",
+            "function": "SpawnSystemAtLocation",
+            "owning_class": "NiagaraFunctionLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SystemTemplate",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "Scale",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "1.000000,1.000000,1.000000"
+              },
+              {
+                "name": "bAutoDestroy",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "bAutoActivate",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "PoolingMethod",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "None"
+              },
+              {
+                "name": "bPreCullCheck",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_30.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraComponent"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_101",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "SurfaceType_Default",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "SurfaceType1",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "SurfaceType2",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "SurfaceType3",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "SurfaceType4",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "SurfaceType5",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "SurfaceType6",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "SurfaceType7",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "SurfaceType8",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "SurfaceType9",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "SurfaceType10",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "SurfaceType11",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "SurfaceType12",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "SurfaceType13",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "SurfaceType14",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "SurfaceType15",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "SurfaceType16",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "SurfaceType17",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "SurfaceType_Default"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_100.SystemTemplate"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_103",
+            "type": "VariableGet",
+            "variable": "Flesh_Niagara",
+            "pins_out": [
+              {
+                "name": "Flesh_Niagara",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_101.SurfaceType1"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_104",
+            "type": "VariableGet",
+            "variable": "Metal_Niagara",
+            "pins_out": [
+              {
+                "name": "Metal_Niagara",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_101.SurfaceType2"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_105",
+            "type": "VariableGet",
+            "variable": "Rock_Niagara",
+            "pins_out": [
+              {
+                "name": "Rock_Niagara",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_101.SurfaceType3"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_106",
+            "type": "VariableGet",
+            "variable": "Wood_Niagara",
+            "pins_out": [
+              {
+                "name": "Wood_Niagara",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_101.SurfaceType4"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_107",
+            "type": "VariableGet",
+            "variable": "Ground_Niagara",
+            "pins_out": [
+              {
+                "name": "Ground_Niagara",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_101.SurfaceType5"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_108",
+            "type": "VariableGet",
+            "variable": "Glass_Niagara",
+            "pins_out": [
+              {
+                "name": "Glass_Niagara",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_101.SurfaceType6"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_109",
+            "type": "VariableGet",
+            "variable": "Water_Niagara",
+            "pins_out": [
+              {
+                "name": "Water_Niagara",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_101.SurfaceType7"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_110",
+            "type": "VariableGet",
+            "variable": "Ice_Niagara",
+            "pins_out": [
+              {
+                "name": "Ice_Niagara",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_101.SurfaceType8"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_111",
+            "type": "VariableGet",
+            "variable": "Snow_Niagara",
+            "pins_out": [
+              {
+                "name": "Snow_Niagara",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_101.SurfaceType9"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_112",
+            "type": "VariableGet",
+            "variable": "Lava_Niagara",
+            "pins_out": [
+              {
+                "name": "Lava_Niagara",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_101.SurfaceType10"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_113",
+            "type": "VariableGet",
+            "variable": "Brick_Niagara",
+            "pins_out": [
+              {
+                "name": "Brick_Niagara",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_101.SurfaceType11"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_114",
+            "type": "VariableGet",
+            "variable": "Concrete_Niagara",
+            "pins_out": [
+              {
+                "name": "Concrete_Niagara",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_101.SurfaceType12"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_115",
+            "type": "VariableGet",
+            "variable": "Asphalt_Niagara",
+            "pins_out": [
+              {
+                "name": "Asphalt_Niagara",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_101.SurfaceType13"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_116",
+            "type": "VariableGet",
+            "variable": "Sand_Niagara",
+            "pins_out": [
+              {
+                "name": "Sand_Niagara",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_101.SurfaceType14"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_117",
+            "type": "VariableGet",
+            "variable": "Custom_A_Niagara",
+            "pins_out": [
+              {
+                "name": "Custom_A_Niagara",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_101.SurfaceType15"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_118",
+            "type": "VariableGet",
+            "variable": "Custom_B_Niagara",
+            "pins_out": [
+              {
+                "name": "Custom_B_Niagara",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_101.SurfaceType16"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_119",
+            "type": "VariableGet",
+            "variable": "Custom_C_Niagara",
+            "pins_out": [
+              {
+                "name": "Custom_C_Niagara",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_101.SurfaceType17"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "ReceiveHit",
+            "type": "Event",
+            "tags": "receive hit"
+          }
+        ],
+        "tags": "receive hit"
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 1,
+        "connection_count": 0,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

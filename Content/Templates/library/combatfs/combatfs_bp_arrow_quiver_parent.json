@@ -1,0 +1,5012 @@
+{
+  "template_id": "combatfs_bp_arrow_quiver_parent",
+  "display_name": "BP_ArrowQuiverParent",
+  "tags": "arrow quiver available slots remove no locations pass placed level total arrows respawn",
+  "catalog_description": "BP_ArrowQuiverParent: BP_WeaponParent-based (child of BP_WeaponParent) blueprint with 11 functions. Handles spawning, collection, and math.",
+  "inherited_tags": "weapon despawn time system template attach spawn niagara notify scale off hand pickup item actor character equipment component setup skeletal mesh picked up spin timer throw path",
+  "source_project": "CombatFS",
+  "depends_on": "combatfs_bp_weapon_parent",
+  "schema_version": "1.0",
+  "name": "BP_ArrowQuiverParent",
+  "path": "/Game/FlexibleCombatSystem/Blueprints/Items/PickUpItems/BP_ArrowQuiverParent.BP_ArrowQuiverParent",
+  "type": "Normal",
+  "parent_class": {
+    "name": "BP_WeaponParent_C",
+    "source": "blueprint",
+    "path": "/Game/FlexibleCombatSystem/Blueprints/Items/PickUpItems/BP_WeaponParent.BP_WeaponParent"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "AvailableArrowSlots",
+      "type": {
+        "category": "int"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "RemoveArrowNo",
+      "type": {
+        "category": "int"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ArrowSpawnLocationsT",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Transform\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ArrowIndexToPass",
+      "type": {
+        "category": "int"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ArrowToPass",
+      "type": {
+        "category": "object",
+        "class": "BP_ArrowParent_C"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ArrowSlots",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_QuiverStatus\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "PlacedInLevel",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "TotalArrowSlots",
+      "type": {
+        "category": "int"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ArrowsRespawn",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow15",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow6",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow18",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow7",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow9",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow10",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow11",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow12",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow13",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow0",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow16",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow17",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow4",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow14",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow8",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow19",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow1",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow2",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow3",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Arrow5Central",
+      "type": {
+        "category": "object",
+        "class": "ArrowComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ArrowAdjuster",
+      "type": {
+        "category": "object",
+        "class": "SceneComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "WeaponDespawnTime",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "BP_WeaponParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "System Template",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Default",
+      "defined_in": "BP_WeaponParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AttachWeapon",
+      "type": {
+        "category": "byte"
+      },
+      "category": "Default",
+      "defined_in": "BP_WeaponParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "WeaponComponent",
+      "type": {
+        "category": "object",
+        "class": "SceneComponent"
+      },
+      "category": "Default",
+      "defined_in": "BP_WeaponParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SpawnNiagaraNotify",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "BP_WeaponParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "SetScale",
+      "type": {
+        "category": "multicastdelegate"
+      },
+      "category": "Default",
+      "defined_in": "BP_WeaponParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "OffHandWeapon",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "BP_WeaponParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    }
+  ],
+  "components": {
+    "root": "DefaultSceneRoot",
+    "tree": [
+      {
+        "name": "ArrowAdjuster",
+        "class": "SceneComponent",
+        "children": [
+          {
+            "name": "Arrow5Central",
+            "class": "ArrowComponent",
+            "children": [
+              {
+                "name": "Arrow15",
+                "class": "ArrowComponent",
+                "properties": {
+                  "RelativeLocation": "(X=-0.116663,Y=4.344727,Z=4.303504)",
+                  "RelativeRotation": "(Pitch=-0.000034,Yaw=-1.517103,Roll=2.870977)"
+                }
+              },
+              {
+                "name": "Arrow6",
+                "class": "ArrowComponent",
+                "properties": {
+                  "RelativeLocation": "(X=-0.527706,Y=-4.852720,Z=7.036416)",
+                  "RelativeRotation": "(Pitch=-0.445198,Yaw=-1.701623,Roll=-0.003258)"
+                }
+              },
+              {
+                "name": "Arrow18",
+                "class": "ArrowComponent",
+                "properties": {
+                  "RelativeLocation": "(X=0.134278,Y=13.431314,Z=9.035663)",
+                  "RelativeRotation": "(Pitch=-0.464247,Yaw=-2.839471,Roll=2.875626)"
+                }
+              },
+              {
+                "name": "Arrow7",
+                "class": "ArrowComponent",
+                "properties": {
+                  "RelativeLocation": "(X=0.136094,Y=-7.076382,Z=2.400521)",
+                  "RelativeRotation": "(Pitch=-0.000225,Yaw=3.486567,Roll=10.349659)"
+                }
+              },
+              {
+                "name": "Arrow9",
+                "class": "ArrowComponent",
+                "properties": {
+                  "RelativeLocation": "(X=1.218399,Y=22.243240,Z=14.748796)",
+                  "RelativeRotation": "(Pitch=-0.386238,Yaw=-4.018450,Roll=178.326294)"
+                }
+              },
+              {
+                "name": "Arrow10",
+                "class": "ArrowComponent",
+                "properties": {
+                  "RelativeLocation": "(X=-0.302885,Y=-5.407632,Z=13.352112)",
+                  "RelativeRotation": "(Pitch=-0.445171,Yaw=0.347973,Roll=0.286333)"
+                }
+              },
+              {
+                "name": "Arrow11",
+                "class": "ArrowComponent",
+                "properties": {
+                  "RelativeLocation": "(X=0.071342,Y=-19.494383,Z=8.908916)",
+                  "RelativeRotation": "(Pitch=-0.224624,Yaw=2.312110,Roll=7.446087)"
+                }
+              },
+              {
+                "name": "Arrow12",
+                "class": "ArrowComponent",
+                "properties": {
+                  "RelativeLocation": "(X=-0.289640,Y=-12.148445,Z=8.178343)",
+                  "RelativeRotation": "(Pitch=-0.444475,Yaw=1.789701,Roll=10.318597)"
+                }
+              },
+              {
+                "name": "Arrow13",
+                "class": "ArrowComponent",
+                "properties": {
+                  "RelativeLocation": "(X=0.779469,Y=-16.681393,Z=0.066770)",
+                  "RelativeRotation": "(Pitch=0.195159,Yaw=4.191546,Roll=7.481571)"
+                }
+              },
+              {
+                "name": "Arrow0",
+                "class": "ArrowComponent",
+                "properties": {
+                  "RelativeLocation": "(X=0.358131,Y=1.994356,Z=-10.318840)",
+                  "RelativeRotation": "(Pitch=1.256461,Yaw=0.471984,Roll=0.010763)",
+                  "RelativeScale3D": "(X=1.000000,Y=1.000000,Z=1.000000)"
+                }
+              },
+              {
+                "name": "Arrow16",
+                "class": "ArrowComponent",
+                "properties": {
+                  "RelativeLocation": "(X=0.210563,Y=11.125346,Z=4.957090)",
+                  "RelativeRotation": "(Pitch=-0.000096,Yaw=-3.212176,Roll=-33.125454)"
+                }
+              },
+              {
+                "name": "Arrow17",
+                "class": "ArrowComponent",
+                "properties": {
+                  "RelativeLocation": "(X=0.916169,Y=23.202135,Z=3.401629)",
+                  "RelativeRotation": "(Pitch=0.017678,Yaw=-3.713453,Roll=178.311081)"
+                }
+              },
+              {
+                "name": "Arrow4",
+                "class": "ArrowComponent",
+                "properties": {
+                  "RelativeLocation": "(X=1.560409,Y=-18.839998,Z=-10.927337)",
+                  "RelativeRotation": "(Pitch=1.478183,Yaw=4.431613,Roll=7.577470)"
+                }
+              },
+              {
+                "name": "Arrow14",
+                "class": "ArrowComponent",
+                "properties": {
+                  "RelativeLocation": "(X=-0.162432,Y=6.824580,Z=13.536631)",
+                  "RelativeRotation": "(Pitch=-0.444946,Yaw=-4.908892,Roll=-33.103943)",
+                  "RelativeScale3D": "(X=0.999999,Y=0.999999,Z=0.999999)"
+                }
+              },
+              {
+                "name": "Arrow8",
+                "class": "ArrowComponent",
+                "properties": {
+                  "RelativeLocation": "(X=0.064319,Y=8.528163,Z=-2.098504)",
+                  "RelativeRotation": "(Pitch=1.255901,Yaw=-1.046197,Roll=2.847686)"
+                }
+              },
+              {
+                "name": "Arrow19",
+                "class": "ArrowComponent",
+                "properties": {
+                  "RelativeLocation": "(X=0.359568,Y=11.807826,Z=-7.830524)",
+                  "RelativeRotation": "(Pitch=1.254753,Yaw=-2.741349,Roll=-33.185184)"
+                }
+              },
+              {
+                "name": "Arrow1",
+                "class": "ArrowComponent",
+                "properties": {
+                  "RelativeLocation": "(X=0.778369,Y=21.684599,Z=-5.502642)",
+                  "RelativeRotation": "(Pitch=1.271836,Yaw=-3.253226,Roll=178.239944)"
+                }
+              },
+              {
+                "name": "Arrow2",
+                "class": "ArrowComponent",
+                "properties": {
+                  "RelativeLocation": "(X=0.631798,Y=-6.932652,Z=-4.969613)",
+                  "RelativeRotation": "(Pitch=1.262058,Yaw=1.343933,Roll=0.334820)"
+                }
+              },
+              {
+                "name": "Arrow3",
+                "class": "ArrowComponent",
+                "properties": {
+                  "RelativeLocation": "(X=0.858237,Y=-9.596922,Z=-9.942388)",
+                  "RelativeRotation": "(Pitch=1.253005,Yaw=3.958786,Roll=10.436061)"
+                }
+              }
+            ],
+            "properties": {
+              "RelativeRotation": "(Pitch=-90.000000,Yaw=-14.036263,Roll=103.377663)",
+              "RelativeScale3D": "(X=0.100000,Y=0.100000,Z=0.100000)"
+            }
+          }
+        ],
+        "properties": {
+          "RelativeLocation": "(X=2.700139,Y=-9.806001,Z=-6.223091)",
+          "RelativeRotation": "(Pitch=29.999884,Yaw=-0.000181,Roll=0.000011)",
+          "RelativeScale3D": "(X=0.774044,Y=0.774044,Z=0.774044)"
+        }
+      }
+    ]
+  },
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 37,
+        "connection_count": 30,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "K2_DestroyActor",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "Event",
+            "function": "Destroy Self & Attachments",
+            "owning_class": "SKEL_I_WeaponInterface_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "K2_DestroyActor",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "Event",
+            "function": "PlayerDied",
+            "owning_class": "SKEL_I_WeaponInterface_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "CallFunction",
+            "function": "SpawnArrowsIntoQuiver",
+            "owning_class": "SKEL_BP_ArrowQuiverParent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "Event",
+            "function": "LowerArrowQuantity",
+            "owning_class": "SKEL_I_RangedWeaponInterface_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_10.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "CallFunction",
+            "function": "Remove Arrow Data",
+            "owning_class": "SKEL_BP_ArrowQuiverParent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "CallFunction",
+            "function": "LoadSlots",
+            "owning_class": "SKEL_BP_ArrowQuiverParent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_8.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "VariableGet",
+            "variable": "ArrowSlots",
+            "pins_out": [
+              {
+                "name": "ArrowSlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_QuiverStatus\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "VariableSet",
+            "variable": "AvailableArrowSlots",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AvailableArrowSlots",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_11.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "VariableGet",
+            "variable": "TotalArrowSlots",
+            "pins_out": [
+              {
+                "name": "TotalArrowSlots",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_14.AvailableArrowSlots"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "VariableGet",
+            "variable": "ArrowSlots",
+            "pins_out": [
+              {
+                "name": "ArrowSlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_QuiverStatus\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "CallFunction",
+            "function": "K2_DestroyActor",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "Event",
+            "function": "ReceiveBeginPlay",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "CallFunction",
+            "function": "PickedUpCheck",
+            "owning_class": "SKEL_BP_PickupItem_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PickupItem_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_24.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_21",
+            "type": "CustomEvent",
+            "function": "ClearSlots",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_22",
+            "type": "VariableGet",
+            "variable": "ArrowSlots",
+            "pins_out": [
+              {
+                "name": "ArrowSlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_QuiverStatus\"\r\n}"
+                },
+                "connections": [
+                  "node_23.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "CallFunction",
+            "function": "Array_Clear",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_QuiverStatus\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "K2Node_Composite",
+            "title": "InfoValidCheck\nCollapsed Graph",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_14.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_25",
+            "type": "Event",
+            "function": "RespawnArrows",
+            "owning_class": "SKEL_BP_WeaponParent_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_26.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_27",
+            "type": "VariableGet",
+            "variable": "ArrowsRespawn",
+            "pins_out": [
+              {
+                "name": "ArrowsRespawn",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_26.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_29",
+            "type": "Event",
+            "function": "RespawnArrowsNotify",
+            "owning_class": "SKEL_I_RangedWeaponInterface_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_30.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "VariableSet",
+            "variable": "ArrowsRespawn",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ArrowsRespawn",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_34",
+            "type": "Event",
+            "function": "EventResetSingleArrow",
+            "owning_class": "SKEL_I_RangedWeaponInterface_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_35.execute"
+                ]
+              },
+              {
+                "name": "Arrow To Reset",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_35.Target"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_35",
+            "type": "CallFunction",
+            "function": "Reset Single Arrow",
+            "owning_class": "SKEL_BP_ArrowQuiverParent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "Target",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "Destroy Self & Attachments",
+            "type": "Event",
+            "tags": "destroy attachments"
+          },
+          {
+            "name": "PlayerDied",
+            "type": "Event",
+            "tags": "player died"
+          },
+          {
+            "name": "LowerArrowQuantity",
+            "type": "Event",
+            "tags": "lower arrow quantity"
+          },
+          {
+            "name": "ReceiveBeginPlay",
+            "type": "Event",
+            "tags": "receive begin play"
+          },
+          {
+            "name": "ClearSlots",
+            "type": "CustomEvent",
+            "tags": "clear slots"
+          },
+          {
+            "name": "RespawnArrows",
+            "type": "Event",
+            "tags": "respawn arrows"
+          },
+          {
+            "name": "RespawnArrowsNotify",
+            "type": "Event",
+            "tags": "respawn arrows notify"
+          },
+          {
+            "name": "EventResetSingleArrow",
+            "type": "Event",
+            "tags": "event reset single arrow"
+          }
+        ],
+        "tags": "destroy attachments player died lower arrow quantity receive"
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 2,
+        "connection_count": 2,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "UserConstructionScript",
+            "owning_class": "SKEL_BP_WeaponParent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      },
+      {
+        "name": "SpawnArrowsIntoQuiver",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 28,
+        "connection_count": 52,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "SpawnArrowsIntoQuiver",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_11.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "K2Node_SpawnActorFromClass",
+            "title": "SpawnActor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Class",
+                "type": {
+                  "category": "class",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "SpawnTransform_Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "SpawnTransform_Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "SpawnTransform_Scale",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "1.000000,1.000000,1.000000"
+              },
+              {
+                "name": "CollisionHandlingOverride",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "AlwaysSpawn"
+              },
+              {
+                "name": "TransformScaleMethod",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "SelectDefaultAtRuntime"
+              },
+              {
+                "name": "Owner",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "DamageType",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              },
+              {
+                "name": "CombatStatusComp",
+                "type": {
+                  "category": "object",
+                  "class": "CombatStatusComponent_C"
+                }
+              },
+              {
+                "name": "Instigator",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "BP_ArrowParent_C"
+                },
+                "connections": [
+                  "node_3.self",
+                  "node_6.InputPin",
+                  "node_27.Actor"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "K2_GetComponentToWorld",
+            "owning_class": "SceneComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue_Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_1.SpawnTransform_Location"
+                ]
+              },
+              {
+                "name": "ReturnValue_Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "connections": [
+                  "node_1.SpawnTransform_Rotation"
+                ]
+              },
+              {
+                "name": "ReturnValue_Scale",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "K2_AttachToComponent",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "Parent",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              },
+              {
+                "name": "SocketName",
+                "type": {
+                  "category": "name"
+                }
+              },
+              {
+                "name": "LocationRule",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "KeepWorld"
+              },
+              {
+                "name": "RotationRule",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "KeepWorld"
+              },
+              {
+                "name": "ScaleRule",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "KeepWorld"
+              },
+              {
+                "name": "bWeldSimulatedBodies",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "TRUE"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "Subtract_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_11.ArrowLoopCountLocal"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "AvailableArrowSlots",
+            "pins_out": [
+              {
+                "name": "AvailableArrowSlots",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "VariableGet",
+            "variable": "ItemStatic",
+            "pins_out": [
+              {
+                "name": "ItemStatic",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMeshComponent"
+                },
+                "connections": [
+                  "node_3.Parent"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "CallFunction",
+            "function": "Clamp",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "Value",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "Min",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "Max",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_4.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "AvailableArrowSlots",
+            "pins_out": [
+              {
+                "name": "AvailableArrowSlots",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_9.Max"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "VariableSet",
+            "variable": "ArrowLoopCountLocal",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ArrowLoopCountLocal",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_12",
+            "type": "VariableGet",
+            "variable": "ArrowLoopCountLocal",
+            "pins_out": [
+              {
+                "name": "ArrowLoopCountLocal",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_14",
+            "type": "VariableGet",
+            "variable": "ArrowSlots",
+            "pins_out": [
+              {
+                "name": "ArrowSlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_QuiverStatus\"\r\n}"
+                },
+                "connections": [
+                  "node_15.Array"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_QuiverStatus\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output_ArrowSlot_8_429427034A60B3E94079899223464EA8",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                },
+                "connections": [
+                  "node_2.self"
+                ]
+              },
+              {
+                "name": "Output_SlotTaken_5_28E3F3EE433C64DC90CEB0AAB5E75023",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_16.Condition"
+                ]
+              },
+              {
+                "name": "Output_ArrowRef_11_5750383D447D2E5F51F3538EFB63455C",
+                "type": {
+                  "category": "object",
+                  "class": "BP_ArrowParent_C"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_16",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_20",
+            "type": "CallFunction",
+            "function": "SetSlot",
+            "owning_class": "SKEL_BP_ArrowQuiverParent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "SlotTaken",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "ArrowRef",
+                "type": {
+                  "category": "object",
+                  "class": "BP_ArrowParent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_21",
+            "type": "CallFunction",
+            "function": "GetArrowType",
+            "owning_class": "SKEL_BP_ArrowQuiverParent_C",
+            "pins_out": [
+              {
+                "name": "ArrowType",
+                "type": {
+                  "category": "class",
+                  "class": "BP_ArrowParent_C"
+                },
+                "connections": [
+                  "node_1.Class"
+                ]
+              },
+              {
+                "name": "Damage Type",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_1.DamageType"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_22",
+            "type": "VariableGet",
+            "variable": "ItemInfo",
+            "pins_out": [
+              {
+                "name": "ItemInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo"
+                },
+                "connections": [
+                  "node_23.S_SlotInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Slot Info",
+            "pins_in": [
+              {
+                "name": "S_SlotInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Quantity_10_7F15FB11492C6008A3836094D2856AE7",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_9.Value"
+                ]
+              },
+              {
+                "name": "ItemID_24_987392164F3747F83F5BD5A49069274D",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_24",
+            "type": "VariableGet",
+            "variable": "CombatStatusComp",
+            "pins_out": [
+              {
+                "name": "CombatStatusComp",
+                "type": {
+                  "category": "object",
+                  "class": "CombatStatusComponent_C"
+                },
+                "connections": [
+                  "node_1.CombatStatusComp"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_25",
+            "type": "VariableGet",
+            "variable": "CharacterRef",
+            "pins_out": [
+              {
+                "name": "CharacterRef",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                },
+                "connections": [
+                  "node_26.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "CallFunction",
+            "function": "GetController",
+            "owning_class": "Pawn",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Controller"
+                },
+                "connections": [
+                  "node_27.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "CallFunction",
+            "function": "AddSpawnedItemToStore",
+            "owning_class": "SKEL_I_PlayerController_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              },
+              {
+                "name": "Actor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "tags": "spawn arrows into quiver component world attach subtract",
+        "description": "SpawnArrowsIntoQuiver: Spawns arrows into quiver math."
+      },
+      {
+        "name": "Reset Single Arrow",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "Target",
+            "display_name": "Target",
+            "type": {
+              "category": "object",
+              "class": "Actor"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 6,
+        "connection_count": 8,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "Reset Single Arrow",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Target",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_1.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "K2_AttachToComponent",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "Parent",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              },
+              {
+                "name": "SocketName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "None"
+              },
+              {
+                "name": "LocationRule",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "SnapToTarget"
+              },
+              {
+                "name": "RotationRule",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "SnapToTarget"
+              },
+              {
+                "name": "ScaleRule",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "KeepWorld"
+              },
+              {
+                "name": "bWeldSimulatedBodies",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "TRUE"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "ArrowSlots",
+            "pins_out": [
+              {
+                "name": "ArrowSlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_QuiverStatus\"\r\n}"
+                },
+                "connections": [
+                  "node_4.Array"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_QuiverStatus\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output_ArrowSlot_8_429427034A60B3E94079899223464EA8",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                },
+                "connections": [
+                  "node_1.Parent"
+                ]
+              },
+              {
+                "name": "Output_SlotTaken_5_28E3F3EE433C64DC90CEB0AAB5E75023",
+                "type": {
+                  "category": "bool"
+                }
+              },
+              {
+                "name": "Output_ArrowRef_11_5750383D447D2E5F51F3538EFB63455C",
+                "type": {
+                  "category": "object",
+                  "class": "BP_ArrowParent_C"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "ArrowIndexToPass",
+            "pins_out": [
+              {
+                "name": "ArrowIndexToPass",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_4.Dimension 1"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ],
+        "tags": "reset single arrow attach component slots pass",
+        "description": "Reset Single Arrow: Resets single arrow."
+      },
+      {
+        "name": "Remove Arrow Data",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 10,
+        "connection_count": 16,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "Remove Arrow Data",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "VariableGet",
+            "variable": "AvailableArrowSlots",
+            "pins_out": [
+              {
+                "name": "AvailableArrowSlots",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "SetSlot",
+            "owning_class": "SKEL_BP_ArrowQuiverParent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "SlotTaken",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "ArrowRef",
+                "type": {
+                  "category": "object",
+                  "class": "BP_ArrowParent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "ArrowIndexToPass",
+            "pins_out": [
+              {
+                "name": "ArrowIndexToPass",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_2.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Slot Info",
+            "pins_in": [
+              {
+                "name": "S_SlotInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Quantity_10_7F15FB11492C6008A3836094D2856AE7",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_6.A"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "EquipmentComponent",
+            "pins_out": [
+              {
+                "name": "EquipmentComponent",
+                "type": {
+                  "category": "object",
+                  "class": "EquipmentComponent_C"
+                },
+                "connections": [
+                  "node_9.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "Greater_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_7.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_8",
+            "type": "VariableGet",
+            "variable": "TotalArrowSlots",
+            "pins_out": [
+              {
+                "name": "TotalArrowSlots",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_6.B"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "MainHandAmmoInfo",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "EquipmentComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "MainHandAmmoInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo"
+                },
+                "connections": [
+                  "node_4.S_SlotInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "EquipmentComponent_C"
+            }
+          }
+        ],
+        "tags": "remove arrow slot greater available slots pass equipment",
+        "description": "Remove Arrow Data: Removes arrow."
+      },
+      {
+        "name": "LoadSlots",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 26,
+        "connection_count": 36,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "LoadSlots",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_25.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "K2Node_MakeArray",
+            "title": "Make Array",
+            "pins_in": [
+              {
+                "name": "[0]",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              },
+              {
+                "name": "[1]",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              },
+              {
+                "name": "[2]",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              },
+              {
+                "name": "[3]",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              },
+              {
+                "name": "[4]",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              },
+              {
+                "name": "[5]",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              },
+              {
+                "name": "[6]",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              },
+              {
+                "name": "[7]",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              },
+              {
+                "name": "[8]",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              },
+              {
+                "name": "[9]",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              },
+              {
+                "name": "[10]",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              },
+              {
+                "name": "[11]",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              },
+              {
+                "name": "[12]",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              },
+              {
+                "name": "[13]",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              },
+              {
+                "name": "[14]",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"ArrowComponent\"\r\n}"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "Arrow15",
+            "pins_out": [
+              {
+                "name": "Arrow15",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "Arrow0",
+            "pins_out": [
+              {
+                "name": "Arrow0",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                },
+                "connections": [
+                  "node_1.[0]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "Arrow1",
+            "pins_out": [
+              {
+                "name": "Arrow1",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                },
+                "connections": [
+                  "node_1.[1]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "Arrow2",
+            "pins_out": [
+              {
+                "name": "Arrow2",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                },
+                "connections": [
+                  "node_1.[2]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "Arrow3",
+            "pins_out": [
+              {
+                "name": "Arrow3",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                },
+                "connections": [
+                  "node_1.[3]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "VariableGet",
+            "variable": "Arrow4",
+            "pins_out": [
+              {
+                "name": "Arrow4",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                },
+                "connections": [
+                  "node_1.[4]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "VariableGet",
+            "variable": "Arrow5Central",
+            "pins_out": [
+              {
+                "name": "Arrow5Central",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                },
+                "connections": [
+                  "node_1.[5]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "Arrow6",
+            "pins_out": [
+              {
+                "name": "Arrow6",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                },
+                "connections": [
+                  "node_1.[6]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "Arrow7",
+            "pins_out": [
+              {
+                "name": "Arrow7",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                },
+                "connections": [
+                  "node_1.[7]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "VariableGet",
+            "variable": "Arrow8",
+            "pins_out": [
+              {
+                "name": "Arrow8",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                },
+                "connections": [
+                  "node_1.[8]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "VariableGet",
+            "variable": "Arrow9",
+            "pins_out": [
+              {
+                "name": "Arrow9",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                },
+                "connections": [
+                  "node_1.[9]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "VariableGet",
+            "variable": "Arrow10",
+            "pins_out": [
+              {
+                "name": "Arrow10",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                },
+                "connections": [
+                  "node_1.[10]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "VariableGet",
+            "variable": "Arrow11",
+            "pins_out": [
+              {
+                "name": "Arrow11",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                },
+                "connections": [
+                  "node_1.[11]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "VariableGet",
+            "variable": "Arrow12",
+            "pins_out": [
+              {
+                "name": "Arrow12",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                },
+                "connections": [
+                  "node_1.[12]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "VariableGet",
+            "variable": "Arrow13",
+            "pins_out": [
+              {
+                "name": "Arrow13",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                },
+                "connections": [
+                  "node_1.[13]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "VariableGet",
+            "variable": "Arrow14",
+            "pins_out": [
+              {
+                "name": "Arrow14",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                },
+                "connections": [
+                  "node_1.[14]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "VariableGet",
+            "variable": "Arrow16",
+            "pins_out": [
+              {
+                "name": "Arrow16",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "VariableGet",
+            "variable": "Arrow17",
+            "pins_out": [
+              {
+                "name": "Arrow17",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "VariableGet",
+            "variable": "Arrow18",
+            "pins_out": [
+              {
+                "name": "Arrow18",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_21",
+            "type": "VariableGet",
+            "variable": "Arrow19",
+            "pins_out": [
+              {
+                "name": "Arrow19",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_22",
+            "type": "CallFunction",
+            "function": "Array_Add",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_QuiverStatus\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "NewItem",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_QuiverStatus",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "VariableGet",
+            "variable": "ArrowSlots",
+            "pins_out": [
+              {
+                "name": "ArrowSlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_QuiverStatus\"\r\n}"
+                },
+                "connections": [
+                  "node_22.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "K2Node_MakeStruct",
+            "title": "Make S Quiver Status",
+            "pins_in": [
+              {
+                "name": "ArrowSlot_8_429427034A60B3E94079899223464EA8",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              },
+              {
+                "name": "SlotTaken_5_28E3F3EE433C64DC90CEB0AAB5E75023",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              },
+              {
+                "name": "ArrowRef_11_5750383D447D2E5F51F3538EFB63455C",
+                "type": {
+                  "category": "object",
+                  "class": "BP_ArrowParent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "S_QuiverStatus",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_QuiverStatus"
+                },
+                "connections": [
+                  "node_22.NewItem"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_25",
+            "type": "CallFunction",
+            "function": "ClearSlots",
+            "owning_class": "SKEL_BP_ArrowQuiverParent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "tags": "load slots clear arrow central collection",
+        "description": "LoadSlots: Loads slots collection."
+      },
+      {
+        "name": "SetSlot",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "Index",
+            "display_name": "Index",
+            "type": {
+              "category": "int"
+            }
+          },
+          {
+            "name": "SlotTaken",
+            "display_name": "Slot Taken",
+            "type": {
+              "category": "bool"
+            }
+          },
+          {
+            "name": "ArrowRef",
+            "display_name": "Arrow Ref",
+            "type": {
+              "category": "object",
+              "class": "BP_ArrowParent_C"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 10,
+        "connection_count": 23,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "SetSlot",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.InputPin"
+                ]
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_7.InputPin"
+                ]
+              },
+              {
+                "name": "SlotTaken",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_3.SlotTaken_5_28E3F3EE433C64DC90CEB0AAB5E75023"
+                ]
+              },
+              {
+                "name": "ArrowRef",
+                "type": {
+                  "category": "object",
+                  "class": "BP_ArrowParent_C"
+                },
+                "connections": [
+                  "node_3.ArrowRef_11_5750383D447D2E5F51F3538EFB63455C"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "VariableGet",
+            "variable": "ArrowSlots",
+            "pins_out": [
+              {
+                "name": "ArrowSlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_QuiverStatus\"\r\n}"
+                },
+                "connections": [
+                  "node_2.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "Array_Set",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_QuiverStatus\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "Item",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_QuiverStatus",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "bSizeToFit",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "K2Node_MakeStruct",
+            "title": "Make S Quiver Status",
+            "pins_in": [
+              {
+                "name": "ArrowSlot_8_429427034A60B3E94079899223464EA8",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              },
+              {
+                "name": "SlotTaken_5_28E3F3EE433C64DC90CEB0AAB5E75023",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              },
+              {
+                "name": "ArrowRef_11_5750383D447D2E5F51F3538EFB63455C",
+                "type": {
+                  "category": "object",
+                  "class": "BP_ArrowParent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "S_QuiverStatus",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_QuiverStatus"
+                },
+                "connections": [
+                  "node_2.Item"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "ArrowSlots",
+            "pins_out": [
+              {
+                "name": "ArrowSlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_QuiverStatus\"\r\n}"
+                },
+                "connections": [
+                  "node_5.Array"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_QuiverStatus\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output_ArrowSlot_8_429427034A60B3E94079899223464EA8",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                },
+                "connections": [
+                  "node_3.ArrowSlot_8_429427034A60B3E94079899223464EA8"
+                ]
+              },
+              {
+                "name": "Output_SlotTaken_5_28E3F3EE433C64DC90CEB0AAB5E75023",
+                "type": {
+                  "category": "bool"
+                }
+              },
+              {
+                "name": "Output_ArrowRef_11_5750383D447D2E5F51F3538EFB63455C",
+                "type": {
+                  "category": "object",
+                  "class": "BP_ArrowParent_C"
+                }
+              }
+            ]
+          }
+        ],
+        "tags": "slot arrow slots",
+        "description": "SetSlot: Handles slot."
+      },
+      {
+        "name": "GetArrowType",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "ArrowType",
+            "display_name": "Arrow Type",
+            "type": {
+              "category": "class",
+              "class": "BP_ArrowParent_C"
+            }
+          },
+          {
+            "name": "Damage Type",
+            "display_name": "Damage Type",
+            "type": {
+              "category": "byte"
+            }
+          }
+        ],
+        "access": "public",
+        "pure": true,
+        "node_count": 8,
+        "connection_count": 16,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "GetArrowType",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Item Data",
+            "pins_in": [
+              {
+                "name": "S_ItemData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_ItemData",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "EquipmentInfo_76_ACE340714B24BA3F9189858E1CF034C1",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_EquipmentInfo"
+                },
+                "connections": [
+                  "node_2.S_EquipmentInfo"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Equipment Info",
+            "pins_in": [
+              {
+                "name": "S_EquipmentInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_EquipmentInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "DamageType_11_45F0E11841E3460FC2397BB72B40EF26",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_3.Damage Type"
+                ]
+              },
+              {
+                "name": "NiagaraHitVFX_80_279CD45740900254B5EE41BB20BAD0E9",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"NiagaraSystem\"\r\n}"
+                }
+              },
+              {
+                "name": "WeaponTrailNS_91_96129BDD4064C66AC7EEDEBCCA4B925A",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "ArrowExtraInfo_74_238DEB8741D694B09FBA50815B472B1A",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_ArrowExtraInfo"
+                },
+                "connections": [
+                  "node_7.S_ArrowExtraInfo"
+                ]
+              },
+              {
+                "name": "UniqueBoneForWeapon_94_59D08F614FC9F912B96DE9A3024F143C",
+                "type": {
+                  "category": "name"
+                }
+              },
+              {
+                "name": "HitStopInfo_79_94F8CE9E4DD446D6C20E16B58E047591",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                }
+              },
+              {
+                "name": "StaggerEnemyWithBlock_82_CD8A2E314B36F5421C204CB249673942",
+                "type": {
+                  "category": "bool"
+                }
+              },
+              {
+                "name": "ParryInfo_85_555D111A4FA98B2C690C61841F2CD021",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_ParryInfo"
+                }
+              },
+              {
+                "name": "RangedExtraParryInfo_88_B362066846AC5FD98E36B3B3C77978B0",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_RangedWeaponParryInfo"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "FunctionResult",
+            "function": "GetArrowType",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ArrowType",
+                "type": {
+                  "category": "class",
+                  "class": "BP_ArrowParent_C"
+                }
+              },
+              {
+                "name": "Damage Type",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Slot Info",
+            "pins_in": [
+              {
+                "name": "S_SlotInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "DataTableInfo_21_77CB2B39487AFA477F1BBEBD7E365BBC",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                },
+                "connections": [
+                  "node_6.DataSetup"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "ItemInfo",
+            "pins_out": [
+              {
+                "name": "ItemInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo"
+                },
+                "connections": [
+                  "node_4.S_SlotInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "Get Item Data",
+            "owning_class": "SKEL_FunctionLibrary_C",
+            "pins_in": [
+              {
+                "name": "DataSetup",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SlotData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_ItemData"
+                },
+                "connections": [
+                  "node_1.S_ItemData"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Arrow Extra Info",
+            "pins_in": [
+              {
+                "name": "S_ArrowExtraInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_ArrowExtraInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "BPArrowClassAppearance_12_FB18200B48B5AD96C7A89494D81EB1CD",
+                "type": {
+                  "category": "class",
+                  "class": "BP_ArrowParent_C"
+                },
+                "connections": [
+                  "node_3.ArrowType"
+                ]
+              }
+            ]
+          }
+        ],
+        "tags": "arrow item",
+        "description": "GetArrowType: Handles arrow."
+      },
+      {
+        "name": "GetQuiverData",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "Quiver Data",
+            "display_name": "Quiver Data",
+            "type": {
+              "category": "struct",
+              "struct_name": "S_SlotInfo"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 3,
+        "connection_count": 4,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "GetQuiverData",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "GetQuiverData",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Quiver Data",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "ItemInfo",
+            "pins_out": [
+              {
+                "name": "ItemInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo"
+                },
+                "connections": [
+                  "node_1.Quiver Data"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ],
+        "tags": "quiver item",
+        "description": "GetQuiverData: Handles quiver."
+      },
+      {
+        "name": "GetBowAttachments",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "BowMesh",
+            "display_name": "Bow Mesh",
+            "type": {
+              "category": "object",
+              "class": "SkeletalMeshComponent"
+            }
+          },
+          {
+            "name": "ExecuteCamera",
+            "display_name": "Execute Camera",
+            "type": {
+              "category": "object",
+              "class": "CameraComponent"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 2,
+        "connection_count": 2,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "GetBowAttachments",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "GetBowAttachments",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "BowMesh",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                }
+              },
+              {
+                "name": "ExecuteCamera",
+                "type": {
+                  "category": "object",
+                  "class": "CameraComponent"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "PassArrowToFire",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "Arrow",
+            "display_name": "Arrow",
+            "type": {
+              "category": "object",
+              "class": "BP_ArrowParent_C"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 16,
+        "connection_count": 25,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "PassArrowToFire",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_14.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "PassArrowToFire",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Arrow",
+                "type": {
+                  "category": "object",
+                  "class": "BP_ArrowParent_C"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "ArrowToPass",
+            "pins_out": [
+              {
+                "name": "ArrowToPass",
+                "type": {
+                  "category": "object",
+                  "class": "BP_ArrowParent_C"
+                },
+                "connections": [
+                  "node_1.Arrow"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "ArrowSlots",
+            "pins_out": [
+              {
+                "name": "ArrowSlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_QuiverStatus\"\r\n}"
+                },
+                "connections": [
+                  "node_4.TargetArray",
+                  "node_5.Array"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "Array_Length",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_QuiverStatus\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_6.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_QuiverStatus\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output_ArrowSlot_8_429427034A60B3E94079899223464EA8",
+                "type": {
+                  "category": "object",
+                  "class": "ArrowComponent"
+                }
+              },
+              {
+                "name": "Output_SlotTaken_5_28E3F3EE433C64DC90CEB0AAB5E75023",
+                "type": {
+                  "category": "bool"
+                }
+              },
+              {
+                "name": "Output_ArrowRef_11_5750383D447D2E5F51F3538EFB63455C",
+                "type": {
+                  "category": "object",
+                  "class": "BP_ArrowParent_C"
+                },
+                "connections": [
+                  "node_8.ArrowToPass",
+                  "node_11.Object"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "Subtract_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_5.Dimension 1",
+                  "node_10.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "VariableSet",
+            "variable": "ArrowIndexToPass",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ArrowIndexToPass",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "VariableSet",
+            "variable": "ArrowToPass",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ArrowToPass",
+                "type": {
+                  "category": "object",
+                  "class": "BP_ArrowParent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "BP_ArrowParent_C"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "DecrementCounter",
+            "pins_out": [
+              {
+                "name": "DecrementCounter",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_6.B"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_11",
+            "type": "CallFunction",
+            "function": "IsValid",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object",
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_12.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "CallFunction",
+            "function": "Not_PreBool",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "VariableGet",
+            "variable": "DecrementCounter",
+            "pins_out": [
+              {
+                "name": "DecrementCounter",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_14",
+            "type": "VariableSet",
+            "variable": "DecrementCounter",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DecrementCounter",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ]
+          }
+        ],
+        "tags": "pass arrow fire length subtract valid slots decrement",
+        "description": "PassArrowToFire: Handles arrow fire collection."
+      },
+      {
+        "name": "PassTotalArrowSlots",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "Arrow Slots",
+            "display_name": "Arrow Slots",
+            "type": {
+              "category": "int"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 3,
+        "connection_count": 4,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "PassTotalArrowSlots",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "PassTotalArrowSlots",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Arrow Slots",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "TotalArrowSlots",
+            "pins_out": [
+              {
+                "name": "TotalArrowSlots",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_1.Arrow Slots"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ],
+        "tags": "pass total arrow slots",
+        "description": "PassTotalArrowSlots: Handles total arrow slots."
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

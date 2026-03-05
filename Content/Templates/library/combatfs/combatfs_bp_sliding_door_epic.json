@@ -1,0 +1,881 @@
+{
+  "template_id": "combatfs_bp_sliding_door_epic",
+  "display_name": "BP_SlidingDoorEpic",
+  "tags": "sliding door epic actor motion right left trigger component flow",
+  "catalog_description": "BP_SlidingDoorEpic: Actor-based blueprint with 2 functions. Handles flow.",
+  "source_project": "CombatFS",
+  "depends_on": null,
+  "schema_version": "1.0",
+  "name": "BP_SlidingDoorEpic",
+  "path": "/Game/FlexibleCombatSystem/Blueprints/Miscellaneous/ActivateActors/ActorsToActivate/Overlap/BP_SlidingDoorEpic.BP_SlidingDoorEpic",
+  "type": "Normal",
+  "parent_class": {
+    "name": "Actor",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "InMotionRight",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Door",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "InMotionLeft",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Door",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DoorEnabled?",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Door",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DefaultSceneRoot",
+      "type": {
+        "category": "object",
+        "class": "SceneComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Door_R",
+      "type": {
+        "category": "object",
+        "class": "StaticMeshComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Door_L",
+      "type": {
+        "category": "object",
+        "class": "StaticMeshComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DoorTrigger",
+      "type": {
+        "category": "object",
+        "class": "BoxComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "components": {
+    "root": "DefaultSceneRoot",
+    "tree": [
+      {
+        "name": "DefaultSceneRoot",
+        "class": "SceneComponent",
+        "is_root": true,
+        "children": [
+          {
+            "name": "Door_R",
+            "class": "StaticMeshComponent",
+            "properties": {
+              "StaticMesh": "/Script/Engine.StaticMesh'/Game/FlexibleCombatSystem/DemoFolder/StarterContent/Geometry/Meshes/1M_Cube.1M_Cube'",
+              "OverrideMaterials": "(\"/Script/Engine.MaterialInstanceConstant'/Game/FlexibleCombatSystem/DemoFolder/DemoContent/DemoRoom/Materials/M_DemoWall_Inst_3.M_DemoWall_Inst_3'\")",
+              "bReceivesDecals": "False",
+              "RelativeLocation": "(X=150.000000,Y=0.000000,Z=135.000000)",
+              "RelativeScale3D": "(X=3.000000,Y=0.100000,Z=3.500000)",
+              "bCanEverAffectNavigation": "False"
+            }
+          },
+          {
+            "name": "Door_L",
+            "class": "StaticMeshComponent",
+            "properties": {
+              "StaticMesh": "/Script/Engine.StaticMesh'/Game/FlexibleCombatSystem/DemoFolder/StarterContent/Geometry/Meshes/1M_Cube.1M_Cube'",
+              "OverrideMaterials": "(\"/Script/Engine.MaterialInstanceConstant'/Game/FlexibleCombatSystem/DemoFolder/DemoContent/DemoRoom/Materials/M_DemoWall_Inst_3.M_DemoWall_Inst_3'\")",
+              "bReceivesDecals": "False",
+              "RelativeLocation": "(X=-150.000000,Y=0.000000,Z=135.000000)",
+              "RelativeScale3D": "(X=3.000000,Y=0.100000,Z=3.500000)",
+              "bCanEverAffectNavigation": "False"
+            }
+          },
+          {
+            "name": "DoorTrigger",
+            "class": "BoxComponent",
+            "properties": {
+              "BoxExtent": "(X=500.000000,Y=300.000000,Z=200.000000)",
+              "bUseSystemDefaultObstacleAreaClass": "False",
+              "AreaClassOverride": "/Script/CoreUObject.Class'/Script/NavigationSystem.NavArea_Obstacle'",
+              "CanCharacterStepUpOn": "ECB_Owner",
+              "BodyInstance": "(PositionSolverIterationCount=8,VelocitySolverIterationCount=2,ProjectionSolverIterationCount=1,ObjectType=ECC_WorldDynamic,CollisionEnabled=QueryOnly,bLockTranslation=True,bLockRotation=True,bInterpolateWhenSubStepping=True,bInertiaConditioning=True,SolverAsyncDeltaTime=0.016667,CollisionProfileName=\"Custom\",CollisionResponses=(ResponseArray=((Channel=\"Visibility\",Response=ECR_Ignore),(Channel=\"Camera\",Response=ECR_Overlap),(Channel=\"WorldStatic\",Response=ECR_Overlap),(Channel=\"WorldDynamic\",Response=ECR_Overlap),(Channel=\"Pawn\",Response=ECR_Overlap),(Channel=\"PhysicsBody\",Response=ECR_Overlap),(Channel=\"Vehicle\",Response=ECR_Overlap),(Channel=\"Destructible\",Response=ECR_Overlap),(Channel=\"Projectile\",Response=ECR_Ignore),(Channel=\"DamageTraceHit\",Response=ECR_Ignore))),MassInKgOverride=20567.470703,LinearDamping=0.010000,CustomDOFPlaneNormal=(X=0.000000,Y=0.000000,Z=0.000000),COMNudge=(X=0.000000,Y=0.000000,Z=0.000000),MassScale=1.000000,InertiaTensorScale=(X=1.000000,Y=1.000000,Z=1.000000),WalkableSlopeOverride=(),MaxAngularVelocity=3600.000000,CustomSleepThresholdMultiplier=1.000000,StabilizationThresholdMultiplier=1.000000,bEnableGravity=True,bAutoWeld=True,bStartAwake=True,bUpdateMassWhenScaleChanges=True)",
+              "RelativeLocation": "(X=0.000000,Y=0.000000,Z=242.596008)",
+              "RelativeRotation": "(Pitch=0.000000,Yaw=-89.999999,Roll=0.000000)"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 13,
+        "connection_count": 32,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Sequence",
+            "title": "Sequence",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then_0",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              },
+              {
+                "name": "then_1",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute2"
+                ]
+              }
+            ],
+            "properties": {
+              "OutputCount": "2"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "Sequence",
+            "title": "Sequence",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then_0",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute3"
+                ]
+              },
+              {
+                "name": "then_1",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute4"
+                ]
+              }
+            ],
+            "properties": {
+              "OutputCount": "2"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "Event",
+            "function": "BndEvt__Trigger_1_K2Node_ComponentBoundEvent_467_ComponentBeginOverlapSignature__DelegateSignature",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_10.execute"
+                ]
+              },
+              {
+                "name": "OverlappedComponent",
+                "type": {
+                  "category": "object",
+                  "class": "PrimitiveComponent"
+                }
+              },
+              {
+                "name": "OtherActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_9.self"
+                ]
+              },
+              {
+                "name": "OtherComp",
+                "type": {
+                  "category": "object",
+                  "class": "PrimitiveComponent"
+                }
+              },
+              {
+                "name": "OtherBodyIndex",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "bFromSweep",
+                "type": {
+                  "category": "bool"
+                }
+              },
+              {
+                "name": "SweepResult",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "HitResult",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "Event",
+            "function": "BndEvt__Trigger_1_K2Node_ComponentBoundEvent_474_ComponentEndOverlapSignature__DelegateSignature",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_12.execute"
+                ]
+              },
+              {
+                "name": "OverlappedComponent",
+                "type": {
+                  "category": "object",
+                  "class": "PrimitiveComponent"
+                }
+              },
+              {
+                "name": "OtherActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_11.self"
+                ]
+              },
+              {
+                "name": "OtherComp",
+                "type": {
+                  "category": "object",
+                  "class": "PrimitiveComponent"
+                }
+              },
+              {
+                "name": "OtherBodyIndex",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "K2Node_Composite",
+            "title": "Open/Close Door\nCollapsed Graph",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "execute2",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "execute3",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "execute4",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_0.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "DoorEnabled?",
+            "pins_out": [
+              {
+                "name": "DoorEnabled?",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_5.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_8",
+            "type": "VariableGet",
+            "variable": "DoorEnabled?",
+            "pins_out": [
+              {
+                "name": "DoorEnabled?",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_7.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "CallFunction",
+            "function": "ActorHasTag",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "Tag",
+                "type": {
+                  "category": "name"
+                },
+                "default": "Player"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_10.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_11",
+            "type": "CallFunction",
+            "function": "ActorHasTag",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "Tag",
+                "type": {
+                  "category": "name"
+                },
+                "default": "Player"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_12.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "BndEvt__Trigger_1_K2Node_ComponentBoundEvent_467_ComponentBeginOverlapSignature__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt trigger component bound event begin overlap"
+          },
+          {
+            "name": "BndEvt__Trigger_1_K2Node_ComponentBoundEvent_474_ComponentEndOverlapSignature__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt trigger component bound event end overlap"
+          }
+        ],
+        "tags": "bnd evt trigger component bound event begin overlap"
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 1,
+        "connection_count": 0,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "SetDoorEnabled",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "DoorEnabled?",
+            "display_name": "Door Enabled?",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "public",
+        "category": "Door",
+        "node_count": 3,
+        "connection_count": 6,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "SetDoorEnabled",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "DoorEnabled?",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_1.DoorEnabled?"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Door"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableSet",
+            "variable": "DoorEnabled?",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DoorEnabled?",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "FunctionResult",
+            "function": "SetDoorEnabled",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          }
+        ],
+        "tags": "door",
+        "description": "SetDoorEnabled: Handles door."
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

@@ -1,0 +1,1712 @@
+{
+  "template_id": "fps_shooter_bpc_character_ue4",
+  "display_name": "BPC_Character_UE4",
+  "tags": "bpc character gun",
+  "catalog_description": "BPC_Character_UE4: BP_CharacterBase-based (child of BP_CharacterBase_C) blueprint with 1 function. Handles climbing.",
+  "inherited_tags": "character gun offset turn rate look up player hud sprint fov divide by equipped weapon",
+  "source_project": "FPS_Shooter",
+  "depends_on": "fps_shooter_bp_character_base",
+  "schema_version": "1.0",
+  "name": "BPC_Character_UE4",
+  "path": "/Game/FPS_Game/Blueprints/Bonus/Legacy/UE4_Character/BPC_Character_UE4.BPC_Character_UE4",
+  "type": "Normal",
+  "parent_class": {
+    "name": "BP_CharacterBase_C",
+    "source": "blueprint",
+    "path": "/Game/FPS_Game/Blueprints/BP_CharacterBase.BP_CharacterBase"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "GunOffset",
+      "type": {
+        "category": "struct",
+        "struct_name": "Vector"
+      },
+      "category": "Do Not Touch",
+      "description": "Gun offset from the camera location",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "BaseTurnRate",
+      "type": {
+        "category": "float"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "BaseLookUpRate",
+      "type": {
+        "category": "float"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "PlayerHUD",
+      "type": {
+        "category": "object",
+        "class": "W_PlayerHUD_C"
+      },
+      "category": "HUD",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "isSprint",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Abilities",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "FOV_DivideBy",
+      "type": {
+        "category": "float"
+      },
+      "category": "WeaponRelated",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "EquippedWeapon",
+      "type": {
+        "category": "object",
+        "class": "BP_WeaponBase_C"
+      },
+      "category": "WeaponRelated",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "isADS",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Abilities",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ADS_Slowdown",
+      "type": {
+        "category": "float"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "isClimbing",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Abilities",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "FOV_Default",
+      "type": {
+        "category": "float"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "FOV_ADS",
+      "type": {
+        "category": "float"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Speed_Sprinting",
+      "type": {
+        "category": "float"
+      },
+      "category": "Abilities",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Speed_Walking",
+      "type": {
+        "category": "float"
+      },
+      "category": "Abilities",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Speed_ADS",
+      "type": {
+        "category": "float"
+      },
+      "category": "Abilities",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "isFPP",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "UseScopeTexture",
+      "type": {
+        "category": "bool"
+      },
+      "category": "WeaponRelated",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Scope",
+      "type": {
+        "category": "object",
+        "class": "W_Scope_C"
+      },
+      "category": "WeaponRelated",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "HealthCurrent",
+      "type": {
+        "category": "float"
+      },
+      "category": "Health",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "HealthMax",
+      "type": {
+        "category": "float"
+      },
+      "category": "Health",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "HealthMin",
+      "type": {
+        "category": "float"
+      },
+      "category": "Health",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "HealthRegenerateRate",
+      "type": {
+        "category": "float"
+      },
+      "category": "Health",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "canRenegerateHealth",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Health",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "IsDead",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Health",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "InventoryWidget",
+      "type": {
+        "category": "object",
+        "class": "UserWidget"
+      },
+      "category": "WeaponRelated",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "UT_Inventory",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"BP_WeaponBase_C\"\r\n}"
+      },
+      "category": "WeaponRelated",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "UT_Inventory_Backpack",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"BP_WeaponBase_C\"\r\n}"
+      },
+      "category": "WeaponRelated",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Universal_Inventory",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"BP_InventoryItemBase_C\"\r\n}"
+      },
+      "category": "WeaponRelated",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "IndexZero",
+      "type": {
+        "category": "int"
+      },
+      "category": "Do Not Touch",
+      "description": "Used for general purposes when there is a need to revert some int to zero, for example weapon switching.",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "GamepadVibration",
+      "type": {
+        "category": "bool"
+      },
+      "category": "WeaponRelated",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "isReloading",
+      "type": {
+        "category": "bool"
+      },
+      "category": "WeaponRelated",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SwitchingWeaponsSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "WeaponRelated",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SwappingWeaponDelay",
+      "type": {
+        "category": "float"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MoneyCurrent",
+      "type": {
+        "category": "int"
+      },
+      "category": "Money",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MoneyMax",
+      "type": {
+        "category": "int"
+      },
+      "category": "Money",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SaveGameReference",
+      "type": {
+        "category": "object",
+        "class": "BP_Save_C"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "FPP_Camera_Default_Location",
+      "type": {
+        "category": "struct",
+        "struct_name": "Vector"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "TPP_SpringArm_Default_Location",
+      "type": {
+        "category": "struct",
+        "struct_name": "Vector"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "isMeleeAttacking",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Abilities",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ToggleCrouch",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ToggleSprint",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MeleeDamage",
+      "type": {
+        "category": "float"
+      },
+      "category": "Melee",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MeleeImpactParticle",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Abilities",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "IsThrowingGrenades",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Grenades",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CurrentGrenades",
+      "type": {
+        "category": "int"
+      },
+      "category": "Grenades",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MaxGrenades",
+      "type": {
+        "category": "int"
+      },
+      "category": "Grenades",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "GrenadeThrowingDelay",
+      "type": {
+        "category": "float"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "E_CharacterStates",
+      "type": {
+        "category": "byte"
+      },
+      "category": "Abilities",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AdditionalStruct",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Struct_OtherThings\"\r\n}"
+      },
+      "category": "Other",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "IsNearWall",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CheckForWalls",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CanDoubleJump",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Abilities",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "PlayerSpawnTransform",
+      "type": {
+        "category": "struct",
+        "struct_name": "Transform"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "PreventCrouchingWhileJumping",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "HideDot",
+      "type": {
+        "category": "bool"
+      },
+      "category": "HUD",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "HideWeaponWhileSwimming",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SaveGameSlotName",
+      "type": {
+        "category": "string"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "isSwappingWeapons",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CanSwitchCameraPerspective",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "EquippedSlotLimit",
+      "type": {
+        "category": "int"
+      },
+      "category": "WeaponRelated",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "BackpackLimit",
+      "type": {
+        "category": "int"
+      },
+      "category": "WeaponRelated",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "UniversalItemLimit",
+      "type": {
+        "category": "int"
+      },
+      "category": "WeaponRelated",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MeleeHitDIstance",
+      "type": {
+        "category": "float"
+      },
+      "category": "Melee",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Sensitivity",
+      "type": {
+        "category": "float"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "UseMouseSensitivityModifier",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "HasWeapon",
+      "type": {
+        "category": "bool"
+      },
+      "category": "WeaponRelated",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Use_FOV_Modifier",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "InvertMouse",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "FPP_Melee_Montage_Unarmed",
+      "type": {
+        "category": "object",
+        "class": "AnimMontage"
+      },
+      "category": "Melee",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "TPP_Melee_Montage_Unarmed",
+      "type": {
+        "category": "object",
+        "class": "AnimMontage"
+      },
+      "category": "Melee",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Melee_Swing_Sound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "Melee",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Melee_Impact_Sound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "Melee",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Melee_Impact_Particle",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Melee",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "FPP_Grenade_Montage",
+      "type": {
+        "category": "object",
+        "class": "AnimMontage"
+      },
+      "category": "Grenades",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "FPP_Grenade_Montage_Unarmed",
+      "type": {
+        "category": "object",
+        "class": "AnimMontage"
+      },
+      "category": "Grenades",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "TPP_Grenade_Montage",
+      "type": {
+        "category": "object",
+        "class": "AnimMontage"
+      },
+      "category": "Grenades",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "TPP_Grenade_Montage_Unarmed",
+      "type": {
+        "category": "object",
+        "class": "AnimMontage"
+      },
+      "category": "Grenades",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Grenade_Throwing_Sound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "Grenades",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Crouch_Pressed",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Mouse_X_AxisValue",
+      "type": {
+        "category": "float"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Mouse_Y_AxisValue",
+      "type": {
+        "category": "float"
+      },
+      "category": "Do Not Touch",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DelayUntilMeleeImpact",
+      "type": {
+        "category": "float"
+      },
+      "category": "Melee",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "UnlockTPSRotationOnHasWeapon",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Abilities",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AllowSprintInAllDirections",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Abilities",
+      "defined_in": "BP_CharacterBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 7,
+        "connection_count": 8,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "ReceiveBeginPlay",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "ReceiveBeginPlay",
+            "owning_class": "SKEL_BP_CharacterBase_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "Event",
+            "function": "ReceiveActorBeginOverlap",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "OtherActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "Event",
+            "function": "ReceiveTick",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              },
+              {
+                "name": "DeltaSeconds",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_4.DeltaSeconds"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "ReceiveTick",
+            "owning_class": "SKEL_BP_CharacterBase_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DeltaSeconds",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "Event",
+            "function": "ClimbLedge",
+            "owning_class": "SKEL_BP_CharacterBase_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "K2Node_Composite",
+            "title": "UE4_ClimbMontage\nCollapsed Graph",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "ReceiveBeginPlay",
+            "type": "Event",
+            "tags": "receive begin play"
+          },
+          {
+            "name": "ReceiveActorBeginOverlap",
+            "type": "Event",
+            "tags": "receive actor begin overlap"
+          },
+          {
+            "name": "ReceiveTick",
+            "type": "Event",
+            "tags": "receive tick"
+          },
+          {
+            "name": "ClimbLedge",
+            "type": "Event",
+            "tags": "climb ledge climbing"
+          }
+        ],
+        "tags": "receive begin play actor overlap tick climb ledge"
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 2,
+        "connection_count": 2,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "UserConstructionScript",
+            "owning_class": "SKEL_BP_CharacterBase_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

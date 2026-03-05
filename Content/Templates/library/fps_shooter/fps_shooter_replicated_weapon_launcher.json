@@ -1,0 +1,1350 @@
+{
+  "template_id": "fps_shooter_replicated_weapon_launcher",
+  "display_name": "Replicated_Weapon_Launcher",
+  "tags": "launcher replicated weapon",
+  "catalog_description": "Replicated_Weapon_Launcher: Replicated_Weapon-based (child of Replicated_Weapon_C) blueprint with 1 function.",
+  "inherited_tags": "replicated weapon actor ammo current reloading player cast damage bullet spread ads walking multiplier max",
+  "source_project": "FPS_Shooter",
+  "depends_on": "fps_shooter_replicated_weapon",
+  "schema_version": "1.0",
+  "name": "Replicated_Weapon_Launcher",
+  "path": "/Game/FPS_Game/Blueprints/Bonus/Replication/Interactive/Replicated_Weapon_Launcher.Replicated_Weapon_Launcher",
+  "type": "Normal",
+  "parent_class": {
+    "name": "Replicated_Weapon_C",
+    "source": "blueprint",
+    "path": "/Game/FPS_Game/Blueprints/Bonus/Replication/System/Replicated_Weapon.Replicated_Weapon"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "AmmoCurrent",
+      "type": {
+        "category": "int"
+      },
+      "category": "Ammo",
+      "description": "Current ammo in the mag.",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "isReloading",
+      "type": {
+        "category": "bool"
+      },
+      "category": "DoNotTouch",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "PlayerCast",
+      "type": {
+        "category": "object",
+        "class": "Replicated_Character_C"
+      },
+      "category": "DoNotTouch",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "Damage",
+      "type": {
+        "category": "float"
+      },
+      "category": "Projectile",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "BulletSpreadADS",
+      "type": {
+        "category": "float"
+      },
+      "category": "Projectile",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "BulletSpread",
+      "type": {
+        "category": "float"
+      },
+      "category": "Projectile",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "BulletSpreadWalkingMultiplier",
+      "type": {
+        "category": "float"
+      },
+      "category": "Projectile",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AmmoMax",
+      "type": {
+        "category": "int"
+      },
+      "category": "Ammo",
+      "description": "Max ammo that can be in a mag.",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "ADS_Correction",
+      "type": {
+        "category": "float"
+      },
+      "category": "IK",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ADS_Correction_X",
+      "type": {
+        "category": "float"
+      },
+      "category": "IK",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ADS_Correction_Y",
+      "type": {
+        "category": "float"
+      },
+      "category": "IK",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "UsesScope",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Scope",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "isTaken",
+      "type": {
+        "category": "bool"
+      },
+      "category": "DoNotTouch",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AdditionalBulletsToFire",
+      "type": {
+        "category": "int"
+      },
+      "category": "Projectile",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "ActorsToIgnoreLinetrace",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"Actor\"\r\n}"
+      },
+      "category": "DoNotTouch",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "Automatic",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Projectile",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "WeaponType",
+      "type": {
+        "category": "byte"
+      },
+      "category": "Projectile",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AmmoInReserve",
+      "type": {
+        "category": "int"
+      },
+      "category": "Ammo",
+      "description": "Max bullet backpack from where it takes and puts into the mag when reloading.",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "AmmoNeeded",
+      "type": {
+        "category": "int"
+      },
+      "category": "DoNotTouch",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Zero",
+      "type": {
+        "category": "int"
+      },
+      "category": "DoNotTouch",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AnimCategory",
+      "type": {
+        "category": "byte"
+      },
+      "category": "CharacterAnimations",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "FiringSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "Effects",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "HitscanDistance",
+      "type": {
+        "category": "float"
+      },
+      "category": "Projectile",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ProjectileToFire",
+      "type": {
+        "category": "class",
+        "class": "Replicated_Projectile_C"
+      },
+      "category": "Projectile",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "HideCrosshairInADS",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Scope",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ADS_FOV",
+      "type": {
+        "category": "float"
+      },
+      "category": "Scope",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "NoAmmoSound",
+      "type": {
+        "category": "object",
+        "class": "SoundBase"
+      },
+      "category": "Effects",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "FiringMuzzleParticle",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Effects",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Firerate",
+      "type": {
+        "category": "float"
+      },
+      "category": "Projectile",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AmmoShellParticle",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Effects",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Tracer",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystem"
+      },
+      "category": "Effects",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Tracer_End_Point_ParamName",
+      "type": {
+        "category": "name"
+      },
+      "category": "Effects",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SpawnTracer",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Effects",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SpawnAmmoParticle",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Effects",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SpawnMuzzleFlash",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Effects",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Weapon_Weight_Modifier",
+      "type": {
+        "category": "float"
+      },
+      "category": "Effects",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CameraShake",
+      "type": {
+        "category": "class",
+        "class": "LegacyCameraShake"
+      },
+      "category": "Effects",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "FPP_Firing",
+      "type": {
+        "category": "object",
+        "class": "AnimMontage"
+      },
+      "category": "CharacterAnimations",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "FPP_Firing_ADS",
+      "type": {
+        "category": "object",
+        "class": "AnimMontage"
+      },
+      "category": "CharacterAnimations",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "FPP_Arms_Reload_Montage",
+      "type": {
+        "category": "object",
+        "class": "AnimMontage"
+      },
+      "category": "CharacterAnimations",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "FPP_Melee",
+      "type": {
+        "category": "object",
+        "class": "AnimMontage"
+      },
+      "category": "CharacterAnimations",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "FPP_GrenadeThrow",
+      "type": {
+        "category": "object",
+        "class": "AnimMontage"
+      },
+      "category": "CharacterAnimations",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "TPS_Body_Reload_Montage",
+      "type": {
+        "category": "object",
+        "class": "AnimMontage"
+      },
+      "category": "CharacterAnimations",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "UseLeftHand_IK",
+      "type": {
+        "category": "bool"
+      },
+      "category": "IK",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Left_Hand_IK_Socket_Name",
+      "type": {
+        "category": "name"
+      },
+      "category": "IK",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Use_Legacy_IK",
+      "type": {
+        "category": "bool"
+      },
+      "category": "IK|Legacy",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Legacy_Left_Hand_IK",
+      "type": {
+        "category": "struct",
+        "struct_name": "Vector"
+      },
+      "category": "IK|Legacy",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DelayBetweenShots",
+      "type": {
+        "category": "float"
+      },
+      "category": "Projectile",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SpawnedWeapon",
+      "type": {
+        "category": "object",
+        "class": "Replicated_Weapon_C"
+      },
+      "category": "DoNotTouch",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "TPP_Melee",
+      "type": {
+        "category": "object",
+        "class": "AnimMontage"
+      },
+      "category": "CharacterAnimations",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "GripPoint_FPP",
+      "type": {
+        "category": "name"
+      },
+      "category": "CharacterAnimations",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "GripPoint_TPP",
+      "type": {
+        "category": "name"
+      },
+      "category": "CharacterAnimations",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "WeaponHasRecoil",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Projectile",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AmmoInReserve_Max",
+      "type": {
+        "category": "int"
+      },
+      "category": "Ammo",
+      "description": "Max bullet backpack from where it takes and puts into the mag when reloading.",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "WeaponName",
+      "type": {
+        "category": "text"
+      },
+      "category": "Inventory",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MuzzleSocketName",
+      "type": {
+        "category": "name"
+      },
+      "category": "Effects",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AmmoEjectionPortSocketName",
+      "type": {
+        "category": "name"
+      },
+      "category": "Effects",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "WeaponImage",
+      "type": {
+        "category": "object",
+        "class": "Texture2D"
+      },
+      "category": "Inventory",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Niagara_MuzzleFlash",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Effects",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Niagara_AmmoShell",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Effects",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Niagara_Tracer",
+      "type": {
+        "category": "object",
+        "class": "NiagaraSystem"
+      },
+      "category": "Effects",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Reload_Interrupted",
+      "type": {
+        "category": "bool"
+      },
+      "category": "DoNotTouch",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "Legacy_Left_Hand_Rotation",
+      "type": {
+        "category": "struct",
+        "struct_name": "Rotator"
+      },
+      "category": "IK|Legacy",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Delay_Until_Melee_Impact",
+      "type": {
+        "category": "float"
+      },
+      "category": "CharacterAnimations",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "WeaponFiringMontage",
+      "type": {
+        "category": "object",
+        "class": "AnimMontage"
+      },
+      "category": "CharacterAnimations",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "WeaponReloadMontage",
+      "type": {
+        "category": "object",
+        "class": "AnimMontage"
+      },
+      "category": "CharacterAnimations",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "UseLeftHand_IK_Aiming",
+      "type": {
+        "category": "bool"
+      },
+      "category": "IK|Other",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Left_Hand_IK_Socket_Name_Aiming",
+      "type": {
+        "category": "name"
+      },
+      "category": "IK|Other",
+      "defined_in": "Replicated_Weapon",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 3,
+        "connection_count": 0,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "ReceiveBeginPlay",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "Event",
+            "function": "ReceiveActorBeginOverlap",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "OtherActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "Event",
+            "function": "ReceiveTick",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DeltaSeconds",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "ReceiveBeginPlay",
+            "type": "Event",
+            "tags": "receive begin play"
+          },
+          {
+            "name": "ReceiveActorBeginOverlap",
+            "type": "Event",
+            "tags": "receive actor begin overlap"
+          },
+          {
+            "name": "ReceiveTick",
+            "type": "Event",
+            "tags": "receive tick"
+          }
+        ],
+        "tags": "receive begin play actor overlap tick"
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 2,
+        "connection_count": 2,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "UserConstructionScript",
+            "owning_class": "SKEL_Replicated_Weapon_Launcher_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

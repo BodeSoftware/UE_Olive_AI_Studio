@@ -1,0 +1,5838 @@
+{
+  "template_id": "fps_shooter_input_mapping_widget",
+  "display_name": "InputMappingWidget",
+  "tags": "mapping widget key bindings context binding actions current selecting mappings selector aim fire crouch grenade",
+  "catalog_description": "InputMappingWidget: UserWidget-based blueprint with 1 function. Handles inventory, persistence, interaction, and sprint.",
+  "source_project": "FPS_Shooter",
+  "depends_on": null,
+  "schema_version": "1.0",
+  "name": "InputMappingWidget",
+  "path": "/Game/FPS_Game/Blueprints/EnhancedInput/InputMappingWidget.InputMappingWidget",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "UserWidget",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": true,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "KeyBindings_Context",
+      "type": {
+        "category": "object",
+        "class": "InputMappingContext"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "KeyBinding_Actions",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"InputAction\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CurrentKeyBindings",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "IsSelectingNewInput",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DefaultKeyBindings",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 140,
+        "connection_count": 249,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "Construct",
+            "owning_class": "UserWidget",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_121.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Fire_K2Node_ComponentBoundEvent_0_OnIsSelectingKeyChanged__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Fire_K2Node_ComponentBoundEvent_1_OnKeySelected__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              },
+              {
+                "name": "SelectedKey",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord"
+                },
+                "connections": [
+                  "node_15.InputChord"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "KeyBindings_Context",
+            "pins_out": [
+              {
+                "name": "KeyBindings_Context",
+                "type": {
+                  "category": "object",
+                  "class": "InputMappingContext"
+                },
+                "connections": [
+                  "node_4.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "Mappings",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "InputMappingContext"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Mappings",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"EnhancedActionKeyMapping\"\r\n}"
+                },
+                "connections": [
+                  "node_101.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "InputMappingContext"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "IsSelectingNewInput",
+            "pins_out": [
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_7.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_8.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_8",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_15.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Aim_K2Node_ComponentBoundEvent_2_OnKeySelected__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_13.execute"
+                ]
+              },
+              {
+                "name": "SelectedKey",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord"
+                },
+                "connections": [
+                  "node_16.InputChord"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Aim_K2Node_ComponentBoundEvent_3_OnIsSelectingKeyChanged__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_11.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "VariableGet",
+            "variable": "IsSelectingNewInput",
+            "pins_out": [
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_13.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_14.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_14",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_16.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "CallFunction",
+            "function": "SetNewMapping",
+            "owning_class": "SKEL_InputMappingWidget_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "InputChord",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "CallFunction",
+            "function": "SetNewMapping",
+            "owning_class": "SKEL_InputMappingWidget_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "InputChord",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Reload_K2Node_ComponentBoundEvent_4_OnKeySelected__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_21.execute"
+                ]
+              },
+              {
+                "name": "SelectedKey",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord"
+                },
+                "connections": [
+                  "node_23.InputChord"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Reload_K2Node_ComponentBoundEvent_5_OnIsSelectingKeyChanged__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_19.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "VariableGet",
+            "variable": "IsSelectingNewInput",
+            "pins_out": [
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_21.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_21",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_22.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_22",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_23.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "CallFunction",
+            "function": "SetNewMapping",
+            "owning_class": "SKEL_InputMappingWidget_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "InputChord",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "default": "2"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Interact_K2Node_ComponentBoundEvent_6_OnKeySelected__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_41.execute"
+                ]
+              },
+              {
+                "name": "SelectedKey",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord"
+                },
+                "connections": [
+                  "node_47.InputChord"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_25",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Interact_K2Node_ComponentBoundEvent_7_OnIsSelectingKeyChanged__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_39.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Inventory_K2Node_ComponentBoundEvent_8_OnKeySelected__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_45.execute"
+                ]
+              },
+              {
+                "name": "SelectedKey",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord"
+                },
+                "connections": [
+                  "node_48.InputChord"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Inventory_K2Node_ComponentBoundEvent_9_OnIsSelectingKeyChanged__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_43.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_28",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Grenade_K2Node_ComponentBoundEvent_10_OnKeySelected__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_51.execute"
+                ]
+              },
+              {
+                "name": "SelectedKey",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord"
+                },
+                "connections": [
+                  "node_53.InputChord"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_29",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Grenade_K2Node_ComponentBoundEvent_11_OnIsSelectingKeyChanged__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_49.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Crouch_K2Node_ComponentBoundEvent_12_OnKeySelected__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_56.execute"
+                ]
+              },
+              {
+                "name": "SelectedKey",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord"
+                },
+                "connections": [
+                  "node_62.InputChord"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_31",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Crouch_K2Node_ComponentBoundEvent_13_OnIsSelectingKeyChanged__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_54.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_32",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Sprint_K2Node_ComponentBoundEvent_14_OnKeySelected__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_60.execute"
+                ]
+              },
+              {
+                "name": "SelectedKey",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord"
+                },
+                "connections": [
+                  "node_63.InputChord"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_33",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Sprint_K2Node_ComponentBoundEvent_15_OnIsSelectingKeyChanged__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_58.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_34",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Jump_K2Node_ComponentBoundEvent_16_OnKeySelected__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_66.execute"
+                ]
+              },
+              {
+                "name": "SelectedKey",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord"
+                },
+                "connections": [
+                  "node_68.InputChord"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_35",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Jump_K2Node_ComponentBoundEvent_17_OnIsSelectingKeyChanged__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_64.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_36",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Melee_K2Node_ComponentBoundEvent_18_OnKeySelected__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_71.execute"
+                ]
+              },
+              {
+                "name": "SelectedKey",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord"
+                },
+                "connections": [
+                  "node_73.InputChord"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_37",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_InputKeySelector_Melee_K2Node_ComponentBoundEvent_19_OnIsSelectingKeyChanged__DelegateSignature",
+            "owning_class": "InputKeySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_69.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_38",
+            "type": "Event",
+            "function": "BndEvt__InputMappingWidget_Button_0_K2Node_ComponentBoundEvent_20_OnButtonClickedEvent__DelegateSignature",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_80.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_39",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_40",
+            "type": "VariableGet",
+            "variable": "IsSelectingNewInput",
+            "pins_out": [
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_41.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_41",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_42.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_42",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_47.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_43",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_44",
+            "type": "VariableGet",
+            "variable": "IsSelectingNewInput",
+            "pins_out": [
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_45.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_45",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_46.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_46",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_48.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_47",
+            "type": "CallFunction",
+            "function": "SetNewMapping",
+            "owning_class": "SKEL_InputMappingWidget_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "InputChord",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "default": "3"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_48",
+            "type": "CallFunction",
+            "function": "SetNewMapping",
+            "owning_class": "SKEL_InputMappingWidget_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "InputChord",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "default": "4"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_49",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_50",
+            "type": "VariableGet",
+            "variable": "IsSelectingNewInput",
+            "pins_out": [
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_51.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_51",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_52.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_52",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_53.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_53",
+            "type": "CallFunction",
+            "function": "SetNewMapping",
+            "owning_class": "SKEL_InputMappingWidget_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "InputChord",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "default": "5"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_54",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_55",
+            "type": "VariableGet",
+            "variable": "IsSelectingNewInput",
+            "pins_out": [
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_56.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_56",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_57.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_57",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_62.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_58",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_59",
+            "type": "VariableGet",
+            "variable": "IsSelectingNewInput",
+            "pins_out": [
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_60.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_60",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_61.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_61",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_63.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_62",
+            "type": "CallFunction",
+            "function": "SetNewMapping",
+            "owning_class": "SKEL_InputMappingWidget_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "InputChord",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "default": "6"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_63",
+            "type": "CallFunction",
+            "function": "SetNewMapping",
+            "owning_class": "SKEL_InputMappingWidget_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "InputChord",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "default": "7"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_64",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_65",
+            "type": "VariableGet",
+            "variable": "IsSelectingNewInput",
+            "pins_out": [
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_66.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_66",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_67.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_67",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_68.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_68",
+            "type": "CallFunction",
+            "function": "SetNewMapping",
+            "owning_class": "SKEL_InputMappingWidget_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "InputChord",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "default": "8"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_69",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_70",
+            "type": "VariableGet",
+            "variable": "IsSelectingNewInput",
+            "pins_out": [
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_71.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_71",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_72.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_72",
+            "type": "VariableSet",
+            "variable": "IsSelectingNewInput",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsSelectingNewInput",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_73.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_73",
+            "type": "CallFunction",
+            "function": "SetNewMapping",
+            "owning_class": "SKEL_InputMappingWidget_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "InputChord",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "default": "9"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_74",
+            "type": "VariableGet",
+            "variable": "CurrentKeyBindings",
+            "pins_out": [
+              {
+                "name": "CurrentKeyBindings",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_75",
+            "type": "CallFunction",
+            "function": "SetNewMapping",
+            "owning_class": "SKEL_InputMappingWidget_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "InputChord",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_76",
+            "type": "K2Node_MakeStruct",
+            "title": "Make Input Chord",
+            "pins_in": [
+              {
+                "name": "Key",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                },
+                "default": "None"
+              },
+              {
+                "name": "bShift",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              },
+              {
+                "name": "bCtrl",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              },
+              {
+                "name": "bAlt",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              },
+              {
+                "name": "bCmd",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "InputChord",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord"
+                },
+                "connections": [
+                  "node_75.InputChord",
+                  "node_95.InSelectedKey"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_77",
+            "type": "CustomEvent",
+            "function": "LoadDefaultKeyBindings",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_81.execute"
+                ]
+              },
+              {
+                "name": "ResetButton?",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_81.Condition"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_78",
+            "type": "VariableSet",
+            "variable": "CurrentKeyBindings",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "CurrentKeyBindings",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_79",
+            "type": "VariableGet",
+            "variable": "DefaultKeyBindings",
+            "pins_out": [
+              {
+                "name": "DefaultKeyBindings",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                },
+                "connections": [
+                  "node_78.CurrentKeyBindings"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_80",
+            "type": "CallFunction",
+            "function": "LoadDefaultKeyBindings",
+            "owning_class": "SKEL_InputMappingWidget_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "ResetButton?",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_81",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_96.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_82",
+            "type": "CallFunction",
+            "function": "LoadDefaultKeyBindings",
+            "owning_class": "SKEL_InputMappingWidget_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "ResetButton?",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_83",
+            "type": "VariableGet",
+            "variable": "InputKeySelector_Aim",
+            "pins_out": [
+              {
+                "name": "InputKeySelector_Aim",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                },
+                "connections": [
+                  "node_84.[1]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_84",
+            "type": "K2Node_MakeArray",
+            "title": "Make Array",
+            "pins_in": [
+              {
+                "name": "[0]",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                }
+              },
+              {
+                "name": "[1]",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                }
+              },
+              {
+                "name": "[2]",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                }
+              },
+              {
+                "name": "[3]",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                }
+              },
+              {
+                "name": "[4]",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                }
+              },
+              {
+                "name": "[5]",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                }
+              },
+              {
+                "name": "[6]",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                }
+              },
+              {
+                "name": "[7]",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                }
+              },
+              {
+                "name": "[8]",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                }
+              },
+              {
+                "name": "[9]",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"InputKeySelector\"\r\n}"
+                },
+                "connections": [
+                  "node_94.Array"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_85",
+            "type": "VariableGet",
+            "variable": "InputKeySelector_Fire",
+            "pins_out": [
+              {
+                "name": "InputKeySelector_Fire",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                },
+                "connections": [
+                  "node_84.[0]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_86",
+            "type": "VariableGet",
+            "variable": "InputKeySelector_Crouch",
+            "pins_out": [
+              {
+                "name": "InputKeySelector_Crouch",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                },
+                "connections": [
+                  "node_84.[6]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_87",
+            "type": "VariableGet",
+            "variable": "InputKeySelector_Grenade",
+            "pins_out": [
+              {
+                "name": "InputKeySelector_Grenade",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                },
+                "connections": [
+                  "node_84.[5]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_88",
+            "type": "VariableGet",
+            "variable": "InputKeySelector_Interact",
+            "pins_out": [
+              {
+                "name": "InputKeySelector_Interact",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                },
+                "connections": [
+                  "node_84.[3]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_89",
+            "type": "VariableGet",
+            "variable": "InputKeySelector_Inventory",
+            "pins_out": [
+              {
+                "name": "InputKeySelector_Inventory",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                },
+                "connections": [
+                  "node_84.[4]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_90",
+            "type": "VariableGet",
+            "variable": "InputKeySelector_Jump",
+            "pins_out": [
+              {
+                "name": "InputKeySelector_Jump",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                },
+                "connections": [
+                  "node_84.[8]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_91",
+            "type": "VariableGet",
+            "variable": "InputKeySelector_Melee",
+            "pins_out": [
+              {
+                "name": "InputKeySelector_Melee",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                },
+                "connections": [
+                  "node_84.[9]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_92",
+            "type": "VariableGet",
+            "variable": "InputKeySelector_Reload",
+            "pins_out": [
+              {
+                "name": "InputKeySelector_Reload",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                },
+                "connections": [
+                  "node_84.[2]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_93",
+            "type": "VariableGet",
+            "variable": "InputKeySelector_Sprint",
+            "pins_out": [
+              {
+                "name": "InputKeySelector_Sprint",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                },
+                "connections": [
+                  "node_84.[7]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_94",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"InputKeySelector\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                },
+                "connections": [
+                  "node_95.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_95",
+            "type": "CallFunction",
+            "function": "SetSelectedKey",
+            "owning_class": "InputKeySelector",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "InputKeySelector"
+                }
+              },
+              {
+                "name": "InSelectedKey",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_75.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_96",
+            "type": "CallFunction",
+            "function": "Array_Clear",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_78.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_97",
+            "type": "VariableGet",
+            "variable": "CurrentKeyBindings",
+            "pins_out": [
+              {
+                "name": "CurrentKeyBindings",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                },
+                "connections": [
+                  "node_96.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_98",
+            "type": "K2Node_BreakStruct",
+            "title": "Break Enhanced Action Key Mapping",
+            "pins_in": [
+              {
+                "name": "EnhancedActionKeyMapping",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "EnhancedActionKeyMapping",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Triggers",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"InputTrigger\"\r\n}"
+                }
+              },
+              {
+                "name": "Modifiers",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"InputModifier\"\r\n}"
+                }
+              },
+              {
+                "name": "Action",
+                "type": {
+                  "category": "object",
+                  "class": "InputAction"
+                },
+                "connections": [
+                  "node_99.B",
+                  "node_104.ItemToFind"
+                ]
+              },
+              {
+                "name": "Key",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_99",
+            "type": "CallFunction",
+            "function": "EqualEqual_ObjectObject",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_100.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_100",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_101.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_101",
+            "type": "CallFunction",
+            "function": "Array_RemoveItem",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"EnhancedActionKeyMapping\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Item",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "EnhancedActionKeyMapping",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_102",
+            "type": "VariableGet",
+            "variable": "KeyBinding_Actions",
+            "pins_out": [
+              {
+                "name": "KeyBinding_Actions",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"InputAction\"\r\n}"
+                },
+                "connections": [
+                  "node_103.Array",
+                  "node_104.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_103",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"InputAction\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "object",
+                  "class": "InputAction"
+                },
+                "connections": [
+                  "node_99.A"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_104",
+            "type": "CallFunction",
+            "function": "Array_Find",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"InputAction\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "ItemToFind",
+                "type": {
+                  "category": "object",
+                  "class": "InputAction",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_103.Dimension 1"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_105",
+            "type": "CustomEvent",
+            "function": "ClearAllMappings",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_106",
+            "type": "CallFunction",
+            "function": "ClearAllMappings",
+            "owning_class": "SKEL_InputMappingWidget_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_107",
+            "type": "VariableGet",
+            "variable": "KeyBindings_Context",
+            "pins_out": [
+              {
+                "name": "KeyBindings_Context",
+                "type": {
+                  "category": "object",
+                  "class": "InputMappingContext"
+                },
+                "connections": [
+                  "node_108.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_108",
+            "type": "VariableGet",
+            "variable": "Mappings",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "InputMappingContext"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Mappings",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"EnhancedActionKeyMapping\"\r\n}"
+                },
+                "connections": [
+                  "node_112.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "InputMappingContext"
+            }
+          },
+          {
+            "id": "node_109",
+            "type": "K2Node_BreakStruct",
+            "title": "Break Enhanced Action Key Mapping",
+            "pins_in": [
+              {
+                "name": "EnhancedActionKeyMapping",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "EnhancedActionKeyMapping",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Triggers",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"InputTrigger\"\r\n}"
+                }
+              },
+              {
+                "name": "Modifiers",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"InputModifier\"\r\n}"
+                }
+              },
+              {
+                "name": "Action",
+                "type": {
+                  "category": "object",
+                  "class": "InputAction"
+                },
+                "connections": [
+                  "node_110.B"
+                ]
+              },
+              {
+                "name": "Key",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_110",
+            "type": "CallFunction",
+            "function": "EqualEqual_ObjectObject",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_111.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_111",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_112.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_112",
+            "type": "CallFunction",
+            "function": "Array_RemoveItem",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"EnhancedActionKeyMapping\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Item",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "EnhancedActionKeyMapping",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_113",
+            "type": "VariableGet",
+            "variable": "KeyBinding_Actions",
+            "pins_out": [
+              {
+                "name": "KeyBinding_Actions",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"InputAction\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_114",
+            "type": "CustomEvent",
+            "function": "ClearSpecificMapping",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Action",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                },
+                "connections": [
+                  "node_110.A"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_117",
+            "type": "CallFunction",
+            "function": "LoadGameFromSlot",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SlotName",
+                "type": {
+                  "category": "string"
+                },
+                "default": "InputMappingsSave"
+              },
+              {
+                "name": "UserIndex",
+                "type": {
+                  "category": "int",
+                  "is_const": true
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_118.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "SaveGame"
+                },
+                "connections": [
+                  "node_118.Object"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_118",
+            "type": "Cast",
+            "title": "Cast To InputMappingSave",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_132.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_134.InputPin"
+                ]
+              },
+              {
+                "name": "AsInput Mapping Save",
+                "type": {
+                  "category": "object",
+                  "class": "InputMappingSave_C"
+                },
+                "connections": [
+                  "node_119.self"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "InputMappingSave_C",
+              "TargetClassPath": "/Game/FPS_Game/Blueprints/EnhancedInput/InputMappingSave.InputMappingSave_C"
+            }
+          },
+          {
+            "id": "node_119",
+            "type": "VariableGet",
+            "variable": "MappingKeys",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "InputMappingSave_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "MappingKeys",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                },
+                "connections": [
+                  "node_120.CurrentKeyBindings",
+                  "node_130.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "InputMappingSave_C"
+            }
+          },
+          {
+            "id": "node_120",
+            "type": "VariableSet",
+            "variable": "CurrentKeyBindings",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "CurrentKeyBindings",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_82.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_121",
+            "type": "CallFunction",
+            "function": "Array_Clear",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_125.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_122",
+            "type": "VariableGet",
+            "variable": "CurrentKeyBindings",
+            "pins_out": [
+              {
+                "name": "CurrentKeyBindings",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                },
+                "connections": [
+                  "node_121.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_123",
+            "type": "VariableGet",
+            "variable": "DefaultKeyBindings",
+            "pins_out": [
+              {
+                "name": "DefaultKeyBindings",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                },
+                "connections": [
+                  "node_124.CurrentKeyBindings",
+                  "node_135.CurrentKeyBindings"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_124",
+            "type": "VariableSet",
+            "variable": "CurrentKeyBindings",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "CurrentKeyBindings",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_82.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_125",
+            "type": "CallFunction",
+            "function": "DoesSaveGameExist",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SlotName",
+                "type": {
+                  "category": "string"
+                },
+                "default": "InputMappingsSave"
+              },
+              {
+                "name": "UserIndex",
+                "type": {
+                  "category": "int",
+                  "is_const": true
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_126.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_126.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_126",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_117.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_127.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_127",
+            "type": "CallFunction",
+            "function": "CreateSaveGameObject",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SaveGameClass",
+                "type": {
+                  "category": "class",
+                  "class": "SaveGame"
+                },
+                "default": "/Game/FPS_Game/Blueprints/EnhancedInput/InputMappingSave.InputMappingSave_C"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_128.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "InputMappingSave_C"
+                },
+                "connections": [
+                  "node_128.SaveGameObject"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_128",
+            "type": "CallFunction",
+            "function": "SaveGameToSlot",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SaveGameObject",
+                "type": {
+                  "category": "object",
+                  "class": "SaveGame"
+                }
+              },
+              {
+                "name": "SlotName",
+                "type": {
+                  "category": "string"
+                },
+                "default": "InputMappingsSave"
+              },
+              {
+                "name": "UserIndex",
+                "type": {
+                  "category": "int",
+                  "is_const": true
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_117.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_130",
+            "type": "CallFunction",
+            "function": "Array_LastIndex",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_131.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_131",
+            "type": "CallFunction",
+            "function": "EqualEqual_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_132.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_132",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_136.InputPin"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_120.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_135",
+            "type": "VariableSet",
+            "variable": "CurrentKeyBindings",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "CurrentKeyBindings",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_82.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "Construct",
+            "type": "Event",
+            "tags": "construct"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Fire_K2Node_ComponentBoundEvent_0_OnIsSelectingKeyChanged__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector fire component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Fire_K2Node_ComponentBoundEvent_1_OnKeySelected__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector fire component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Aim_K2Node_ComponentBoundEvent_2_OnKeySelected__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector aim component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Aim_K2Node_ComponentBoundEvent_3_OnIsSelectingKeyChanged__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector aim component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Reload_K2Node_ComponentBoundEvent_4_OnKeySelected__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector reload component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Reload_K2Node_ComponentBoundEvent_5_OnIsSelectingKeyChanged__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector reload component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Interact_K2Node_ComponentBoundEvent_6_OnKeySelected__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector interact component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Interact_K2Node_ComponentBoundEvent_7_OnIsSelectingKeyChanged__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector interact component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Inventory_K2Node_ComponentBoundEvent_8_OnKeySelected__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector inventory component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Inventory_K2Node_ComponentBoundEvent_9_OnIsSelectingKeyChanged__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector inventory component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Grenade_K2Node_ComponentBoundEvent_10_OnKeySelected__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector grenade component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Grenade_K2Node_ComponentBoundEvent_11_OnIsSelectingKeyChanged__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector grenade component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Crouch_K2Node_ComponentBoundEvent_12_OnKeySelected__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector crouch component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Crouch_K2Node_ComponentBoundEvent_13_OnIsSelectingKeyChanged__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector crouch component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Sprint_K2Node_ComponentBoundEvent_14_OnKeySelected__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector sprint component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Sprint_K2Node_ComponentBoundEvent_15_OnIsSelectingKeyChanged__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector sprint component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Jump_K2Node_ComponentBoundEvent_16_OnKeySelected__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector jump component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Jump_K2Node_ComponentBoundEvent_17_OnIsSelectingKeyChanged__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector jump component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Melee_K2Node_ComponentBoundEvent_18_OnKeySelected__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector melee component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_InputKeySelector_Melee_K2Node_ComponentBoundEvent_19_OnIsSelectingKeyChanged__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget key selector melee component"
+          },
+          {
+            "name": "BndEvt__InputMappingWidget_Button_0_K2Node_ComponentBoundEvent_20_OnButtonClickedEvent__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt mapping widget button component bound event"
+          },
+          {
+            "name": "LoadDefaultKeyBindings",
+            "type": "CustomEvent",
+            "tags": "load key bindings"
+          },
+          {
+            "name": "ClearAllMappings",
+            "type": "CustomEvent",
+            "tags": "clear mappings"
+          },
+          {
+            "name": "ClearSpecificMapping",
+            "type": "CustomEvent",
+            "tags": "clear specific mapping"
+          }
+        ],
+        "tags": "construct bnd evt mapping widget key selector fire"
+      }
+    ],
+    "functions": [
+      {
+        "name": "SetNewMapping",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "InputChord",
+            "display_name": "Input Chord",
+            "type": {
+              "category": "struct",
+              "struct_name": "InputChord",
+              "is_reference": true,
+              "is_const": true
+            }
+          },
+          {
+            "name": "Index",
+            "display_name": "Index",
+            "type": {
+              "category": "int"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 24,
+        "connection_count": 59,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "SetNewMapping",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_15.execute"
+                ]
+              },
+              {
+                "name": "InputChord",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "connections": [
+                  "node_1.InputChord"
+                ]
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_5.Dimension 1",
+                  "node_7.Dimension 1",
+                  "node_11.Dimension 1",
+                  "node_13.Index"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "K2Node_BreakStruct",
+            "title": "Break Input Chord",
+            "pins_in": [
+              {
+                "name": "InputChord",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "InputChord",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Key",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                },
+                "connections": [
+                  "node_10.ToKey",
+                  "node_14.InputPin"
+                ]
+              },
+              {
+                "name": "bShift",
+                "type": {
+                  "category": "bool"
+                }
+              },
+              {
+                "name": "bCtrl",
+                "type": {
+                  "category": "bool"
+                }
+              },
+              {
+                "name": "bAlt",
+                "type": {
+                  "category": "bool"
+                }
+              },
+              {
+                "name": "bCmd",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "KeyBindings_Context",
+            "pins_out": [
+              {
+                "name": "KeyBindings_Context",
+                "type": {
+                  "category": "object",
+                  "class": "InputMappingContext"
+                },
+                "connections": [
+                  "node_4.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "KeyBinding_Actions",
+            "pins_out": [
+              {
+                "name": "KeyBinding_Actions",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"InputAction\"\r\n}"
+                },
+                "connections": [
+                  "node_5.Array"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "UnmapKey",
+            "owning_class": "InputMappingContext",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "InputMappingContext"
+                }
+              },
+              {
+                "name": "Action",
+                "type": {
+                  "category": "object",
+                  "class": "InputAction",
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Key",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_10.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"InputAction\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "object",
+                  "class": "InputAction"
+                },
+                "connections": [
+                  "node_4.Action",
+                  "node_15.Action"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "CurrentKeyBindings",
+            "pins_out": [
+              {
+                "name": "CurrentKeyBindings",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                },
+                "connections": [
+                  "node_7.Array"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                },
+                "connections": [
+                  "node_4.Key"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_8",
+            "type": "VariableGet",
+            "variable": "KeyBindings_Context",
+            "pins_out": [
+              {
+                "name": "KeyBindings_Context",
+                "type": {
+                  "category": "object",
+                  "class": "InputMappingContext"
+                },
+                "connections": [
+                  "node_10.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "KeyBinding_Actions",
+            "pins_out": [
+              {
+                "name": "KeyBinding_Actions",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"InputAction\"\r\n}"
+                },
+                "connections": [
+                  "node_11.Array"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "CallFunction",
+            "function": "MapKey",
+            "owning_class": "InputMappingContext",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "InputMappingContext"
+                }
+              },
+              {
+                "name": "Action",
+                "type": {
+                  "category": "object",
+                  "class": "InputAction",
+                  "is_const": true
+                }
+              },
+              {
+                "name": "ToKey",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_13.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "EnhancedActionKeyMapping"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"InputAction\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "object",
+                  "class": "InputAction"
+                },
+                "connections": [
+                  "node_10.Action"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_12",
+            "type": "VariableGet",
+            "variable": "CurrentKeyBindings",
+            "pins_out": [
+              {
+                "name": "CurrentKeyBindings",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                },
+                "connections": [
+                  "node_13.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "CallFunction",
+            "function": "Array_Set",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "Item",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "bSizeToFit",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_16.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "CallFunction",
+            "function": "ClearSpecificMapping",
+            "owning_class": "SKEL_InputMappingWidget_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "Action",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "CallFunction",
+            "function": "LoadGameFromSlot",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SlotName",
+                "type": {
+                  "category": "string"
+                },
+                "default": "InputMappingsSave"
+              },
+              {
+                "name": "UserIndex",
+                "type": {
+                  "category": "int",
+                  "is_const": true
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_17.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "SaveGame"
+                },
+                "connections": [
+                  "node_17.Object",
+                  "node_20.SaveGameObject"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "Cast",
+            "title": "Cast To InputMappingSave",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_22.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AsInput Mapping Save",
+                "type": {
+                  "category": "object",
+                  "class": "InputMappingSave_C"
+                },
+                "connections": [
+                  "node_18.self",
+                  "node_21.self"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "InputMappingSave_C",
+              "TargetClassPath": "/Game/FPS_Game/Blueprints/EnhancedInput/InputMappingSave.InputMappingSave_C"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "VariableSet",
+            "variable": "MappingKeys",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "MappingKeys",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                }
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "InputMappingSave_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_20.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "InputMappingSave_C"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "VariableGet",
+            "variable": "CurrentKeyBindings",
+            "pins_out": [
+              {
+                "name": "CurrentKeyBindings",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                },
+                "connections": [
+                  "node_18.MappingKeys"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "CallFunction",
+            "function": "SaveGameToSlot",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SaveGameObject",
+                "type": {
+                  "category": "object",
+                  "class": "SaveGame"
+                }
+              },
+              {
+                "name": "SlotName",
+                "type": {
+                  "category": "string"
+                },
+                "default": "InputMappingsSave"
+              },
+              {
+                "name": "UserIndex",
+                "type": {
+                  "category": "int",
+                  "is_const": true
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_21",
+            "type": "VariableGet",
+            "variable": "MappingKeys",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "InputMappingSave_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "MappingKeys",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}"
+                },
+                "connections": [
+                  "node_22.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "InputMappingSave_C"
+            }
+          },
+          {
+            "id": "node_22",
+            "type": "CallFunction",
+            "function": "Array_Clear",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Key\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_18.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "tags": "mapping unmap clear specific load game slot save",
+        "description": "SetNewMapping: Handles mapping persistence."
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}
