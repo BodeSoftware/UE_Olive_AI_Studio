@@ -1,0 +1,677 @@
+{
+  "schema_version": "1.0",
+  "name": "BP_LootActorSetMesh",
+  "path": "/Game/FlexibleCombatSystem/Blueprints/Items/LootActors/BP_LootActorSetMesh.BP_LootActorSetMesh",
+  "type": "Normal",
+  "parent_class": {
+    "name": "BP_LootActorParent_C",
+    "source": "blueprint",
+    "path": "/Game/FlexibleCombatSystem/Blueprints/Items/LootActors/BP_LootActorParent.BP_LootActorParent"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "LootMesh",
+      "type": {
+        "category": "object",
+        "class": "StaticMesh"
+      },
+      "category": "Setup in Game",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "LootMeshScale",
+      "type": {
+        "category": "float"
+      },
+      "category": "Setup In Game",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "LootSetupInfo",
+      "type": {
+        "category": "struct",
+        "struct_name": "S_LootSetupInfo"
+      },
+      "category": "Setup in Game",
+      "defined_in": "BP_LootActorParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "Loot State",
+      "type": {
+        "category": "byte"
+      },
+      "category": "Default",
+      "defined_in": "BP_LootActorParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "CharacterRef",
+      "type": {
+        "category": "object",
+        "class": "Character"
+      },
+      "category": "Default",
+      "defined_in": "BP_LootActorParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DroppedLoot",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "BP_LootActorParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 0,
+        "connection_count": 0,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 0,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": []
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 7,
+        "connection_count": 15,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "UserConstructionScript",
+            "owning_class": "SKEL_BP_LootActorParent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "Item",
+            "pins_out": [
+              {
+                "name": "Item",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMeshComponent"
+                },
+                "connections": [
+                  "node_3.self",
+                  "node_5.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "SetStaticMesh",
+            "owning_class": "StaticMeshComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMeshComponent"
+                }
+              },
+              {
+                "name": "NewMesh",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMesh"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "LootMesh",
+            "pins_out": [
+              {
+                "name": "LootMesh",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMesh"
+                },
+                "connections": [
+                  "node_3.NewMesh"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "SetWorldScale3D",
+            "owning_class": "SceneComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              },
+              {
+                "name": "NewScale_X",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "NewScale_Y",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "NewScale_Z",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "LootMeshScale",
+            "pins_out": [
+              {
+                "name": "LootMeshScale",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_5.NewScale_X",
+                  "node_5.NewScale_Y",
+                  "node_5.NewScale_Z"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ]
+      },
+      {
+        "name": "RetrieveOutlineInfo",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "Actor Name",
+            "display_name": "Actor Name",
+            "type": {
+              "category": "text"
+            }
+          },
+          {
+            "name": "Actor Rarity",
+            "display_name": "Actor Rarity",
+            "type": {
+              "category": "byte"
+            }
+          },
+          {
+            "name": "Actor Tag Type",
+            "display_name": "Actor Tag Type",
+            "type": {
+              "category": "byte"
+            }
+          },
+          {
+            "name": "Quantity",
+            "display_name": "Quantity",
+            "type": {
+              "category": "int"
+            }
+          },
+          {
+            "name": "Mesh 1",
+            "display_name": "Mesh 1",
+            "type": {
+              "category": "object",
+              "class": "StaticMeshComponent"
+            }
+          },
+          {
+            "name": "Mesh 2",
+            "display_name": "Mesh 2",
+            "type": {
+              "category": "object",
+              "class": "StaticMeshComponent"
+            }
+          },
+          {
+            "name": "Skeletal Mesh",
+            "display_name": "Skeletal Mesh",
+            "type": {
+              "category": "object",
+              "class": "SkeletalMeshComponent"
+            }
+          },
+          {
+            "name": "IgnoreOutline",
+            "display_name": "Ignore Outline",
+            "type": {
+              "category": "bool"
+            }
+          },
+          {
+            "name": "Item Data",
+            "display_name": "Item Data",
+            "type": {
+              "category": "struct",
+              "struct_name": "S_SlotInfo"
+            }
+          },
+          {
+            "name": "Image",
+            "display_name": "Image",
+            "type": {
+              "category": "object",
+              "class": "Texture2D"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 6,
+        "connection_count": 12,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "RetrieveOutlineInfo",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "RetrieveOutlineInfo",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Actor Name",
+                "type": {
+                  "category": "text"
+                }
+              },
+              {
+                "name": "Actor Rarity",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              },
+              {
+                "name": "Actor Tag Type",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator1"
+              },
+              {
+                "name": "Quantity",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "Mesh 1",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMeshComponent"
+                }
+              },
+              {
+                "name": "Mesh 2",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMeshComponent"
+                }
+              },
+              {
+                "name": "Skeletal Mesh",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                }
+              },
+              {
+                "name": "IgnoreOutline",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "Item Data",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo"
+                }
+              },
+              {
+                "name": "Image",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Textures/Looting/T_Tag-Chest.T_Tag-Chest"
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "Item",
+            "pins_out": [
+              {
+                "name": "Item",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMeshComponent"
+                },
+                "connections": [
+                  "node_1.Mesh 1"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "Item2",
+            "pins_out": [
+              {
+                "name": "Item2",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMeshComponent"
+                },
+                "connections": [
+                  "node_1.Mesh 2"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "LootSetupInfo",
+            "pins_out": [
+              {
+                "name": "LootSetupInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_LootSetupInfo"
+                },
+                "connections": [
+                  "node_5.S_LootSetupInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Loot Setup Info",
+            "pins_in": [
+              {
+                "name": "S_LootSetupInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_LootSetupInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "LootName_11_1E13B58142281950599D9593C5F9A671",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_1.Actor Name"
+                ]
+              },
+              {
+                "name": "RarityOfLootColour_12_11DBFB49485A941F60A3E9AC7EDC77E3",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_1.Actor Rarity"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

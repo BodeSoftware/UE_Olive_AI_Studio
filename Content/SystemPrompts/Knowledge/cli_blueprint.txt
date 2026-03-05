@@ -12,13 +12,13 @@ Never simplify your design to fit a tool's limitations — use a different tool 
 
 ## Workflows
 CREATE new Blueprint:
-1. Check if a template fits → blueprint.create with template_id
-2. Search community examples → olive.search_community_blueprints(query). Quality varies — use your judgment and improvise as needed. Try different search terms if the first results don't match well.
+1. Reference patterns are available via blueprint.list_templates(query="relevant terms"). Study matching functions with blueprint.get_template(id, pattern="FuncName").
+2. If a factory template fits, use blueprint.create with template_id for quick scaffolding.
 3. blueprint.create → add_component/add_variable → apply_plan_json
 
 MODIFY existing Blueprint:
 1. project.search (find path) → blueprint.read
-2. Search community examples → olive.search_community_blueprints(query). Quality varies — use your judgment and improvise as needed. Try different search terms if the first results don't match well.
+2. Templates can provide useful reference patterns → blueprint.list_templates(query="relevant terms"). Adapt patterns to fit the existing Blueprint.
 3. add_variable/add_component → apply_plan_json
 
 MULTI-ASSET: Complete one asset fully (structure + logic + compile) before starting the next.
@@ -73,11 +73,11 @@ Blueprint ref: {"category":"object","class_name":"BP_Gun_C"} (append _C)
 Class ref: {"category":"class","class_name":"Actor"}
 Array: {"category":"array","value_type":{"category":"float"}}
 
-## Templates
-Templates are reference material, not scripts. They describe common architectures.
-Read a template to understand the pattern, then decide your own approach.
-- blueprint.create with template_id creates structure (components, variables, function stubs).
-- After template creation, write your own plan_json for each function.
+## Templates & Pattern Sources
+Templates are reference material, not scripts. Study patterns, then build your own approach.
+- Library templates: extracted from real shipped projects. Use blueprint.list_templates(query="...") to search, blueprint.get_template(id, pattern="FuncName") to read a function's full node graph. Adapt naming to fit the user's project.
+- Factory templates: blueprint.create with template_id creates structure (components, variables, function stubs). After creation, write your own plan_json for each function.
+- Community blueprints: olive.search_community_blueprints(query) for 150K+ community examples. Mixed quality — compare multiple results before committing.
 
 ## plan_json Scope
 - plan_json CREATES new nodes. It cannot reference existing nodes by ID or internal name.

@@ -1,0 +1,3551 @@
+{
+  "template_id": "bp_combo_resolver",
+  "display_name": "BP_ComboResolver",
+  "tags": "combo resolver next attack current weapon combos possible peek reset number attacks internal check valid",
+  "catalog_description": "BP_ComboResolver: Object-based blueprint with 12 functions. Handles inventory, combo, and collection.",
+  "source_project": "CombatFS",
+  "depends_on": null,
+  "schema_version": "1.0",
+  "name": "BP_ComboResolver",
+  "path": "/Game/FlexibleCombatSystem/Blueprints/AttackCombos/BP_ComboResolver.BP_ComboResolver",
+  "type": "Normal",
+  "parent_class": {
+    "name": "Object",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "NextComboAttackIndex",
+      "type": {
+        "category": "int"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CurrentWeaponCombos",
+      "type": {
+        "category": "object",
+        "class": "DataTable"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "PossibleCombos",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 0,
+        "connection_count": 0,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 0,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": []
+      }
+    ],
+    "functions": [
+      {
+        "name": "PeekNextComboAttack",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "AttackAction",
+            "display_name": "Attack Action",
+            "type": {
+              "category": "byte"
+            },
+            "default": "NewEnumerator4"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "ComboAttackFound",
+            "display_name": "Combo Attack Found",
+            "type": {
+              "category": "bool"
+            }
+          },
+          {
+            "name": "NextAttackData",
+            "display_name": "Next Attack Data",
+            "type": {
+              "category": "struct",
+              "struct_name": "S_WeaponComboAttackData"
+            }
+          }
+        ],
+        "access": "public",
+        "description": "PeekNextComboAttack: Handles next combo attack.",
+        "category": "Weapon Combos",
+        "node_count": 4,
+        "connection_count": 10,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "PeekNextComboAttack",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "AttackAction",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_1.AttackAction"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Weapon Combos",
+              "Description": "Check if it is possible to continue with current combo without advancing it"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "Internal_CheckNextComboAttack",
+            "owning_class": "SKEL_BP_ComboResolver_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "AttackAction",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator4"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              },
+              {
+                "name": "ComboAttackFound",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_2.ComboAttackFound"
+                ]
+              },
+              {
+                "name": "NextAttackData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponComboAttackData"
+                },
+                "connections": [
+                  "node_2.NextAttackData"
+                ]
+              },
+              {
+                "name": "DiscardedCombos",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "FunctionResult",
+            "function": "PeekNextComboAttack",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ComboAttackFound",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "NextAttackData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponComboAttackData"
+                }
+              }
+            ]
+          }
+        ],
+        "tags": "peek next combo attack internal check"
+      },
+      {
+        "name": "SetWeaponCombos",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "NewWeaponCombos",
+            "display_name": "New Weapon Combos",
+            "type": {
+              "category": "object",
+              "class": "DataTable"
+            }
+          }
+        ],
+        "access": "public",
+        "category": "Weapon Combos",
+        "node_count": 4,
+        "connection_count": 10,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "SetWeaponCombos",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "NewWeaponCombos",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                },
+                "connections": [
+                  "node_1.CurrentWeaponCombos"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Weapon Combos"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableSet",
+            "variable": "CurrentWeaponCombos",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "CurrentWeaponCombos",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                },
+                "connections": [
+                  "node_2.Table"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "GetDataTableRowNames",
+            "owning_class": "DataTableFunctionLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Table",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable",
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "OutRowNames",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                },
+                "connections": [
+                  "node_3.PossibleCombos"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableSet",
+            "variable": "PossibleCombos",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "PossibleCombos",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ],
+        "tags": "weapon combos table names current possible",
+        "description": "SetWeaponCombos: Handles combos."
+      },
+      {
+        "name": "ResetCombo",
+        "graph_type": "Function",
+        "access": "public",
+        "category": "Weapon Combos",
+        "node_count": 6,
+        "connection_count": 8,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "ResetCombo",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Weapon Combos"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableSet",
+            "variable": "NextComboAttackIndex",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "NextComboAttackIndex",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "GetDataTableRowNames",
+            "owning_class": "DataTableFunctionLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Table",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable",
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "OutRowNames",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                },
+                "connections": [
+                  "node_3.PossibleCombos"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableSet",
+            "variable": "PossibleCombos",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "PossibleCombos",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "CurrentWeaponCombos",
+            "pins_out": [
+              {
+                "name": "CurrentWeaponCombos",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                },
+                "connections": [
+                  "node_2.Table"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ],
+        "tags": "reset combo table names next attack possible combos",
+        "description": "ResetCombo: Resets combo."
+      },
+      {
+        "name": "NextComboAttack",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "AttackAction",
+            "display_name": "Attack Action",
+            "type": {
+              "category": "byte"
+            },
+            "default": "NewEnumerator4"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "ComboAttackFound",
+            "display_name": "Combo Attack Found",
+            "type": {
+              "category": "bool"
+            }
+          },
+          {
+            "name": "NextAttackData",
+            "display_name": "Next Attack Data",
+            "type": {
+              "category": "struct",
+              "struct_name": "S_WeaponComboAttackData"
+            }
+          }
+        ],
+        "access": "public",
+        "category": "Weapon Combos",
+        "node_count": 12,
+        "connection_count": 18,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "NextComboAttack",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "AttackAction",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_3.AttackAction"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Weapon Combos"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableGet",
+            "variable": "NextComboAttackIndex",
+            "pins_out": [
+              {
+                "name": "NextComboAttackIndex",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "FunctionResult",
+            "function": "NextComboAttack",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ComboAttackFound",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "NextAttackData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponComboAttackData"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "Internal_CheckNextComboAttack",
+            "owning_class": "SKEL_BP_ComboResolver_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "AttackAction",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator4"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              },
+              {
+                "name": "ComboAttackFound",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_6.InputPin"
+                ]
+              },
+              {
+                "name": "NextAttackData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponComboAttackData"
+                },
+                "connections": [
+                  "node_5.InputPin"
+                ]
+              },
+              {
+                "name": "DiscardedCombos",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                },
+                "connections": [
+                  "node_9.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "Sequence",
+            "title": "Sequence",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then_0",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "then_1",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "OutputCount": "2"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "VariableGet",
+            "variable": "PossibleCombos",
+            "pins_out": [
+              {
+                "name": "PossibleCombos",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                },
+                "connections": [
+                  "node_8.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "CallFunction",
+            "function": "Array_RemoveItem",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Item",
+                "type": {
+                  "category": "name",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "tags": "next combo attack internal check remove item possible",
+        "description": "NextComboAttack: Handles combo attack collection."
+      },
+      {
+        "name": "GetNumberOfAttacksInCombo",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "RowName",
+            "display_name": "Row Name",
+            "type": {
+              "category": "name"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "int"
+            }
+          }
+        ],
+        "access": "public",
+        "category": "Weapon Combos",
+        "node_count": 8,
+        "connection_count": 16,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "GetNumberOfAttacksInCombo",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "RowName",
+                "type": {
+                  "category": "name"
+                },
+                "connections": [
+                  "node_2.RowName"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Weapon Combos"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableGet",
+            "variable": "CurrentWeaponCombos",
+            "pins_out": [
+              {
+                "name": "CurrentWeaponCombos",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                },
+                "connections": [
+                  "node_2.DataTable"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "K2Node_GetDataTableRow",
+            "title": "Get Data Table Row",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DataTable",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                }
+              },
+              {
+                "name": "RowName",
+                "type": {
+                  "category": "name"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "RowNotFound",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponCombos"
+                },
+                "connections": [
+                  "node_4.S_WeaponCombos"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "FunctionResult",
+            "function": "GetNumberOfAttacksInCombo",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Weapon Combos",
+            "pins_in": [
+              {
+                "name": "S_WeaponCombos",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponCombos",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ComboAttacks_5_702605BD484D8D99C42DC5B77BBFBED6",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_WeaponComboSequenceData\"\r\n}"
+                },
+                "connections": [
+                  "node_5.TargetArray"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "Array_Length",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_WeaponComboSequenceData\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_3.ReturnValue"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "FunctionResult",
+            "function": "GetNumberOfAttacksInCombo",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ]
+          }
+        ],
+        "tags": "number attacks combo length current weapon combos collection",
+        "description": "GetNumberOfAttacksInCombo: Handles attacks combo collection."
+      },
+      {
+        "name": "Internal_CheckNextComboAttack",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "AttackAction",
+            "display_name": "Attack Action",
+            "type": {
+              "category": "byte"
+            },
+            "default": "NewEnumerator4"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "ComboAttackFound",
+            "display_name": "Combo Attack Found",
+            "type": {
+              "category": "bool"
+            }
+          },
+          {
+            "name": "NextAttackData",
+            "display_name": "Next Attack Data",
+            "type": {
+              "category": "struct",
+              "struct_name": "S_WeaponComboAttackData"
+            }
+          },
+          {
+            "name": "DiscardedCombos",
+            "display_name": "Discarded Combos",
+            "type": {
+              "category": "array",
+              "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+            }
+          }
+        ],
+        "access": "private",
+        "node_count": 30,
+        "connection_count": 62,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "Internal_CheckNextComboAttack",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AttackAction",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_26.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "K2Node_GetDataTableRow",
+            "title": "Get Data Table Row",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DataTable",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                }
+              },
+              {
+                "name": "RowName",
+                "type": {
+                  "category": "name"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_17.execute"
+                ]
+              },
+              {
+                "name": "RowNotFound",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponCombos"
+                },
+                "connections": [
+                  "node_3.S_WeaponCombos"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "CurrentWeaponCombos",
+            "pins_out": [
+              {
+                "name": "CurrentWeaponCombos",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                },
+                "connections": [
+                  "node_1.DataTable"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Weapon Combos",
+            "pins_in": [
+              {
+                "name": "S_WeaponCombos",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponCombos",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ComboAttacks_5_702605BD484D8D99C42DC5B77BBFBED6",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_WeaponComboSequenceData\"\r\n}"
+                },
+                "connections": [
+                  "node_4.Array",
+                  "node_16.TargetArray"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_WeaponComboSequenceData\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponComboSequenceData",
+                  "is_reference": true
+                },
+                "connections": [
+                  "node_6.S_WeaponComboSequenceData"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "NextComboAttackIndex",
+            "pins_out": [
+              {
+                "name": "NextComboAttackIndex",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_4.Dimension 1",
+                  "node_16.IndexToTest"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Weapon Combo Sequence Data",
+            "pins_in": [
+              {
+                "name": "S_WeaponComboSequenceData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponComboSequenceData",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "RequiredAction_2_4ADF604C43A0E0A0C7D43B840304EAEC",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_7.B"
+                ]
+              },
+              {
+                "name": "AttackDataRowHandle_6_E86315CF4485A8DAF0C5279E0340DCA7",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                },
+                "connections": [
+                  "node_9.DataTableRowHandle"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_7",
+            "type": "K2Node_EnumEquality",
+            "title": "Equal (Enum)",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator4"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator4"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_8.Condition"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_8",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_19.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_28.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_9",
+            "type": "K2Node_BreakStruct",
+            "title": "Break Data Table Row Handle",
+            "pins_in": [
+              {
+                "name": "DataTableRowHandle",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "DataTable",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                },
+                "connections": [
+                  "node_10.DataTable"
+                ]
+              },
+              {
+                "name": "RowName",
+                "type": {
+                  "category": "name"
+                },
+                "connections": [
+                  "node_10.RowName"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_10",
+            "type": "K2Node_GetDataTableRow",
+            "title": "Get Data Table Row",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DataTable",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                }
+              },
+              {
+                "name": "RowName",
+                "type": {
+                  "category": "name"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_11.execute"
+                ]
+              },
+              {
+                "name": "RowNotFound",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponComboAttackData"
+                },
+                "connections": [
+                  "node_11.FoundComboAttackData"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_11",
+            "type": "VariableSet",
+            "variable": "FoundComboAttackData",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "FoundComboAttackData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponComboAttackData"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_14.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponComboAttackData"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_12",
+            "type": "FunctionResult",
+            "function": "Internal_CheckNextComboAttack",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ComboAttackFound",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "NextAttackData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponComboAttackData"
+                }
+              },
+              {
+                "name": "DiscardedCombos",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_13",
+            "type": "VariableGet",
+            "variable": "FoundComboAttackData",
+            "pins_out": [
+              {
+                "name": "FoundComboAttackData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponComboAttackData"
+                },
+                "connections": [
+                  "node_12.NextAttackData"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_14",
+            "type": "VariableSet",
+            "variable": "LocalComboAttackFound",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "LocalComboAttackFound",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_15",
+            "type": "VariableGet",
+            "variable": "LocalComboAttackFound",
+            "pins_out": [
+              {
+                "name": "LocalComboAttackFound",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_12.ComboAttackFound"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_16",
+            "type": "CallFunction",
+            "function": "Array_IsValidIndex",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_WeaponComboSequenceData\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "IndexToTest",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_17.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_8.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_23.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_18",
+            "type": "VariableGet",
+            "variable": "LocalComboAttackFound",
+            "pins_out": [
+              {
+                "name": "LocalComboAttackFound",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_19.Condition"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_19",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_10.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_24",
+            "type": "VariableGet",
+            "variable": "PossibleCombos",
+            "pins_out": [
+              {
+                "name": "PossibleCombos",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "VariableGet",
+            "variable": "LocalDiscardedCombos",
+            "pins_out": [
+              {
+                "name": "LocalDiscardedCombos",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                },
+                "connections": [
+                  "node_28.TargetArray"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_28",
+            "type": "CallFunction",
+            "function": "Array_Add",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "NewItem",
+                "type": {
+                  "category": "name",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_29",
+            "type": "VariableGet",
+            "variable": "LocalDiscardedCombos",
+            "pins_out": [
+              {
+                "name": "LocalDiscardedCombos",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                },
+                "connections": [
+                  "node_12.DiscardedCombos"
+                ]
+              }
+            ]
+          }
+        ],
+        "tags": "internal check next combo attack valid current weapon",
+        "description": "Internal_CheckNextComboAttack: Handles check next combo collection."
+      },
+      {
+        "name": "HasValidComboData",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "public",
+        "pure": true,
+        "category": "Weapon Combos",
+        "node_count": 4,
+        "connection_count": 6,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "HasValidComboData",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Weapon Combos"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableGet",
+            "variable": "CurrentWeaponCombos",
+            "pins_out": [
+              {
+                "name": "CurrentWeaponCombos",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                },
+                "connections": [
+                  "node_3.Object"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "FunctionResult",
+            "function": "HasValidComboData",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "IsValid",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object",
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_2.ReturnValue"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "tags": "valid combo current weapon combos",
+        "description": "HasValidComboData: Handles combo."
+      },
+      {
+        "name": "HasValidDataForCombo",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "Combo",
+            "display_name": "Combo",
+            "type": {
+              "category": "name"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Return Value",
+            "display_name": "Return Value",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "public",
+        "category": "Weapon Combos",
+        "node_count": 5,
+        "connection_count": 6,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "HasValidDataForCombo",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Combo",
+                "type": {
+                  "category": "name"
+                },
+                "connections": [
+                  "node_4.RowName"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Weapon Combos"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableGet",
+            "variable": "CurrentWeaponCombos",
+            "pins_out": [
+              {
+                "name": "CurrentWeaponCombos",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                },
+                "connections": [
+                  "node_4.Table"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "FunctionResult",
+            "function": "HasValidDataForCombo",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Return Value",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "FunctionResult",
+            "function": "HasValidDataForCombo",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Return Value",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "DoesDataTableRowExist",
+            "owning_class": "DataTableFunctionLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Table",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable",
+                  "is_const": true
+                }
+              },
+              {
+                "name": "RowName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "None"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "tags": "valid combo does table exist current weapon combos",
+        "description": "HasValidDataForCombo: Handles combo."
+      },
+      {
+        "name": "GetAllComboNames",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "Return Value",
+            "display_name": "Return Value",
+            "type": {
+              "category": "array",
+              "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+            }
+          }
+        ],
+        "access": "public",
+        "category": "Weapon Combos",
+        "node_count": 6,
+        "connection_count": 8,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "GetAllComboNames",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "Category": "Weapon Combos"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "GetAllComboNames",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Return Value",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "CurrentWeaponCombos",
+            "pins_out": [
+              {
+                "name": "CurrentWeaponCombos",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                },
+                "connections": [
+                  "node_3.Table"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "GetDataTableRowNames",
+            "owning_class": "DataTableFunctionLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Table",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable",
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "OutRowNames",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                },
+                "connections": [
+                  "node_1.Return Value"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "FunctionResult",
+            "function": "GetAllComboNames",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Return Value",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                }
+              }
+            ]
+          }
+        ],
+        "tags": "combo names table current weapon combos",
+        "description": "GetAllComboNames: Handles names."
+      },
+      {
+        "name": "GetActionForNextAttackInCombo",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "ComboName",
+            "display_name": "Combo Name",
+            "type": {
+              "category": "name"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "NextAttackData",
+            "display_name": "Next Attack Data",
+            "type": {
+              "category": "byte"
+            }
+          }
+        ],
+        "access": "public",
+        "category": "Weapon Combos",
+        "node_count": 23,
+        "connection_count": 47,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "GetActionForNextAttackInCombo",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ComboName",
+                "type": {
+                  "category": "name"
+                },
+                "connections": [
+                  "node_21.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Weapon Combos"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "GetActionForNextAttackInCombo",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "NextAttackData",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator4"
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "PossibleCombos",
+            "pins_out": [
+              {
+                "name": "PossibleCombos",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                },
+                "connections": [
+                  "node_3.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "Array_Contains",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "ItemToFind",
+                "type": {
+                  "category": "name",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_4.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_11.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_9.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "FunctionResult",
+            "function": "GetActionForNextAttackInCombo",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "NextAttackData",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator4"
+              }
+            ]
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "NextComboAttackIndex",
+            "pins_out": [
+              {
+                "name": "NextComboAttackIndex",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_14.IndexToTest",
+                  "node_17.Dimension 1"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "VariableGet",
+            "variable": "CurrentWeaponCombos",
+            "pins_out": [
+              {
+                "name": "CurrentWeaponCombos",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "CurrentWeaponCombos",
+            "pins_out": [
+              {
+                "name": "CurrentWeaponCombos",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                },
+                "connections": [
+                  "node_11.DataTable"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "K2Node_GetDataTableRow",
+            "title": "Get Data Table Row",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DataTable",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                }
+              },
+              {
+                "name": "RowName",
+                "type": {
+                  "category": "name"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_15.execute"
+                ]
+              },
+              {
+                "name": "RowNotFound",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_12.InputPin"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponCombos"
+                },
+                "connections": [
+                  "node_13.S_WeaponCombos"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_13",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Weapon Combos",
+            "pins_in": [
+              {
+                "name": "S_WeaponCombos",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponCombos",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ComboAttacks_5_702605BD484D8D99C42DC5B77BBFBED6",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_WeaponComboSequenceData\"\r\n}"
+                },
+                "connections": [
+                  "node_14.TargetArray",
+                  "node_17.Array"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_14",
+            "type": "CallFunction",
+            "function": "Array_IsValidIndex",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_WeaponComboSequenceData\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "IndexToTest",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_15.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_16.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_17",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_WeaponComboSequenceData\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponComboSequenceData",
+                  "is_reference": true
+                },
+                "connections": [
+                  "node_18.S_WeaponComboSequenceData"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_18",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Weapon Combo Sequence Data",
+            "pins_in": [
+              {
+                "name": "S_WeaponComboSequenceData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponComboSequenceData",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "RequiredAction_2_4ADF604C43A0E0A0C7D43B840304EAEC",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_5.NextAttackData"
+                ]
+              },
+              {
+                "name": "AttackDataRowHandle_6_E86315CF4485A8DAF0C5279E0340DCA7",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                }
+              }
+            ]
+          }
+        ],
+        "tags": "action next attack combo contains valid possible combos",
+        "description": "GetActionForNextAttackInCombo: Handles next attack combo collection."
+      },
+      {
+        "name": "IsComboFinished",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "ComboName",
+            "display_name": "Combo Name",
+            "type": {
+              "category": "name"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Return Value",
+            "display_name": "Return Value",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "public",
+        "category": "Weapon Combos",
+        "node_count": 20,
+        "connection_count": 41,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "IsComboFinished",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ComboName",
+                "type": {
+                  "category": "name"
+                },
+                "connections": [
+                  "node_7.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Weapon Combos"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableGet",
+            "variable": "CurrentWeaponCombos",
+            "pins_out": [
+              {
+                "name": "CurrentWeaponCombos",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "PossibleCombos",
+            "pins_out": [
+              {
+                "name": "PossibleCombos",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                },
+                "connections": [
+                  "node_3.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "Array_Contains",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "ItemToFind",
+                "type": {
+                  "category": "name",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_4.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_16.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "CurrentWeaponCombos",
+            "pins_out": [
+              {
+                "name": "CurrentWeaponCombos",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                },
+                "connections": [
+                  "node_6.DataTable"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "K2Node_GetDataTableRow",
+            "title": "Get Data Table Row",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DataTable",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                }
+              },
+              {
+                "name": "RowName",
+                "type": {
+                  "category": "name"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_12.execute"
+                ]
+              },
+              {
+                "name": "RowNotFound",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_17.InputPin"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponCombos"
+                },
+                "connections": [
+                  "node_9.S_WeaponCombos"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_9",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Weapon Combos",
+            "pins_in": [
+              {
+                "name": "S_WeaponCombos",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_WeaponCombos",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ComboAttacks_5_702605BD484D8D99C42DC5B77BBFBED6",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_WeaponComboSequenceData\"\r\n}"
+                },
+                "connections": [
+                  "node_10.TargetArray"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_10",
+            "type": "CallFunction",
+            "function": "Array_IsValidIndex",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_WeaponComboSequenceData\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "IndexToTest",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_12.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "VariableGet",
+            "variable": "NextComboAttackIndex",
+            "pins_out": [
+              {
+                "name": "NextComboAttackIndex",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_10.IndexToTest"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_13.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_18.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_13",
+            "type": "FunctionResult",
+            "function": "IsComboFinished",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Return Value",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          },
+          {
+            "id": "node_14",
+            "type": "FunctionResult",
+            "function": "IsComboFinished",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Return Value",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ]
+          }
+        ],
+        "tags": "combo finished contains valid current weapon combos possible",
+        "description": "IsComboFinished: Handles finished collection."
+      },
+      {
+        "name": "HasStartedCombo",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "Return Value",
+            "display_name": "Return Value",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "public",
+        "pure": true,
+        "const": true,
+        "category": "Weapon Combos",
+        "node_count": 5,
+        "connection_count": 6,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "HasStartedCombo",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Weapon Combos"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "HasStartedCombo",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Return Value",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "NextComboAttackIndex",
+            "pins_out": [
+              {
+                "name": "NextComboAttackIndex",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_3.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "Greater_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_1.Return Value"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "tags": "started combo greater next attack",
+        "description": "HasStartedCombo: Handles combo."
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

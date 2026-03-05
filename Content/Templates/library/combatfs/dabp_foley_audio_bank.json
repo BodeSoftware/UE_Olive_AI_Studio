@@ -1,0 +1,452 @@
+{
+  "template_id": "dabp_foley_audio_bank",
+  "display_name": "DABP_FoleyAudioBank",
+  "tags": "dabp foley audio bank primary asset assets sound event meta source",
+  "catalog_description": "DABP_FoleyAudioBank: PrimaryDataAsset-based blueprint with 1 function. Handles meta, sound, and source.",
+  "source_project": "CombatFS",
+  "depends_on": null,
+  "schema_version": "1.0",
+  "name": "DABP_FoleyAudioBank",
+  "path": "/Game/FlexibleCombatSystem/GASP/Audio/Foley/DABP_FoleyAudioBank.DABP_FoleyAudioBank",
+  "type": "Normal",
+  "parent_class": {
+    "name": "PrimaryDataAsset",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "Assets",
+      "type": {
+        "category": "map",
+        "key_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"GameplayTag\"\r\n}",
+        "value_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SoundBase\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 0,
+        "connection_count": 0,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 0,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": []
+      }
+    ],
+    "functions": [
+      {
+        "name": "GetSoundFromFoleyEvent",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "Event",
+            "display_name": "Event",
+            "type": {
+              "category": "struct",
+              "struct_name": "GameplayTag",
+              "is_reference": true,
+              "is_const": true
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "Sound",
+            "display_name": "Sound",
+            "type": {
+              "category": "object",
+              "class": "SoundBase"
+            }
+          },
+          {
+            "name": "Success",
+            "display_name": "Success",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "public",
+        "pure": true,
+        "node_count": 8,
+        "connection_count": 14,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "GetSoundFromFoleyEvent",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              },
+              {
+                "name": "Event",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTag",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "connections": [
+                  "node_3.Key"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "VariableGet",
+            "variable": "Assets",
+            "pins_out": [
+              {
+                "name": "Assets",
+                "type": {
+                  "category": "map",
+                  "key_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"GameplayTag\"\r\n}",
+                  "value_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SoundBase\"\r\n}"
+                },
+                "connections": [
+                  "node_3.TargetMap"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "FunctionResult",
+            "function": "GetSoundFromFoleyEvent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Sound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "Success",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "Map_Find",
+            "owning_class": "BlueprintMapLibrary",
+            "pins_in": [
+              {
+                "name": "TargetMap",
+                "type": {
+                  "category": "map",
+                  "key_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"GameplayTag\"\r\n}",
+                  "value_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SoundBase\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Key",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTag",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Value",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_2.Sound"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_2.Success"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "SetFloatParameter",
+            "owning_class": "AudioParameterControllerInterface",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "interface",
+                  "class": "AudioParameterControllerInterface"
+                }
+              },
+              {
+                "name": "InName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "None"
+              },
+              {
+                "name": "InFloat",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "SetFloatParameter",
+            "owning_class": "AudioParameterControllerInterface",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              },
+              {
+                "name": "InName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "None"
+              },
+              {
+                "name": "InFloat",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "Cast",
+            "title": "Cast To MetaSoundSource",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "wildcard"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AsMetaSound Source",
+                "type": {
+                  "category": "object",
+                  "class": "MetaSoundSource"
+                },
+                "connections": [
+                  "node_7.self"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "MetaSoundSource",
+              "TargetClassPath": "/Script/MetasoundEngine.MetaSoundSource"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "CallFunction",
+            "function": "SetFloatParameter",
+            "owning_class": "AudioParameterControllerInterface",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              },
+              {
+                "name": "InName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "None"
+              },
+              {
+                "name": "InFloat",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "tags": "sound foley event find parameter assets meta source",
+        "description": "GetSoundFromFoleyEvent: Handles foley event meta sound."
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

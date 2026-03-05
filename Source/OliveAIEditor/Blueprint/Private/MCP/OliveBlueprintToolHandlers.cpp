@@ -3446,7 +3446,16 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintModifyComponent(con
 		TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
 		ResultData->SetStringField(TEXT("asset_path"), WriteResult.AssetPath);
 		ResultData->SetStringField(TEXT("component_name"), ComponentName);
-		ResultData->SetNumberField(TEXT("modified_properties_count"), Properties.Num());
+
+		const int32 FailedCount = WriteResult.Warnings.Num();
+		const int32 ActualSuccessCount = FMath::Max(0, Properties.Num() - FailedCount);
+		ResultData->SetNumberField(TEXT("modified_properties_count"), ActualSuccessCount);
+		ResultData->SetNumberField(TEXT("requested_properties_count"), Properties.Num());
+
+		if (FailedCount > 0)
+		{
+			ResultData->SetNumberField(TEXT("failed_properties_count"), FailedCount);
+		}
 
 		// Include warnings if any properties failed
 		if (WriteResult.Warnings.Num() > 0)
@@ -8720,8 +8729,9 @@ void FOliveBlueprintToolHandlers::RegisterTemplateTools()
 
 	Registry.RegisterTool(
 		TEXT("blueprint.get_template"),
-		TEXT("View a template's full content (parameter schema, presets, plan patterns). "
-			"Use this to read patterns as reference before writing your own plan."),
+		TEXT("View a template's content, or extract a specific function's full plan_json. "
+			"Without pattern param: shows parameters, presets, function outlines. "
+			"With pattern=FunctionName: returns the function's complete plan ready for apply_plan_json."),
 		OliveBlueprintSchemas::BlueprintGetTemplate(),
 		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintGetTemplate),
 		{TEXT("blueprint"), TEXT("read"), TEXT("template")},
@@ -8731,7 +8741,8 @@ void FOliveBlueprintToolHandlers::RegisterTemplateTools()
 
 	Registry.RegisterTool(
 		TEXT("blueprint.list_templates"),
-		TEXT("List available templates with descriptions and examples."),
+		TEXT("List available templates. Use query parameter to search by name, tag, function name, "
+			"or keyword across all templates including library templates from extracted projects."),
 		OliveBlueprintSchemas::BlueprintListTemplates(),
 		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintListTemplates),
 		{TEXT("blueprint"), TEXT("read"), TEXT("template")},
@@ -8745,41 +8756,125 @@ void FOliveBlueprintToolHandlers::RegisterTemplateTools()
 FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintListTemplates(const TSharedPtr<FJsonObject>& Params)
 {
 	FString TypeFilter;
+	FString Query;
 	if (Params.IsValid())
 	{
 		Params->TryGetStringField(TEXT("type"), TypeFilter);
+		Params->TryGetStringField(TEXT("query"), Query);
 	}
 
-	const auto& AllTemplates = FOliveTemplateSystem::Get().GetAllTemplates();
+	// Trim whitespace-only queries so they don't trigger the search path
+	Query.TrimStartAndEndInline();
+
+	// If a search query is provided, delegate to SearchTemplates which covers
+	// both factory/reference templates and library templates from extracted projects.
+	if (!Query.IsEmpty())
+	{
+		TArray<TSharedPtr<FJsonObject>> SearchResults = FOliveTemplateSystem::Get().SearchTemplates(Query);
+
+		// Post-filter by type if a type filter was also provided.
+		// Search results carry a "type" field ("library", "factory", or "reference").
+		if (!TypeFilter.IsEmpty())
+		{
+			SearchResults.RemoveAll([&TypeFilter](const TSharedPtr<FJsonObject>& Entry)
+			{
+				FString EntryType;
+				Entry->TryGetStringField(TEXT("type"), EntryType);
+				return !EntryType.Equals(TypeFilter, ESearchCase::IgnoreCase);
+			});
+		}
+
+		TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
+		TArray<TSharedPtr<FJsonValue>> ResultsArray;
+		for (const TSharedPtr<FJsonObject>& Entry : SearchResults)
+		{
+			ResultsArray.Add(MakeShared<FJsonValueObject>(Entry));
+		}
+
+		ResultData->SetArrayField(TEXT("results"), ResultsArray);
+		ResultData->SetNumberField(TEXT("count"), ResultsArray.Num());
+		ResultData->SetStringField(TEXT("query"), Query);
+		if (!TypeFilter.IsEmpty())
+		{
+			ResultData->SetStringField(TEXT("type_filter"), TypeFilter);
+		}
+		ResultData->SetStringField(TEXT("note"),
+			TEXT("Use blueprint.get_template(template_id) to view full content. "
+				"For library templates, use pattern param to retrieve a specific function's node graph."));
+
+		return FOliveToolResult::Success(ResultData);
+	}
+
+	// No query — list templates, optionally filtered by type.
+	const bool bWantsLibrary = TypeFilter.Equals(TEXT("library"), ESearchCase::IgnoreCase);
+	const bool bHasNonLibraryFilter = !TypeFilter.IsEmpty() && !bWantsLibrary;
 
 	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
 	TArray<TSharedPtr<FJsonValue>> TemplatesArray;
 
-	for (const auto& Pair : AllTemplates)
+	// Include factory/reference templates (unless filtering to library only)
+	if (!bWantsLibrary)
 	{
-		const FOliveTemplateInfo& Info = Pair.Value;
-
-		if (!TypeFilter.IsEmpty() && Info.TemplateType != TypeFilter)
+		const auto& AllTemplates = FOliveTemplateSystem::Get().GetAllTemplates();
+		for (const auto& Pair : AllTemplates)
 		{
-			continue;
-		}
+			const FOliveTemplateInfo& Info = Pair.Value;
 
-		TSharedPtr<FJsonObject> Entry = MakeShared<FJsonObject>();
-		Entry->SetStringField(TEXT("template_id"), Info.TemplateId);
-		Entry->SetStringField(TEXT("type"), Info.TemplateType);
-		Entry->SetStringField(TEXT("display_name"), Info.DisplayName);
-		Entry->SetStringField(TEXT("description"), Info.CatalogDescription);
-		if (!Info.CatalogExamples.IsEmpty())
-		{
-			Entry->SetStringField(TEXT("examples"), Info.CatalogExamples);
+			if (bHasNonLibraryFilter && !Info.TemplateType.Equals(TypeFilter, ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+
+			TSharedPtr<FJsonObject> Entry = MakeShared<FJsonObject>();
+			Entry->SetStringField(TEXT("template_id"), Info.TemplateId);
+			Entry->SetStringField(TEXT("type"), Info.TemplateType);
+			Entry->SetStringField(TEXT("display_name"), Info.DisplayName);
+			Entry->SetStringField(TEXT("catalog_description"), Info.CatalogDescription);
+			if (!Info.CatalogExamples.IsEmpty())
+			{
+				Entry->SetStringField(TEXT("examples"), Info.CatalogExamples);
+			}
+			TemplatesArray.Add(MakeShared<FJsonValueObject>(Entry));
 		}
-		TemplatesArray.Add(MakeShared<FJsonValueObject>(Entry));
+	}
+
+	// Include library template summary (unless filtering to non-library type)
+	if (!bHasNonLibraryFilter)
+	{
+		const FOliveLibraryIndex& LibIndex = FOliveTemplateSystem::Get().GetLibraryIndex();
+		if (LibIndex.Num() > 0)
+		{
+			// Group by source project for compact summary
+			TMap<FString, int32> ProjectCounts;
+			TMap<FString, int32> ProjectFuncCounts;
+			for (const auto& Pair : LibIndex.GetAllTemplates())
+			{
+				const FString& Proj = Pair.Value.SourceProject.IsEmpty()
+					? TEXT("unknown") : Pair.Value.SourceProject;
+				ProjectCounts.FindOrAdd(Proj)++;
+				ProjectFuncCounts.FindOrAdd(Proj) += Pair.Value.Functions.Num();
+			}
+
+			for (const auto& Pair : ProjectCounts)
+			{
+				TSharedPtr<FJsonObject> Entry = MakeShared<FJsonObject>();
+				Entry->SetStringField(TEXT("type"), TEXT("library"));
+				Entry->SetStringField(TEXT("source_project"), Pair.Key);
+				Entry->SetNumberField(TEXT("template_count"), Pair.Value);
+				Entry->SetNumberField(TEXT("function_count"),
+					ProjectFuncCounts.FindRef(Pair.Key));
+				Entry->SetStringField(TEXT("note"),
+					TEXT("Use query parameter to search library templates by name, tag, or function."));
+				TemplatesArray.Add(MakeShared<FJsonValueObject>(Entry));
+			}
+		}
 	}
 
 	ResultData->SetArrayField(TEXT("templates"), TemplatesArray);
 	ResultData->SetNumberField(TEXT("count"), TemplatesArray.Num());
 	ResultData->SetStringField(TEXT("note"),
-		TEXT("Templates are curated patterns with tested structure. Consider using blueprint.get_template(template_id) to inspect one before building from scratch."));
+		TEXT("Use query parameter to search across all templates including library. "
+			"Use blueprint.get_template(template_id) to inspect a template."));
 
 	return FOliveToolResult::Success(ResultData);
 }
@@ -8808,18 +8903,89 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintGetTemplate(const T
 	FString PatternName;
 	Params->TryGetStringField(TEXT("pattern"), PatternName);
 
+	// Sentinel prefix used by GetFunctionContent to signal "function not found"
+	const FString& FUNC_NOT_FOUND_SENTINEL = FOliveLibraryIndex::GetFuncNotFoundSentinel();
+
+	// Check library index — but skip if the template exists as a factory/reference template
+	// (factory templates need the richer format with parameters/presets from GetTemplateContent)
+	const FOliveLibraryIndex& LibIndex = FOliveTemplateSystem::Get().GetLibraryIndex();
+	const FOliveLibraryTemplateInfo* LibInfo = LibIndex.FindTemplate(TemplateId);
+	const bool bExistsAsFactoryOrReference = (FOliveTemplateSystem::Get().FindTemplate(TemplateId) != nullptr);
+
+	if (LibInfo && !bExistsAsFactoryOrReference)
+	{
+		FString Content;
+		if (PatternName.IsEmpty())
+		{
+			Content = LibIndex.GetTemplateOverview(TemplateId);
+		}
+		else
+		{
+			Content = LibIndex.GetFunctionContent(TemplateId, PatternName);
+		}
+
+		if (Content.IsEmpty())
+		{
+			return FOliveToolResult::Error(
+				TEXT("TEMPLATE_CONTENT_EMPTY"),
+				FString::Printf(TEXT("Library template '%s' found but content retrieval failed%s"),
+					*TemplateId,
+					PatternName.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" for function '%s'"), *PatternName)),
+				PatternName.IsEmpty()
+					? TEXT("The template file may be corrupted. Try blueprint.list_templates with a query to find alternatives.")
+					: TEXT("Check the function name. Use blueprint.get_template without pattern to see available functions.")
+			);
+		}
+
+		// Check for function-not-found sentinel from GetFunctionContent
+		if (Content.StartsWith(FUNC_NOT_FOUND_SENTINEL))
+		{
+			FString ErrorMsg = Content.Mid(FUNC_NOT_FOUND_SENTINEL.Len());
+			return FOliveToolResult::Error(
+				TEXT("FUNCTION_NOT_FOUND"),
+				ErrorMsg,
+				TEXT("Check the function name. Use blueprint.get_template without pattern to see available functions.")
+			);
+		}
+
+		TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
+		ResultData->SetStringField(TEXT("template_id"), TemplateId);
+		ResultData->SetStringField(TEXT("source"), TEXT("library"));
+		ResultData->SetStringField(TEXT("content"), Content);
+
+		return FOliveToolResult::Success(ResultData);
+	}
+
+	// Fall through to factory/reference template lookup.
 	FString Content = FOliveTemplateSystem::Get().GetTemplateContent(TemplateId, PatternName);
 	if (Content.IsEmpty())
 	{
 		return FOliveToolResult::Error(
 			TEXT("TEMPLATE_NOT_FOUND"),
 			FString::Printf(TEXT("Template '%s' not found"), *TemplateId),
-			TEXT("Use blueprint.list_templates to see available templates, or olive.search_community_blueprints(query) for community examples")
+			TEXT("Use blueprint.list_templates to see available templates, or blueprint.list_templates with query to search library templates")
 		);
 	}
 
+	// Check for function-not-found sentinel from GetTemplateContent (factory/reference path)
+	if (Content.StartsWith(FUNC_NOT_FOUND_SENTINEL))
+	{
+		FString ErrorMsg = Content.Mid(FUNC_NOT_FOUND_SENTINEL.Len());
+		return FOliveToolResult::Error(
+			TEXT("FUNCTION_NOT_FOUND"),
+			ErrorMsg,
+			TEXT("Check the function name. Use blueprint.get_template without pattern to see available functions.")
+		);
+	}
+
+	// Add source field for factory/reference templates
+	const FOliveTemplateInfo* FactoryRefInfo = FOliveTemplateSystem::Get().FindTemplate(TemplateId);
 	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
 	ResultData->SetStringField(TEXT("template_id"), TemplateId);
+	if (FactoryRefInfo)
+	{
+		ResultData->SetStringField(TEXT("source"), FactoryRefInfo->TemplateType);
+	}
 	ResultData->SetStringField(TEXT("content"), Content);
 
 	return FOliveToolResult::Success(ResultData);

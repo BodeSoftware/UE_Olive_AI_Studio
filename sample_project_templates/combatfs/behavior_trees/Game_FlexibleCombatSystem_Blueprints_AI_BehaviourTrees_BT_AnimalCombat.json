@@ -1,0 +1,890 @@
+{
+  "behavior_tree": {
+    "name": "BT_AnimalCombat",
+    "path": "/Game/FlexibleCombatSystem/Blueprints/AI/BehaviourTrees/BT_AnimalCombat.BT_AnimalCombat",
+    "blackboard": "/Game/FlexibleCombatSystem/Blueprints/AI/BB_AI.BB_AI",
+    "root": {
+      "id": "node_0",
+      "node_type": "composite",
+      "class": "BTComposite_Selector",
+      "title": "Selector",
+      "composite_type": "selector",
+      "children": [
+        {
+          "id": "node_2",
+          "node_type": "composite",
+          "class": "BTComposite_Sequence",
+          "title": "Sequence",
+          "composite_type": "sequence",
+          "children": [
+            {
+              "id": "node_3",
+              "node_type": "task",
+              "class": "T_StopMovement_C",
+              "title": "T_StopMovement",
+              "properties": {
+                "ClosestDistance": "1000.000000",
+                "ClosestActor": "None",
+                "TickInterval": "(Interval=-1.000000)",
+                "bShowPropertyDetails": "True",
+                "bIgnoreRestartSelf": "False"
+              },
+              "blackboard_keys": [
+                "SelfActor"
+              ]
+            },
+            {
+              "id": "node_4",
+              "node_type": "task",
+              "class": "T_ClearFocus_C",
+              "title": "T_ClearFocus",
+              "properties": {
+                "TickInterval": "(Interval=-1.000000)",
+                "bShowPropertyDetails": "True",
+                "bIgnoreRestartSelf": "False"
+              }
+            },
+            {
+              "id": "node_5",
+              "node_type": "task",
+              "class": "BTTask_Wait",
+              "title": "Wait",
+              "properties": {
+                "WaitTime": "(DefaultValue=1.000000,Key=\"\")",
+                "RandomDeviation": "(DefaultValue=0.000000,Key=\"\")",
+                "bIgnoreRestartSelf": "False"
+              }
+            }
+          ],
+          "decorators": [
+            {
+              "id": "node_6",
+              "node_type": "decorator",
+              "class": "BTDecorator_Blackboard",
+              "title": "Crowd Controlled",
+              "properties": {
+                "IntValue": "17",
+                "FloatValue": "0.000000",
+                "StringValue": "E_AIBehaviour::NewEnumerator17",
+                "NotifyObserver": "ResultChange",
+                "BasicOperation": "NotSet",
+                "ArithmeticOperation": "Equal",
+                "TextOperation": "Equal",
+                "bInverseCondition": "False",
+                "FlowAbortMode": "Both"
+              },
+              "blackboard_keys": [
+                "AI_Behaviour"
+              ]
+            }
+          ],
+          "properties": {
+            "bApplyDecoratorScope": "False"
+          }
+        },
+        {
+          "id": "node_7",
+          "node_type": "task",
+          "class": "T_StoreAITransform_C",
+          "title": "T_StoreAITransform",
+          "decorators": [
+            {
+              "id": "node_8",
+              "node_type": "decorator",
+              "class": "BTDecorator_Blackboard",
+              "title": "StartLocationStored?",
+              "properties": {
+                "IntValue": "0",
+                "FloatValue": "0.000000",
+                "NotifyObserver": "ResultChange",
+                "BasicOperation": "NotSet",
+                "ArithmeticOperation": "Equal",
+                "TextOperation": "Equal",
+                "bInverseCondition": "False",
+                "FlowAbortMode": "LowerPriority"
+              },
+              "blackboard_keys": [
+                "StoredStartLocation?"
+              ]
+            }
+          ],
+          "properties": {
+            "TickInterval": "(Interval=-1.000000)",
+            "bShowPropertyDetails": "True",
+            "bIgnoreRestartSelf": "False"
+          },
+          "blackboard_keys": [
+            "StartLocationRef",
+            "StoredStartLocation?",
+            "StartRotationRef"
+          ]
+        },
+        {
+          "id": "node_9",
+          "node_type": "composite",
+          "class": "BTComposite_Sequence",
+          "title": "Sequence",
+          "composite_type": "sequence",
+          "children": [
+            {
+              "id": "node_10",
+              "node_type": "task",
+              "class": "T_ResetBlock_C",
+              "title": "T_ResetBlock",
+              "properties": {
+                "TimeBetweenRecalculation": "0.200000",
+                "TickInterval": "(Interval=-1.000000)",
+                "bShowPropertyDetails": "True",
+                "bIgnoreRestartSelf": "False"
+              }
+            },
+            {
+              "id": "node_11",
+              "node_type": "task",
+              "class": "T_ClearFocus_C",
+              "title": "T_ClearFocus",
+              "properties": {
+                "TickInterval": "(Interval=-1.000000)",
+                "bShowPropertyDetails": "True",
+                "bIgnoreRestartSelf": "False"
+              }
+            },
+            {
+              "id": "node_12",
+              "node_type": "task",
+              "class": "T_ResetComponents_C",
+              "title": "T_ResetComponents",
+              "properties": {
+                "TickInterval": "(Interval=-1.000000)",
+                "bShowPropertyDetails": "True",
+                "bIgnoreRestartSelf": "False"
+              },
+              "blackboard_keys": [
+                "ArrowLoaded",
+                "SpellCharged",
+                "SpellSelected"
+              ]
+            },
+            {
+              "id": "node_13",
+              "node_type": "task",
+              "class": "T_GetNoiseLocation_C",
+              "title": "T_GetNoiseLocation",
+              "properties": {
+                "TickInterval": "(Interval=-1.000000)",
+                "bShowPropertyDetails": "True",
+                "bIgnoreRestartSelf": "False"
+              },
+              "blackboard_keys": [
+                "StoredPlayerLocation"
+              ]
+            },
+            {
+              "id": "node_14",
+              "node_type": "task",
+              "class": "T_SendToLastNoiseLocation_C",
+              "title": "T_SendToLastNoiseLocation",
+              "properties": {
+                "TickInterval": "(Interval=-1.000000)",
+                "bShowPropertyDetails": "True",
+                "bIgnoreRestartSelf": "False"
+              },
+              "blackboard_keys": [
+                "StoredPlayerLocation"
+              ]
+            },
+            {
+              "id": "node_15",
+              "node_type": "task",
+              "class": "T_AIFalseAlarm_C",
+              "title": "T_AIFalseAlarm",
+              "properties": {
+                "TickInterval": "(Interval=-1.000000)",
+                "bShowPropertyDetails": "True",
+                "bIgnoreRestartSelf": "False"
+              }
+            }
+          ],
+          "decorators": [
+            {
+              "id": "node_16",
+              "node_type": "decorator",
+              "class": "BTDecorator_Blackboard",
+              "title": "InvestigatingNoise",
+              "properties": {
+                "IntValue": "8",
+                "FloatValue": "0.000000",
+                "StringValue": "E_AIBehaviour::NewEnumerator7",
+                "NotifyObserver": "ResultChange",
+                "BasicOperation": "NotSet",
+                "ArithmeticOperation": "Equal",
+                "TextOperation": "Equal",
+                "bInverseCondition": "False",
+                "FlowAbortMode": "Self"
+              },
+              "blackboard_keys": [
+                "AI_Behaviour"
+              ]
+            }
+          ],
+          "properties": {
+            "bApplyDecoratorScope": "False"
+          }
+        },
+        {
+          "id": "node_17",
+          "node_type": "composite",
+          "class": "BTComposite_Sequence",
+          "title": "Sequence",
+          "composite_type": "sequence",
+          "children": [
+            {
+              "id": "node_18",
+              "node_type": "task",
+              "class": "BTTask_Wait",
+              "title": "Wait",
+              "properties": {
+                "WaitTime": "(DefaultValue=2.000000,Key=\"\")",
+                "RandomDeviation": "(DefaultValue=1.000000,Key=\"\")",
+                "bIgnoreRestartSelf": "True"
+              }
+            },
+            {
+              "id": "node_19",
+              "node_type": "task",
+              "class": "T_StopMovement_C",
+              "title": "T_StopMovement",
+              "properties": {
+                "ClosestDistance": "1000.000000",
+                "ClosestActor": "None",
+                "TickInterval": "(Interval=-1.000000)",
+                "bShowPropertyDetails": "True",
+                "bIgnoreRestartSelf": "False"
+              },
+              "blackboard_keys": [
+                "SelfActor"
+              ]
+            },
+            {
+              "id": "node_20",
+              "node_type": "task",
+              "class": "T_ClearFocus_C",
+              "title": "T_ClearFocus",
+              "properties": {
+                "TickInterval": "(Interval=-1.000000)",
+                "bShowPropertyDetails": "True",
+                "bIgnoreRestartSelf": "False"
+              }
+            },
+            {
+              "id": "node_21",
+              "node_type": "task",
+              "class": "T_SetMovementSpeed_C",
+              "title": "T_SetMovementSpeed",
+              "properties": {
+                "MovementSpeed": "NewEnumerator8",
+                "TickInterval": "(Interval=-1.000000)",
+                "bShowPropertyDetails": "True",
+                "bIgnoreRestartSelf": "False"
+              }
+            },
+            {
+              "id": "node_22",
+              "node_type": "task",
+              "class": "T_ReturnToLocation_C",
+              "title": "T_ReturnToLocation",
+              "properties": {
+                "TickInterval": "(Interval=-1.000000)",
+                "bShowPropertyDetails": "True",
+                "bIgnoreRestartSelf": "False"
+              },
+              "blackboard_keys": [
+                "StartLocationRef",
+                "StartRotationRef"
+              ]
+            },
+            {
+              "id": "node_23",
+              "node_type": "task",
+              "class": "T_DeactivateAI_C",
+              "title": "T_DeactivateAI",
+              "properties": {
+                "ClosestDistance": "1000.000000",
+                "ClosestActor": "None",
+                "TickInterval": "(Interval=-1.000000)",
+                "bShowPropertyDetails": "True",
+                "bIgnoreRestartSelf": "False"
+              },
+              "blackboard_keys": [
+                "SelfActor"
+              ]
+            }
+          ],
+          "decorators": [
+            {
+              "id": "node_24",
+              "node_type": "decorator",
+              "class": "BTDecorator_Blackboard",
+              "title": "ReturningToLocation",
+              "properties": {
+                "IntValue": "9",
+                "FloatValue": "0.000000",
+                "StringValue": "E_AIBehaviour::NewEnumerator8",
+                "NotifyObserver": "ResultChange",
+                "BasicOperation": "NotSet",
+                "ArithmeticOperation": "Equal",
+                "TextOperation": "Equal",
+                "bInverseCondition": "False",
+                "FlowAbortMode": "Self"
+              },
+              "blackboard_keys": [
+                "AI_Behaviour"
+              ]
+            }
+          ],
+          "properties": {
+            "bApplyDecoratorScope": "False"
+          }
+        },
+        {
+          "id": "node_25",
+          "node_type": "composite",
+          "class": "BTComposite_Selector",
+          "title": "Mele Attack Style",
+          "composite_type": "selector",
+          "children": [
+            {
+              "id": "node_26",
+              "node_type": "task",
+              "class": "T_SetEnemyAsFocus_C",
+              "title": "T_SetEnemyAsFocus",
+              "decorators": [
+                {
+                  "id": "node_27",
+                  "node_type": "decorator",
+                  "class": "BTDecorator_Blackboard",
+                  "title": "Target Set?",
+                  "properties": {
+                    "IntValue": "0",
+                    "FloatValue": "0.000000",
+                    "NotifyObserver": "ResultChange",
+                    "BasicOperation": "NotSet",
+                    "ArithmeticOperation": "Equal",
+                    "TextOperation": "Equal",
+                    "bInverseCondition": "False",
+                    "FlowAbortMode": "None"
+                  },
+                  "blackboard_keys": [
+                    "TargetSet"
+                  ]
+                }
+              ],
+              "properties": {
+                "AI Controller": "None",
+                "AI Pawn": "None",
+                "TickInterval": "(Interval=-1.000000)",
+                "bShowPropertyDetails": "True",
+                "bIgnoreRestartSelf": "False"
+              },
+              "blackboard_keys": [
+                "EnemyTarget",
+                "TargetSet"
+              ]
+            },
+            {
+              "id": "node_28",
+              "node_type": "composite",
+              "class": "BTComposite_Selector",
+              "title": "Selector",
+              "composite_type": "selector",
+              "children": [
+                {
+                  "id": "node_29",
+                  "node_type": "composite",
+                  "class": "BTComposite_Sequence",
+                  "title": "Sequence",
+                  "composite_type": "sequence",
+                  "children": [
+                    {
+                      "id": "node_31",
+                      "node_type": "task",
+                      "class": "T_SendOffAttack_C",
+                      "title": "T_SendOffAttack",
+                      "properties": {
+                        "TickInterval": "(Interval=-1.000000)",
+                        "bShowPropertyDetails": "True",
+                        "bIgnoreRestartSelf": "False"
+                      },
+                      "blackboard_keys": [
+                        "EngagedCombat",
+                        "MeleAttackType",
+                        "EnemyTarget",
+                        "AI_Behaviour",
+                        "CurrentMeleeCombo",
+                        "LastMeleeCombo"
+                      ]
+                    }
+                  ],
+                  "decorators": [
+                    {
+                      "id": "node_32",
+                      "node_type": "decorator",
+                      "class": "BTDecorator_Blackboard",
+                      "title": "AttackingPlayer",
+                      "properties": {
+                        "IntValue": "4",
+                        "FloatValue": "0.000000",
+                        "StringValue": "E_AIBehaviour::NewEnumerator3",
+                        "NotifyObserver": "ResultChange",
+                        "BasicOperation": "NotSet",
+                        "ArithmeticOperation": "Equal",
+                        "TextOperation": "Equal",
+                        "bInverseCondition": "False",
+                        "FlowAbortMode": "None"
+                      },
+                      "blackboard_keys": [
+                        "AI_Behaviour"
+                      ]
+                    }
+                  ],
+                  "services": [
+                    {
+                      "id": "node_30",
+                      "node_type": "service",
+                      "class": "S_DetermineAttackType_C",
+                      "title": "S_DetermineAttackType",
+                      "properties": {
+                        "PawnRef": "None",
+                        "bShowPropertyDetails": "True",
+                        "bShowEventDetails": "False",
+                        "Interval": "0.500000",
+                        "RandomDeviation": "0.100000",
+                        "bCallTickOnSearchStart": "False",
+                        "bRestartTimerOnEachActivation": "False"
+                      },
+                      "blackboard_keys": [
+                        "EnemyTarget",
+                        "MeleAttackType",
+                        "CurrentMeleeCombo",
+                        "LastMeleeCombo"
+                      ]
+                    }
+                  ],
+                  "properties": {
+                    "bApplyDecoratorScope": "False"
+                  }
+                },
+                {
+                  "id": "node_33",
+                  "node_type": "composite",
+                  "class": "BTComposite_Sequence",
+                  "title": "Sequence",
+                  "composite_type": "sequence",
+                  "children": [
+                    {
+                      "id": "node_35",
+                      "node_type": "task",
+                      "class": "T_SetMovementSpeed_C",
+                      "title": "T_SetMovementSpeed",
+                      "properties": {
+                        "MovementSpeed": "NewEnumerator0",
+                        "TickInterval": "(Interval=-1.000000)",
+                        "bShowPropertyDetails": "True",
+                        "bIgnoreRestartSelf": "False"
+                      }
+                    },
+                    {
+                      "id": "node_36",
+                      "node_type": "task",
+                      "class": "BTTask_Wait",
+                      "title": "Wait",
+                      "properties": {
+                        "WaitTime": "(DefaultValue=3.000000,Key=\"\")",
+                        "RandomDeviation": "(DefaultValue=1.000000,Key=\"\")",
+                        "bIgnoreRestartSelf": "False"
+                      }
+                    }
+                  ],
+                  "decorators": [
+                    {
+                      "id": "node_37",
+                      "node_type": "decorator",
+                      "class": "BTDecorator_Blackboard",
+                      "title": "StrafeAroundEnemy",
+                      "properties": {
+                        "IntValue": "3",
+                        "FloatValue": "0.000000",
+                        "StringValue": "E_AIBehaviour::NewEnumerator4",
+                        "NotifyObserver": "ResultChange",
+                        "BasicOperation": "Set",
+                        "ArithmeticOperation": "Equal",
+                        "TextOperation": "Equal",
+                        "bInverseCondition": "False",
+                        "FlowAbortMode": "Self"
+                      },
+                      "blackboard_keys": [
+                        "AI_Behaviour"
+                      ]
+                    }
+                  ],
+                  "services": [
+                    {
+                      "id": "node_34",
+                      "node_type": "service",
+                      "class": "S_Strafe_C",
+                      "title": "S_Strafe",
+                      "properties": {
+                        "PawnRef": "None",
+                        "StrafeMovement": "NewEnumerator0",
+                        "AIController": "None",
+                        "Coinflip": "False",
+                        "ArcherStrafe": "False",
+                        "CharacterRef": "None",
+                        "bShowPropertyDetails": "True",
+                        "bShowEventDetails": "False",
+                        "Interval": "0.001000",
+                        "RandomDeviation": "0.000000",
+                        "bCallTickOnSearchStart": "False",
+                        "bRestartTimerOnEachActivation": "False"
+                      },
+                      "blackboard_keys": [
+                        "EnemyTarget",
+                        "OutsideAttackGroup",
+                        "StrafeLeft"
+                      ]
+                    }
+                  ],
+                  "properties": {
+                    "bApplyDecoratorScope": "False"
+                  }
+                },
+                {
+                  "id": "node_38",
+                  "node_type": "composite",
+                  "class": "BTComposite_Sequence",
+                  "title": "Sequence",
+                  "composite_type": "sequence",
+                  "children": [
+                    {
+                      "id": "node_39",
+                      "node_type": "task",
+                      "class": "T_SetMovementSpeed_C",
+                      "title": "T_SetMovementSpeed",
+                      "properties": {
+                        "MovementSpeed": "NewEnumerator0",
+                        "TickInterval": "(Interval=-1.000000)",
+                        "bShowPropertyDetails": "True",
+                        "bIgnoreRestartSelf": "False"
+                      }
+                    },
+                    {
+                      "id": "node_40",
+                      "node_type": "task",
+                      "class": "BTTask_MoveTo",
+                      "title": "Move To",
+                      "properties": {
+                        "AcceptableRadius": "(DefaultValue=50.000000,Key=\"\")",
+                        "FilterClass": "(DefaultValue=None,BaseClass=\"/Script/CoreUObject.Class'/Script/NavigationSystem.NavigationQueryFilter'\",Key=\"\")",
+                        "ObservedBlackboardValueTolerance": "(DefaultValue=4.750000,Key=\"\")",
+                        "bAllowStrafe": "(DefaultValue=False,Key=\"\")",
+                        "bAllowPartialPath": "(DefaultValue=True,Key=\"\")",
+                        "bTrackMovingGoal": "(DefaultValue=True,Key=\"\")",
+                        "bRequireNavigableEndLocation": "(DefaultValue=True,Key=\"\")",
+                        "bProjectGoalLocation": "(DefaultValue=True,Key=\"\")",
+                        "bReachTestIncludesAgentRadius": "(DefaultValue=True,Key=\"\")",
+                        "bReachTestIncludesGoalRadius": "(DefaultValue=True,Key=\"\")",
+                        "bStartFromPreviousPath": "(DefaultValue=False,Key=\"\")",
+                        "bIgnoreRestartSelf": "False"
+                      },
+                      "blackboard_keys": [
+                        "EnemyTarget"
+                      ]
+                    }
+                  ],
+                  "decorators": [
+                    {
+                      "id": "node_41",
+                      "node_type": "decorator",
+                      "class": "BTDecorator_Blackboard",
+                      "title": "RunningToPlayer",
+                      "properties": {
+                        "IntValue": "2",
+                        "FloatValue": "0.000000",
+                        "StringValue": "E_AIBehaviour::NewEnumerator2",
+                        "NotifyObserver": "ResultChange",
+                        "BasicOperation": "NotSet",
+                        "ArithmeticOperation": "Equal",
+                        "TextOperation": "Equal",
+                        "bInverseCondition": "False",
+                        "FlowAbortMode": "Self"
+                      },
+                      "blackboard_keys": [
+                        "AI_Behaviour"
+                      ]
+                    }
+                  ],
+                  "properties": {
+                    "bApplyDecoratorScope": "False"
+                  }
+                }
+              ],
+              "decorators": [
+                {
+                  "id": "node_42",
+                  "node_type": "decorator",
+                  "class": "BTDecorator_Blackboard",
+                  "title": "Target Set?",
+                  "properties": {
+                    "IntValue": "0",
+                    "FloatValue": "0.000000",
+                    "NotifyObserver": "ResultChange",
+                    "BasicOperation": "Set",
+                    "ArithmeticOperation": "Equal",
+                    "TextOperation": "Equal",
+                    "bInverseCondition": "False",
+                    "FlowAbortMode": "Self"
+                  },
+                  "blackboard_keys": [
+                    "TargetSet"
+                  ]
+                }
+              ],
+              "properties": {
+                "bApplyDecoratorScope": "False"
+              }
+            }
+          ],
+          "properties": {
+            "bApplyDecoratorScope": "False"
+          }
+        }
+      ],
+      "services": [
+        {
+          "id": "node_1",
+          "node_type": "service",
+          "class": "S_SettingAnimalBehaviour_C",
+          "title": "S_SettingAnimalBehaviour",
+          "properties": {
+            "AI_PlayerController": "None",
+            "PossedAI": "None",
+            "EnemyTarget": "None",
+            "DistanceToTarget": "1000.000000",
+            "InOriginalLocation?": "False",
+            "MeleeToRangedSwitch": "800.000000",
+            "AISpline": "None",
+            "PassWarningMesh": "None",
+            "MeleWeaponRange": "0.000000",
+            "EquipmentComponent": "None",
+            "MagicComponent": "None",
+            "MeleeToMagicSwitch": "300.000000",
+            "bShowPropertyDetails": "True",
+            "bShowEventDetails": "False",
+            "Interval": "0.500000",
+            "RandomDeviation": "0.100000",
+            "bCallTickOnSearchStart": "False",
+            "bRestartTimerOnEachActivation": "False"
+          },
+          "blackboard_keys": [
+            "AI_Behaviour",
+            "EnemyTarget"
+          ]
+        }
+      ],
+      "properties": {
+        "bApplyDecoratorScope": "False"
+      }
+    },
+    "used_tasks": [
+      "T_StopMovement_C",
+      "T_ClearFocus_C",
+      "BTTask_Wait",
+      "T_StoreAITransform_C",
+      "T_ResetBlock_C",
+      "T_ResetComponents_C",
+      "T_GetNoiseLocation_C",
+      "T_SendToLastNoiseLocation_C",
+      "T_AIFalseAlarm_C",
+      "T_SetMovementSpeed_C",
+      "T_ReturnToLocation_C",
+      "T_DeactivateAI_C",
+      "T_SetEnemyAsFocus_C",
+      "T_SendOffAttack_C",
+      "BTTask_MoveTo"
+    ],
+    "used_decorators": [
+      "BTDecorator_Blackboard"
+    ],
+    "used_services": [
+      "S_SettingAnimalBehaviour_C",
+      "S_DetermineAttackType_C",
+      "S_Strafe_C"
+    ]
+  },
+  "blackboard": {
+    "name": "BB_AI",
+    "path": "/Game/FlexibleCombatSystem/Blueprints/AI/BB_AI.BB_AI",
+    "keys": [
+      {
+        "name": "SelfActor",
+        "key_type": "object",
+        "base_class": "Actor"
+      },
+      {
+        "name": "TargetLocation",
+        "key_type": "vector"
+      },
+      {
+        "name": "AttackPlayer?",
+        "key_type": "bool"
+      },
+      {
+        "name": "AI_Behaviour",
+        "key_type": "enum",
+        "enum_type": "E_AIBehaviour"
+      },
+      {
+        "name": "Block",
+        "key_type": "bool"
+      },
+      {
+        "name": "StrafeLocation",
+        "key_type": "vector"
+      },
+      {
+        "name": "StartLocationRef",
+        "key_type": "vector"
+      },
+      {
+        "name": "AtNoiseLocation?",
+        "key_type": "bool"
+      },
+      {
+        "name": "StoredStartLocation?",
+        "key_type": "bool"
+      },
+      {
+        "name": "CanHearPlayer?",
+        "key_type": "bool"
+      },
+      {
+        "name": "StartRotationRef",
+        "key_type": "rotator"
+      },
+      {
+        "name": "AlliesToKill",
+        "key_type": "bool"
+      },
+      {
+        "name": "StoredPlayerLocation",
+        "key_type": "vector"
+      },
+      {
+        "name": "EnemyTarget",
+        "key_type": "object",
+        "base_class": "Actor"
+      },
+      {
+        "name": "EngagedCombat",
+        "key_type": "bool"
+      },
+      {
+        "name": "WeaponDrawn",
+        "key_type": "bool"
+      },
+      {
+        "name": "Rolling",
+        "key_type": "bool"
+      },
+      {
+        "name": "MeleAttackType",
+        "key_type": "enum",
+        "enum_type": "E_MeleeAttackTypes"
+      },
+      {
+        "name": "AttackReset",
+        "key_type": "bool"
+      },
+      {
+        "name": "OutsideAttackGroup",
+        "key_type": "bool"
+      },
+      {
+        "name": "StrafeLeft",
+        "key_type": "bool"
+      },
+      {
+        "name": "ShouldLunge",
+        "key_type": "bool"
+      },
+      {
+        "name": "SendLunge",
+        "key_type": "bool"
+      },
+      {
+        "name": "AttackStyle",
+        "key_type": "enum",
+        "enum_type": "E_CharacterTypes"
+      },
+      {
+        "name": "ArrowLoaded",
+        "key_type": "bool"
+      },
+      {
+        "name": "SpellCharged",
+        "key_type": "bool"
+      },
+      {
+        "name": "SpellCastType",
+        "key_type": "enum",
+        "enum_type": "E_SpellCastType"
+      },
+      {
+        "name": "SpellSelected",
+        "key_type": "bool"
+      },
+      {
+        "name": "TargetSet",
+        "key_type": "bool"
+      },
+      {
+        "name": "TeleportOnCD",
+        "key_type": "bool"
+      },
+      {
+        "name": "LungeOnCD",
+        "key_type": "bool"
+      },
+      {
+        "name": "StandStillChannel",
+        "key_type": "bool"
+      },
+      {
+        "name": "ClearForShot",
+        "key_type": "bool"
+      },
+      {
+        "name": "CompanionBehaviour",
+        "key_type": "enum",
+        "enum_type": "E_CompanionBehaviour"
+      },
+      {
+        "name": "CompanionOwner",
+        "key_type": "object",
+        "base_class": "Actor"
+      },
+      {
+        "name": "CompanionGoHereLocation",
+        "key_type": "vector"
+      },
+      {
+        "name": "CurrentMeleeCombo",
+        "key_type": "name"
+      },
+      {
+        "name": "LastMeleeCombo",
+        "key_type": "name"
+      }
+    ]
+  }
+}

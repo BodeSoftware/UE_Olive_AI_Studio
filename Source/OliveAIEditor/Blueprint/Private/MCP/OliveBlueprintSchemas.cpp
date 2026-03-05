@@ -1137,15 +1137,19 @@ namespace OliveBlueprintSchemas
 		TSharedPtr<FJsonObject> Properties = MakeProperties();
 
 		Properties->SetObjectField(TEXT("template_id"),
-			StringProp(TEXT("ID of the template to view (factory or reference)")));
+			StringProp(TEXT("ID of the template to view (factory, reference, or library)")));
 
 		Properties->SetObjectField(TEXT("pattern"),
-			StringProp(TEXT("Specific pattern name within a reference template")));
+			StringProp(TEXT("For reference templates: pattern name to filter. "
+				"For factory templates: function name to extract full plan JSON (e.g., pattern=\"Fire\" returns Fire's complete plan). "
+				"For library templates: specify a function name to retrieve its full node graph.")));
 
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
 		Schema->SetStringField(TEXT("description"),
-			TEXT("View a template's full content (parameter schema, presets, plan patterns). "
-				 "Use this to read patterns as reference before writing your own plan."));
+			TEXT("View a template's content. Without pattern: shows parameters, presets, function outlines. "
+				"With pattern: for factory templates returns a function's full plan_json (ready for apply_plan_json); "
+				"for reference templates returns a specific pattern; "
+				"for library templates returns a function's full node graph."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("template_id")});
 
@@ -1157,11 +1161,16 @@ namespace OliveBlueprintSchemas
 		TSharedPtr<FJsonObject> Properties = MakeProperties();
 
 		Properties->SetObjectField(TEXT("type"),
-			EnumProp(TEXT("Filter by template type"), {TEXT("factory"), TEXT("reference")}));
+			EnumProp(TEXT("Filter by template type"), {TEXT("factory"), TEXT("reference"), TEXT("library")}));
+
+		Properties->SetObjectField(TEXT("query"),
+			StringProp(TEXT("Search query to find templates by name, tag, function name, or keyword. "
+				"Searches across all templates including library templates from extracted projects.")));
 
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
 		Schema->SetStringField(TEXT("description"),
-			TEXT("List available templates with descriptions and examples."));
+			TEXT("List available templates. Use query parameter to search by name, tag, function name, "
+				"or keyword across all templates including library templates from extracted projects."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 
 		return Schema;
