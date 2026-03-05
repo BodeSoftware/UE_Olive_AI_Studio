@@ -382,6 +382,38 @@ public:
 	int32 PlanFirstGraphRoutingThreshold = 3;
 
 	// ==========================================
+	// Utility Model Settings
+	// ==========================================
+
+	/** Provider used for lightweight utility completions (keyword expansion, etc.).
+	 *  Choose a fast, cheap model — this is called frequently for sub-second tasks. */
+	UPROPERTY(Config, EditAnywhere, Category="Utility Model",
+		meta=(DisplayName="Utility Model Provider"))
+	EOliveAIProvider UtilityModelProvider = EOliveAIProvider::OpenRouter;
+
+	/** Model ID for the utility provider (e.g., "anthropic/claude-3-5-haiku-latest" for OpenRouter) */
+	UPROPERTY(Config, EditAnywhere, Category="Utility Model",
+		meta=(DisplayName="Utility Model ID"))
+	FString UtilityModelId = TEXT("anthropic/claude-3-5-haiku-latest");
+
+	/** Optional dedicated API key for the utility provider.
+	 *  If empty, falls back to the matching main provider's API key. */
+	UPROPERTY(Config, EditAnywhere, Category="Utility Model",
+		meta=(DisplayName="Utility Model API Key (Optional)", PasswordField=true))
+	FString UtilityModelApiKey;
+
+	/** Timeout in seconds for utility model requests */
+	UPROPERTY(Config, EditAnywhere, Category="Utility Model",
+		meta=(DisplayName="Utility Model Timeout (seconds)", ClampMin=5, ClampMax=30))
+	int32 UtilityModelTimeoutSeconds = 10;
+
+	/** When enabled, uses the utility model to expand search keywords with synonyms.
+	 *  When disabled, falls back to basic tokenizer-based keyword extraction. */
+	UPROPERTY(Config, EditAnywhere, Category="Utility Model",
+		meta=(DisplayName="Enable LLM Keyword Expansion"))
+	bool bEnableLLMKeywordExpansion = true;
+
+	// ==========================================
 	// Utility Functions
 	// ==========================================
 

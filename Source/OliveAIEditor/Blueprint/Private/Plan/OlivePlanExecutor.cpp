@@ -34,6 +34,7 @@
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
 #include "K2Node_VariableGet.h"
+#include "K2Node_Self.h"
 #include "K2Node_CallFunction.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Engine/SimpleConstructionScript.h"
@@ -1253,6 +1254,45 @@ void FOlivePlanExecutor::PhaseWireExec(
                     TEXT("Step '%s': exec_after references itself (self-loop skipped)"),
                     *Step.StepId));
                 // Do not attempt wiring, do not increment FailedConnectionCount
+            }
+            else if (Step.ExecAfter.Equals(TEXT("entry"), ESearchCase::IgnoreCase))
+            {
+                // 'entry' refers to the FunctionEntry node in function graphs.
+                // Find it and wire its Then pin to this step's exec input.
+                UK2Node_FunctionEntry* EntryNode = nullptr;
+                for (UEdGraphNode* Node : Context.Graph->Nodes)
+                {
+                    EntryNode = Cast<UK2Node_FunctionEntry>(Node);
+                    if (EntryNode) break;
+                }
+
+                bool bEntryWired = false;
+                if (EntryNode)
+                {
+                    UEdGraphPin* ThenPin = EntryNode->FindPin(UEdGraphSchema_K2::PN_Then);
+                    UEdGraphNode* TargetNode = Context.GetNodePtr(Step.StepId);
+                    UEdGraphPin* TargetExecPin = TargetNode
+                        ? TargetNode->FindPin(UEdGraphSchema_K2::PN_Execute)
+                        : nullptr;
+
+                    if (ThenPin && TargetExecPin)
+                    {
+                        ThenPin->BreakAllPinLinks(); // Break stub wire to FunctionResult
+                        ThenPin->MakeLinkTo(TargetExecPin);
+                        bEntryWired = true;
+                        Context.SuccessfulConnectionCount++;
+                        Context.SuccessfulExecAfterStepIds.Add(Step.StepId);
+                        UE_LOG(LogOlivePlanExecutor, Log,
+                            TEXT("  Exec wire: 'entry' -> '%s' (FunctionEntry.Then)"), *Step.StepId);
+                    }
+                }
+
+                if (!bEntryWired)
+                {
+                    UE_LOG(LogOlivePlanExecutor, Warning,
+                        TEXT("  exec_after 'entry': no FunctionEntry node found or wiring failed — auto-chain will handle"));
+                    // Don't count as failure — auto-chain handles this case
+                }
             }
             else
             {
@@ -2528,6 +2568,78 @@ FOliveSmartWireResult FOlivePlanExecutor::WireDataConnection(
     UE_LOG(LogOlivePlanExecutor, Verbose,
         TEXT("  Data wire: step '%s'.%s <- @%s.%s"),
         *TargetStepId, *TargetPinHint, *SourceStepId, *SourcePinHint);
+
+    // 1b. Handle @self references — create a UK2Node_Self and wire directly
+    if (SourceStepId.Equals(TEXT("self"), ESearchCase::IgnoreCase))
+    {
+        const FOlivePinManifest* TargetManifest = Context.GetManifest(TargetStepId);
+        if (!TargetManifest)
+        {
+            Result.ErrorMessage = FString::Printf(
+                TEXT("Target step '%s' not found"), *TargetStepId);
+            return Result;
+        }
+
+        FString TargetMatchMethod;
+        const FOlivePinManifestEntry* TargetPinEntry = TargetManifest->FindPinSmart(
+            TargetPinHint, /*bIsInput=*/true,
+            EOliveIRTypeCategory::Unknown, &TargetMatchMethod);
+        if (!TargetPinEntry)
+        {
+            Result.ErrorMessage = FString::Printf(
+                TEXT("Target pin '%s' not found on step '%s' for @self wire"), *TargetPinHint, *TargetStepId);
+            return Result;
+        }
+
+        UEdGraphNode* TargetNode = Context.GetNodePtr(TargetStepId);
+        if (!TargetNode)
+        {
+            Result.ErrorMessage = FString::Printf(
+                TEXT("Target node for step '%s' not found in context"), *TargetStepId);
+            return Result;
+        }
+
+        UEdGraphPin* RealTargetPin = TargetNode->FindPin(FName(*TargetPinEntry->PinName));
+        if (!RealTargetPin)
+        {
+            Result.ErrorMessage = FString::Printf(
+                TEXT("Target pin '%s' not found on node for @self wire"), *TargetPinEntry->PinName);
+            return Result;
+        }
+
+        UK2Node_Self* SelfNode = NewObject<UK2Node_Self>(Context.Graph);
+        Context.Graph->AddNode(SelfNode, /*bUserAction=*/false, /*bSelectNewNode=*/false);
+        SelfNode->AllocateDefaultPins();
+
+        UEdGraphPin* SelfOutputPin = nullptr;
+        for (UEdGraphPin* Pin : SelfNode->Pins)
+        {
+            if (Pin && Pin->Direction == EGPD_Output)
+            {
+                SelfOutputPin = Pin;
+                break;
+            }
+        }
+
+        if (SelfOutputPin)
+        {
+            FOlivePinConnector& Connector = FOlivePinConnector::Get();
+            FOliveBlueprintWriteResult ConnectResult = Connector.Connect(SelfOutputPin, RealTargetPin, /*bAllowConversion=*/true);
+            if (ConnectResult.bSuccess)
+            {
+                Result.bSuccess = true;
+                Result.SourceMatchMethod = TEXT("self_reference");
+                Result.TargetMatchMethod = TargetMatchMethod;
+                UE_LOG(LogOlivePlanExecutor, Log,
+                    TEXT("  Data wire OK: @self -> step '%s'.%s (Self Reference node)"),
+                    *TargetStepId, *TargetPinEntry->PinName);
+                return Result;
+            }
+        }
+
+        Result.ErrorMessage = TEXT("Failed to wire @self reference — could not connect Self node output");
+        return Result;
+    }
 
     // 2. Get manifests
     const FOlivePinManifest* SourceManifest = Context.GetManifest(SourceStepId);

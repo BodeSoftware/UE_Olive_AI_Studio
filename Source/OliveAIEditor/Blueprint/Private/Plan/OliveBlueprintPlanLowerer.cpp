@@ -162,7 +162,9 @@ FOlivePlanLowerResult FOliveBlueprintPlanLowerer::Lower(
 		// ExecAfter: connect the source step's "then" pin to this step's "execute" pin
 		if (!PlanStep.ExecAfter.IsEmpty())
 		{
-			if (!StepIdToIndex.Contains(PlanStep.ExecAfter))
+			// 'entry' is a valid virtual target — FunctionEntry node, handled by executor
+			const bool bIsEntryRef = PlanStep.ExecAfter.Equals(TEXT("entry"), ESearchCase::IgnoreCase);
+			if (!bIsEntryRef && !StepIdToIndex.Contains(PlanStep.ExecAfter))
 			{
 				Result.Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
 					TEXT("INVALID_EXEC_REF"),
@@ -171,6 +173,11 @@ FOlivePlanLowerResult FOliveBlueprintPlanLowerer::Lower(
 					FString::Printf(TEXT("exec_after references unknown step '%s'"), *PlanStep.ExecAfter),
 					TEXT("Ensure exec_after refers to a valid step_id defined earlier in the plan")));
 				continue;
+			}
+
+			if (bIsEntryRef)
+			{
+				continue; // Skip lowered connect op — executor handles entry wiring directly
 			}
 
 			FOliveLoweredOp ConnectOp;

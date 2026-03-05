@@ -186,6 +186,15 @@
 - **Fires only on CONNECT_RESPONSE_DISALLOW** after autocast + SplitPin both fail.
 - **Depends on autocast integration** being complete first.
 
+### Agent Planning System (Multi-Asset Decomposition) - Mar 2026
+- `plans/agent-planning-system-design.md` -- 3 changes, 3 files
+- **Root cause**: Agent skips asset decomposition because stdin sends it straight to template research. Template anchoring (projectile factory has "Arrow" preset) creates gravity well that frames multi-entity tasks as single-asset.
+- **Fix**: Structured decomposition directive in stdin (imperative channel) with ASSETS: format and two worked examples (bow+arrow, door+key). Research nudge repositioned AFTER decomposition.
+- **3 files changed**: OliveCLIProviderBase.cpp (stdin injection, lines 509-515), blueprint_design_patterns.txt (new Section 0), cli_blueprint.txt (expand MULTI-ASSET line)
+- **Key insight**: stdin directives > CLAUDE.md suggestions. Structured format prompts > advisory text. "List your assets" works; "plan ALL assets" doesn't.
+- **No C++ structural changes**: Only string content in the stdin message builder. No new classes, no pipeline changes, no tool changes.
+- **Escalation path**: If agent still skips decomposition, next step is two-phase CLI (first turn = decomposition only with --max-turns 1).
+
 ### Log Improvements - Mar 2026
 - `plans/log-improvements-design.md` -- 6 tasks (T1-T6), 4 items
 - **modify_component fix**: `modified_properties_count` now reports `Properties.Num() - WriteResult.Warnings.Num()` (actual successes). Adds `requested_properties_count` and `failed_properties_count`. Guard: `FMath::Max(0, ...)` for edge case.

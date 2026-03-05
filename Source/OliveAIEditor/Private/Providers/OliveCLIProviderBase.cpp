@@ -386,7 +386,8 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 	ClaudeMd += TEXT("- All asset paths should be under `/Game/` (the project's Content directory).\n");
 	ClaudeMd += TEXT("- When creating Blueprints, use `blueprint.create` (with optional template_id for templates) -- never try to create .uasset files manually.\n");
 	ClaudeMd += TEXT("- Complete the FULL task: create structures, wire graph logic, compile, and verify. Do not stop partway.\n");
-	ClaudeMd += TEXT("- Once ALL Blueprints compile with 0 errors and 0 warnings, the task is COMPLETE. Immediately stop and report what you built.\n");
+	ClaudeMd += TEXT("- After each compile pass, ask yourself: 'Have I built everything the user asked for?' If not, continue building the next part.\n");
+	ClaudeMd += TEXT("- Before finishing, verify you built EVERY part the user asked for — don't stop after the first Blueprint compiles.\n");
 	ClaudeMd += TEXT("- After creating from a template (blueprint.create with template_id), check the result for the list of created functions. Write plan_json for EACH function -- they are empty stubs. Do NOT call blueprint.read or read_function after template creation.\n\n");
 
 	// Append knowledge packs — operational guidance for the agent
@@ -506,12 +507,36 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 		InitialContextAssetPaths.Empty(); // Consume -- only inject once per user message
 	}
 
-	// Nudge pattern research in the imperative channel (stdin).
-	// CLAUDE.md workflow steps are treated as optional; stdin directives are followed
-	// more reliably. Only inject on initial messages, not continuations.
+	// Structured decomposition directive in the imperative channel (stdin).
+	// Forces the agent to enumerate all game entities before searching templates.
+	// Only inject on initial messages, not continuations.
 	if (!IsContinuationMessage(UserMessage))
 	{
-		EffectiveMessage += TEXT("\n\nBefore building, research patterns from Library templates: search blueprint.list_templates(query=\"...\") for proven reference patterns from real projects, specific function templates may be available by blueprint.get_template(id, pattern=\"FuncName\") to study matching functions. Supplement with olive.search_community_blueprints if needed — community examples are mixed quality, compare several before using. These are references — adapt, simplify, or combine patterns to fit the user's needs. Then build the complete system using the MCP tools.\n");
+		EffectiveMessage += TEXT("\n\n## Required: Asset Decomposition\n\n");
+		EffectiveMessage += TEXT("Before calling ANY tools, think through the complete system design:\n\n");
+		EffectiveMessage += TEXT("1. **Identify every game entity** that needs its own Blueprint. A \"game entity\" is anything that:\n");
+		EffectiveMessage += TEXT("   - Exists as a separate actor in the world (weapons, projectiles, pickups, doors, keys)\n");
+		EffectiveMessage += TEXT("   - Has its own mesh, collision, or movement (NOT just a variable on another Blueprint)\n");
+		EffectiveMessage += TEXT("   - Could be spawned, equipped, dropped, or destroyed independently\n\n");
+		EffectiveMessage += TEXT("2. **List your planned assets** in this format:\n");
+		EffectiveMessage += TEXT("   ASSETS:\n");
+		EffectiveMessage += TEXT("   1. BP_Name — Type (Actor/Pawn/Character/Interface) — one-line purpose\n");
+		EffectiveMessage += TEXT("   2. BP_Name — Type — purpose\n");
+		EffectiveMessage += TEXT("   3. Modify @ExistingBP — what changes\n\n");
+		EffectiveMessage += TEXT("3. Then research patterns and build each asset fully before starting the next.\n\n");
+		EffectiveMessage += TEXT("Example — \"create a bow and arrow system\":\n");
+		EffectiveMessage += TEXT("ASSETS:\n");
+		EffectiveMessage += TEXT("1. BP_Bow — Actor — skeletal/static mesh, attach to character, handles aiming, charging, spawns arrows\n");
+		EffectiveMessage += TEXT("2. BP_Arrow — Actor — projectile with gravity arc, damage on hit, auto-destroy\n");
+		EffectiveMessage += TEXT("3. Modify @BP_ThirdPersonCharacter — add bow reference variable, equip/fire input handling, attach point\n\n");
+		EffectiveMessage += TEXT("Example — \"create a door and key system\":\n");
+		EffectiveMessage += TEXT("ASSETS:\n");
+		EffectiveMessage += TEXT("1. BPI_Lockable — Interface — Lock/Unlock/IsLocked functions\n");
+		EffectiveMessage += TEXT("2. BP_Key — Actor — pickup, stores which doors it opens\n");
+		EffectiveMessage += TEXT("3. BP_LockedDoor — Actor — implements BPI_Lockable, opens when unlocked\n");
+		EffectiveMessage += TEXT("4. Modify @BP_ThirdPersonCharacter — key inventory array, interact input, overlap detection\n\n");
+		EffectiveMessage += TEXT("Do NOT skip this step. Think first, list assets, then build.\n\n");
+		EffectiveMessage += TEXT("After listing your assets, research patterns: blueprint.list_templates(query=\"...\") for proven reference patterns (library templates are highest quality — from real shipped projects; factory templates are good for quick scaffolding; community blueprints are mixed quality — browse several and use your judgment). Adapt and improvise as needed. Then build each asset fully before starting the next.\n");
 	}
 
 	// Initialize run context tracking for this new run

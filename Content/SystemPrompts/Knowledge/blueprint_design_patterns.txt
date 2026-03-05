@@ -1,4 +1,35 @@
-TAGS: interface cast dispatcher delegate overlap interaction communication between blueprints coupling pickup damage event
+TAGS: decomposition planning assets entities weapon projectile interface cast dispatcher delegate overlap interaction communication between blueprints coupling pickup damage event
+---
+## 0. System Decomposition — ALWAYS Do This First
+
+Before building any multi-asset system, identify every game entity that needs a Blueprint.
+
+### The Separate Actor Test
+Ask: "Does this thing exist in the world with its own transform?"
+- YES (weapon, projectile, pickup, door, vehicle, AI character) → separate Blueprint
+- NO (health value, ammo count, movement speed) → variable on an existing Blueprint
+- MAYBE (inventory slot, buff effect) → component on an existing Blueprint
+
+### Common Decomposition Mistakes
+- "Bow and Arrow" is TWO actors (Bow + Arrow), not one actor + character functions
+- "Gun System" is typically THREE assets (Gun actor + Bullet projectile + character input)
+- "Vehicle" is at minimum TWO (Vehicle pawn + character enter/exit logic)
+- Weapons are ALWAYS separate actors attached to characters, never just variables/functions on the character
+
+### Asset List Format
+Write this before touching any tools:
+ASSETS:
+1. BP_Name — Type — one-line purpose
+2. ...
+N. Modify @ExistingBP — changes needed
+
+### Communication Between Assets
+After listing assets, identify how they communicate:
+- Spawner→Spawned: SpawnActor + set variables on the spawned actor
+- Parent→Child: attach via AttachToComponent, access via stored reference
+- Peer→Peer: Blueprint Interface (multiple types) or direct cast (one known type)
+- Notify: Event Dispatchers for one-to-many state broadcasts
+
 ---
 ## Cross-Blueprint Communication Patterns
 
