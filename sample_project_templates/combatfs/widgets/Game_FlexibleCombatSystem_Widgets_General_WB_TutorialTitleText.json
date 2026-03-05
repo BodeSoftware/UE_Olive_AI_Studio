@@ -1,0 +1,361 @@
+{
+  "schema_version": "1.0",
+  "name": "WB_TutorialTitleText",
+  "path": "/Game/FlexibleCombatSystem/Widgets/General/WB_TutorialTitleText.WB_TutorialTitleText",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "UserWidget",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": true,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "interfaces": [
+    {
+      "name": "I_WidgetTrainingRoomInterface_C",
+      "path": "/Game/FlexibleCombatSystem/Blueprints/Miscellaneous/DemoLevels/I_WidgetTrainingRoomInterface.I_WidgetTrainingRoomInterface",
+      "required_functions": [
+        "UpdateText",
+        "ExecuteUbergraph"
+      ]
+    }
+  ],
+  "variables": [
+    {
+      "name": "Text",
+      "type": {
+        "category": "text"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 6,
+        "connection_count": 10,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "UpdateText",
+            "owning_class": "SKEL_I_WidgetTrainingRoomInterface_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              },
+              {
+                "name": "Text",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_4.Text"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "Event",
+            "function": "PreConstruct",
+            "owning_class": "UserWidget",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "IsDesignTime",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "NPC_ChatBox",
+            "pins_out": [
+              {
+                "name": "NPC_ChatBox",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_3.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "SetText",
+            "owning_class": "TextBlock",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                }
+              },
+              {
+                "name": "InText",
+                "type": {
+                  "category": "text"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableSet",
+            "variable": "Text",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Text",
+                "type": {
+                  "category": "text"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "text"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "Text",
+            "pins_out": [
+              {
+                "name": "Text",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_3.InText"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "OnMouseButtonDown",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "MyGeometry",
+            "display_name": "My Geometry",
+            "type": {
+              "category": "struct",
+              "struct_name": "Geometry"
+            }
+          },
+          {
+            "name": "MouseEvent",
+            "display_name": "Mouse Event",
+            "type": {
+              "category": "struct",
+              "struct_name": "PointerEvent",
+              "is_reference": true,
+              "is_const": true
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "struct",
+              "struct_name": "EventReply"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 2,
+        "connection_count": 0,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "OnMouseButtonDown",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "MyGeometry",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Geometry"
+                }
+              },
+              {
+                "name": "MouseEvent",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PointerEvent",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "OnMouseButtonDown",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "EventReply"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

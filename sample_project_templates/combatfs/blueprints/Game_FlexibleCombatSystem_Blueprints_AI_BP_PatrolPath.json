@@ -1,0 +1,2727 @@
+{
+  "schema_version": "1.0",
+  "name": "BP_PatrolPath",
+  "path": "/Game/FlexibleCombatSystem/Blueprints/AI/BP_PatrolPath.BP_PatrolPath",
+  "type": "Normal",
+  "parent_class": {
+    "name": "Actor",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "SplinePointLocation",
+      "type": {
+        "category": "struct",
+        "struct_name": "Vector"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MaxSplinePoints",
+      "type": {
+        "category": "int"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CurrentSplinePoint",
+      "type": {
+        "category": "int"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Reverse",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "LoopClosed?",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SplinePointRotation",
+      "type": {
+        "category": "struct",
+        "struct_name": "Rotator"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Complete",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SplinePointTransform",
+      "type": {
+        "category": "struct",
+        "struct_name": "Transform"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DefaultSceneRoot",
+      "type": {
+        "category": "object",
+        "class": "SceneComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Billboard",
+      "type": {
+        "category": "object",
+        "class": "BillboardComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Spline",
+      "type": {
+        "category": "object",
+        "class": "SplineComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Camera1",
+      "type": {
+        "category": "object",
+        "class": "CameraComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Camera2",
+      "type": {
+        "category": "object",
+        "class": "CameraComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Camera3",
+      "type": {
+        "category": "object",
+        "class": "CameraComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Camera4",
+      "type": {
+        "category": "object",
+        "class": "CameraComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "TextRender1",
+      "type": {
+        "category": "object",
+        "class": "TextRenderComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "TextRender2",
+      "type": {
+        "category": "object",
+        "class": "TextRenderComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "TextRender3",
+      "type": {
+        "category": "object",
+        "class": "TextRenderComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "TextRender4",
+      "type": {
+        "category": "object",
+        "class": "TextRenderComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "components": {
+    "root": "DefaultSceneRoot",
+    "tree": [
+      {
+        "name": "DefaultSceneRoot",
+        "class": "SceneComponent",
+        "is_root": true,
+        "children": [
+          {
+            "name": "Billboard",
+            "class": "BillboardComponent",
+            "properties": {
+              "RelativeLocation": "(X=0.000000,Y=0.000000,Z=148.000000)",
+              "RelativeScale3D": "(X=3.322067,Y=3.322067,Z=3.322067)"
+            }
+          },
+          {
+            "name": "Spline",
+            "class": "SplineComponent",
+            "properties": {
+              "Spline": "SplineData SplineDataLen=4 SplineData=AA==\r\n",
+              "SplineCurves": "(Position=(Points=((ArriveTangent=(X=318.000000,Y=0.000000,Z=0.000000),LeaveTangent=(X=318.000000,Y=0.000000,Z=0.000000),InterpMode=CIM_CurveAuto),(InVal=1.000000,OutVal=(X=318.000000,Y=0.000000,Z=0.000000),ArriveTangent=(X=318.000000,Y=0.000000,Z=0.000000),LeaveTangent=(X=318.000000,Y=0.000000,Z=0.000000),InterpMode=CIM_CurveAuto))),Rotation=(Points=((OutVal=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),ArriveTangent=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),LeaveTangent=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),InterpMode=CIM_CurveAuto),(InVal=1.000000,OutVal=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),ArriveTangent=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),LeaveTangent=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),InterpMode=CIM_CurveAuto))),Scale=(Points=((OutVal=(X=1.000000,Y=1.000000,Z=1.000000),InterpMode=CIM_CurveAuto),(InVal=1.000000,OutVal=(X=1.000000,Y=1.000000,Z=1.000000),InterpMode=CIM_CurveAuto))),ReparamTable=(Points=((),(InVal=31.800003,OutVal=0.100000),(InVal=63.600006,OutVal=0.200000),(InVal=95.400009,OutVal=0.300000),(InVal=127.200012,OutVal=0.400000),(InVal=159.000015,OutVal=0.500000),(InVal=190.800018,OutVal=0.600000),(InVal=222.600021,OutVal=0.700000),(InVal=254.400024,OutVal=0.800000),(InVal=286.200043,OutVal=0.900000),(InVal=318.000031,OutVal=1.000000))))",
+              "EditorSelectedSplineSegmentColor": "(R=0.728000,G=0.364000,B=0.003000,A=1.000000)"
+            }
+          },
+          {
+            "name": "Camera1",
+            "class": "CameraComponent",
+            "properties": {
+              "OrthoWidth": "512.000000",
+              "bAutoCalculateOrthoPlanes": "False",
+              "OrthoNearClipPlane": "0.000000"
+            }
+          },
+          {
+            "name": "Camera2",
+            "class": "CameraComponent",
+            "properties": {
+              "OrthoWidth": "512.000000",
+              "bAutoCalculateOrthoPlanes": "False",
+              "OrthoNearClipPlane": "0.000000"
+            }
+          },
+          {
+            "name": "Camera3",
+            "class": "CameraComponent",
+            "properties": {
+              "OrthoWidth": "512.000000",
+              "bAutoCalculateOrthoPlanes": "False",
+              "OrthoNearClipPlane": "0.000000"
+            }
+          },
+          {
+            "name": "Camera4",
+            "class": "CameraComponent",
+            "properties": {
+              "OrthoWidth": "512.000000",
+              "bAutoCalculateOrthoPlanes": "False",
+              "OrthoNearClipPlane": "0.000000"
+            }
+          },
+          {
+            "name": "TextRender1",
+            "class": "TextRenderComponent",
+            "properties": {
+              "Text": "NSLOCTEXT(\"[6BCDEAAC4767BF338A478AABEA79285B]\", \"67E6BA9D4733A90B19E231A96E94AE70\", \"1\")",
+              "HorizontalAlignment": "EHTA_Center",
+              "RelativeScale3D": "(X=6.656250,Y=6.656250,Z=6.656250)",
+              "bHiddenInGame": "True"
+            }
+          },
+          {
+            "name": "TextRender2",
+            "class": "TextRenderComponent",
+            "properties": {
+              "Text": "NSLOCTEXT(\"[6BCDEAAC4767BF338A478AABEA79285B]\", \"1EB902F74A874C6FF798568759FBE3B0\", \"2\")",
+              "HorizontalAlignment": "EHTA_Center",
+              "RelativeScale3D": "(X=6.656250,Y=6.656250,Z=6.656250)",
+              "bHiddenInGame": "True"
+            }
+          },
+          {
+            "name": "TextRender3",
+            "class": "TextRenderComponent",
+            "properties": {
+              "Text": "NSLOCTEXT(\"[6BCDEAAC4767BF338A478AABEA79285B]\", \"4459347C4CCA9D489B67DCA9C6E64326\", \"3\")",
+              "HorizontalAlignment": "EHTA_Center",
+              "RelativeScale3D": "(X=6.656250,Y=6.656250,Z=6.656250)",
+              "bHiddenInGame": "True"
+            }
+          },
+          {
+            "name": "TextRender4",
+            "class": "TextRenderComponent",
+            "properties": {
+              "Text": "NSLOCTEXT(\"[6BCDEAAC4767BF338A478AABEA79285B]\", \"691866594F772F26817388BC64F5A2CB\", \"4\")",
+              "HorizontalAlignment": "EHTA_Center",
+              "RelativeScale3D": "(X=6.656250,Y=6.656250,Z=6.656250)",
+              "bHiddenInGame": "True"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 57,
+        "connection_count": 76,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "VariableSet",
+            "variable": "MaxSplinePoints",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "MaxSplinePoints",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableSet",
+            "variable": "SplinePointLocation",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SplinePointLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_40.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "GetNumberOfSplinePoints",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_0.MaxSplinePoints"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "GetLocationAtSplinePoint",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "PointIndex",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "CoordinateSpace",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "World"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_1.SplinePointLocation"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CustomEvent",
+            "function": "UpdatePatrolSequence",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "CurrentSplinePoint",
+            "pins_out": [
+              {
+                "name": "CurrentSplinePoint",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_3.PointIndex",
+                  "node_39.PointIndex"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "UpdatePatrolSequence",
+            "owning_class": "SKEL_BP_PatrolPath_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "Event",
+            "function": "ReceiveBeginPlay",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_0.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "VariableGet",
+            "variable": "CurrentSplinePoint",
+            "pins_out": [
+              {
+                "name": "CurrentSplinePoint",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "CurrentSplinePoint",
+            "pins_out": [
+              {
+                "name": "CurrentSplinePoint",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_11.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "MaxSplinePoints",
+            "pins_out": [
+              {
+                "name": "MaxSplinePoints",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_11.B"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "CallFunction",
+            "function": "EqualEqual_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_12.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_14.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_13",
+            "type": "CallFunction",
+            "function": "IsClosedLoop",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_14.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_15.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_16.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_15",
+            "type": "VariableSet",
+            "variable": "CurrentSplinePoint",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "CurrentSplinePoint",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_37.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "VariableSet",
+            "variable": "Reverse",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Reverse",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_24.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_12.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_18",
+            "type": "VariableGet",
+            "variable": "Reverse",
+            "pins_out": [
+              {
+                "name": "Reverse",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_17.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "VariableGet",
+            "variable": "CurrentSplinePoint",
+            "pins_out": [
+              {
+                "name": "CurrentSplinePoint",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "VariableSet",
+            "variable": "Reverse",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Reverse",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_21",
+            "type": "VariableGet",
+            "variable": "CurrentSplinePoint",
+            "pins_out": [
+              {
+                "name": "CurrentSplinePoint",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_22",
+            "type": "VariableGet",
+            "variable": "CurrentSplinePoint",
+            "pins_out": [
+              {
+                "name": "CurrentSplinePoint",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_23.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "CallFunction",
+            "function": "EqualEqual_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_24.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_20.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_25",
+            "type": "VariableGet",
+            "variable": "CurrentSplinePoint",
+            "pins_out": [
+              {
+                "name": "CurrentSplinePoint",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_36",
+            "type": "VariableSet",
+            "variable": "Complete",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Complete",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_37",
+            "type": "VariableSet",
+            "variable": "Complete",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Complete",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_38",
+            "type": "VariableSet",
+            "variable": "Complete",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Complete",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_17.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_39",
+            "type": "CallFunction",
+            "function": "GetTransformAtSplinePoint",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "PointIndex",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "CoordinateSpace",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "World"
+              },
+              {
+                "name": "bUseScale",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Transform"
+                },
+                "connections": [
+                  "node_40.SplinePointTransform"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_40",
+            "type": "VariableSet",
+            "variable": "SplinePointTransform",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SplinePointTransform",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Transform"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_38.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Transform"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_41",
+            "type": "VariableSet",
+            "variable": "Complete",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Complete",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_42",
+            "type": "VariableGet",
+            "variable": "Spline",
+            "pins_out": [
+              {
+                "name": "Spline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_3.self",
+                  "node_39.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_43",
+            "type": "VariableGet",
+            "variable": "Spline",
+            "pins_out": [
+              {
+                "name": "Spline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_13.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_44",
+            "type": "VariableGet",
+            "variable": "Spline",
+            "pins_out": [
+              {
+                "name": "Spline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_2.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_45",
+            "type": "VariableGet",
+            "variable": "Camera1",
+            "pins_out": [
+              {
+                "name": "Camera1",
+                "type": {
+                  "category": "object",
+                  "class": "CameraComponent"
+                },
+                "connections": [
+                  "node_53.[0]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_46",
+            "type": "VariableGet",
+            "variable": "Camera2",
+            "pins_out": [
+              {
+                "name": "Camera2",
+                "type": {
+                  "category": "object",
+                  "class": "CameraComponent"
+                },
+                "connections": [
+                  "node_53.[1]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_47",
+            "type": "VariableGet",
+            "variable": "Camera3",
+            "pins_out": [
+              {
+                "name": "Camera3",
+                "type": {
+                  "category": "object",
+                  "class": "CameraComponent"
+                },
+                "connections": [
+                  "node_53.[2]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_48",
+            "type": "VariableGet",
+            "variable": "Camera4",
+            "pins_out": [
+              {
+                "name": "Camera4",
+                "type": {
+                  "category": "object",
+                  "class": "CameraComponent"
+                },
+                "connections": [
+                  "node_53.[3]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_49",
+            "type": "VariableGet",
+            "variable": "TextRender1",
+            "pins_out": [
+              {
+                "name": "TextRender1",
+                "type": {
+                  "category": "object",
+                  "class": "TextRenderComponent"
+                },
+                "connections": [
+                  "node_54.[0]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_50",
+            "type": "VariableGet",
+            "variable": "TextRender2",
+            "pins_out": [
+              {
+                "name": "TextRender2",
+                "type": {
+                  "category": "object",
+                  "class": "TextRenderComponent"
+                },
+                "connections": [
+                  "node_54.[1]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_51",
+            "type": "VariableGet",
+            "variable": "TextRender3",
+            "pins_out": [
+              {
+                "name": "TextRender3",
+                "type": {
+                  "category": "object",
+                  "class": "TextRenderComponent"
+                },
+                "connections": [
+                  "node_54.[2]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_52",
+            "type": "VariableGet",
+            "variable": "TextRender4",
+            "pins_out": [
+              {
+                "name": "TextRender4",
+                "type": {
+                  "category": "object",
+                  "class": "TextRenderComponent"
+                },
+                "connections": [
+                  "node_54.[3]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_53",
+            "type": "K2Node_MakeArray",
+            "title": "Make Array",
+            "pins_in": [
+              {
+                "name": "[0]",
+                "type": {
+                  "category": "object",
+                  "class": "CameraComponent"
+                }
+              },
+              {
+                "name": "[1]",
+                "type": {
+                  "category": "object",
+                  "class": "CameraComponent"
+                }
+              },
+              {
+                "name": "[2]",
+                "type": {
+                  "category": "object",
+                  "class": "CameraComponent"
+                }
+              },
+              {
+                "name": "[3]",
+                "type": {
+                  "category": "object",
+                  "class": "CameraComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"CameraComponent\"\r\n}"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_54",
+            "type": "K2Node_MakeArray",
+            "title": "Make Array",
+            "pins_in": [
+              {
+                "name": "[0]",
+                "type": {
+                  "category": "object",
+                  "class": "TextRenderComponent"
+                }
+              },
+              {
+                "name": "[1]",
+                "type": {
+                  "category": "object",
+                  "class": "TextRenderComponent"
+                }
+              },
+              {
+                "name": "[2]",
+                "type": {
+                  "category": "object",
+                  "class": "TextRenderComponent"
+                }
+              },
+              {
+                "name": "[3]",
+                "type": {
+                  "category": "object",
+                  "class": "TextRenderComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"TextRenderComponent\"\r\n}"
+                },
+                "connections": [
+                  "node_55.Array"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_55",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"TextRenderComponent\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "object",
+                  "class": "TextRenderComponent"
+                },
+                "connections": [
+                  "node_56.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_56",
+            "type": "CallFunction",
+            "function": "K2_DestroyComponent",
+            "owning_class": "ActorComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ActorComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 25,
+        "connection_count": 46,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "SetClosedLoop",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "bInClosedLoop",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "bUpdateSpline",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "LoopClosed?",
+            "pins_out": [
+              {
+                "name": "LoopClosed?",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_1.bInClosedLoop"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "Spline",
+            "pins_out": [
+              {
+                "name": "Spline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_1.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "GetNumberOfSplinePoints",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "Spline",
+            "pins_out": [
+              {
+                "name": "Spline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_4.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "Camera1",
+            "pins_out": [
+              {
+                "name": "Camera1",
+                "type": {
+                  "category": "object",
+                  "class": "CameraComponent"
+                },
+                "connections": [
+                  "node_14.[0]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "VariableGet",
+            "variable": "Camera2",
+            "pins_out": [
+              {
+                "name": "Camera2",
+                "type": {
+                  "category": "object",
+                  "class": "CameraComponent"
+                },
+                "connections": [
+                  "node_14.[1]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "VariableGet",
+            "variable": "Camera3",
+            "pins_out": [
+              {
+                "name": "Camera3",
+                "type": {
+                  "category": "object",
+                  "class": "CameraComponent"
+                },
+                "connections": [
+                  "node_14.[2]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "Camera4",
+            "pins_out": [
+              {
+                "name": "Camera4",
+                "type": {
+                  "category": "object",
+                  "class": "CameraComponent"
+                },
+                "connections": [
+                  "node_14.[3]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "TextRender1",
+            "pins_out": [
+              {
+                "name": "TextRender1",
+                "type": {
+                  "category": "object",
+                  "class": "TextRenderComponent"
+                },
+                "connections": [
+                  "node_17.[0]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "VariableGet",
+            "variable": "TextRender2",
+            "pins_out": [
+              {
+                "name": "TextRender2",
+                "type": {
+                  "category": "object",
+                  "class": "TextRenderComponent"
+                },
+                "connections": [
+                  "node_17.[1]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "VariableGet",
+            "variable": "TextRender3",
+            "pins_out": [
+              {
+                "name": "TextRender3",
+                "type": {
+                  "category": "object",
+                  "class": "TextRenderComponent"
+                },
+                "connections": [
+                  "node_17.[2]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "VariableGet",
+            "variable": "TextRender4",
+            "pins_out": [
+              {
+                "name": "TextRender4",
+                "type": {
+                  "category": "object",
+                  "class": "TextRenderComponent"
+                },
+                "connections": [
+                  "node_17.[3]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "K2Node_MakeArray",
+            "title": "Make Array",
+            "pins_in": [
+              {
+                "name": "[0]",
+                "type": {
+                  "category": "object",
+                  "class": "CameraComponent"
+                }
+              },
+              {
+                "name": "[1]",
+                "type": {
+                  "category": "object",
+                  "class": "CameraComponent"
+                }
+              },
+              {
+                "name": "[2]",
+                "type": {
+                  "category": "object",
+                  "class": "CameraComponent"
+                }
+              },
+              {
+                "name": "[3]",
+                "type": {
+                  "category": "object",
+                  "class": "CameraComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"CameraComponent\"\r\n}"
+                },
+                "connections": [
+                  "node_15.Array"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_15",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"CameraComponent\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "object",
+                  "class": "CameraComponent"
+                },
+                "connections": [
+                  "node_23.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_16",
+            "type": "CallFunction",
+            "function": "Subtract_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_15.Dimension 1"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "K2Node_MakeArray",
+            "title": "Make Array",
+            "pins_in": [
+              {
+                "name": "[0]",
+                "type": {
+                  "category": "object",
+                  "class": "TextRenderComponent"
+                }
+              },
+              {
+                "name": "[1]",
+                "type": {
+                  "category": "object",
+                  "class": "TextRenderComponent"
+                }
+              },
+              {
+                "name": "[2]",
+                "type": {
+                  "category": "object",
+                  "class": "TextRenderComponent"
+                }
+              },
+              {
+                "name": "[3]",
+                "type": {
+                  "category": "object",
+                  "class": "TextRenderComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"TextRenderComponent\"\r\n}"
+                },
+                "connections": [
+                  "node_18.Array"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_18",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"TextRenderComponent\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "object",
+                  "class": "TextRenderComponent"
+                },
+                "connections": [
+                  "node_24.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_19",
+            "type": "CallFunction",
+            "function": "Subtract_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_18.Dimension 1"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "VariableGet",
+            "variable": "Spline",
+            "pins_out": [
+              {
+                "name": "Spline",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_21.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_21",
+            "type": "CallFunction",
+            "function": "GetTransformAtSplinePoint",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "PointIndex",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "CoordinateSpace",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "World"
+              },
+              {
+                "name": "bUseScale",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue_Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_23.NewLocation",
+                  "node_24.NewLocation"
+                ]
+              },
+              {
+                "name": "ReturnValue_Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "connections": [
+                  "node_23.NewRotation",
+                  "node_24.NewRotation"
+                ]
+              },
+              {
+                "name": "ReturnValue_Scale",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_22",
+            "type": "CallFunction",
+            "function": "Subtract_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_21.PointIndex"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "CallFunction",
+            "function": "K2_SetWorldLocationAndRotation",
+            "owning_class": "SceneComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              },
+              {
+                "name": "NewLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "NewRotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "bSweep",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "bTeleport",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SweepHitResult",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "HitResult"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "CallFunction",
+            "function": "K2_SetWorldLocationAndRotation",
+            "owning_class": "SceneComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              },
+              {
+                "name": "NewLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "NewRotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "bSweep",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "bTeleport",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SweepHitResult",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "HitResult"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

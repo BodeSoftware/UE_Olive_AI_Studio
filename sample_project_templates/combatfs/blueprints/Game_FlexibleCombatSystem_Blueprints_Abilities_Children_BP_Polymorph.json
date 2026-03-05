@@ -1,0 +1,412 @@
+{
+  "schema_version": "1.0",
+  "name": "BP_Polymorph",
+  "path": "/Game/FlexibleCombatSystem/Blueprints/Abilities/Children/BP_Polymorph.BP_Polymorph",
+  "type": "Normal",
+  "parent_class": {
+    "name": "BP_AbilityProjectile_C",
+    "source": "blueprint",
+    "path": "/Game/FlexibleCombatSystem/Blueprints/Abilities/BP_AbilityProjectile.BP_AbilityProjectile"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "SkeletalMesh",
+      "type": {
+        "category": "object",
+        "class": "SkeletalMeshComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "HitInfo",
+      "type": {
+        "category": "struct",
+        "struct_name": "HitResult"
+      },
+      "category": "Default",
+      "defined_in": "BP_AbilityProjectile",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "LoopSound",
+      "type": {
+        "category": "object",
+        "class": "AudioComponent"
+      },
+      "category": "Default",
+      "defined_in": "BP_AbilityProjectile",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SpellDamage_0",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "BP_AbilityProjectile",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "StopCharge",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "BP_AbilityProjectile",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    }
+  ],
+  "components": {
+    "root": "DefaultSceneRoot",
+    "tree": [
+      {
+        "name": "SkeletalMesh",
+        "class": "SkeletalMeshComponent",
+        "properties": {
+          "SkeletalMeshAsset": "/Script/Engine.SkeletalMesh'/Game/FlexibleCombatSystem/Meshes/Character/Sheep/SK_Sheep.SK_Sheep'",
+          "ClothingSimulationFactory": "/Script/CoreUObject.Class'/Script/ClothingSystemRuntimeNv.ClothingSimulationFactoryNv'",
+          "SkeletalMesh": "/Script/Engine.SkeletalMesh'/Game/FlexibleCombatSystem/Meshes/Character/Sheep/SK_Sheep.SK_Sheep'",
+          "SkinnedAsset": "/Script/Engine.SkeletalMesh'/Game/FlexibleCombatSystem/Meshes/Character/Sheep/SK_Sheep.SK_Sheep'",
+          "RelativeLocation": "(X=0.000000,Y=0.000000,Z=-30.000000)",
+          "RelativeRotation": "(Pitch=0.000000,Yaw=-90.000183,Roll=0.000000)",
+          "RelativeScale3D": "(X=0.500000,Y=0.500000,Z=0.500000)"
+        }
+      }
+    ]
+  },
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 6,
+        "connection_count": 10,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "ReceiveBeginPlay",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "ReceiveBeginPlay",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "Event",
+            "function": "ReceiveActorBeginOverlap",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "OtherActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_3.OtherActor"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "ReceiveActorBeginOverlap",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "OtherActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "Event",
+            "function": "ReceiveTick",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              },
+              {
+                "name": "DeltaSeconds",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_5.DeltaSeconds"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "ReceiveTick",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DeltaSeconds",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 2,
+        "connection_count": 2,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "UserConstructionScript",
+            "owning_class": "SKEL_BP_AbilityProjectile_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

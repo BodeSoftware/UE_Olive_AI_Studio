@@ -1,0 +1,2848 @@
+{
+  "template_id": "bp_ai_block_dummy",
+  "display_name": "BP_AI_BlockDummy",
+  "tags": "block dummy update anim",
+  "catalog_description": "BP_AI_BlockDummy: BP_AI_Parent-based (child of BP_AI_Parent) blueprint with 2 functions. Handles animation, healing, targeting, and blocking.",
+  "inherited_tags": "ai character faction setup auto activate combat actors camera transition path start location current mid",
+  "source_project": "CombatFS",
+  "depends_on": "bp_ai_parent",
+  "schema_version": "1.0",
+  "name": "BP_AI_BlockDummy",
+  "path": "/Game/FlexibleCombatSystem/Blueprints/AI/Dummy/BP_AI_BlockDummy.BP_AI_BlockDummy",
+  "type": "Normal",
+  "parent_class": {
+    "name": "BP_AI_Parent_C",
+    "source": "blueprint",
+    "path": "/Game/FlexibleCombatSystem/Blueprints/AI/BP_AI_Parent.BP_AI_Parent"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "UpdateAnim",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "AI Faction",
+      "type": {
+        "category": "byte"
+      },
+      "category": "Setup In Game",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AI Setup Data",
+      "type": {
+        "category": "struct",
+        "struct_name": "DataTableRowHandle"
+      },
+      "category": "Setup In Game",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "AutoActivateCombat",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Setup in Game",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ActorsToActivate",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"Actor\"\r\n}"
+      },
+      "category": "Setup in Game",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CameraTransitionPath",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"BP_PatrolPath_C\"\r\n}"
+      },
+      "category": "Setup in Game",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CameraStartLocation",
+      "type": {
+        "category": "struct",
+        "struct_name": "Transform"
+      },
+      "category": "Dialogue Camera Transition",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CameraTransition",
+      "type": {
+        "category": "int"
+      },
+      "category": "Dialogue Camera Transition",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CameraCurrentTransform",
+      "type": {
+        "category": "struct",
+        "struct_name": "Transform"
+      },
+      "category": "Dialogue Camera Transition",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MidCameraMovement",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Dialogue Camera Transition",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Actor to Activate",
+      "type": {
+        "category": "int"
+      },
+      "category": "Dialogue",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Over Time",
+      "type": {
+        "category": "float"
+      },
+      "category": "Dialogue Camera Transition",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DialogueOccuring",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Dialogue",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "PatrolPath",
+      "type": {
+        "category": "object",
+        "class": "BP_PatrolPath_C"
+      },
+      "category": "Setup in Game",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "TimeBetweenMovements",
+      "type": {
+        "category": "float"
+      },
+      "category": "Patrol",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CharacterRef",
+      "type": {
+        "category": "object",
+        "class": "Character"
+      },
+      "category": "References",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "CompanionInventoryType",
+      "type": {
+        "category": "byte"
+      },
+      "category": "Companion",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "IsActiveCompanion",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Companion",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "IsSpawnedCompanion",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Companion",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Dead",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Companion",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CharacterWounded",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Companion",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "TempReviveCharRef",
+      "type": {
+        "category": "object",
+        "class": "Character"
+      },
+      "category": "References",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SkillTrainerComponent",
+      "type": {
+        "category": "object",
+        "class": "SkillTrainerComponent_C"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DialogueComponent",
+      "type": {
+        "category": "object",
+        "class": "DialogueComponent_C"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "QuestComponent",
+      "type": {
+        "category": "object",
+        "class": "QuestGiverComponent_C"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MapTrackerComponent",
+      "type": {
+        "category": "object",
+        "class": "MapTrackingComponent_C"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "RootMotionOff",
+      "type": {
+        "category": "bool"
+      },
+      "category": "AI Status",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "CombatActivated",
+      "type": {
+        "category": "bool"
+      },
+      "category": "AI Status",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "OriginalABP",
+      "type": {
+        "category": "class",
+        "class": "AnimInstance"
+      },
+      "category": "References",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "OriginalAIController",
+      "type": {
+        "category": "class",
+        "class": "Controller"
+      },
+      "category": "References",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CompanionIndex",
+      "type": {
+        "category": "int"
+      },
+      "category": "Companion",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "OriginalTransform",
+      "type": {
+        "category": "struct",
+        "struct_name": "Transform"
+      },
+      "category": "Companion",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Patroling",
+      "type": {
+        "category": "bool"
+      },
+      "category": "AI Status",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Companion Inventory Data",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_SlotInfo\"\r\n}"
+      },
+      "category": "Companion",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AIActive",
+      "type": {
+        "category": "bool"
+      },
+      "category": "AI Status",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "ComponentsSetupBool",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Status",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "InventoryComponent",
+      "type": {
+        "category": "object",
+        "class": "InventoryComponent_C"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "LootComponent",
+      "type": {
+        "category": "object",
+        "class": "LootComponent_C"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "OutlineComponent",
+      "type": {
+        "category": "object",
+        "class": "OutlineComponent_C"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MovementStatusComponent",
+      "type": {
+        "category": "object",
+        "class": "MovementStatusComponent_C"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "ResourceComponent",
+      "type": {
+        "category": "object",
+        "class": "ResourceComponent_C"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "CombatStatusComponent",
+      "type": {
+        "category": "object",
+        "class": "CombatStatusComponent_C"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "EquipmentComponent",
+      "type": {
+        "category": "object",
+        "class": "EquipmentComponent_C"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "TakingDamageComponent",
+      "type": {
+        "category": "object",
+        "class": "TakingDamage_C"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "PhysicalReactComponent",
+      "type": {
+        "category": "object",
+        "class": "PhysicalReactComponent_C"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "InputBufferComponent",
+      "type": {
+        "category": "object",
+        "class": "InputBufferComponent_C"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MeleeComponent",
+      "type": {
+        "category": "object",
+        "class": "MeleeComponent_C"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "RangedComponent",
+      "type": {
+        "category": "object",
+        "class": "RangedComponent_C"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "MagicComponent",
+      "type": {
+        "category": "object",
+        "class": "MagicComponent_C"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "BuffComponent",
+      "type": {
+        "category": "object",
+        "class": "BuffComponent_C"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "AI Weapons",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_AI-Weapons\"\r\n}"
+      },
+      "category": "AI Status",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CombatABP",
+      "type": {
+        "category": "class",
+        "class": "Object"
+      },
+      "category": "Initialize",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CompanionDisappearTime",
+      "type": {
+        "category": "float"
+      },
+      "category": "Companion",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "PlayerValidTimer",
+      "type": {
+        "category": "struct",
+        "struct_name": "TimerHandle"
+      },
+      "category": "Initialize",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "HasEnemyTarget",
+      "type": {
+        "category": "bool"
+      },
+      "category": "AI Status",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "InitializeTimer",
+      "type": {
+        "category": "struct",
+        "struct_name": "TimerHandle"
+      },
+      "category": "Initialize",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SummonedCompanion",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Companion",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DialogueSpawnedCam",
+      "type": {
+        "category": "object",
+        "class": "CameraComponent"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DialogueDamageTaken",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Dialogue",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "CompanionDisbandAnim",
+      "type": {
+        "category": "struct",
+        "struct_name": "DataTableRowHandle"
+      },
+      "category": "Companion",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CompanionDisbandWithItems",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Companion",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CompanionDisbandItems",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_SlotInfo\"\r\n}"
+      },
+      "category": "Companion",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Summoned Ally Special Dmg",
+      "type": {
+        "category": "struct",
+        "struct_name": "S_SpecialDamageInfo"
+      },
+      "category": "Default",
+      "defined_in": "BP_AI_Parent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 50,
+        "connection_count": 90,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "K2_SetTimerDelegate",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Delegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "Time",
+                "type": {
+                  "category": "float"
+                },
+                "default": "3.000000"
+              },
+              {
+                "name": "bLooping",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "bMaxOncePerFrame",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "InitialStartDelay",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "InitialStartDelayVariance",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "TimerHandle"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "GetDistanceTo",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "OtherActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor",
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_4.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "K2Node_Self",
+            "title": "Self-Reference",
+            "pins_out": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                },
+                "connections": [
+                  "node_2.OtherActor"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "Less_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1000.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_17.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "HealthHUD",
+            "pins_out": [
+              {
+                "name": "HealthHUD",
+                "type": {
+                  "category": "object",
+                  "class": "WidgetComponent"
+                },
+                "connections": [
+                  "node_16.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "VariableSet",
+            "variable": "Health",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Health",
+                "type": {
+                  "category": "float"
+                },
+                "default": "5000.000000"
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "EquipmentComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "EquipmentComponent_C"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "VariableSet",
+            "variable": "MaxHealth",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "MaxHealth",
+                "type": {
+                  "category": "float"
+                },
+                "default": "5000.000000"
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "EquipmentComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_44.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "EquipmentComponent_C"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "VariableGet",
+            "variable": "EquipmentComponent",
+            "pins_out": [
+              {
+                "name": "EquipmentComponent",
+                "type": {
+                  "category": "object",
+                  "class": "EquipmentComponent_C"
+                },
+                "connections": [
+                  "node_6.self",
+                  "node_7.self",
+                  "node_44.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "CombatStatusComponent",
+            "pins_out": [
+              {
+                "name": "CombatStatusComponent",
+                "type": {
+                  "category": "object",
+                  "class": "CombatStatusComponent_C"
+                },
+                "connections": [
+                  "node_29.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "CustomEvent",
+            "function": "Block",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                },
+                "connections": [
+                  "node_15.InputPin"
+                ]
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_11",
+            "type": "CallFunction",
+            "function": "GetPlayerCharacter",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "PlayerIndex",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                },
+                "connections": [
+                  "node_2.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "VariableGet",
+            "variable": "CombatStatusComponent",
+            "pins_out": [
+              {
+                "name": "CombatStatusComponent",
+                "type": {
+                  "category": "object",
+                  "class": "CombatStatusComponent_C"
+                },
+                "connections": [
+                  "node_13.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "CallFunction",
+            "function": "AI-UpdateWeaponStyle",
+            "owning_class": "SKEL_CombatStatusComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "CombatStatusComponent_C"
+                }
+              },
+              {
+                "name": "MovementStance",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator2"
+              },
+              {
+                "name": "Current Combat Stance",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "AI Equipped Weapons",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_AI-Weapons"
+                }
+              },
+              {
+                "name": "Setup",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "CallFunction",
+            "function": "SetHiddenInGame",
+            "owning_class": "SceneComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SceneComponent"
+                }
+              },
+              {
+                "name": "NewHidden",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "bPropagateToChildren",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "CallFunction",
+            "function": "Not_PreBool",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_16.NewHidden"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "Event",
+            "function": "ServerActivateAI",
+            "owning_class": "SKEL_I_AI_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_32.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "VariableSet",
+            "variable": "UpdateAnim",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "UpdateAnim",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_13.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_21",
+            "type": "VariableGet",
+            "variable": "AI Setup Data",
+            "pins_out": [
+              {
+                "name": "AI Setup Data",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                },
+                "connections": [
+                  "node_22.DataSetup"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_22",
+            "type": "CallFunction",
+            "function": "Get AI Data",
+            "owning_class": "SKEL_FunctionLibrary_C",
+            "pins_in": [
+              {
+                "name": "DataSetup",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "AI-Data",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_AI-Data"
+                },
+                "connections": [
+                  "node_23.S_AI-Data"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S AI-Data",
+            "pins_in": [
+              {
+                "name": "S_AI-Data",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_AI-Data",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "CombatData_12_649E195942C2E72D08330F8984AC9125",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_AI-CombatData"
+                },
+                "connections": [
+                  "node_24.S_AI-CombatData"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_24",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S AI-Combat Data",
+            "pins_in": [
+              {
+                "name": "S_AI-CombatData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_AI-CombatData",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "CombatABP_60_F828947D4BEB3B8F4E3D5F9438B0BCE0",
+                "type": {
+                  "category": "class",
+                  "class": "AnimInstance"
+                },
+                "connections": [
+                  "node_25.AssetClass"
+                ]
+              },
+              {
+                "name": "CombatStances_41_E4B31F93441AE16B2FBA48848EAA483F",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_AI-CombatStance\"\r\n}"
+                },
+                "connections": [
+                  "node_27.Array"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_25",
+            "type": "K2Node_LoadAssetClass",
+            "title": "Async Load Class Asset",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AssetClass",
+                "type": {
+                  "category": "class",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Completed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_26.execute"
+                ]
+              },
+              {
+                "name": "Class",
+                "type": {
+                  "category": "class",
+                  "class": "Object"
+                },
+                "connections": [
+                  "node_26.CombatABP"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_26",
+            "type": "VariableSet",
+            "variable": "CombatABP",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "CombatABP",
+                "type": {
+                  "category": "class",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_20.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "class",
+                  "class": "Object"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_AI-CombatStance\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_AI-CombatStance",
+                  "is_reference": true
+                },
+                "connections": [
+                  "node_28.S_AI-CombatStance"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_28",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S AI-Combat Stance",
+            "pins_in": [
+              {
+                "name": "S_AI-CombatStance",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_AI-CombatStance",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "MovementAnimations_18_1483AED14253DBCB1968418F84D4F995",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_13.MovementStance"
+                ]
+              },
+              {
+                "name": "WeaponAnimations_20_83FFE6D64041B16A78A6FAA624A7F86E",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                }
+              },
+              {
+                "name": "MainHandWeapon_14_EF4B7E224CB98106ACF88D8924E5A3E0",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                }
+              },
+              {
+                "name": "OffHandWeapon_19_71CE9C004DF5C618DE1276B0CEB9E63C",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_29",
+            "type": "CallFunction",
+            "function": "MC_DrawWeapon",
+            "owning_class": "SKEL_CombatStatusComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "CombatStatusComponent_C"
+                }
+              },
+              {
+                "name": "MontageToPlay",
+                "type": {
+                  "category": "object",
+                  "class": "AnimMontage"
+                },
+                "default": "/Game/FlexibleCombatSystem/Animation/UE5-Mannequin/MainAndShield/M_MHS_DrawWeapon.M_MHS_DrawWeapon"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_41.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "VariableGet",
+            "variable": "AI Weapons",
+            "pins_out": [
+              {
+                "name": "AI Weapons",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_AI-Weapons\"\r\n}"
+                },
+                "connections": [
+                  "node_31.Array"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_31",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_AI-Weapons\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_AI-Weapons",
+                  "is_reference": true
+                },
+                "connections": [
+                  "node_13.AI Equipped Weapons"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_32",
+            "type": "CallFunction",
+            "function": "ServerActivateAI",
+            "owning_class": "SKEL_BP_AI_Parent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_25.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_33",
+            "type": "VariableGet",
+            "variable": "HealthHUD",
+            "pins_out": [
+              {
+                "name": "HealthHUD",
+                "type": {
+                  "category": "object",
+                  "class": "WidgetComponent"
+                },
+                "connections": [
+                  "node_34.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_34",
+            "type": "CallFunction",
+            "function": "GetUserWidgetObject",
+            "owning_class": "WidgetComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WidgetComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "UserWidget"
+                },
+                "connections": [
+                  "node_47.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_35",
+            "type": "K2Node_Self",
+            "title": "Self-Reference",
+            "pins_out": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                },
+                "connections": [
+                  "node_47.Character"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_36",
+            "type": "VariableGet",
+            "variable": "AI Setup Data",
+            "pins_out": [
+              {
+                "name": "AI Setup Data",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                },
+                "connections": [
+                  "node_37.DataSetup"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_37",
+            "type": "CallFunction",
+            "function": "Get AI Data",
+            "owning_class": "SKEL_FunctionLibrary_C",
+            "pins_in": [
+              {
+                "name": "DataSetup",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "AI-Data",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_AI-Data"
+                },
+                "connections": [
+                  "node_38.S_AI-Data"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_38",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S AI-Data",
+            "pins_in": [
+              {
+                "name": "S_AI-Data",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_AI-Data",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "CombatData_12_649E195942C2E72D08330F8984AC9125",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_AI-CombatData"
+                },
+                "connections": [
+                  "node_47.AI Combat Data"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_40",
+            "type": "CustomEvent",
+            "function": "MC_BlockUp",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_41",
+            "type": "CallFunction",
+            "function": "MC_BlockUp",
+            "owning_class": "SKEL_BP_AI_BlockDummy_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_44",
+            "type": "CallFunction",
+            "function": "MulticastRPC",
+            "owning_class": "SKEL_EquipmentComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "EquipmentComponent_C"
+                }
+              },
+              {
+                "name": "Update",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_29.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_45",
+            "type": "Event",
+            "function": "ReceiveBeginPlay",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_46.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_46",
+            "type": "CallFunction",
+            "function": "ReceiveBeginPlay",
+            "owning_class": "SKEL_BP_AI_Parent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_47",
+            "type": "CallFunction",
+            "function": "InitializeEnemyHealth",
+            "owning_class": "SKEL_I_WidgetInterface_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              },
+              {
+                "name": "Character",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                }
+              },
+              {
+                "name": "AI Combat Data",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_AI-CombatData"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_48",
+            "type": "VariableGet",
+            "variable": "DefensiveComponent",
+            "pins_out": [
+              {
+                "name": "DefensiveComponent",
+                "type": {
+                  "category": "object",
+                  "class": "DefensiveComponent_C"
+                },
+                "connections": [
+                  "node_49.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_49",
+            "type": "CallFunction",
+            "function": "SR_BeginBlock",
+            "owning_class": "SKEL_DefensiveComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "DefensiveComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_16.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "Block",
+            "type": "CustomEvent",
+            "tags": "block blocking targeting"
+          },
+          {
+            "name": "ServerActivateAI",
+            "type": "Event",
+            "tags": "server activate ai"
+          },
+          {
+            "name": "MC_BlockUp",
+            "type": "CustomEvent",
+            "tags": "mc block up blocking targeting"
+          },
+          {
+            "name": "ReceiveBeginPlay",
+            "type": "Event",
+            "tags": "receive begin play"
+          }
+        ],
+        "tags": "block blocking targeting server activate ai mc up"
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 2,
+        "connection_count": 2,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "UserConstructionScript",
+            "owning_class": "SKEL_BP_AI_Parent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      },
+      {
+        "name": "OnRep_UpdateAnim",
+        "graph_type": "Function",
+        "access": "private",
+        "node_count": 6,
+        "connection_count": 11,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "OnRep_UpdateAnim",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "SetAnimInstanceClass",
+            "owning_class": "SkeletalMeshComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                }
+              },
+              {
+                "name": "NewClass",
+                "type": {
+                  "category": "class",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "GetAnimInstance",
+            "owning_class": "SkeletalMeshComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "AnimInstance"
+                },
+                "connections": [
+                  "node_4.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "Mesh",
+            "pins_out": [
+              {
+                "name": "Mesh",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                },
+                "connections": [
+                  "node_1.self",
+                  "node_2.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "SetupAI-ABP",
+            "owning_class": "SKEL_I_AI-ABP_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "CombatABP",
+            "pins_out": [
+              {
+                "name": "CombatABP",
+                "type": {
+                  "category": "class",
+                  "class": "Object"
+                },
+                "connections": [
+                  "node_1.NewClass"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ],
+        "tags": "rep update anim instance setup mesh combat abp",
+        "description": "OnRep_UpdateAnim: Handles update anim animation."
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

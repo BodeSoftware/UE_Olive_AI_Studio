@@ -1,0 +1,847 @@
+{
+  "schema_version": "1.0",
+  "name": "T_ShouldSwitchAttackStyle",
+  "path": "/Game/FlexibleCombatSystem/Blueprints/AI/Tasks/GeneralCombat/T_ShouldSwitchAttackStyle.T_ShouldSwitchAttackStyle",
+  "type": "Normal",
+  "parent_class": {
+    "name": "BTTask_BlueprintBase",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 39,
+        "connection_count": 100,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "ReceiveExecuteAI",
+            "owning_class": "BTTask_BlueprintBase",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "OwnerController",
+                "type": {
+                  "category": "object",
+                  "class": "AIController"
+                },
+                "connections": [
+                  "node_3.Object"
+                ]
+              },
+              {
+                "name": "ControlledPawn",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                },
+                "connections": [
+                  "node_31.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "FinishExecute",
+            "owning_class": "BTTask_BlueprintBase",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BTTask_BlueprintBase"
+                }
+              },
+              {
+                "name": "bSuccess",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "Cast",
+            "title": "Cast To BP_AIController",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_8.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AsBP AIController",
+                "type": {
+                  "category": "object",
+                  "class": "BP_AIController_C"
+                },
+                "connections": [
+                  "node_29.InputPin",
+                  "node_23.self"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "BP_AIController_C",
+              "TargetClassPath": "/Game/FlexibleCombatSystem/Blueprints/AI/BP_AIController.BP_AIController_C"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "GetDistanceTo",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "OtherActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor",
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_6.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "EnemyTarget",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_AIController_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "EnemyTarget",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_4.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "BP_AIController_C"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "Greater_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_9.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "VariableGet",
+            "variable": "Melee To Ranged Switch",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_AIController_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Melee To Ranged Switch",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_34.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "BP_AIController_C"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_9.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_14.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_9",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_12.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_10",
+            "type": "CallFunction",
+            "function": "Update Combat Stance",
+            "owning_class": "SKEL_I_AIController_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              },
+              {
+                "name": "Combat Stance",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_38.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "CallFunction",
+            "function": "Update Combat Stance",
+            "owning_class": "SKEL_I_AIController_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              },
+              {
+                "name": "Combat Stance",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_19.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_11.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_15",
+            "type": "CallFunction",
+            "function": "GetDistanceTo",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "OtherActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor",
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_17.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "VariableGet",
+            "variable": "EnemyTarget",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_AIController_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "EnemyTarget",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_15.OtherActor"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "BP_AIController_C"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "CallFunction",
+            "function": "Greater_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_19.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "VariableGet",
+            "variable": "Melee To Ranged Switch",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_AIController_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Melee To Ranged Switch",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_35.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "BP_AIController_C"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_10.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_21.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_23",
+            "type": "VariableGet",
+            "variable": "HasMeleeStance",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_AIController_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "HasMeleeStance",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_CombatStanceIndex"
+                },
+                "connections": [
+                  "node_25.S_CombatStanceIndex"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "BP_AIController_C"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "VariableGet",
+            "variable": "HasRangedStance",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_AIController_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "HasRangedStance",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_CombatStanceIndex"
+                },
+                "connections": [
+                  "node_26.S_CombatStanceIndex"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "BP_AIController_C"
+            }
+          },
+          {
+            "id": "node_25",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Combat Stance Index",
+            "pins_in": [
+              {
+                "name": "S_CombatStanceIndex",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_CombatStanceIndex",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "HasCombatStance_1_1E5DD4BE48AD9055A4756E801019C803",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_8.Condition"
+                ]
+              },
+              {
+                "name": "CombatStanceIndex_4_465EDF394D29172858C6868743491293",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_33.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_26",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Combat Stance Index",
+            "pins_in": [
+              {
+                "name": "S_CombatStanceIndex",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_CombatStanceIndex",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "HasCombatStance_1_1E5DD4BE48AD9055A4756E801019C803",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_14.Condition"
+                ]
+              },
+              {
+                "name": "CombatStanceIndex_4_465EDF394D29172858C6868743491293",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_37.InputPin"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "functions": [],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

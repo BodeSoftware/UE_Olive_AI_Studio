@@ -1,0 +1,3023 @@
+{
+  "schema_version": "1.0",
+  "name": "WB_InventoryPagesBar",
+  "path": "/Game/FlexibleCombatSystem/Widgets/InventorySystem/WB_InventoryPagesBar.WB_InventoryPagesBar",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "UserWidget",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": true,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "SelectedColor",
+      "type": {
+        "category": "struct",
+        "struct_name": "LinearColor"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "NotSelectedColor",
+      "type": {
+        "category": "struct",
+        "struct_name": "LinearColor"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "WB_Inventory",
+      "type": {
+        "category": "object",
+        "class": "WB_PlayerMenu_C"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CurrentTab",
+      "type": {
+        "category": "int"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 98,
+        "connection_count": 190,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "Construct",
+            "owning_class": "UserWidget",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_61.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_MenuButtonSelected_C\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_2.WidgetToFind",
+                  "node_32.self",
+                  "node_72.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "ScrollWidgetIntoView",
+            "owning_class": "ScrollBox",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ScrollBox"
+                }
+              },
+              {
+                "name": "WidgetToFind",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "AnimateScroll",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "ScrollDestination",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Center"
+              },
+              {
+                "name": "Padding",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CustomEvent",
+            "function": "ChangeTab",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_82.execute"
+                ]
+              },
+              {
+                "name": "Number",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_83.InputPin",
+                  "node_85.CurrentTab"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "WB_QuestButton",
+            "pins_out": [
+              {
+                "name": "WB_QuestButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_9.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "WB_InventoryButton",
+            "pins_out": [
+              {
+                "name": "WB_InventoryButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_12.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "Button",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Button",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                },
+                "connections": [
+                  "node_8.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_MenuButtonSelected_C"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "CustomEvent",
+            "function": "OnClicked_Event_0",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                },
+                "connections": [
+                  "node_8.Delegate"
+                ]
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_21.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_8",
+            "type": "K2Node_AssignDelegate",
+            "title": "Bind Event to On Clicked",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                }
+              },
+              {
+                "name": "Delegate",
+                "type": {
+                  "category": "delegate",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_11.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "Button",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Button",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                },
+                "connections": [
+                  "node_11.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_MenuButtonSelected_C"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "CustomEvent",
+            "function": "CustomEvent",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                },
+                "connections": [
+                  "node_11.Delegate"
+                ]
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_22.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_11",
+            "type": "K2Node_AssignDelegate",
+            "title": "Bind Event to On Clicked",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                }
+              },
+              {
+                "name": "Delegate",
+                "type": {
+                  "category": "delegate",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_14.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_12",
+            "type": "VariableGet",
+            "variable": "Button",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Button",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                },
+                "connections": [
+                  "node_14.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_MenuButtonSelected_C"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "CustomEvent",
+            "function": "CustomEvent_1",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                },
+                "connections": [
+                  "node_14.Delegate"
+                ]
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_23.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_14",
+            "type": "K2Node_AssignDelegate",
+            "title": "Bind Event to On Clicked",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                }
+              },
+              {
+                "name": "Delegate",
+                "type": {
+                  "category": "delegate",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_17.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_15",
+            "type": "VariableGet",
+            "variable": "Button",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Button",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                },
+                "connections": [
+                  "node_17.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_MenuButtonSelected_C"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "CustomEvent",
+            "function": "CustomEvent_2",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                },
+                "connections": [
+                  "node_17.Delegate"
+                ]
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_24.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_17",
+            "type": "K2Node_AssignDelegate",
+            "title": "Bind Event to On Clicked",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                }
+              },
+              {
+                "name": "Delegate",
+                "type": {
+                  "category": "delegate",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_20.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_18",
+            "type": "VariableGet",
+            "variable": "Button",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Button",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                },
+                "connections": [
+                  "node_20.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_MenuButtonSelected_C"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "CustomEvent",
+            "function": "CustomEvent_3",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                },
+                "connections": [
+                  "node_20.Delegate"
+                ]
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_25.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_20",
+            "type": "K2Node_AssignDelegate",
+            "title": "Bind Event to On Clicked",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                }
+              },
+              {
+                "name": "Delegate",
+                "type": {
+                  "category": "delegate",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_21",
+            "type": "CallFunction",
+            "function": "ChangeTab",
+            "owning_class": "SKEL_WB_InventoryPagesBar_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "Number",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_22",
+            "type": "CallFunction",
+            "function": "ChangeTab",
+            "owning_class": "SKEL_WB_InventoryPagesBar_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "Number",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "CallFunction",
+            "function": "ChangeTab",
+            "owning_class": "SKEL_WB_InventoryPagesBar_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "Number",
+                "type": {
+                  "category": "int"
+                },
+                "default": "2"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "CallFunction",
+            "function": "ChangeTab",
+            "owning_class": "SKEL_WB_InventoryPagesBar_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "Number",
+                "type": {
+                  "category": "int"
+                },
+                "default": "3"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_25",
+            "type": "CallFunction",
+            "function": "ChangeTab",
+            "owning_class": "SKEL_WB_InventoryPagesBar_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "Number",
+                "type": {
+                  "category": "int"
+                },
+                "default": "4"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "VariableGet",
+            "variable": "WB_InventoryButton",
+            "pins_out": [
+              {
+                "name": "WB_InventoryButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_28.[2]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "VariableGet",
+            "variable": "WB_QuestButton",
+            "pins_out": [
+              {
+                "name": "WB_QuestButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_28.[1]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_28",
+            "type": "K2Node_MakeArray",
+            "title": "Make Array",
+            "pins_in": [
+              {
+                "name": "[0]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              },
+              {
+                "name": "[1]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              },
+              {
+                "name": "[2]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              },
+              {
+                "name": "[3]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              },
+              {
+                "name": "[4]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_MenuButtonSelected_C\"\r\n}"
+                },
+                "connections": [
+                  "node_1.Array"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_29",
+            "type": "VariableGet",
+            "variable": "ScrollBox",
+            "pins_out": [
+              {
+                "name": "ScrollBox",
+                "type": {
+                  "category": "object",
+                  "class": "ScrollBox"
+                },
+                "connections": [
+                  "node_2.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "VariableGet",
+            "variable": "Button",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Button",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                },
+                "connections": [
+                  "node_31.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_MenuButtonSelected_C"
+            }
+          },
+          {
+            "id": "node_31",
+            "type": "CallFunction",
+            "function": "SetColorAndOpacity",
+            "owning_class": "Button",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                }
+              },
+              {
+                "name": "InColorAndOpacity",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_69.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_32",
+            "type": "VariableGet",
+            "variable": "Button",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Button",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                },
+                "connections": [
+                  "node_33.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_MenuButtonSelected_C"
+            }
+          },
+          {
+            "id": "node_33",
+            "type": "CallFunction",
+            "function": "SetColorAndOpacity",
+            "owning_class": "Button",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                }
+              },
+              {
+                "name": "InColorAndOpacity",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_70.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_34",
+            "type": "VariableGet",
+            "variable": "WB_MapButton",
+            "pins_out": [
+              {
+                "name": "WB_MapButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_6.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_35",
+            "type": "VariableGet",
+            "variable": "WB_CraftingButton",
+            "pins_out": [
+              {
+                "name": "WB_CraftingButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_18.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_36",
+            "type": "VariableGet",
+            "variable": "WB_AbilitiesButton",
+            "pins_out": [
+              {
+                "name": "WB_AbilitiesButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_15.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_37",
+            "type": "VariableGet",
+            "variable": "WB_MapButton",
+            "pins_out": [
+              {
+                "name": "WB_MapButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_28.[0]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_38",
+            "type": "VariableGet",
+            "variable": "WB_CraftingButton",
+            "pins_out": [
+              {
+                "name": "WB_CraftingButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_28.[4]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_39",
+            "type": "VariableGet",
+            "variable": "WB_AbilitiesButton",
+            "pins_out": [
+              {
+                "name": "WB_AbilitiesButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_28.[3]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_40",
+            "type": "VariableGet",
+            "variable": "WB_InventoryButton",
+            "pins_out": [
+              {
+                "name": "WB_InventoryButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_42.[2]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_41",
+            "type": "VariableGet",
+            "variable": "WB_QuestButton",
+            "pins_out": [
+              {
+                "name": "WB_QuestButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_42.[1]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_42",
+            "type": "K2Node_MakeArray",
+            "title": "Make Array",
+            "pins_in": [
+              {
+                "name": "[0]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              },
+              {
+                "name": "[1]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              },
+              {
+                "name": "[2]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              },
+              {
+                "name": "[3]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              },
+              {
+                "name": "[4]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_MenuButtonSelected_C\"\r\n}"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_43",
+            "type": "VariableGet",
+            "variable": "WB_MapButton",
+            "pins_out": [
+              {
+                "name": "WB_MapButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_42.[0]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_44",
+            "type": "VariableGet",
+            "variable": "WB_CraftingButton",
+            "pins_out": [
+              {
+                "name": "WB_CraftingButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_42.[4]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_45",
+            "type": "VariableGet",
+            "variable": "WB_AbilitiesButton",
+            "pins_out": [
+              {
+                "name": "WB_AbilitiesButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_42.[3]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_46",
+            "type": "VariableGet",
+            "variable": "WB_InventoryButton",
+            "pins_out": [
+              {
+                "name": "WB_InventoryButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_48.[2]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_47",
+            "type": "VariableGet",
+            "variable": "WB_QuestButton",
+            "pins_out": [
+              {
+                "name": "WB_QuestButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_48.[1]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_48",
+            "type": "K2Node_MakeArray",
+            "title": "Make Array",
+            "pins_in": [
+              {
+                "name": "[0]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              },
+              {
+                "name": "[1]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              },
+              {
+                "name": "[2]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              },
+              {
+                "name": "[3]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              },
+              {
+                "name": "[4]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_MenuButtonSelected_C\"\r\n}"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_49",
+            "type": "VariableGet",
+            "variable": "WB_MapButton",
+            "pins_out": [
+              {
+                "name": "WB_MapButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_48.[0]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_50",
+            "type": "VariableGet",
+            "variable": "WB_CraftingButton",
+            "pins_out": [
+              {
+                "name": "WB_CraftingButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_48.[4]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_51",
+            "type": "VariableGet",
+            "variable": "WB_AbilitiesButton",
+            "pins_out": [
+              {
+                "name": "WB_AbilitiesButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_48.[3]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_52",
+            "type": "VariableGet",
+            "variable": "Button",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Button",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                },
+                "connections": [
+                  "node_53.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_MenuButtonSelected_C"
+            }
+          },
+          {
+            "id": "node_53",
+            "type": "CallFunction",
+            "function": "SetColorAndOpacity",
+            "owning_class": "Button",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                }
+              },
+              {
+                "name": "InColorAndOpacity",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_54",
+            "type": "VariableGet",
+            "variable": "WB_InventoryButton",
+            "pins_out": [
+              {
+                "name": "WB_InventoryButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_55.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_55",
+            "type": "VariableGet",
+            "variable": "Button",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Button",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                },
+                "connections": [
+                  "node_56.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_MenuButtonSelected_C"
+            }
+          },
+          {
+            "id": "node_56",
+            "type": "CallFunction",
+            "function": "SetColorAndOpacity",
+            "owning_class": "Button",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                }
+              },
+              {
+                "name": "InColorAndOpacity",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_57",
+            "type": "VariableGet",
+            "variable": "SelectedColor",
+            "pins_out": [
+              {
+                "name": "SelectedColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "connections": [
+                  "node_56.InColorAndOpacity"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_58",
+            "type": "VariableGet",
+            "variable": "NotSelectedColor",
+            "pins_out": [
+              {
+                "name": "NotSelectedColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "connections": [
+                  "node_53.InColorAndOpacity"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_59",
+            "type": "VariableGet",
+            "variable": "SelectedColor",
+            "pins_out": [
+              {
+                "name": "SelectedColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "connections": [
+                  "node_33.InColorAndOpacity"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_60",
+            "type": "VariableGet",
+            "variable": "NotSelectedColor",
+            "pins_out": [
+              {
+                "name": "NotSelectedColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "connections": [
+                  "node_31.InColorAndOpacity"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_61",
+            "type": "CallFunction",
+            "function": "ScrollWidgetIntoView",
+            "owning_class": "ScrollBox",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ScrollBox"
+                }
+              },
+              {
+                "name": "WidgetToFind",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "AnimateScroll",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "ScrollDestination",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Center"
+              },
+              {
+                "name": "Padding",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_97.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_62",
+            "type": "VariableGet",
+            "variable": "ScrollBox",
+            "pins_out": [
+              {
+                "name": "ScrollBox",
+                "type": {
+                  "category": "object",
+                  "class": "ScrollBox"
+                },
+                "connections": [
+                  "node_61.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_63",
+            "type": "VariableGet",
+            "variable": "WB_InventoryButton",
+            "pins_out": [
+              {
+                "name": "WB_InventoryButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_61.WidgetToFind"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_64",
+            "type": "VariableGet",
+            "variable": "WB_Inventory",
+            "pins_out": [
+              {
+                "name": "WB_Inventory",
+                "type": {
+                  "category": "object",
+                  "class": "WB_PlayerMenu_C"
+                },
+                "connections": [
+                  "node_65.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_65",
+            "type": "CallFunction",
+            "function": "SwitchInventoryPage",
+            "owning_class": "SKEL_WB_PlayerMenu_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_PlayerMenu_C"
+                }
+              },
+              {
+                "name": "InventoryPage",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_66",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator4"
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator1"
+              },
+              {
+                "name": "Option 2",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              },
+              {
+                "name": "Option 3",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator2"
+              },
+              {
+                "name": "Option 4",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator3"
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_65.InventoryPage"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_69",
+            "type": "VariableSet",
+            "variable": "Selected",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Selected",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "WB_MenuButtonSelected_C"
+            }
+          },
+          {
+            "id": "node_70",
+            "type": "VariableSet",
+            "variable": "Selected",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Selected",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "WB_MenuButtonSelected_C"
+            }
+          },
+          {
+            "id": "node_73",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_MenuButtonSelected_C\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_80.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_74",
+            "type": "VariableGet",
+            "variable": "WB_InventoryButton",
+            "pins_out": [
+              {
+                "name": "WB_InventoryButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_76.[2]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_75",
+            "type": "VariableGet",
+            "variable": "WB_QuestButton",
+            "pins_out": [
+              {
+                "name": "WB_QuestButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_76.[1]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_76",
+            "type": "K2Node_MakeArray",
+            "title": "Make Array",
+            "pins_in": [
+              {
+                "name": "[0]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              },
+              {
+                "name": "[1]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              },
+              {
+                "name": "[2]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              },
+              {
+                "name": "[3]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              },
+              {
+                "name": "[4]",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_MenuButtonSelected_C\"\r\n}"
+                },
+                "connections": [
+                  "node_73.Array"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_77",
+            "type": "VariableGet",
+            "variable": "WB_MapButton",
+            "pins_out": [
+              {
+                "name": "WB_MapButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_76.[0]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_78",
+            "type": "VariableGet",
+            "variable": "WB_CraftingButton",
+            "pins_out": [
+              {
+                "name": "WB_CraftingButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_76.[4]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_79",
+            "type": "VariableGet",
+            "variable": "WB_AbilitiesButton",
+            "pins_out": [
+              {
+                "name": "WB_AbilitiesButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_76.[3]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_80",
+            "type": "VariableGet",
+            "variable": "Selected",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Selected",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_81.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_MenuButtonSelected_C"
+            }
+          },
+          {
+            "id": "node_81",
+            "type": "CallFunction",
+            "function": "Not_PreBool",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_82.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_82",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_85.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_85",
+            "type": "VariableSet",
+            "variable": "CurrentTab",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "CurrentTab",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_65.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_86",
+            "type": "CustomEvent",
+            "function": "NavigateTab",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_87.execute"
+                ]
+              },
+              {
+                "name": "Right",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_87.Condition"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_87",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_91.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_94.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_88",
+            "type": "VariableGet",
+            "variable": "CurrentTab",
+            "pins_out": [
+              {
+                "name": "CurrentTab",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_89.A",
+                  "node_90.A",
+                  "node_93.A",
+                  "node_95.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_89",
+            "type": "CallFunction",
+            "function": "Add_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_92.Number"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_90",
+            "type": "CallFunction",
+            "function": "Less_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "4"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_91.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_91",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_92.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_92",
+            "type": "CallFunction",
+            "function": "ChangeTab",
+            "owning_class": "SKEL_WB_InventoryPagesBar_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "Number",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_93",
+            "type": "CallFunction",
+            "function": "Greater_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_94.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_94",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_96.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_95",
+            "type": "CallFunction",
+            "function": "Subtract_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_96.Number"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_96",
+            "type": "CallFunction",
+            "function": "ChangeTab",
+            "owning_class": "SKEL_WB_InventoryPagesBar_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "Number",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_97",
+            "type": "VariableSet",
+            "variable": "CurrentTab",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "CurrentTab",
+                "type": {
+                  "category": "int"
+                },
+                "default": "2"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_8.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ]
+      }
+    ],
+    "functions": [],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

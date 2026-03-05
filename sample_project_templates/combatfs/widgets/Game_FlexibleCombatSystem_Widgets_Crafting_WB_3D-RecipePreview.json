@@ -1,0 +1,724 @@
+{
+  "schema_version": "1.0",
+  "name": "WB_3D-RecipePreview",
+  "path": "/Game/FlexibleCombatSystem/Widgets/Crafting/WB_3D-RecipePreview.WB_3D-RecipePreview",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "UserWidget",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": true,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "3DActorRef",
+      "type": {
+        "category": "object",
+        "class": "BP_3DPreviewActor_C"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SpinningObject",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 10,
+        "connection_count": 24,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "K2Node_SpawnActorFromClass",
+            "title": "SpawnActor BP 3DPreview Actor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Class",
+                "type": {
+                  "category": "class",
+                  "class": "Actor"
+                },
+                "default": "/Game/FlexibleCombatSystem/TextureRenders/CraftingRender/BP_3DPreviewActor.BP_3DPreviewActor_C"
+              },
+              {
+                "name": "SpawnTransform_Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0,999999.000000"
+              },
+              {
+                "name": "SpawnTransform_Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "SpawnTransform_Scale",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "1.000000,1.000000,1.000000"
+              },
+              {
+                "name": "CollisionHandlingOverride",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "AlwaysSpawn"
+              },
+              {
+                "name": "TransformScaleMethod",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "OverrideRootScale"
+              },
+              {
+                "name": "Owner",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "Instigator",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "BP_3DPreviewActor_C"
+                },
+                "connections": [
+                  "node_1.3DActorRef"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "VariableSet",
+            "variable": "3DActorRef",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "3DActorRef",
+                "type": {
+                  "category": "object",
+                  "class": "BP_3DPreviewActor_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "BP_3DPreviewActor_C"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CustomEvent",
+            "function": "Initiate",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_8.execute"
+                ]
+              },
+              {
+                "name": "StaticMesh",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMesh"
+                },
+                "connections": [
+                  "node_5.InputPin"
+                ]
+              },
+              {
+                "name": "SkeletalMesh",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMesh"
+                },
+                "connections": [
+                  "node_6.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "UpdateMesh",
+            "owning_class": "SKEL_BP_3DPreviewActor_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_3DPreviewActor_C"
+                }
+              },
+              {
+                "name": "NewStaticMesh",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMesh"
+                }
+              },
+              {
+                "name": "NewSkeletalMesh",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMesh"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "3DActorRef",
+            "pins_out": [
+              {
+                "name": "3DActorRef",
+                "type": {
+                  "category": "object",
+                  "class": "BP_3DPreviewActor_C"
+                },
+                "connections": [
+                  "node_3.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "VariableGet",
+            "variable": "3DActorRef",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_9.InputPin"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_0.execute"
+                ]
+              },
+              {
+                "name": "3DActorRef",
+                "type": {
+                  "category": "object",
+                  "class": "BP_3DPreviewActor_C"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "OnMouseButtonDown",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "MyGeometry",
+            "display_name": "My Geometry",
+            "type": {
+              "category": "struct",
+              "struct_name": "Geometry"
+            }
+          },
+          {
+            "name": "MouseEvent",
+            "display_name": "Mouse Event",
+            "type": {
+              "category": "struct",
+              "struct_name": "PointerEvent",
+              "is_reference": true,
+              "is_const": true
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "struct",
+              "struct_name": "EventReply"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 9,
+        "connection_count": 18,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "OnMouseButtonDown",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              },
+              {
+                "name": "MyGeometry",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Geometry"
+                }
+              },
+              {
+                "name": "MouseEvent",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PointerEvent",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "OnMouseButtonDown",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "EventReply"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "3DActorRef",
+            "pins_out": [
+              {
+                "name": "3DActorRef",
+                "type": {
+                  "category": "object",
+                  "class": "BP_3DPreviewActor_C"
+                },
+                "connections": [
+                  "node_6.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "GetOwningPlayer",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "PlayerController"
+                },
+                "connections": [
+                  "node_4.Player"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "GetMousePositionScaledByDPI",
+            "owning_class": "WidgetLayoutLibrary",
+            "pins_in": [
+              {
+                "name": "Player",
+                "type": {
+                  "category": "object",
+                  "class": "PlayerController"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "LocationX",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_5.X"
+                ]
+              },
+              {
+                "name": "LocationY",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_5.Y"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "MakeVector2D",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "X",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "Y",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector2D"
+                },
+                "connections": [
+                  "node_6.MouseLocation"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "OnClickedStart",
+            "owning_class": "SKEL_BP_3DPreviewActor_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_3DPreviewActor_C"
+                }
+              },
+              {
+                "name": "MouseLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector2D"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_8.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "CallFunction",
+            "function": "Handled",
+            "owning_class": "WidgetBlueprintLibrary",
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "EventReply"
+                },
+                "connections": [
+                  "node_1.ReturnValue"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "VariableSet",
+            "variable": "SpinningObject",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SpinningObject",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

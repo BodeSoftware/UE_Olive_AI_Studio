@@ -101,7 +101,7 @@ Source/
 9. `FOliveCppToolHandlers::Get().RegisterAllTools()` → `RegisterCppRules()`
 10. `FOliveCrossSystemToolHandlers::Get().RegisterAllTools()` → `RegisterCrossSystemRules()`
 11. `FOlivePythonToolHandlers::Get().RegisterAllTools()` (editor Python scripting, guarded by `IPythonScriptPlugin` availability)
-12. `FOliveTemplateSystem::Get().Initialize()` (scans `Content/Templates/` for factory + reference JSON templates)
+12. `FOliveTemplateSystem::Get().Initialize()` (scans `Content/Templates/` for factory + reference templates, initializes `FOliveLibraryIndex` for library templates with lazy loading + search)
 13. `FOliveFocusProfileManager::Get().Initialize()` (must come after all tool registration)
 14. `FOliveToolPackManager::Get().Initialize()`
 15. `FOlivePromptAssembler::Get().Initialize()` + `FOliveMCPPromptTemplates::Get().Initialize()`
@@ -127,7 +127,7 @@ Source/
 | `FOliveSnapshotManager` | Snapshot/rollback management |
 | `FOliveMCPPromptTemplates` | MCP prompt template registry |
 | `FOliveBTNodeCatalog` | Behavior Tree node catalog |
-| `FOliveTemplateSystem` | Factory + reference template registry; loaded from `Content/Templates/` |
+| `FOliveTemplateSystem` | Factory + reference + library template registry; owns `FOliveLibraryIndex` for lazy-loaded search |
 | `FOlivePythonToolHandlers` | `editor.run_python` tool; wraps `IPythonScriptPlugin`, auto-snapshot + logging |
 
 ### Write Pipeline (6 Stages)
@@ -278,13 +278,27 @@ Intent-level graph editing system where the AI describes "what" it wants (e.g., 
 
 ### Blueprint Templates
 
-Factory templates create complete Blueprints from parameterized JSON. Reference templates provide pattern documentation the AI can read before writing plans.
+Three template types, all managed by `FOliveTemplateSystem` and `FOliveLibraryIndex`:
+
+**Factory templates** create complete Blueprints from parameterized JSON. **Reference templates** provide hand-written pattern documentation. **Library templates** are mass-extracted real Blueprint data with full node graphs — the AI searches them, reads individual functions as reference, and builds new Blueprints informed by real patterns.
 
 - **Tools:** `blueprint.create_from_template`, `blueprint.get_template`, `blueprint.list_templates` (all in `RegisterTemplateTools()`)
-- **Templates:** `Content/Templates/factory/` (e.g., `stat_component.json`, `gun.json`, `projectile.json`) and `Content/Templates/reference/` (e.g., `component_patterns.json`, `ue_events.json`, `projectile_patterns.json`, `pickup_interaction.json`)
-- **Template format:** JSON with `template_id`, `template_type`, `parameters` (with defaults), optional `presets`, `blueprint` section (type, variables, event_dispatchers, functions with embedded plan JSON), `catalog_description`
-- **Parameter substitution:** `${param_name}` tokens, supports bool ternary conditionals like `${start_full} ? ${max_value} : 0`
-- **Catalog injection:** `FOliveTemplateSystem::GetCatalogBlock()` is appended to capability knowledge by `FOlivePromptAssembler::GetCapabilityKnowledge()` so AI agents always see available templates
+- **Locations:**
+  - `Content/Templates/factory/` — parameterized templates (gun.json, stat_component.json, projectile.json)
+  - `Content/Templates/reference/` — hand-written pattern docs (component_patterns.json, ue_events.json, etc.)
+  - `Content/Templates/library/{project}/` — extracted Blueprint data (e.g., `library/combatfs/` with 325 templates)
+- **Factory format:** JSON with `template_id`, `template_type`, `parameters` (with defaults), optional `presets`, `blueprint` section (type, variables, event_dispatchers, functions with embedded plan JSON), `catalog_description`
+- **Library format:** JSON with `template_id`, `display_name`, `tags`, `catalog_description`, `inherited_tags`, `source_project`, `depends_on`, top-level `parent_class`/`type`/`variables`/`components`/`interfaces`/`event_dispatchers`, and `graphs` section with full node data
+- **Parameter substitution (factory only):** `${param_name}` tokens, supports bool ternary conditionals like `${start_full} ? ${max_value} : 0`
+- **Catalog injection:** `FOliveTemplateSystem::GetCatalogBlock()` includes both factory template names and library project aggregates (template + function counts per project)
+
+**Library Index (`FOliveLibraryIndex`):**
+- Lazy loading — metadata indexed at startup, full JSON loaded on demand with LRU cache (max 10)
+- Inverted text search across template names, tags, inherited_tags, catalog_description, function names, function tags
+- Three-tier discovery: catalog (always in prompt) → `list_templates(query="...")` (search) → `get_template(id, pattern="FuncName")` (full function graph)
+- Template inheritance via `depends_on` field — `ResolveInheritanceChain()` walks chain with cycle detection (max 10 levels)
+- `GetFunctionContent()` searches ancestors when function not found in child
+- Format fallback: handles both nested (`blueprint.parent_class`) and top-level fields (`parent_class`)
 
 **Reference template rules (MUST follow):**
 - Target **60–120 lines** total. You may do more if complex.
@@ -294,6 +308,13 @@ Factory templates create complete Blueprints from parameterized JSON. Reference 
 - If a pattern needs more than ~10 lines, split it or cut it. The AI reads the whole template in one `get_template` call — token budget matters.
 - Reference templates that violate these rules must be rewritten before merging.
 - Sometimes templates may require custom events instead of functions (exampe: delays, timelines) you should state this in the template.
+
+**Library template extraction pipeline (external, not C++ plugin):**
+1. **Extract**: `tools/extract_blueprints.py` (runs inside UE) → raw JSON per Blueprint
+2. **Slim**: External Python script strips redundant fields (comment/reroute nodes, visual properties)
+3. **Resolve inheritance**: `tools/resolve_inheritance.py` → `tools/{project}_manifest.json` with topological sort
+4. **Prepare**: `tools/prepare_library.py` → copies to `Content/Templates/library/{project}/`, injects metadata
+5. **Tag**: `tools/auto_tagger.py` → adds tags, descriptions, entry_points per function/event/dispatcher (processes in dependency order, parent-aware)
 
 ### Safety Presets
 
@@ -362,6 +383,7 @@ This project uses specialized subagents. USE THEM — do not try to do everythin
 | UE API research, protocol specs | `researcher` |
 | New module or feature design | `architect` (design before code, always) |
 | Writing .h / .cpp files, Slate widgets | `coder` (opus) or `coder_sonnet` (lighter tasks) |
+| Tagging extracted Blueprint JSON files | `tagger` (Sonnet, parallel-spawnable) |
 
 ### Feature Implementation Workflow
 
@@ -396,8 +418,9 @@ This project uses specialized subagents. USE THEM — do not try to do everythin
 | Plan validator | `Source/OliveAIEditor/Blueprint/Public/Plan/OlivePlanValidator.h` |
 | Node factory | `Source/OliveAIEditor/Blueprint/Public/Writer/OliveNodeFactory.h` (FindFunction, node type constants, creators) |
 | Node catalog | `Source/OliveAIEditor/Blueprint/Private/Catalog/OliveNodeCatalog.cpp` |
-| Template system | `Source/OliveAIEditor/Blueprint/Public/Template/OliveTemplateSystem.h` |
-| Template data | `Content/Templates/factory/`, `Content/Templates/reference/` |
+| Template system | `Source/OliveAIEditor/Blueprint/Public/Template/OliveTemplateSystem.h` (`FOliveTemplateSystem`, `FOliveLibraryIndex`, `FOliveLibraryTemplateInfo`) |
+| Template data | `Content/Templates/factory/`, `Content/Templates/reference/`, `Content/Templates/library/` |
+| Extraction tools | `tools/extract_blueprints.py`, `tools/resolve_inheritance.py`, `tools/prepare_library.py`, `tools/auto_tagger.py` |
 | Provider interface | `Source/OliveAIEditor/Public/Providers/IOliveAIProvider.h` |
 | Brain layer | `Source/OliveAIEditor/Public/Brain/OliveBrainLayer.h` |
 | Retry/loop detection | `Source/OliveAIEditor/Public/Brain/OliveRetryPolicy.h` |

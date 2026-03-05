@@ -1,0 +1,2853 @@
+{
+  "schema_version": "1.0",
+  "name": "WB_SkillsPageInventory",
+  "path": "/Game/FlexibleCombatSystem/Widgets/Equipment/WB_SkillsPageInventory.WB_SkillsPageInventory",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "UserWidget",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": true,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "InventoryComponent",
+      "type": {
+        "category": "object",
+        "class": "InventoryComponent_C"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "NumberOfSlots",
+      "type": {
+        "category": "int"
+      },
+      "category": "Pre Setup",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Weapons",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Pre Setup",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ActionBarInventorySlotsFree",
+      "type": {
+        "category": "multicastdelegate"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "FreeSlots",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"int\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "InventorySlots",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_InventorySlot_C\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "InventoryCreated",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ClearSlots",
+      "type": {
+        "category": "multicastdelegate"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Skills Page",
+      "type": {
+        "category": "object",
+        "class": "WB_SkillsPage_C"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SlotsPerRow",
+      "type": {
+        "category": "int"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 107,
+        "connection_count": 211,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "CustomEvent",
+            "function": "Setup",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "InventoryComponent",
+                "type": {
+                  "category": "object",
+                  "class": "InventoryComponent_C"
+                },
+                "connections": [
+                  "node_1.InventoryComponent"
+                ]
+              },
+              {
+                "name": "SkillsPageInventory",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SkillsPage_C"
+                },
+                "connections": [
+                  "node_73.Skills Page"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "VariableSet",
+            "variable": "InventoryComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "InventoryComponent",
+                "type": {
+                  "category": "object",
+                  "class": "InventoryComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_73.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "InventoryComponent_C"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "K2Node_CreateWidget",
+            "title": "Create WB Inventory Slot Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Class",
+                "type": {
+                  "category": "class",
+                  "class": "UserWidget"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/InventorySystem/WB_InventorySlot.WB_InventorySlot_C"
+              },
+              {
+                "name": "OwningPlayer",
+                "type": {
+                  "category": "object",
+                  "class": "PlayerController"
+                }
+              },
+              {
+                "name": "CharacterRef",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                }
+              },
+              {
+                "name": "InventoryComponent",
+                "type": {
+                  "category": "object",
+                  "class": "InventoryComponent_C"
+                }
+              },
+              {
+                "name": "EquipmentComponent",
+                "type": {
+                  "category": "object",
+                  "class": "EquipmentComponent_C"
+                }
+              },
+              {
+                "name": "InventoryActionBarSlot",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "Skills Page Inventory",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SkillsPageInventory_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_33.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InventorySlot_C"
+                },
+                "connections": [
+                  "node_33.self",
+                  "node_38.InputPin",
+                  "node_43.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "NumberOfSlots",
+            "pins_out": [
+              {
+                "name": "NumberOfSlots",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_6.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "CharacterRef",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "InventoryComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "CharacterRef",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                },
+                "connections": [
+                  "node_2.CharacterRef"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "InventoryComponent_C"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "WeaponItemData",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "InventoryComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "WeaponItemData",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_SlotInfo\"\r\n}"
+                },
+                "connections": [
+                  "node_11.Option 1"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "InventoryComponent_C"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "Subtract_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "CallFunction",
+            "function": "Update Slot",
+            "owning_class": "SKEL_WB_InventorySlot_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InventorySlot_C"
+                }
+              },
+              {
+                "name": "SlotInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo"
+                }
+              },
+              {
+                "name": "IgnoreWeight",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_SlotInfo\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo"
+                },
+                "connections": [
+                  "node_7.SlotInfo"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_11",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_SlotInfo\"\r\n}"
+                }
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_SlotInfo\"\r\n}"
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_SlotInfo\"\r\n}"
+                },
+                "connections": [
+                  "node_10.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_12",
+            "type": "VariableGet",
+            "variable": "Weapons",
+            "pins_out": [
+              {
+                "name": "Weapons",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_11.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "VariableGet",
+            "variable": "OnUseItemData",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "InventoryComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "OnUseItemData",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_SlotInfo\"\r\n}"
+                },
+                "connections": [
+                  "node_11.Option 0"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "InventoryComponent_C"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "VariableGet",
+            "variable": "InventoryWrapGrid",
+            "pins_out": [
+              {
+                "name": "InventoryWrapGrid",
+                "type": {
+                  "category": "object",
+                  "class": "WrapBox"
+                },
+                "connections": [
+                  "node_15.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "CallFunction",
+            "function": "AddChildToWrapBox",
+            "owning_class": "WrapBox",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WrapBox"
+                }
+              },
+              {
+                "name": "Content",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_32.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "WrapBoxSlot"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "VariableGet",
+            "variable": "InventoryComponent",
+            "pins_out": [
+              {
+                "name": "InventoryComponent",
+                "type": {
+                  "category": "object",
+                  "class": "InventoryComponent_C"
+                },
+                "connections": [
+                  "node_5.self",
+                  "node_13.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "VariableGet",
+            "variable": "InventoryComponent",
+            "pins_out": [
+              {
+                "name": "InventoryComponent",
+                "type": {
+                  "category": "object",
+                  "class": "InventoryComponent_C"
+                },
+                "connections": [
+                  "node_4.self",
+                  "node_2.InventoryComponent",
+                  "node_50.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "CustomEvent",
+            "function": "ItemToAdd",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_22.execute"
+                ]
+              },
+              {
+                "name": "ItemToAdd",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo"
+                },
+                "connections": [
+                  "node_29.SlotInfo"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_20",
+            "type": "K2Node_CallDelegate",
+            "title": "Call Action Bar Inventory Slots Free",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SkillsPageInventory_C"
+                }
+              },
+              {
+                "name": "AbilityPageInventory",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SkillsPageInventory_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_29.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_21",
+            "type": "VariableGet",
+            "variable": "FreeSlots",
+            "pins_out": [
+              {
+                "name": "FreeSlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"int\"\r\n}"
+                },
+                "connections": [
+                  "node_22.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_22",
+            "type": "CallFunction",
+            "function": "Array_Clear",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"int\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_20.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "VariableGet",
+            "variable": "FreeSlots",
+            "pins_out": [
+              {
+                "name": "FreeSlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"int\"\r\n}"
+                },
+                "connections": [
+                  "node_24.IntArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "CallFunction",
+            "function": "MinOfIntArray",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "IntArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"int\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "IndexOfMinValue",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "MinValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_28.Dimension 1"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_25",
+            "type": "VariableGet",
+            "variable": "InventorySlots",
+            "pins_out": [
+              {
+                "name": "InventorySlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_InventorySlot_C\"\r\n}"
+                },
+                "connections": [
+                  "node_26.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "CallFunction",
+            "function": "Array_Add",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_InventorySlot_C\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "NewItem",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InventorySlot_C",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_15.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "VariableGet",
+            "variable": "InventorySlots",
+            "pins_out": [
+              {
+                "name": "InventorySlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_InventorySlot_C\"\r\n}"
+                },
+                "connections": [
+                  "node_28.Array"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_28",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_InventorySlot_C\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InventorySlot_C"
+                },
+                "connections": [
+                  "node_29.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_29",
+            "type": "CallFunction",
+            "function": "Update Slot",
+            "owning_class": "SKEL_WB_InventorySlot_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InventorySlot_C"
+                }
+              },
+              {
+                "name": "SlotInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo"
+                }
+              },
+              {
+                "name": "IgnoreWeight",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "K2Node_Self",
+            "title": "Self-Reference",
+            "pins_out": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                },
+                "connections": [
+                  "node_20.AbilityPageInventory"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_31",
+            "type": "K2Node_MakeStruct",
+            "title": "Make S Slot Info",
+            "pins_in": [
+              {
+                "name": "SlotNumber_9_96B017804E3BC6D250AB3A806596A5EE",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "S_SlotInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo"
+                },
+                "connections": [
+                  "node_32.SlotContents"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_32",
+            "type": "VariableSet",
+            "variable": "SlotContents",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SlotContents",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo"
+                }
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InventorySlot_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_82.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "WB_InventorySlot_C"
+            }
+          },
+          {
+            "id": "node_33",
+            "type": "CallFunction",
+            "function": "BindActionBarInventory",
+            "owning_class": "SKEL_WB_InventorySlot_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InventorySlot_C"
+                }
+              },
+              {
+                "name": "AbilityPage",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SkillsPageInventory_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_44.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_34",
+            "type": "K2Node_Self",
+            "title": "Self-Reference",
+            "pins_out": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                },
+                "connections": [
+                  "node_33.AbilityPage"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_43",
+            "type": "VariableGet",
+            "variable": "SizeBoxContainer",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InventorySlot_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SizeBoxContainer",
+                "type": {
+                  "category": "object",
+                  "class": "SizeBox"
+                },
+                "connections": [
+                  "node_44.self",
+                  "node_46.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_InventorySlot_C"
+            }
+          },
+          {
+            "id": "node_44",
+            "type": "CallFunction",
+            "function": "SetWidthOverride",
+            "owning_class": "SizeBox",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SizeBox"
+                }
+              },
+              {
+                "name": "InWidthOverride",
+                "type": {
+                  "category": "float"
+                },
+                "default": "90.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_45.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_45",
+            "type": "CallFunction",
+            "function": "SetHeightOverride",
+            "owning_class": "SizeBox",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SizeBox"
+                }
+              },
+              {
+                "name": "InHeightOverride",
+                "type": {
+                  "category": "float"
+                },
+                "default": "90.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_48.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_48",
+            "type": "VariableSet",
+            "variable": "ActionBarWeapon",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ActionBarWeapon",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InventorySlot_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_26.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "WB_InventorySlot_C"
+            }
+          },
+          {
+            "id": "node_49",
+            "type": "VariableGet",
+            "variable": "Weapons",
+            "pins_out": [
+              {
+                "name": "Weapons",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_48.ActionBarWeapon"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_50",
+            "type": "VariableGet",
+            "variable": "EquipmentComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "InventoryComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "EquipmentComponent",
+                "type": {
+                  "category": "object",
+                  "class": "EquipmentComponent_C"
+                },
+                "connections": [
+                  "node_2.EquipmentComponent"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "InventoryComponent_C"
+            }
+          },
+          {
+            "id": "node_51",
+            "type": "VariableGet",
+            "variable": "NumberOfSlots",
+            "pins_out": [
+              {
+                "name": "NumberOfSlots",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_53",
+            "type": "K2Node_Self",
+            "title": "Self-Reference",
+            "pins_out": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                },
+                "connections": [
+                  "node_2.Skills Page Inventory"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_54",
+            "type": "VariableSet",
+            "variable": "InventoryCreated",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "InventoryCreated",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_55",
+            "type": "VariableGet",
+            "variable": "InventoryCreated",
+            "pins_out": [
+              {
+                "name": "InventoryCreated",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_56.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_56",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_57.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_54.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_57",
+            "type": "K2Node_CallDelegate",
+            "title": "Call Clear Slots",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SkillsPageInventory_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_58",
+            "type": "VariableGet",
+            "variable": "WeaponItemData",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "InventoryComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "WeaponItemData",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_SlotInfo\"\r\n}"
+                },
+                "connections": [
+                  "node_62.Option 1"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "InventoryComponent_C"
+            }
+          },
+          {
+            "id": "node_59",
+            "type": "VariableGet",
+            "variable": "Weapons",
+            "pins_out": [
+              {
+                "name": "Weapons",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_62.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_60",
+            "type": "VariableGet",
+            "variable": "OnUseItemData",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "InventoryComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "OnUseItemData",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_SlotInfo\"\r\n}"
+                },
+                "connections": [
+                  "node_62.Option 0"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "InventoryComponent_C"
+            }
+          },
+          {
+            "id": "node_61",
+            "type": "VariableGet",
+            "variable": "InventoryComponent",
+            "pins_out": [
+              {
+                "name": "InventoryComponent",
+                "type": {
+                  "category": "object",
+                  "class": "InventoryComponent_C"
+                },
+                "connections": [
+                  "node_58.self",
+                  "node_60.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_62",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_SlotInfo\"\r\n}"
+                }
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_SlotInfo\"\r\n}"
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_SlotInfo\"\r\n}"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_63",
+            "type": "VariableGet",
+            "variable": "InventorySlots",
+            "pins_out": [
+              {
+                "name": "InventorySlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_InventorySlot_C\"\r\n}"
+                },
+                "connections": [
+                  "node_64.Array"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_64",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_InventorySlot_C\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InventorySlot_C"
+                },
+                "connections": [
+                  "node_65.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_65",
+            "type": "CallFunction",
+            "function": "Update Slot",
+            "owning_class": "SKEL_WB_InventorySlot_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InventorySlot_C"
+                }
+              },
+              {
+                "name": "SlotInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo"
+                }
+              },
+              {
+                "name": "IgnoreWeight",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_68",
+            "type": "CallFunction",
+            "function": "Array_IsValidIndex",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_SlotInfo\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "IndexToTest",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_69.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_69",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_73",
+            "type": "VariableSet",
+            "variable": "Skills Page",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Skills Page",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SkillsPage_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_56.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SkillsPage_C"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_74",
+            "type": "VariableGet",
+            "variable": "Skills Page",
+            "pins_out": [
+              {
+                "name": "Skills Page",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SkillsPage_C"
+                },
+                "connections": [
+                  "node_75.self",
+                  "node_78.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_75",
+            "type": "VariableGet",
+            "variable": "WB_WeaponsButton",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SkillsPage_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "WB_WeaponsButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_77.Option 1"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_SkillsPage_C"
+            }
+          },
+          {
+            "id": "node_76",
+            "type": "VariableGet",
+            "variable": "Weapons",
+            "pins_out": [
+              {
+                "name": "Weapons",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_77.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_77",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_100.Up Widget Nav"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_78",
+            "type": "VariableGet",
+            "variable": "WB_PotionsButton",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SkillsPage_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "WB_PotionsButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_MenuButtonSelected_C"
+                },
+                "connections": [
+                  "node_77.Option 0"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_SkillsPage_C"
+            }
+          },
+          {
+            "id": "node_81",
+            "type": "CallFunction",
+            "function": "Less_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_82.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_82",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_100.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_90.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_83",
+            "type": "VariableGet",
+            "variable": "NumberOfSlots",
+            "pins_out": [
+              {
+                "name": "NumberOfSlots",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_86.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_84",
+            "type": "CallFunction",
+            "function": "Subtract_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_101.B"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_86",
+            "type": "CallFunction",
+            "function": "Subtract_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_84.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_87",
+            "type": "VariableGet",
+            "variable": "SlotsPerRow",
+            "pins_out": [
+              {
+                "name": "SlotsPerRow",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_84.B"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_88",
+            "type": "VariableGet",
+            "variable": "SlotsPerRow",
+            "pins_out": [
+              {
+                "name": "SlotsPerRow",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_90",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_91.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_97.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_91",
+            "type": "CallFunction",
+            "function": "SetNavigationRuleExplicit",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "Direction",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Down"
+              },
+              {
+                "name": "InWidget",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_96.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_92",
+            "type": "VariableGet",
+            "variable": "Skills Page",
+            "pins_out": [
+              {
+                "name": "Skills Page",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SkillsPage_C"
+                },
+                "connections": [
+                  "node_93.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_93",
+            "type": "VariableGet",
+            "variable": "WB_SetupActionBar",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SkillsPage_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "WB_SetupActionBar",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SetupActionBar_C"
+                },
+                "connections": [
+                  "node_94.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_SkillsPage_C"
+            }
+          },
+          {
+            "id": "node_94",
+            "type": "VariableGet",
+            "variable": "WB_ActionBarSlots",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SetupActionBar_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "WB_ActionBarSlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_ActionBarSlot_C\"\r\n}"
+                },
+                "connections": [
+                  "node_95.Array"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_SetupActionBar_C"
+            }
+          },
+          {
+            "id": "node_95",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_ActionBarSlot_C\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "object",
+                  "class": "WB_ActionBarSlot_C"
+                },
+                "connections": [
+                  "node_91.InWidget"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_99",
+            "type": "VariableGet",
+            "variable": "SlotsPerRow",
+            "pins_out": [
+              {
+                "name": "SlotsPerRow",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_81.B"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_100",
+            "type": "CallFunction",
+            "function": "SetNavigation",
+            "owning_class": "SKEL_WB_InventorySlot_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InventorySlot_C"
+                }
+              },
+              {
+                "name": "Up Widget Nav",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_69.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_101",
+            "type": "CallFunction",
+            "function": "Greater_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_90.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_102",
+            "type": "Event",
+            "function": "OnAddedToFocusPath",
+            "owning_class": "UserWidget",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "InFocusEvent",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "FocusEvent"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_103",
+            "type": "VariableGet",
+            "variable": "InventorySlots",
+            "pins_out": [
+              {
+                "name": "InventorySlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_InventorySlot_C\"\r\n}"
+                },
+                "connections": [
+                  "node_104.Array"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_104",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_InventorySlot_C\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InventorySlot_C"
+                },
+                "connections": [
+                  "node_105.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_105",
+            "type": "CallFunction",
+            "function": "SetFocus",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_106",
+            "type": "Event",
+            "function": "OnRemovedFromFocusPath",
+            "owning_class": "UserWidget",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "InFocusEvent",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "FocusEvent"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          }
+        ]
+      }
+    ],
+    "functions": [],
+    "macros": []
+  },
+  "event_dispatchers": [
+    {
+      "name": "ActionBarInventorySlotsFree",
+      "category": "Default"
+    },
+    {
+      "name": "ClearSlots",
+      "category": "Default"
+    }
+  ],
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

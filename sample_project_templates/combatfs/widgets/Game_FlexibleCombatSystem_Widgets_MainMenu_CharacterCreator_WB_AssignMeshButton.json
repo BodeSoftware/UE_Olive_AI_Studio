@@ -1,0 +1,1464 @@
+{
+  "schema_version": "1.0",
+  "name": "WB_AssignMeshButton",
+  "path": "/Game/FlexibleCombatSystem/Widgets/MainMenu/CharacterCreator/WB_AssignMeshButton.WB_AssignMeshButton",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "UserWidget",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": true,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "ButtonWidth",
+      "type": {
+        "category": "float"
+      },
+      "category": "Pre Setup",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ButtonHeight",
+      "type": {
+        "category": "float"
+      },
+      "category": "Pre Setup",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "HasFocus",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Gamepad",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MeshChangerParentWidget",
+      "type": {
+        "category": "object",
+        "class": "WB_CharacterCustomMeshes_C"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SkeletalMesh",
+      "type": {
+        "category": "object",
+        "class": "SkeletalMesh"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Texture",
+      "type": {
+        "category": "object",
+        "class": "Texture2D"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "BodyPart",
+      "type": {
+        "category": "byte"
+      },
+      "category": "Pre Setup",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CharacterCreatorScreen",
+      "type": {
+        "category": "object",
+        "class": "WB_CreateCharacterScreen_C"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 39,
+        "connection_count": 61,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "PreConstruct",
+            "owning_class": "UserWidget",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              },
+              {
+                "name": "IsDesignTime",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableGet",
+            "variable": "ButtonSize",
+            "pins_out": [
+              {
+                "name": "ButtonSize",
+                "type": {
+                  "category": "object",
+                  "class": "SizeBox"
+                },
+                "connections": [
+                  "node_2.self",
+                  "node_28.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "SetWidthOverride",
+            "owning_class": "SizeBox",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SizeBox"
+                }
+              },
+              {
+                "name": "InWidthOverride",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "SetHeightOverride",
+            "owning_class": "SizeBox",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SizeBox"
+                }
+              },
+              {
+                "name": "InHeightOverride",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "ButtonWidth",
+            "pins_out": [
+              {
+                "name": "ButtonWidth",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_2.InWidthOverride"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "ButtonHeight",
+            "pins_out": [
+              {
+                "name": "ButtonHeight",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_3.InHeightOverride"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "Event",
+            "function": "BndEvt__WB_Button_Button_K2Node_ComponentBoundEvent_0_OnButtonHoverEvent__DelegateSignature",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_7",
+            "type": "CallFunction",
+            "function": "PlaySound2D",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Sound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "VolumeMultiplier",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "PitchMultiplier",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "StartTime",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "ConcurrencySettings",
+                "type": {
+                  "category": "object",
+                  "class": "SoundConcurrency"
+                }
+              },
+              {
+                "name": "OwningActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor",
+                  "is_const": true
+                }
+              },
+              {
+                "name": "bIsUISound",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "CallFunction",
+            "function": "ButtonHover",
+            "owning_class": "SKEL_FunctionLibrary_C",
+            "pins_out": [
+              {
+                "name": "ButtonHover",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_7.Sound"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "Event",
+            "function": "BndEvt__WB_Button_Button_K2Node_ComponentBoundEvent_1_OnButtonClickedEvent__DelegateSignature",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_10.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_10",
+            "type": "CallFunction",
+            "function": "PlaySound2D",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Sound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "VolumeMultiplier",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "PitchMultiplier",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "StartTime",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "ConcurrencySettings",
+                "type": {
+                  "category": "object",
+                  "class": "SoundConcurrency"
+                }
+              },
+              {
+                "name": "OwningActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor",
+                  "is_const": true
+                }
+              },
+              {
+                "name": "bIsUISound",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "CallFunction",
+            "function": "ButtonPress",
+            "owning_class": "SKEL_FunctionLibrary_C",
+            "pins_out": [
+              {
+                "name": "ButtonHover",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_10.Sound"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "Event",
+            "function": "OnAddedToFocusPath",
+            "owning_class": "UserWidget",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_18.execute"
+                ]
+              },
+              {
+                "name": "InFocusEvent",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "FocusEvent"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "Event",
+            "function": "OnRemovedFromFocusPath",
+            "owning_class": "UserWidget",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_15.execute"
+                ]
+              },
+              {
+                "name": "InFocusEvent",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "FocusEvent"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "VariableSet",
+            "variable": "HasFocus",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "HasFocus",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "VariableSet",
+            "variable": "HasFocus",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "HasFocus",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "CallFunction",
+            "function": "SetFocusToGameViewport",
+            "owning_class": "WidgetBlueprintLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "CallFunction",
+            "function": "Delay",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Duration",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.2"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_16.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "true"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "CallFunction",
+            "function": "PassControlInput",
+            "owning_class": "SKEL_I_PlayerController_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_20.execute"
+                ]
+              },
+              {
+                "name": "Gamepad",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_20.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "CallFunction",
+            "function": "GetPlayerController",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "PlayerIndex",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "PlayerController"
+                },
+                "connections": [
+                  "node_18.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_14.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_17.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_22",
+            "type": "VariableGet",
+            "variable": "MeshImage",
+            "pins_out": [
+              {
+                "name": "MeshImage",
+                "type": {
+                  "category": "object",
+                  "class": "Image"
+                },
+                "connections": [
+                  "node_23.self",
+                  "node_25.self",
+                  "node_29.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "CallFunction",
+            "function": "SetBrushFromTexture",
+            "owning_class": "Image",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Image"
+                }
+              },
+              {
+                "name": "Texture",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                }
+              },
+              {
+                "name": "bMatchSize",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_29.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "VariableGet",
+            "variable": "Texture",
+            "pins_out": [
+              {
+                "name": "Texture",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "connections": [
+                  "node_23.Texture"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_25",
+            "type": "CallFunction",
+            "function": "SetVisibility",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "InVisibility",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Collapsed"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_27.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "VariableGet",
+            "variable": "Button",
+            "pins_out": [
+              {
+                "name": "Button",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                },
+                "connections": [
+                  "node_27.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "CallFunction",
+            "function": "SetIsEnabled",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "bInIsEnabled",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_29",
+            "type": "CallFunction",
+            "function": "SetVisibility",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "InVisibility",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "SelfHitTestInvisible"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "VariableGet",
+            "variable": "SkeletalMesh",
+            "pins_out": [
+              {
+                "name": "SkeletalMesh",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMesh"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_31",
+            "type": "VariableGet",
+            "variable": "CharacterCreatorScreen",
+            "pins_out": [
+              {
+                "name": "CharacterCreatorScreen",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CreateCharacterScreen_C"
+                },
+                "connections": [
+                  "node_32.self",
+                  "node_33.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_32",
+            "type": "CallFunction",
+            "function": "SetMesh",
+            "owning_class": "SKEL_WB_CreateCharacterScreen_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CreateCharacterScreen_C"
+                }
+              },
+              {
+                "name": "Body Data",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_CharacterCreateMeshes"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_33",
+            "type": "CallFunction",
+            "function": "SetMesh",
+            "owning_class": "SKEL_WB_CreateCharacterScreen_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CreateCharacterScreen_C"
+                }
+              },
+              {
+                "name": "Body Data",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_CharacterCreateMeshes"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_34",
+            "type": "K2Node_MakeStruct",
+            "title": "Make S Character Create Meshes",
+            "pins_in": [
+              {
+                "name": "BodyPart_9_D94F3CD147E9B054501064BB4E5F8568",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              },
+              {
+                "name": "SkeletalMesh_2_EE84A6534F2555504D511A8089531D27",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMesh"
+                }
+              },
+              {
+                "name": "Texture_6_AB034D1048F8EA2A86D5858BC7435E9A",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "S_CharacterCreateMeshes",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_CharacterCreateMeshes"
+                },
+                "connections": [
+                  "node_32.Body Data"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_35",
+            "type": "K2Node_MakeStruct",
+            "title": "Make S Character Create Meshes",
+            "pins_in": [
+              {
+                "name": "BodyPart_9_D94F3CD147E9B054501064BB4E5F8568",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              },
+              {
+                "name": "SkeletalMesh_2_EE84A6534F2555504D511A8089531D27",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMesh"
+                }
+              },
+              {
+                "name": "Texture_6_AB034D1048F8EA2A86D5858BC7435E9A",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "S_CharacterCreateMeshes",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_CharacterCreateMeshes"
+                },
+                "connections": [
+                  "node_33.Body Data"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_36",
+            "type": "VariableGet",
+            "variable": "BodyPart",
+            "pins_out": [
+              {
+                "name": "BodyPart",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_35.BodyPart_9_D94F3CD147E9B054501064BB4E5F8568",
+                  "node_34.BodyPart_9_D94F3CD147E9B054501064BB4E5F8568"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_37",
+            "type": "VariableGet",
+            "variable": "SkeletalMesh",
+            "pins_out": [
+              {
+                "name": "SkeletalMesh",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMesh"
+                },
+                "connections": [
+                  "node_35.SkeletalMesh_2_EE84A6534F2555504D511A8089531D27"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_38",
+            "type": "Event",
+            "function": "Construct",
+            "owning_class": "UserWidget",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          }
+        ]
+      }
+    ],
+    "functions": [],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

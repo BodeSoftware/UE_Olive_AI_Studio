@@ -1,0 +1,2453 @@
+{
+  "schema_version": "1.0",
+  "name": "WB_CraftCategory",
+  "path": "/Game/FlexibleCombatSystem/Widgets/Crafting/WB_CraftCategory.WB_CraftCategory",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "UserWidget",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": true,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "CategoryNameTxt",
+      "type": {
+        "category": "text"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CraftableItemDatabase",
+      "type": {
+        "category": "object",
+        "class": "DataTable"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Craftable Items",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_CraftingRecipe\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Selected",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CraftingHUD",
+      "type": {
+        "category": "object",
+        "class": "WB_CraftingHUD_C"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Index",
+      "type": {
+        "category": "int"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 19,
+        "connection_count": 32,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "VariableGet",
+            "variable": "CategoryTxt",
+            "pins_out": [
+              {
+                "name": "CategoryTxt",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_2.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableGet",
+            "variable": "CategoryNameTxt",
+            "pins_out": [
+              {
+                "name": "CategoryNameTxt",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_2.InText"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "SetText",
+            "owning_class": "TextBlock",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                }
+              },
+              {
+                "name": "InText",
+                "type": {
+                  "category": "text"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "CraftableItemDatabase",
+            "pins_out": [
+              {
+                "name": "CraftableItemDatabase",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                },
+                "connections": [
+                  "node_4.Table",
+                  "node_5.DataTable"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "GetDataTableRowNames",
+            "owning_class": "DataTableFunctionLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Table",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable",
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "OutRowNames",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "K2Node_GetDataTableRow",
+            "title": "Get Data Table Row",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DataTable",
+                "type": {
+                  "category": "object",
+                  "class": "DataTable"
+                }
+              },
+              {
+                "name": "RowName",
+                "type": {
+                  "category": "name"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              },
+              {
+                "name": "RowNotFound",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_CraftingRecipe"
+                },
+                "connections": [
+                  "node_6.NewItem"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "Array_Add",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_CraftingRecipe\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "NewItem",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_CraftingRecipe",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "VariableGet",
+            "variable": "Craftable Items",
+            "pins_out": [
+              {
+                "name": "Craftable Items",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_CraftingRecipe\"\r\n}"
+                },
+                "connections": [
+                  "node_6.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "CategoryTxt",
+            "pins_out": [
+              {
+                "name": "CategoryTxt",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_11.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "CallFunction",
+            "function": "SetColorAndOpacity",
+            "owning_class": "TextBlock",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                }
+              },
+              {
+                "name": "InColorAndOpacity",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateColor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "K2Node_MakeStruct",
+            "title": "Make Slate Color",
+            "pins_in": [
+              {
+                "name": "SpecifiedColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=1.000000,G=1.000000,B=1.000000,A=1.000000)"
+              },
+              {
+                "name": "ColorUseRule",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "UseColor_Specified"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SlateColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateColor"
+                },
+                "connections": [
+                  "node_15.Option 1"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_13",
+            "type": "CustomEvent",
+            "function": "AdjustColor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_17.execute"
+                ]
+              },
+              {
+                "name": "Selected",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_15.Index",
+                  "node_17.Selected"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_14",
+            "type": "K2Node_MakeStruct",
+            "title": "Make Slate Color",
+            "pins_in": [
+              {
+                "name": "SpecifiedColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=0.201556,G=0.201556,B=0.201556,A=1.000000)"
+              },
+              {
+                "name": "ColorUseRule",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "UseColor_Specified"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SlateColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateColor"
+                },
+                "connections": [
+                  "node_15.Option 0"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_15",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateColor"
+                }
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateColor"
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateColor"
+                },
+                "connections": [
+                  "node_11.InColorAndOpacity"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_17",
+            "type": "VariableSet",
+            "variable": "Selected",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Selected",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_11.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "CustomEvent",
+            "function": "Setup",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "OnMouseButtonDown",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "MyGeometry",
+            "display_name": "My Geometry",
+            "type": {
+              "category": "struct",
+              "struct_name": "Geometry"
+            }
+          },
+          {
+            "name": "MouseEvent",
+            "display_name": "Mouse Event",
+            "type": {
+              "category": "struct",
+              "struct_name": "PointerEvent",
+              "is_reference": true,
+              "is_const": true
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "struct",
+              "struct_name": "EventReply"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 15,
+        "connection_count": 30,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "OnMouseButtonDown",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_14.execute"
+                ]
+              },
+              {
+                "name": "MyGeometry",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Geometry"
+                }
+              },
+              {
+                "name": "MouseEvent",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PointerEvent",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "connections": [
+                  "node_13.Input"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "OnMouseButtonDown",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "EventReply"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "CraftingHUD",
+            "pins_out": [
+              {
+                "name": "CraftingHUD",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CraftingHUD_C"
+                },
+                "connections": [
+                  "node_3.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "ScrollWidgetIntoView",
+            "owning_class": "SKEL_WB_CraftingHUD_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CraftingHUD_C"
+                }
+              },
+              {
+                "name": "Category",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "Index",
+            "pins_out": [
+              {
+                "name": "Index",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_3.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "Unhandled",
+            "owning_class": "WidgetBlueprintLibrary",
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "EventReply"
+                },
+                "connections": [
+                  "node_1.ReturnValue"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_7",
+            "type": "CallFunction",
+            "function": "PlaySound2D",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Sound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                }
+              },
+              {
+                "name": "VolumeMultiplier",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "PitchMultiplier",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "StartTime",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "ConcurrencySettings",
+                "type": {
+                  "category": "object",
+                  "class": "SoundConcurrency"
+                }
+              },
+              {
+                "name": "OwningActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor",
+                  "is_const": true
+                }
+              },
+              {
+                "name": "bIsUISound",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "CallFunction",
+            "function": "ButtonPress",
+            "owning_class": "SKEL_FunctionLibrary_C",
+            "pins_out": [
+              {
+                "name": "ButtonHover",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "connections": [
+                  "node_7.Sound"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "CraftingHUD",
+            "pins_out": [
+              {
+                "name": "CraftingHUD",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CraftingHUD_C"
+                },
+                "connections": [
+                  "node_10.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "RecipeListOpen",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CraftingHUD_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "RecipeListOpen",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_11.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_CraftingHUD_C"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "CallFunction",
+            "function": "BooleanAND",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_6.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "VariableGet",
+            "variable": "Selected",
+            "pins_out": [
+              {
+                "name": "Selected",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_11.B"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "CallFunction",
+            "function": "PointerEvent_IsMouseButtonDown",
+            "owning_class": "KismetInputLibrary",
+            "pins_in": [
+              {
+                "name": "Input",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PointerEvent",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "MouseButton",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                },
+                "default": "LeftMouseButton"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_14.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "OnKeyDown",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "MyGeometry",
+            "display_name": "My Geometry",
+            "type": {
+              "category": "struct",
+              "struct_name": "Geometry"
+            }
+          },
+          {
+            "name": "InKeyEvent",
+            "display_name": "In Key Event",
+            "type": {
+              "category": "struct",
+              "struct_name": "KeyEvent"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "struct",
+              "struct_name": "EventReply"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 34,
+        "connection_count": 85,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "OnKeyDown",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              },
+              {
+                "name": "MyGeometry",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Geometry"
+                }
+              },
+              {
+                "name": "InKeyEvent",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "KeyEvent"
+                },
+                "connections": [
+                  "node_2.Input"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "OnKeyDown",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "EventReply"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "GetKey",
+            "owning_class": "KismetInputLibrary",
+            "pins_in": [
+              {
+                "name": "Input",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "KeyEvent",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                },
+                "connections": [
+                  "node_3.A",
+                  "node_4.A",
+                  "node_7.A",
+                  "node_8.A",
+                  "node_11.A",
+                  "node_14.A",
+                  "node_16.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "EqualEqual_KeyKey",
+            "owning_class": "KismetInputLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                },
+                "default": "Gamepad_LeftStick_Down"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_5.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "EqualEqual_KeyKey",
+            "owning_class": "KismetInputLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                },
+                "default": "Gamepad_DPad_Down"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_5.B"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "BooleanOR",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_6.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_18.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_10.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_7",
+            "type": "CallFunction",
+            "function": "EqualEqual_KeyKey",
+            "owning_class": "KismetInputLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                },
+                "default": "Gamepad_LeftStick_Up"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_9.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "CallFunction",
+            "function": "EqualEqual_KeyKey",
+            "owning_class": "KismetInputLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                },
+                "default": "Gamepad_DPad_Up"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_9.B"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "CallFunction",
+            "function": "BooleanOR",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_10.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_20.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_12.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_11",
+            "type": "CallFunction",
+            "function": "EqualEqual_KeyKey",
+            "owning_class": "KismetInputLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                },
+                "default": "Gamepad_FaceButton_Bottom"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_12.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_22.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_13.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_13",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_26.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_15.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_14",
+            "type": "CallFunction",
+            "function": "EqualEqual_KeyKey",
+            "owning_class": "KismetInputLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                },
+                "default": "Gamepad_FaceButton_Right"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_13.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_28.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_16",
+            "type": "CallFunction",
+            "function": "EqualEqual_KeyKey",
+            "owning_class": "KismetInputLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Key"
+                },
+                "default": "Gamepad_Special_Left"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_15.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "VariableGet",
+            "variable": "CraftingHUD",
+            "pins_out": [
+              {
+                "name": "CraftingHUD",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CraftingHUD_C"
+                },
+                "connections": [
+                  "node_18.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "CallFunction",
+            "function": "SetMiddeWidget",
+            "owning_class": "SKEL_WB_CraftingHUD_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CraftingHUD_C"
+                }
+              },
+              {
+                "name": "ScrollDown",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "VariableGet",
+            "variable": "CraftingHUD",
+            "pins_out": [
+              {
+                "name": "CraftingHUD",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CraftingHUD_C"
+                },
+                "connections": [
+                  "node_20.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "CallFunction",
+            "function": "SetMiddeWidget",
+            "owning_class": "SKEL_WB_CraftingHUD_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CraftingHUD_C"
+                }
+              },
+              {
+                "name": "ScrollDown",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_21",
+            "type": "VariableGet",
+            "variable": "CraftingHUD",
+            "pins_out": [
+              {
+                "name": "CraftingHUD",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CraftingHUD_C"
+                },
+                "connections": [
+                  "node_23.self",
+                  "node_24.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_22",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_23.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_24.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_23",
+            "type": "CallFunction",
+            "function": "CraftRecipe",
+            "owning_class": "SKEL_WB_CraftingHUD_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CraftingHUD_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "CallFunction",
+            "function": "ToggleRecipeList",
+            "owning_class": "SKEL_WB_CraftingHUD_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CraftingHUD_C"
+                }
+              },
+              {
+                "name": "Open",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "Force",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_25",
+            "type": "VariableGet",
+            "variable": "CraftingHUD",
+            "pins_out": [
+              {
+                "name": "CraftingHUD",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CraftingHUD_C"
+                },
+                "connections": [
+                  "node_26.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "CallFunction",
+            "function": "CloseReceipe",
+            "owning_class": "SKEL_WB_CraftingHUD_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CraftingHUD_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "VariableGet",
+            "variable": "CraftingHUD",
+            "pins_out": [
+              {
+                "name": "CraftingHUD",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CraftingHUD_C"
+                },
+                "connections": [
+                  "node_28.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_28",
+            "type": "CallFunction",
+            "function": "CloseCrafting",
+            "owning_class": "SKEL_WB_CraftingHUD_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CraftingHUD_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_29",
+            "type": "CallFunction",
+            "function": "Handled",
+            "owning_class": "WidgetBlueprintLibrary",
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "EventReply"
+                },
+                "connections": [
+                  "node_1.ReturnValue"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "VariableGet",
+            "variable": "CraftingHUD",
+            "pins_out": [
+              {
+                "name": "CraftingHUD",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CraftingHUD_C"
+                },
+                "connections": [
+                  "node_31.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_31",
+            "type": "VariableGet",
+            "variable": "RecipeListOpen",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_CraftingHUD_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "RecipeListOpen",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_32.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_CraftingHUD_C"
+            }
+          },
+          {
+            "id": "node_32",
+            "type": "CallFunction",
+            "function": "BooleanAND",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_22.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_33",
+            "type": "VariableGet",
+            "variable": "Selected",
+            "pins_out": [
+              {
+                "name": "Selected",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_32.B"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

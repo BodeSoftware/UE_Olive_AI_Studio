@@ -1,0 +1,3642 @@
+{
+  "schema_version": "1.0",
+  "name": "WB_SaveMenu",
+  "path": "/Game/FlexibleCombatSystem/Widgets/SaveGame/WB_SaveMenu.WB_SaveMenu",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "UserWidget",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": true,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "NoSavesAvailable",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MainMenu",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "WB_SaveSlots",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_SaveSlot_C\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "WB_SaveReturnButton",
+      "type": {
+        "category": "object",
+        "class": "Button"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "NextSaveNumber",
+      "type": {
+        "category": "int"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 76,
+        "connection_count": 166,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "CallFunction",
+            "function": "LoadGameFromSlot",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SlotName",
+                "type": {
+                  "category": "string"
+                },
+                "default": "SaveStorage"
+              },
+              {
+                "name": "UserIndex",
+                "type": {
+                  "category": "int",
+                  "is_const": true
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "SaveGame"
+                },
+                "connections": [
+                  "node_1.Object"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "Cast",
+            "title": "Cast To BP_SaveStorage",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AsBP Save Storage",
+                "type": {
+                  "category": "object",
+                  "class": "BP_SaveStorage_C"
+                },
+                "connections": [
+                  "node_4.self"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "BP_SaveStorage_C",
+              "TargetClassPath": "/Game/FlexibleCombatSystem/Blueprints/BP_SaveStorage.BP_SaveStorage_C"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "LoadGameFromSlot",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SlotName",
+                "type": {
+                  "category": "string"
+                }
+              },
+              {
+                "name": "UserIndex",
+                "type": {
+                  "category": "int",
+                  "is_const": true
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "SaveGame"
+                },
+                "connections": [
+                  "node_3.Object"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "Cast",
+            "title": "Cast To BP_SaveGame",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_30.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AsBP Save Game",
+                "type": {
+                  "category": "object",
+                  "class": "BP_SaveGame_C"
+                },
+                "connections": [
+                  "node_31.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "BP_SaveGame_C",
+              "TargetClassPath": "/Game/FlexibleCombatSystem/Blueprints/BP_SaveGame.BP_SaveGame_C"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "SaveGameArray",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_SaveStorage_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SaveGameArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"string\"\r\n}"
+                },
+                "connections": [
+                  "node_5.TargetArray",
+                  "node_33.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "BP_SaveStorage_C"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "Array_Length",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"string\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_6.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "Greater_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_7.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_8.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_8",
+            "type": "VariableSet",
+            "variable": "NoSavesAvailable",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "NoSavesAvailable",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_12.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "SaveSlotInfo",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_SaveGame_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SaveSlotInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SaveSlotInfo"
+                },
+                "connections": [
+                  "node_30.SaveSlotInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "BP_SaveGame_C"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "VariableGet",
+            "variable": "NoSavesTxt",
+            "pins_out": [
+              {
+                "name": "NoSavesTxt",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_12.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "CallFunction",
+            "function": "SetVisibility",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "InVisibility",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Visible"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "CallFunction",
+            "function": "CreateSaveGameObject",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SaveGameClass",
+                "type": {
+                  "category": "class",
+                  "class": "SaveGame"
+                },
+                "default": "/Game/FlexibleCombatSystem/Blueprints/BP_SaveStorage.BP_SaveStorage_C"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_14.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "BP_SaveStorage_C"
+                },
+                "connections": [
+                  "node_14.SaveGameObject"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "CallFunction",
+            "function": "SaveGameToSlot",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SaveGameObject",
+                "type": {
+                  "category": "object",
+                  "class": "SaveGame"
+                }
+              },
+              {
+                "name": "SlotName",
+                "type": {
+                  "category": "string"
+                },
+                "default": "SaveStorage"
+              },
+              {
+                "name": "UserIndex",
+                "type": {
+                  "category": "int",
+                  "is_const": true
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_0.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "CallFunction",
+            "function": "DoesSaveGameExist",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SlotName",
+                "type": {
+                  "category": "string"
+                },
+                "default": "SaveStorage"
+              },
+              {
+                "name": "UserIndex",
+                "type": {
+                  "category": "int",
+                  "is_const": true
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_16.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_16.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_0.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_13.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_17",
+            "type": "CustomEvent",
+            "function": "SetupSaves",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "MainMenu",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_18.MainMenu"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_18",
+            "type": "VariableSet",
+            "variable": "MainMenu",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "MainMenu",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_35.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_35.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "VariableGet",
+            "variable": "MainMenu",
+            "pins_out": [
+              {
+                "name": "MainMenu",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_20.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator1"
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_30.SaveType"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_21",
+            "type": "CustomEvent",
+            "function": "CreateNewSave",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_27.execute"
+                ]
+              },
+              {
+                "name": "SaveName",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_27.SaveName",
+                  "node_60.InText"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_22",
+            "type": "Cast",
+            "title": "Cast To BP_SaveGame",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_41.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AsBP Save Game",
+                "type": {
+                  "category": "object",
+                  "class": "BP_SaveGame_C"
+                },
+                "connections": [
+                  "node_23.self"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "BP_SaveGame_C",
+              "TargetClassPath": "/Game/FlexibleCombatSystem/Blueprints/BP_SaveGame.BP_SaveGame_C"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "VariableGet",
+            "variable": "SaveSlotInfo",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_SaveGame_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SaveSlotInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SaveSlotInfo"
+                },
+                "connections": [
+                  "node_41.SaveSlotInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "BP_SaveGame_C"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "CallFunction",
+            "function": "LoadGameFromSlot",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SlotName",
+                "type": {
+                  "category": "string"
+                }
+              },
+              {
+                "name": "UserIndex",
+                "type": {
+                  "category": "int",
+                  "is_const": true
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_22.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "SaveGame"
+                },
+                "connections": [
+                  "node_22.Object"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "CallFunction",
+            "function": "SaveGame",
+            "owning_class": "SKEL_I_GameMode_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_24.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "CallFunction",
+            "function": "UpdateSaveSlot",
+            "owning_class": "SKEL_I_GameMode_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              },
+              {
+                "name": "SaveName",
+                "type": {
+                  "category": "text"
+                }
+              },
+              {
+                "name": "MapName",
+                "type": {
+                  "category": "string"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_26.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_29",
+            "type": "CallFunction",
+            "function": "GetGameMode",
+            "owning_class": "GameplayStatics",
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "GameModeBase"
+                },
+                "connections": [
+                  "node_27.self",
+                  "node_28.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "CallFunction",
+            "function": "CreateSaveSlot",
+            "owning_class": "SKEL_WB_SaveMenu_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "SaveType",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              },
+              {
+                "name": "SaveSlotInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SaveSlotInfo"
+                }
+              },
+              {
+                "name": "Current Save Game",
+                "type": {
+                  "category": "string"
+                }
+              },
+              {
+                "name": "SaveNumberValue",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_63.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_34",
+            "type": "CallFunction",
+            "function": "RetreiveSaveSlotName",
+            "owning_class": "SKEL_FunctionLibrary_C",
+            "pins_out": [
+              {
+                "name": "SaveSlot",
+                "type": {
+                  "category": "string"
+                },
+                "connections": [
+                  "node_24.SlotName"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_35",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_42.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_38.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_37",
+            "type": "VariableGet",
+            "variable": "WB_SaveSlot",
+            "pins_out": [
+              {
+                "name": "WB_SaveSlot",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SaveSlot_C"
+                },
+                "connections": [
+                  "node_38.self",
+                  "node_39.self",
+                  "node_42.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_38",
+            "type": "CallFunction",
+            "function": "Initialize",
+            "owning_class": "SKEL_WB_SaveSlot_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SaveSlot_C"
+                }
+              },
+              {
+                "name": "SaveInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SaveSlotInfo"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_39.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_39",
+            "type": "VariableSet",
+            "variable": "WB_SaveHolder",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "WB_SaveHolder",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SaveMenu_C"
+                }
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SaveSlot_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_15.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SaveMenu_C"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "WB_SaveSlot_C"
+            }
+          },
+          {
+            "id": "node_40",
+            "type": "K2Node_Self",
+            "title": "Self-Reference",
+            "pins_out": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                },
+                "connections": [
+                  "node_39.WB_SaveHolder"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_41",
+            "type": "CallFunction",
+            "function": "CreateSaveSlot",
+            "owning_class": "SKEL_WB_SaveMenu_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "SaveType",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator1"
+              },
+              {
+                "name": "SaveSlotInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SaveSlotInfo"
+                }
+              },
+              {
+                "name": "Current Save Game",
+                "type": {
+                  "category": "string"
+                }
+              },
+              {
+                "name": "SaveNumberValue",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_42",
+            "type": "CallFunction",
+            "function": "RemoveFromParent",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_15.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_43",
+            "type": "CustomEvent",
+            "function": "ReturnFocus",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_56.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_44",
+            "type": "VariableGet",
+            "variable": "WB_SaveReturnButton",
+            "pins_out": [
+              {
+                "name": "WB_SaveReturnButton",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                },
+                "connections": [
+                  "node_45.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_45",
+            "type": "CallFunction",
+            "function": "SetFocus",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_47",
+            "type": "VariableGet",
+            "variable": "WB_SaveSlots",
+            "pins_out": [
+              {
+                "name": "WB_SaveSlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_SaveSlot_C\"\r\n}"
+                },
+                "connections": [
+                  "node_48.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_48",
+            "type": "CallFunction",
+            "function": "Array_IsValidIndex",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_SaveSlot_C\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "IndexToTest",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_49.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_49",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_53.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_45.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_50",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_SaveSlot_C\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SaveSlot_C"
+                },
+                "connections": [
+                  "node_54.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_51",
+            "type": "CallFunction",
+            "function": "Array_LastIndex",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_SaveSlot_C\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_50.Dimension 1"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_52",
+            "type": "VariableGet",
+            "variable": "WB_SaveSlots",
+            "pins_out": [
+              {
+                "name": "WB_SaveSlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_SaveSlot_C\"\r\n}"
+                },
+                "connections": [
+                  "node_51.TargetArray",
+                  "node_50.Array"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_53",
+            "type": "CallFunction",
+            "function": "SetFocus",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_54",
+            "type": "VariableGet",
+            "variable": "WB_Button",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SaveSlot_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "WB_Button",
+                "type": {
+                  "category": "object",
+                  "class": "WB_Button_C"
+                },
+                "connections": [
+                  "node_55.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_SaveSlot_C"
+            }
+          },
+          {
+            "id": "node_55",
+            "type": "VariableGet",
+            "variable": "Button",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_Button_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Button",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                },
+                "connections": [
+                  "node_53.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_Button_C"
+            }
+          },
+          {
+            "id": "node_56",
+            "type": "CallFunction",
+            "function": "CheckForSaves",
+            "owning_class": "SKEL_WB_SaveMenu_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_49.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_59",
+            "type": "CallFunction",
+            "function": "Add_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_30.SaveNumberValue",
+                  "node_66.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_60",
+            "type": "CallFunction",
+            "function": "Conv_TextToString",
+            "owning_class": "KismetTextLibrary",
+            "pins_in": [
+              {
+                "name": "InText",
+                "type": {
+                  "category": "text",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "string"
+                },
+                "connections": [
+                  "node_61.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_63",
+            "type": "VariableSet",
+            "variable": "NextSaveNumber",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "NextSaveNumber",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_65",
+            "type": "VariableGet",
+            "variable": "NextSaveNumber",
+            "pins_out": [
+              {
+                "name": "NextSaveNumber",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_41.SaveNumberValue"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_66",
+            "type": "CallFunction",
+            "function": "Add_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_64.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_67",
+            "type": "CallFunction",
+            "function": "Array_Length",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"string\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_68",
+            "type": "CustomEvent",
+            "function": "SetFinalSaveReturnButton",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_69.execute"
+                ]
+              },
+              {
+                "name": "WB_SaveReturnButton",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                },
+                "connections": [
+                  "node_69.WB_SaveReturnButton"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_69",
+            "type": "VariableSet",
+            "variable": "WB_SaveReturnButton",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "WB_SaveReturnButton",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                },
+                "connections": [
+                  "node_75.InWidget"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_70",
+            "type": "VariableGet",
+            "variable": "WB_SaveSlots",
+            "pins_out": [
+              {
+                "name": "WB_SaveSlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_SaveSlot_C\"\r\n}"
+                },
+                "connections": [
+                  "node_71.TargetArray",
+                  "node_73.Array"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_71",
+            "type": "CallFunction",
+            "function": "Array_Length",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_SaveSlot_C\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_72.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_72",
+            "type": "CallFunction",
+            "function": "Subtract_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_73.Dimension 1"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_73",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_SaveSlot_C\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SaveSlot_C"
+                },
+                "connections": [
+                  "node_74.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_74",
+            "type": "VariableGet",
+            "variable": "WB_Button",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SaveSlot_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "WB_Button",
+                "type": {
+                  "category": "object",
+                  "class": "WB_Button_C"
+                },
+                "connections": [
+                  "node_75.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_SaveSlot_C"
+            }
+          },
+          {
+            "id": "node_75",
+            "type": "CallFunction",
+            "function": "SetNavigationRuleExplicit",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "Direction",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Up"
+              },
+              {
+                "name": "InWidget",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "CreateSaveSlot",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "SaveType",
+            "display_name": "Save Type",
+            "type": {
+              "category": "byte"
+            },
+            "default": "NewEnumerator0"
+          },
+          {
+            "name": "SaveSlotInfo",
+            "display_name": "Save Slot Info",
+            "type": {
+              "category": "struct",
+              "struct_name": "S_SaveSlotInfo"
+            }
+          },
+          {
+            "name": "Current Save Game",
+            "display_name": "Current Save Game",
+            "type": {
+              "category": "string"
+            }
+          },
+          {
+            "name": "SaveNumberValue",
+            "display_name": "Save Number Value",
+            "type": {
+              "category": "int"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 19,
+        "connection_count": 52,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "CreateSaveSlot",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "SaveType",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_1.SaveType"
+                ]
+              },
+              {
+                "name": "SaveSlotInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SaveSlotInfo"
+                },
+                "connections": [
+                  "node_10.InputPin"
+                ]
+              },
+              {
+                "name": "Current Save Game",
+                "type": {
+                  "category": "string"
+                },
+                "connections": [
+                  "node_1.Current Save Game"
+                ]
+              },
+              {
+                "name": "SaveNumberValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_1.SaveNumberValue"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "K2Node_CreateWidget",
+            "title": "Create WB Save Slot Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Class",
+                "type": {
+                  "category": "class",
+                  "class": "UserWidget"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/SaveGame/WB_SaveSlot.WB_SaveSlot_C"
+              },
+              {
+                "name": "OwningPlayer",
+                "type": {
+                  "category": "object",
+                  "class": "PlayerController"
+                }
+              },
+              {
+                "name": "SaveType",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              },
+              {
+                "name": "WB_SaveHolder",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SaveMenu_C"
+                }
+              },
+              {
+                "name": "Current Save Game",
+                "type": {
+                  "category": "string"
+                }
+              },
+              {
+                "name": "SaveNumberValue",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SaveSlot_C"
+                },
+                "connections": [
+                  "node_2.self",
+                  "node_5.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "Initialize",
+            "owning_class": "SKEL_WB_SaveSlot_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SaveSlot_C"
+                }
+              },
+              {
+                "name": "SaveInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SaveSlotInfo"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_15.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "SaveHolderVerticalBox",
+            "pins_out": [
+              {
+                "name": "SaveHolderVerticalBox",
+                "type": {
+                  "category": "object",
+                  "class": "VerticalBox"
+                },
+                "connections": [
+                  "node_4.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "AddChildToVerticalBox",
+            "owning_class": "VerticalBox",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "VerticalBox"
+                }
+              },
+              {
+                "name": "Content",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_8.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "VerticalBoxSlot"
+                },
+                "connections": [
+                  "node_17.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "CallFunction",
+            "function": "SetRenderTransformAngle",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "Angle",
+                "type": {
+                  "category": "float"
+                },
+                "default": "180.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_17.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "VariableGet",
+            "variable": "WB_SaveSlots",
+            "pins_out": [
+              {
+                "name": "WB_SaveSlots",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_SaveSlot_C\"\r\n}"
+                },
+                "connections": [
+                  "node_12.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "CallFunction",
+            "function": "Array_Add",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_SaveSlot_C\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "NewItem",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SaveSlot_C",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "VariableSet",
+            "variable": "WB_SaveHolder",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "WB_SaveHolder",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SaveMenu_C"
+                }
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SaveSlot_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_12.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "WB_SaveMenu_C"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "WB_SaveSlot_C"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "K2Node_Self",
+            "title": "Self-Reference",
+            "pins_out": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                },
+                "connections": [
+                  "node_15.WB_SaveHolder"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_17",
+            "type": "CallFunction",
+            "function": "SetPadding",
+            "owning_class": "VerticalBoxSlot",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "VerticalBoxSlot"
+                }
+              },
+              {
+                "name": "InPadding",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Margin"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "K2Node_MakeStruct",
+            "title": "Make Margin",
+            "pins_in": [
+              {
+                "name": "Left",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "Top",
+                "type": {
+                  "category": "float"
+                },
+                "default": "10.000000"
+              },
+              {
+                "name": "Right",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "Bottom",
+                "type": {
+                  "category": "float"
+                },
+                "default": "10.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Margin",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Margin"
+                },
+                "connections": [
+                  "node_17.InPadding"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "CheckForSaves",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 13,
+        "connection_count": 28,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "CheckForSaves",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "LoadGameFromSlot",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SlotName",
+                "type": {
+                  "category": "string"
+                },
+                "default": "SaveStorage"
+              },
+              {
+                "name": "UserIndex",
+                "type": {
+                  "category": "int",
+                  "is_const": true
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "SaveGame"
+                },
+                "connections": [
+                  "node_2.Object"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "Cast",
+            "title": "Cast To BP_SaveStorage",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AsBP Save Storage",
+                "type": {
+                  "category": "object",
+                  "class": "BP_SaveStorage_C"
+                },
+                "connections": [
+                  "node_3.self"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "BP_SaveStorage_C",
+              "TargetClassPath": "/Game/FlexibleCombatSystem/Blueprints/BP_SaveStorage.BP_SaveStorage_C"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "SaveGameArray",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_SaveStorage_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SaveGameArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"string\"\r\n}"
+                },
+                "connections": [
+                  "node_4.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "BP_SaveStorage_C"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "Array_Length",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"string\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_5.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "Greater_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_6.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_10.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_7",
+            "type": "VariableSet",
+            "variable": "NoSavesAvailable",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "NoSavesAvailable",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_9.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "VariableGet",
+            "variable": "NoSavesTxt",
+            "pins_out": [
+              {
+                "name": "NoSavesTxt",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_9.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "CallFunction",
+            "function": "SetVisibility",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "InVisibility",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Visible"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "VariableSet",
+            "variable": "NoSavesAvailable",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "NoSavesAvailable",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_12.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "VariableGet",
+            "variable": "NoSavesTxt",
+            "pins_out": [
+              {
+                "name": "NoSavesTxt",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_12.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "CallFunction",
+            "function": "SetVisibility",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "InVisibility",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Hidden"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      },
+      {
+        "name": "DoCustomNavigation_0",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "Navigation",
+            "display_name": "Navigation",
+            "type": {
+              "category": "byte"
+            },
+            "default": "Left"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "object",
+              "class": "Widget"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 3,
+        "connection_count": 4,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "DoCustomNavigation_0",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "Navigation",
+                "type": {
+                  "category": "byte"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "DoCustomNavigation_0",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "WB_SaveReturnButton",
+            "pins_out": [
+              {
+                "name": "WB_SaveReturnButton",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                },
+                "connections": [
+                  "node_1.ReturnValue"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

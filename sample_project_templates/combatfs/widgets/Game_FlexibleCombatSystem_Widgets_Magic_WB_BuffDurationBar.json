@@ -1,0 +1,3808 @@
+{
+  "schema_version": "1.0",
+  "name": "WB_BuffDurationBar",
+  "path": "/Game/FlexibleCombatSystem/Widgets/Magic/WB_BuffDurationBar.WB_BuffDurationBar",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "UserWidget",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": true,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "CurrentPercent",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "TotalTime",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CurrentTime",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "BuffType",
+      "type": {
+        "category": "byte"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CharacterRef",
+      "type": {
+        "category": "object",
+        "class": "Actor"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DurationTimer",
+      "type": {
+        "category": "struct",
+        "struct_name": "TimerHandle"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "BuffComponent",
+      "type": {
+        "category": "object",
+        "class": "BuffComponent_C"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "BuffSaveInfo",
+      "type": {
+        "category": "struct",
+        "struct_name": "S_BuffSaveInfo"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "BuffNumberReference",
+      "type": {
+        "category": "int"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 103,
+        "connection_count": 200,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "CallFunction",
+            "function": "K2_SetTimerDelegate",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Delegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "Time",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "bLooping",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "bMaxOncePerFrame",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "InitialStartDelay",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "InitialStartDelayVariance",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_38.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "TimerHandle"
+                },
+                "connections": [
+                  "node_38.DurationTimer"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "CustomEvent",
+            "function": "BeginTImer",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              },
+              {
+                "name": "TotalTime",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_7.TotalTime"
+                ]
+              },
+              {
+                "name": "CurrentTime",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_24.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "StatBar",
+            "pins_out": [
+              {
+                "name": "StatBar",
+                "type": {
+                  "category": "object",
+                  "class": "ProgressBar"
+                },
+                "connections": [
+                  "node_5.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "SetFillColorAndOpacity",
+            "owning_class": "ProgressBar",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ProgressBar"
+                }
+              },
+              {
+                "name": "InColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_86.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CustomEvent",
+            "function": "UpdatePercent",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                },
+                "connections": [
+                  "node_3.InputPin"
+                ]
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_7",
+            "type": "VariableSet",
+            "variable": "TotalTime",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TotalTime",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_8.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "VariableSet",
+            "variable": "CurrentTime",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "CurrentTime",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_30.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "TotalTime",
+            "pins_out": [
+              {
+                "name": "TotalTime",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_11.B"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "CurrentTime",
+            "pins_out": [
+              {
+                "name": "CurrentTime",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_11.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "CallFunction",
+            "function": "Divide_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_17.CurrentPercent"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "VariableGet",
+            "variable": "CurrentTime",
+            "pins_out": [
+              {
+                "name": "CurrentTime",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "CallFunction",
+            "function": "LessEqual_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_14.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_49.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_15",
+            "type": "CallFunction",
+            "function": "K2_ClearAndInvalidateTimerHandle",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Handle",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "TimerHandle",
+                  "is_reference": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "CallFunction",
+            "function": "RemoveFromParent",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "VariableSet",
+            "variable": "CurrentPercent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "CurrentPercent",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_32.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_32.InPercent"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "VariableGet",
+            "variable": "CurrentPercent",
+            "pins_out": [
+              {
+                "name": "CurrentPercent",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_13.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "CustomEvent",
+            "function": "RemoveTimer",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_69.execute"
+                ]
+              },
+              {
+                "name": "Reapply",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_81.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_20",
+            "type": "VariableGet",
+            "variable": "BuffType",
+            "pins_out": [
+              {
+                "name": "BuffType",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_21.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_21",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "NewEnumerator3",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=1.000000,G=0.000000,B=0.013702,A=1.000000)"
+              },
+              {
+                "name": "NewEnumerator4",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=0.084376,G=0.783538,B=0.000000,A=1.000000)"
+              },
+              {
+                "name": "NewEnumerator5",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=0.001518,G=0.000000,B=1.000000,A=1.000000)"
+              },
+              {
+                "name": "NewEnumerator6",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=1.000000,G=0.000000,B=0.013702,A=1.000000)"
+              },
+              {
+                "name": "NewEnumerator9",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=0.291771,G=0.291771,B=0.291771,A=1.000000)"
+              },
+              {
+                "name": "NewEnumerator10",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                }
+              },
+              {
+                "name": "NewEnumerator13",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=1.000000,G=0.000000,B=0.013702,A=1.000000)"
+              },
+              {
+                "name": "NewEnumerator11",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=1.000000,G=0.000000,B=0.013702,A=1.000000)"
+              },
+              {
+                "name": "NewEnumerator14",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=0.784971,G=0.000000,B=0.095620,A=1.000000)"
+              },
+              {
+                "name": "NewEnumerator15",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=0.057642,G=0.000000,B=1.000000,A=1.000000)"
+              },
+              {
+                "name": "NewEnumerator12",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=0.084376,G=0.783538,B=0.000000,A=1.000000)"
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator3"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "connections": [
+                  "node_5.InColor"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_22",
+            "type": "VariableGet",
+            "variable": "BuffType",
+            "pins_out": [
+              {
+                "name": "BuffType",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_23.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "NewEnumerator3",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Textures/Icons/Abilities/T_BuffStrength.T_BuffStrength"
+              },
+              {
+                "name": "NewEnumerator4",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Textures/Icons/Abilities/T_BuffAgility.T_BuffAgility"
+              },
+              {
+                "name": "NewEnumerator5",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Textures/Icons/Abilities/T_BuffIntellect.T_BuffIntellect"
+              },
+              {
+                "name": "NewEnumerator6",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Textures/Icons/Abilities/T_BuffCrit.T_BuffCrit"
+              },
+              {
+                "name": "NewEnumerator9",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Textures/Icons/Abilities/T_BuffArmor.T_BuffArmor"
+              },
+              {
+                "name": "NewEnumerator10",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                }
+              },
+              {
+                "name": "NewEnumerator13",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Textures/Icons/Abilities/T_HealChannel.T_HealChannel"
+              },
+              {
+                "name": "NewEnumerator11",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Textures/Icons/Abilities/T_Magic2HSword.T_Magic2HSword"
+              },
+              {
+                "name": "NewEnumerator14",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Textures/Icons/Weapons/T_Dagger.T_Dagger"
+              },
+              {
+                "name": "NewEnumerator15",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Textures/Icons/Abilities/T_MagicSword.T_MagicSword"
+              },
+              {
+                "name": "NewEnumerator12",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Textures/Icons/Abilities/T_MagicBow.T_MagicBow"
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator3"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "connections": [
+                  "node_87.Value"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_25",
+            "type": "CallFunction",
+            "function": "Array_Add",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_BuffDurationBar_C\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "NewItem",
+                "type": {
+                  "category": "object",
+                  "class": "WB_BuffDurationBar_C",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_0.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "K2Node_Self",
+            "title": "Self-Reference",
+            "pins_out": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                },
+                "connections": [
+                  "node_25.NewItem"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_27",
+            "type": "VariableGet",
+            "variable": "TotalTime",
+            "pins_out": [
+              {
+                "name": "TotalTime",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_29.B"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_28",
+            "type": "VariableGet",
+            "variable": "CurrentTime",
+            "pins_out": [
+              {
+                "name": "CurrentTime",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_29.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_29",
+            "type": "CallFunction",
+            "function": "Divide_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_30.CurrentPercent"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "VariableSet",
+            "variable": "CurrentPercent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "CurrentPercent",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_34.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_34.InPercent"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_31",
+            "type": "VariableGet",
+            "variable": "StatBar",
+            "pins_out": [
+              {
+                "name": "StatBar",
+                "type": {
+                  "category": "object",
+                  "class": "ProgressBar"
+                },
+                "connections": [
+                  "node_32.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_32",
+            "type": "CallFunction",
+            "function": "SetPercent",
+            "owning_class": "ProgressBar",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ProgressBar"
+                }
+              },
+              {
+                "name": "InPercent",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_14.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_33",
+            "type": "VariableGet",
+            "variable": "StatBar",
+            "pins_out": [
+              {
+                "name": "StatBar",
+                "type": {
+                  "category": "object",
+                  "class": "ProgressBar"
+                },
+                "connections": [
+                  "node_34.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_34",
+            "type": "CallFunction",
+            "function": "SetPercent",
+            "owning_class": "ProgressBar",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ProgressBar"
+                }
+              },
+              {
+                "name": "InPercent",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_46.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_35",
+            "type": "VariableGet",
+            "variable": "BuffTimeRemaining",
+            "pins_out": [
+              {
+                "name": "BuffTimeRemaining",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_36.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_36",
+            "type": "CallFunction",
+            "function": "SetText",
+            "owning_class": "TextBlock",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                }
+              },
+              {
+                "name": "InText",
+                "type": {
+                  "category": "text"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_17.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_37",
+            "type": "CallFunction",
+            "function": "Conv_DoubleToText",
+            "owning_class": "KismetTextLibrary",
+            "pins_in": [
+              {
+                "name": "Value",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "RoundingMode",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "HalfToEven"
+              },
+              {
+                "name": "bAlwaysSign",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "bUseGrouping",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "MinimumIntegralDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              },
+              {
+                "name": "MaximumIntegralDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "324"
+              },
+              {
+                "name": "MinimumFractionalDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "MaximumFractionalDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "3"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_36.InText"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_38",
+            "type": "VariableSet",
+            "variable": "DurationTimer",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DurationTimer",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "TimerHandle"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_54.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "TimerHandle"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_39",
+            "type": "VariableGet",
+            "variable": "DurationTimer",
+            "pins_out": [
+              {
+                "name": "DurationTimer",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "TimerHandle"
+                },
+                "connections": [
+                  "node_15.Handle"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_41",
+            "type": "VariableGet",
+            "variable": "BuffComponent",
+            "pins_out": [
+              {
+                "name": "BuffComponent",
+                "type": {
+                  "category": "object",
+                  "class": "BuffComponent_C"
+                },
+                "connections": [
+                  "node_51.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_45",
+            "type": "VariableGet",
+            "variable": "BuffTimeRemaining",
+            "pins_out": [
+              {
+                "name": "BuffTimeRemaining",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_46.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_46",
+            "type": "CallFunction",
+            "function": "SetText",
+            "owning_class": "TextBlock",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                }
+              },
+              {
+                "name": "InText",
+                "type": {
+                  "category": "text"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_25.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_47",
+            "type": "CallFunction",
+            "function": "Conv_DoubleToText",
+            "owning_class": "KismetTextLibrary",
+            "pins_in": [
+              {
+                "name": "Value",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "RoundingMode",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "HalfToEven"
+              },
+              {
+                "name": "bAlwaysSign",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "bUseGrouping",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "MinimumIntegralDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              },
+              {
+                "name": "MaximumIntegralDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "324"
+              },
+              {
+                "name": "MinimumFractionalDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "MaximumFractionalDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "3"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_46.InText"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_48",
+            "type": "VariableGet",
+            "variable": "CurrentTime",
+            "pins_out": [
+              {
+                "name": "CurrentTime",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_47.Value"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_49",
+            "type": "CallFunction",
+            "function": "RemoveTimer",
+            "owning_class": "SKEL_WB_BuffDurationBar_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "Reapply",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_51",
+            "type": "VariableGet",
+            "variable": "WB Active Buffs Bars",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BuffComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "WB Active Buffs Bars",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_BuffDurationBar_C\"\r\n}"
+                },
+                "connections": [
+                  "node_25.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "BuffComponent_C"
+            }
+          },
+          {
+            "id": "node_52",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "NewEnumerator0",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                }
+              },
+              {
+                "name": "NewEnumerator1",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=1.000000,G=0.083229,B=0.000000,A=1.000000)"
+              },
+              {
+                "name": "NewEnumerator2",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=0.000000,G=0.721297,B=1.000000,A=1.000000)"
+              },
+              {
+                "name": "NewEnumerator8",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=0.058025,G=0.995736,B=1.000000,A=1.000000)"
+              },
+              {
+                "name": "NewEnumerator3",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=1.000000,G=0.631594,B=0.000000,A=1.000000)"
+              },
+              {
+                "name": "NewEnumerator4",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=0.349657,G=1.000000,B=0.000000,A=1.000000)"
+              },
+              {
+                "name": "NewEnumerator5",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=1.000000,G=0.000000,B=0.045661,A=1.000000)"
+              },
+              {
+                "name": "NewEnumerator6",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                }
+              },
+              {
+                "name": "NewEnumerator7",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=0.000000,G=83.403183,B=100.000000,A=1.000000)"
+              },
+              {
+                "name": "NewEnumerator9",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "connections": [
+                  "node_21.NewEnumerator10"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_53",
+            "type": "CustomEvent",
+            "function": "Setup",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_54",
+            "type": "CallFunction",
+            "function": "Setup",
+            "owning_class": "SKEL_WB_BuffDurationBar_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_55",
+            "type": "VariableGet",
+            "variable": "BuffSaveInfo",
+            "pins_out": [
+              {
+                "name": "BuffSaveInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_BuffSaveInfo"
+                },
+                "connections": [
+                  "node_56.S_BuffSaveInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_56",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Buff Save Info",
+            "pins_in": [
+              {
+                "name": "S_BuffSaveInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_BuffSaveInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "BarrierDamageType_25_0F21C71845CD3B9E995E269EDF63D568",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_52.Index"
+                ]
+              },
+              {
+                "name": "BarrierDamageRank_31_A1A6B6F0409B6AA4467DACA16C2957F4",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpecialDamageInfo"
+                }
+              },
+              {
+                "name": "SpawnedWeapon_30_6420BCE5404D28437CFC97977B200A88",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_57",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "NewEnumerator0",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Textures/Icons/Abilities/T_EnergyBarrier.T_EnergyBarrier"
+              },
+              {
+                "name": "NewEnumerator1",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Textures/Icons/Abilities/T_FireBarrier.T_FireBarrier"
+              },
+              {
+                "name": "NewEnumerator2",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Textures/Icons/Abilities/T_IceBarrier.T_IceBarrier"
+              },
+              {
+                "name": "NewEnumerator8",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Textures/Icons/Abilities/T_IceBarrier.T_IceBarrier"
+              },
+              {
+                "name": "NewEnumerator3",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Textures/Icons/Abilities/T_LightningBarrier.T_LightningBarrier"
+              },
+              {
+                "name": "NewEnumerator4",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Textures/Icons/Abilities/T_PoisonBarrier.T_PoisonBarrier"
+              },
+              {
+                "name": "NewEnumerator5",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                }
+              },
+              {
+                "name": "NewEnumerator6",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                }
+              },
+              {
+                "name": "NewEnumerator7",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Textures/Icons/Abilities/T_EnergyBarrier.T_EnergyBarrier"
+              },
+              {
+                "name": "NewEnumerator9",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Texture2D"
+                },
+                "connections": [
+                  "node_23.NewEnumerator10"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_58",
+            "type": "VariableGet",
+            "variable": "BuffSaveInfo",
+            "pins_out": [
+              {
+                "name": "BuffSaveInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_BuffSaveInfo"
+                },
+                "connections": [
+                  "node_59.S_BuffSaveInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_59",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Buff Save Info",
+            "pins_in": [
+              {
+                "name": "S_BuffSaveInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_BuffSaveInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "BarrierDamageType_25_0F21C71845CD3B9E995E269EDF63D568",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_57.Index"
+                ]
+              },
+              {
+                "name": "BarrierDamageRank_31_A1A6B6F0409B6AA4467DACA16C2957F4",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpecialDamageInfo"
+                }
+              },
+              {
+                "name": "SpawnedWeapon_30_6420BCE5404D28437CFC97977B200A88",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_60",
+            "type": "VariableGet",
+            "variable": "BuffComponent",
+            "pins_out": [
+              {
+                "name": "BuffComponent",
+                "type": {
+                  "category": "object",
+                  "class": "BuffComponent_C"
+                },
+                "connections": [
+                  "node_61.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_61",
+            "type": "CallFunction",
+            "function": "Remove Spawned Weapon",
+            "owning_class": "SKEL_BuffComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BuffComponent_C"
+                }
+              },
+              {
+                "name": "BuffWB",
+                "type": {
+                  "category": "object",
+                  "class": "WB_BuffDurationBar_C",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_72.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_62",
+            "type": "K2Node_Self",
+            "title": "Self-Reference",
+            "pins_out": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                },
+                "connections": [
+                  "node_61.BuffWB"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_63",
+            "type": "VariableGet",
+            "variable": "BuffType",
+            "pins_out": [
+              {
+                "name": "BuffType",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_64.A",
+                  "node_65.A",
+                  "node_66.A",
+                  "node_67.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_64",
+            "type": "K2Node_EnumEquality",
+            "title": "Equal (Enum)",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "byte"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator11"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_68.A"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_65",
+            "type": "K2Node_EnumEquality",
+            "title": "Equal (Enum)",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "byte"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator14"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_68.B"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_66",
+            "type": "K2Node_EnumEquality",
+            "title": "Equal (Enum)",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "byte"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator15"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_68.C"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_67",
+            "type": "K2Node_EnumEquality",
+            "title": "Equal (Enum)",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "byte"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator12"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_68.D"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_68",
+            "type": "CallFunction",
+            "function": "BooleanOR",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "C",
+                "type": {
+                  "category": "bool"
+                }
+              },
+              {
+                "name": "D",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_69.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_69",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_61.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_70.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_73",
+            "type": "VariableGet",
+            "variable": "BuffType",
+            "pins_out": [
+              {
+                "name": "BuffType",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_74.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_74",
+            "type": "K2Node_EnumEquality",
+            "title": "Equal (Enum)",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "byte"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator10"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_77.Condition"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_75",
+            "type": "VariableGet",
+            "variable": "BuffComponent",
+            "pins_out": [
+              {
+                "name": "BuffComponent",
+                "type": {
+                  "category": "object",
+                  "class": "BuffComponent_C"
+                },
+                "connections": [
+                  "node_76.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_76",
+            "type": "VariableSet",
+            "variable": "Barrier Damage Type",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Barrier Damage Type",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BuffComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_84.InputPin"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "byte"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "BuffComponent_C"
+            }
+          },
+          {
+            "id": "node_77",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_76.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_83.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_80",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_84.InputPin"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_77.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_85",
+            "type": "VariableGet",
+            "variable": "IconImg",
+            "pins_out": [
+              {
+                "name": "IconImg",
+                "type": {
+                  "category": "object",
+                  "class": "Image"
+                },
+                "connections": [
+                  "node_86.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_86",
+            "type": "CallFunction",
+            "function": "GetDynamicMaterial",
+            "owning_class": "Image",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Image"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_87.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "MaterialInstanceDynamic"
+                },
+                "connections": [
+                  "node_87.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_87",
+            "type": "CallFunction",
+            "function": "SetTextureParameterValue",
+            "owning_class": "MaterialInstanceDynamic",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "MaterialInstanceDynamic"
+                }
+              },
+              {
+                "name": "ParameterName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "Texture"
+              },
+              {
+                "name": "Value",
+                "type": {
+                  "category": "object",
+                  "class": "Texture"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_88",
+            "type": "VariableGet",
+            "variable": "BuffComponent",
+            "pins_out": [
+              {
+                "name": "BuffComponent",
+                "type": {
+                  "category": "object",
+                  "class": "BuffComponent_C"
+                },
+                "connections": [
+                  "node_89.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_89",
+            "type": "CallFunction",
+            "function": "SR_DestroyNS",
+            "owning_class": "SKEL_BuffComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BuffComponent_C"
+                }
+              },
+              {
+                "name": "BuffPS",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_15.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_90",
+            "type": "VariableGet",
+            "variable": "BuffNumberReference",
+            "pins_out": [
+              {
+                "name": "BuffNumberReference",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_89.BuffPS"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_91",
+            "type": "VariableGet",
+            "variable": "BuffComponent",
+            "pins_out": [
+              {
+                "name": "BuffComponent",
+                "type": {
+                  "category": "object",
+                  "class": "BuffComponent_C"
+                },
+                "connections": [
+                  "node_92.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_92",
+            "type": "VariableGet",
+            "variable": "WB Active Buffs Bars",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BuffComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "WB Active Buffs Bars",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_BuffDurationBar_C\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "BuffComponent_C"
+            }
+          },
+          {
+            "id": "node_93",
+            "type": "VariableGet",
+            "variable": "BuffNumberReference",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_BuffDurationBar_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "BuffNumberReference",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_94.A",
+                  "node_98.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_BuffDurationBar_C"
+            }
+          },
+          {
+            "id": "node_94",
+            "type": "CallFunction",
+            "function": "Greater_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_96.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_95",
+            "type": "VariableGet",
+            "variable": "BuffNumberReference",
+            "pins_out": [
+              {
+                "name": "BuffNumberReference",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_94.B"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_96",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_97.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_97",
+            "type": "VariableSet",
+            "variable": "BuffNumberReference",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "BuffNumberReference",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_BuffDurationBar_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "WB_BuffDurationBar_C"
+            }
+          },
+          {
+            "id": "node_98",
+            "type": "CallFunction",
+            "function": "Subtract_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_97.BuffNumberReference"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_99",
+            "type": "VariableGet",
+            "variable": "BuffComponent",
+            "pins_out": [
+              {
+                "name": "BuffComponent",
+                "type": {
+                  "category": "object",
+                  "class": "BuffComponent_C"
+                },
+                "connections": [
+                  "node_100.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_100",
+            "type": "VariableGet",
+            "variable": "WB Active Buffs Bars",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BuffComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "WB Active Buffs Bars",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_BuffDurationBar_C\"\r\n}"
+                },
+                "connections": [
+                  "node_101.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "BuffComponent_C"
+            }
+          },
+          {
+            "id": "node_101",
+            "type": "CallFunction",
+            "function": "Array_Remove",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"WB_BuffDurationBar_C\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "IndexToRemove",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_16.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_102",
+            "type": "VariableGet",
+            "variable": "BuffNumberReference",
+            "pins_out": [
+              {
+                "name": "BuffNumberReference",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_101.IndexToRemove"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "SetBarrierAbsorb",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "Shield Amount",
+            "display_name": "Shield Amount",
+            "type": {
+              "category": "float"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 14,
+        "connection_count": 29,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "SetBarrierAbsorb",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              },
+              {
+                "name": "Shield Amount",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_1.A",
+                  "node_10.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "Round",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_2.Value"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "Conv_IntToText",
+            "owning_class": "KismetTextLibrary",
+            "pins_in": [
+              {
+                "name": "Value",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "bAlwaysSign",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "bUseGrouping",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "MinimumIntegralDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              },
+              {
+                "name": "MaximumIntegralDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "324"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_4.InText"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "ShieldAbsorb",
+            "pins_out": [
+              {
+                "name": "ShieldAbsorb",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_4.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "SetText",
+            "owning_class": "TextBlock",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                }
+              },
+              {
+                "name": "InText",
+                "type": {
+                  "category": "text"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_9.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "ShieldAbsorb",
+            "pins_out": [
+              {
+                "name": "ShieldAbsorb",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_7.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "CallFunction",
+            "function": "SetVisibility",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "InVisibility",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Visible"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "VariableGet",
+            "variable": "ShieldAbsorb",
+            "pins_out": [
+              {
+                "name": "ShieldAbsorb",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_9.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "CallFunction",
+            "function": "SetVisibility",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "InVisibility",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Hidden"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_13.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "CallFunction",
+            "function": "LessEqual_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_5.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "CallFunction",
+            "function": "RemoveTimer",
+            "owning_class": "SKEL_WB_BuffDurationBar_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "Reapply",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

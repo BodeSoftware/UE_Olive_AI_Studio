@@ -1,0 +1,1522 @@
+{
+  "template_id": "bp_notify_state_montage_blend_out",
+  "display_name": "BP_NotifyState_MontageBlendOut",
+  "tags": "notify state montage blend out anim condition time profile tick character movement instance mesh comp",
+  "catalog_description": "BP_NotifyState_MontageBlendOut: AnimNotifyState-based blueprint with 2 functions. Handles animation, anim, character, and montage.",
+  "source_project": "CombatFS",
+  "depends_on": null,
+  "schema_version": "1.0",
+  "name": "BP_NotifyState_MontageBlendOut",
+  "path": "/Game/FlexibleCombatSystem/GASP/Blueprints/AnimNotifies/BP_NotifyState_MontageBlendOut.BP_NotifyState_MontageBlendOut",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "AnimNotifyState",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": false,
+    "has_functions": false,
+    "has_variables": false,
+    "has_components": false,
+    "has_macros": false,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "BlendOutCondition",
+      "type": {
+        "category": "byte"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "BlendOutTime",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "BlendProfile",
+      "type": {
+        "category": "name"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [],
+    "functions": [
+      {
+        "name": "Received_NotifyTick",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "MeshComp",
+            "display_name": "Mesh Comp",
+            "type": {
+              "category": "object",
+              "class": "SkeletalMeshComponent"
+            }
+          },
+          {
+            "name": "Animation",
+            "display_name": "Animation",
+            "type": {
+              "category": "object",
+              "class": "AnimSequenceBase"
+            }
+          },
+          {
+            "name": "FrameDeltaTime",
+            "display_name": "Frame Delta Time",
+            "type": {
+              "category": "float"
+            },
+            "default": "0.0"
+          },
+          {
+            "name": "EventReference",
+            "display_name": "Event Reference",
+            "type": {
+              "category": "struct",
+              "struct_name": "AnimNotifyEventReference",
+              "is_reference": true,
+              "is_const": true
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "public",
+        "const": true,
+        "node_count": 40,
+        "connection_count": 82,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "Received_NotifyTick",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_16.execute"
+                ]
+              },
+              {
+                "name": "MeshComp",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                }
+              },
+              {
+                "name": "Animation",
+                "type": {
+                  "category": "object",
+                  "class": "AnimSequenceBase"
+                }
+              },
+              {
+                "name": "FrameDeltaTime",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "EventReference",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "AnimNotifyEventReference",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "VariableGet",
+            "variable": "BlendOutCondition",
+            "pins_out": [
+              {
+                "name": "BlendOutCondition",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_2.Selection"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "K2Node_SwitchEnum",
+            "title": "Switch on E_TraversalBlendOutCondition",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Selection",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "NewEnumerator0",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_30.execute"
+                ]
+              },
+              {
+                "name": "NewEnumerator1",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_22.InputPin"
+                ]
+              },
+              {
+                "name": "NewEnumerator2",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_23.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_33.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "NotEqual_VectorVector",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "ErrorTolerance",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_3.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "Character",
+            "pins_out": [
+              {
+                "name": "Character",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                },
+                "connections": [
+                  "node_6.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "CharacterMovement",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "CharacterMovement",
+                "type": {
+                  "category": "object",
+                  "class": "CharacterMovementComponent"
+                },
+                "connections": [
+                  "node_39.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Character"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_34.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_8",
+            "type": "VariableGet",
+            "variable": "Character",
+            "pins_out": [
+              {
+                "name": "Character",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                },
+                "connections": [
+                  "node_9.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "CharacterMovement",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "CharacterMovement",
+                "type": {
+                  "category": "object",
+                  "class": "CharacterMovementComponent"
+                },
+                "connections": [
+                  "node_10.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Character"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "CallFunction",
+            "function": "IsFalling",
+            "owning_class": "NavMovementComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "NavMovementComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_7.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "Cast",
+            "title": "Cast To AnimMontage",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_14.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AsAnim Montage",
+                "type": {
+                  "category": "object",
+                  "class": "AnimMontage"
+                },
+                "connections": [
+                  "node_14.AnimMontage"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "AnimMontage",
+              "TargetClassPath": "/Script/Engine.AnimMontage"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "CallFunction",
+            "function": "GetAnimInstance",
+            "owning_class": "SkeletalMeshComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "AnimInstance"
+                },
+                "connections": [
+                  "node_13.AnimInstance"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "VariableSet",
+            "variable": "AnimInstance",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AnimInstance",
+                "type": {
+                  "category": "object",
+                  "class": "AnimInstance"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_11.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "AnimInstance"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_14",
+            "type": "VariableSet",
+            "variable": "AnimMontage",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AnimMontage",
+                "type": {
+                  "category": "object",
+                  "class": "AnimMontage"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_29.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "AnimMontage"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_15",
+            "type": "FunctionResult",
+            "function": "Received_NotifyTick",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ]
+          },
+          {
+            "id": "node_16",
+            "type": "Cast",
+            "title": "Cast To Character",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_20.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AsCharacter",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                },
+                "connections": [
+                  "node_20.Character"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "Character",
+              "TargetClassPath": "/Script/Engine.Character"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "VariableGet",
+            "variable": "MeshComp",
+            "pins_out": [
+              {
+                "name": "MeshComp",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                },
+                "connections": [
+                  "node_18.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_18",
+            "type": "CallFunction",
+            "function": "GetOwner",
+            "owning_class": "ActorComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ActorComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_16.Object"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "VariableGet",
+            "variable": "MeshComp",
+            "pins_out": [
+              {
+                "name": "MeshComp",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                },
+                "connections": [
+                  "node_12.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_20",
+            "type": "VariableSet",
+            "variable": "Character",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Character",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_13.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_21",
+            "type": "VariableGet",
+            "variable": "Animation",
+            "pins_out": [
+              {
+                "name": "Animation",
+                "type": {
+                  "category": "object",
+                  "class": "AnimSequenceBase"
+                },
+                "connections": [
+                  "node_11.Object"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_24",
+            "type": "CallFunction",
+            "function": "Montage_StopWithBlendSettings",
+            "owning_class": "AnimInstance",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "AnimInstance"
+                }
+              },
+              {
+                "name": "BlendOutSettings",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "MontageBlendSettings",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Montage",
+                "type": {
+                  "category": "object",
+                  "class": "AnimMontage",
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_15.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_25",
+            "type": "K2Node_MakeStruct",
+            "title": "Make Montage Blend Settings",
+            "pins_in": [
+              {
+                "name": "BlendProfile",
+                "type": {
+                  "category": "object",
+                  "class": "BlendProfile"
+                }
+              },
+              {
+                "name": "Blend",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "AlphaBlendArgs"
+                },
+                "default": "(CustomCurve=None,BlendTime=0.200000,BlendOption=Linear)"
+              },
+              {
+                "name": "BlendMode",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Standard"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "MontageBlendSettings",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "MontageBlendSettings"
+                },
+                "connections": [
+                  "node_24.BlendOutSettings"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_26",
+            "type": "K2Node_MakeStruct",
+            "title": "Make Alpha Blend Args",
+            "pins_in": [
+              {
+                "name": "CustomCurve",
+                "type": {
+                  "category": "object",
+                  "class": "CurveFloat"
+                }
+              },
+              {
+                "name": "BlendTime",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.200000"
+              },
+              {
+                "name": "BlendOption",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "HermiteCubic"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "AlphaBlendArgs",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "AlphaBlendArgs"
+                },
+                "connections": [
+                  "node_25.Blend"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_27",
+            "type": "VariableGet",
+            "variable": "AnimInstance",
+            "pins_out": [
+              {
+                "name": "AnimInstance",
+                "type": {
+                  "category": "object",
+                  "class": "AnimInstance"
+                },
+                "connections": [
+                  "node_28.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_28",
+            "type": "CallFunction",
+            "function": "GetBlendProfileByName",
+            "owning_class": "AnimInstance",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "AnimInstance"
+                }
+              },
+              {
+                "name": "InBlendProfileName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "None"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "BlendProfile",
+                  "is_const": true
+                },
+                "connections": [
+                  "node_25.BlendProfile"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_29",
+            "type": "Sequence",
+            "title": "Sequence",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then_0",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              },
+              {
+                "name": "then_1",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_31.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "OutputCount": "2"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "VariableSet",
+            "variable": "ShouldBlendOut",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ShouldBlendOut",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_31",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_24.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_32",
+            "type": "VariableGet",
+            "variable": "ShouldBlendOut",
+            "pins_out": [
+              {
+                "name": "ShouldBlendOut",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_31.Condition"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_33",
+            "type": "VariableSet",
+            "variable": "ShouldBlendOut",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ShouldBlendOut",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_34",
+            "type": "VariableSet",
+            "variable": "ShouldBlendOut",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ShouldBlendOut",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_35",
+            "type": "VariableGet",
+            "variable": "AnimInstance",
+            "pins_out": [
+              {
+                "name": "AnimInstance",
+                "type": {
+                  "category": "object",
+                  "class": "AnimInstance"
+                },
+                "connections": [
+                  "node_24.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_36",
+            "type": "VariableGet",
+            "variable": "AnimMontage",
+            "pins_out": [
+              {
+                "name": "AnimMontage",
+                "type": {
+                  "category": "object",
+                  "class": "AnimMontage"
+                },
+                "connections": [
+                  "node_24.Montage"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_37",
+            "type": "VariableGet",
+            "variable": "BlendOutTime",
+            "pins_out": [
+              {
+                "name": "BlendOutTime",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_26.BlendTime"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_38",
+            "type": "VariableGet",
+            "variable": "BlendProfile",
+            "pins_out": [
+              {
+                "name": "BlendProfile",
+                "type": {
+                  "category": "name"
+                },
+                "connections": [
+                  "node_28.InBlendProfileName"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_39",
+            "type": "CallFunction",
+            "function": "GetCurrentAcceleration",
+            "owning_class": "CharacterMovementComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "CharacterMovementComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_4.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "tags": "notify tick equal falling anim instance owner montage",
+        "description": "Received_NotifyTick: Notifies tick anim animation."
+      },
+      {
+        "name": "GetNotifyName",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "string"
+            }
+          }
+        ],
+        "access": "public",
+        "const": true,
+        "node_count": 5,
+        "connection_count": 8,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "GetNotifyName",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "GetNotifyName",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "string"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "BlendOutCondition",
+            "pins_out": [
+              {
+                "name": "BlendOutCondition",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_4.Enumerator"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "Concat_StrStr",
+            "owning_class": "KismetStringLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "string"
+                },
+                "default": "Early Blend out - "
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "string"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "string"
+                },
+                "connections": [
+                  "node_1.ReturnValue"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "K2Node_GetEnumeratorNameAsString",
+            "title": "Enum to String",
+            "pins_in": [
+              {
+                "name": "Enumerator",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "(INVALID)"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "string"
+                },
+                "connections": [
+                  "node_3.B"
+                ]
+              }
+            ]
+          }
+        ],
+        "tags": "notify concat blend out condition",
+        "description": "GetNotifyName: Notifies notify."
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

@@ -1,0 +1,620 @@
+{
+  "schema_version": "1.0",
+  "name": "ABP_CharacterCreatorSetup",
+  "path": "/Game/FlexibleCombatSystem/Animation/UE5-Mannequin/ABP_CharacterCreatorSetup.ABP_CharacterCreatorSetup",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "AnimInstance",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": true,
+    "has_widget_tree": false,
+    "has_state_machine": true
+  },
+  "compile_status": "success",
+  "interfaces": [
+    {
+      "name": "I_CharacterAnimBP_C",
+      "path": "/Game/FlexibleCombatSystem/Blueprints/Interfaces/I_CharacterAnimBP.I_CharacterAnimBP",
+      "required_functions": [
+        "SwimDeath",
+        "Diving OR Surface Swimming",
+        "PassSwimSpeed",
+        "JumpIntoWaterComplete",
+        "PassSwimLedgeClimbIK",
+        "Swimming Up /Down = Diving",
+        "IsSwimmingOnSurface",
+        "SwimmingToggle",
+        "BootsEquipped",
+        "UpdateHandToString",
+        "PassBoneScaling",
+        "UpdateSpellChannelType",
+        "SendArrowExecute",
+        "UpdateFootIK",
+        "UpdateCrouching",
+        "UpdateWeaponDrawn",
+        "UpdateArrowFiring",
+        "UpdateSpellChannel",
+        "UpdateSpellAiming",
+        "UpdateBowAiming",
+        "UpdateArrowLoaded",
+        "UpdateExecuteOccuring",
+        "UpdateTargetLocked",
+        "UpdateBlock",
+        "Update Movement Stance",
+        "UpdateHasEnemyTarget",
+        "SetupABP",
+        "PassArrowLoaded",
+        "AttackEndRotate",
+        "AttackRotate",
+        "ExecuteUbergraph"
+      ]
+    }
+  ],
+  "variables": [
+    {
+      "name": "Target",
+      "type": {
+        "category": "object",
+        "class": "ControlRigComponent"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Bone Scale",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_BoneScale\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CharacterCreator",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Bones Set",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Bone Names",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Bone Scales",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Vector\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 4,
+        "connection_count": 10,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "PassBoneScaling",
+            "owning_class": "SKEL_I_CharacterAnimBP_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "BoneName",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "connections": [
+                  "node_1.Bone Names"
+                ]
+              },
+              {
+                "name": "BoneScale",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Vector\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "connections": [
+                  "node_2.Bone Scales"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableSet",
+            "variable": "Bone Names",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Bone Names",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "VariableSet",
+            "variable": "Bone Scales",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Bone Scales",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Vector\"\r\n}"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Vector\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableSet",
+            "variable": "Bones Set",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Bones Set",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "AnimGraph",
+        "graph_type": "Function",
+        "node_count": 9,
+        "connection_count": 12,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "AnimGraphNode_Root",
+            "title": "Output Pose\nAnimGraph",
+            "pins_in": [
+              {
+                "name": "Result",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "AnimGraphNode_SequencePlayer",
+            "title": "MM_Idle\nSequence Player",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_2.Source"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "AnimGraphNode_ControlRig",
+            "title": "Control Rig",
+            "pins_in": [
+              {
+                "name": "Source",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "Alpha",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "CharacterCreator",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "BonesSet",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "BoneNames",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                }
+              },
+              {
+                "name": "BoneScales",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Vector\"\r\n}"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_0.Result"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "AnimGraphNode_SequencePlayer",
+            "title": "DW_Idle\nSequence Player",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "AnimGraphNode_BlendListByBool",
+            "title": "Blend Poses by bool",
+            "pins_in": [
+              {
+                "name": "BlendPose_0",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "BlendPose_1",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "BlendTime_0",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "BlendTime_1",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "bActiveValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "CharacterCreator",
+            "pins_out": [
+              {
+                "name": "CharacterCreator",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_4.bActiveValue"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "Bones Set",
+            "pins_out": [
+              {
+                "name": "Bones Set",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_2.BonesSet"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "VariableGet",
+            "variable": "Bone Names",
+            "pins_out": [
+              {
+                "name": "Bone Names",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"name\"\r\n}"
+                },
+                "connections": [
+                  "node_2.BoneNames"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "VariableGet",
+            "variable": "Bone Scales",
+            "pins_out": [
+              {
+                "name": "Bone Scales",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"Vector\"\r\n}"
+                },
+                "connections": [
+                  "node_2.BoneScales"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

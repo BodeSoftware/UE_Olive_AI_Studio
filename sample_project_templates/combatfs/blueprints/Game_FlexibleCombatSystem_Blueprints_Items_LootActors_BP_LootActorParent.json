@@ -1,0 +1,3913 @@
+{
+  "schema_version": "1.0",
+  "name": "BP_LootActorParent",
+  "path": "/Game/FlexibleCombatSystem/Blueprints/Items/LootActors/BP_LootActorParent.BP_LootActorParent",
+  "type": "Normal",
+  "parent_class": {
+    "name": "Actor",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "interfaces": [
+    {
+      "name": "I_LootInterface_C",
+      "path": "/Game/FlexibleCombatSystem/Blueprints/Interfaces/I_LootInterface.I_LootInterface",
+      "required_functions": [
+        "PassLooted",
+        "SetLooted",
+        "ServerOpenContainer",
+        "ServerCloseContainer",
+        "AddLootToDroppedLoot",
+        "ServerCloseUI",
+        "ToggleNotifyForAnim",
+        "ToggleAnimation",
+        "RetrieveLootInfo",
+        "RetrieveInventoryInfo",
+        "ExecuteUbergraph"
+      ]
+    },
+    {
+      "name": "I_Interact_C",
+      "path": "/Game/FlexibleCombatSystem/Blueprints/Interfaces/I_Interact.I_Interact",
+      "required_functions": [
+        "MidInteract",
+        "Interact",
+        "ExecuteUbergraph"
+      ]
+    },
+    {
+      "name": "I_OutlineInterface_C",
+      "path": "/Game/FlexibleCombatSystem/Blueprints/Interfaces/I_OutlineInterface.I_OutlineInterface",
+      "required_functions": [
+        "RetrieveOutlineInfo",
+        "ExecuteUbergraph"
+      ]
+    }
+  ],
+  "variables": [
+    {
+      "name": "LootSetupInfo",
+      "type": {
+        "category": "struct",
+        "struct_name": "S_LootSetupInfo"
+      },
+      "category": "Setup in Game",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "Loot State",
+      "type": {
+        "category": "byte"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "CharacterRef",
+      "type": {
+        "category": "object",
+        "class": "Character"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DroppedLoot",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": true,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      },
+      "replication_condition": "None"
+    },
+    {
+      "name": "DefaultSceneRoot",
+      "type": {
+        "category": "object",
+        "class": "SceneComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Item",
+      "type": {
+        "category": "object",
+        "class": "StaticMeshComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "LootComponent",
+      "type": {
+        "category": "object",
+        "class": "LootComponent_C"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "OutlineComponent",
+      "type": {
+        "category": "object",
+        "class": "OutlineComponent_C"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Scene",
+      "type": {
+        "category": "object",
+        "class": "SceneComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Item2",
+      "type": {
+        "category": "object",
+        "class": "StaticMeshComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Sphere",
+      "type": {
+        "category": "object",
+        "class": "SphereComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "components": {
+    "root": "DefaultSceneRoot",
+    "tree": [
+      {
+        "name": "DefaultSceneRoot",
+        "class": "SceneComponent",
+        "is_root": true,
+        "children": [
+          {
+            "name": "Item",
+            "class": "StaticMeshComponent",
+            "properties": {
+              "StaticMesh": "/Script/Engine.StaticMesh'/Game/FlexibleCombatSystem/Meshes/General/SM_DropBag.SM_DropBag'",
+              "bRenderInDepthPass": "False",
+              "BodyInstance": "(PositionSolverIterationCount=8,VelocitySolverIterationCount=2,ProjectionSolverIterationCount=1,CollisionEnabled=QueryAndPhysics,bNotifyRigidBodyCollision=True,bLockTranslation=True,bLockRotation=True,bInterpolateWhenSubStepping=True,bInertiaConditioning=True,SolverAsyncDeltaTime=0.016667,CollisionProfileName=\"BlockAll\",CollisionResponses=(),MassInKgOverride=100.000000,LinearDamping=0.010000,CustomDOFPlaneNormal=(X=0.000000,Y=0.000000,Z=0.000000),COMNudge=(X=0.000000,Y=0.000000,Z=0.000000),MassScale=1.000000,InertiaTensorScale=(X=1.000000,Y=1.000000,Z=1.000000),WalkableSlopeOverride=(),MaxAngularVelocity=3600.000000,CustomSleepThresholdMultiplier=1.000000,StabilizationThresholdMultiplier=1.000000,bEnableGravity=True,bAutoWeld=True,bStartAwake=True,bUpdateMassWhenScaleChanges=True)",
+              "RelativeLocation": "(X=0.000000,Y=0.000000,Z=-14.000000)"
+            }
+          },
+          {
+            "name": "Scene",
+            "class": "SceneComponent",
+            "children": [
+              {
+                "name": "Item2",
+                "class": "StaticMeshComponent",
+                "properties": {
+                  "bRenderInDepthPass": "False",
+                  "CastShadow": "False",
+                  "BodyInstance": "(PositionSolverIterationCount=8,VelocitySolverIterationCount=2,ProjectionSolverIterationCount=1,CollisionEnabled=QueryAndPhysics,bNotifyRigidBodyCollision=True,bLockTranslation=True,bLockRotation=True,bInterpolateWhenSubStepping=True,bInertiaConditioning=True,SolverAsyncDeltaTime=0.016667,CollisionProfileName=\"BlockAll\",CollisionResponses=(),MassInKgOverride=100.000000,LinearDamping=0.010000,CustomDOFPlaneNormal=(X=0.000000,Y=0.000000,Z=0.000000),COMNudge=(X=0.000000,Y=0.000000,Z=0.000000),MassScale=1.000000,InertiaTensorScale=(X=1.000000,Y=1.000000,Z=1.000000),WalkableSlopeOverride=(),MaxAngularVelocity=3600.000000,CustomSleepThresholdMultiplier=1.000000,StabilizationThresholdMultiplier=1.000000,bEnableGravity=True,bAutoWeld=True,bStartAwake=True,bUpdateMassWhenScaleChanges=True)",
+                  "bVisible": "False"
+                }
+              }
+            ]
+          },
+          {
+            "name": "Sphere",
+            "class": "SphereComponent",
+            "properties": {
+              "SphereRadius": "100.000000",
+              "bUseSystemDefaultObstacleAreaClass": "False",
+              "AreaClassOverride": "/Script/CoreUObject.Class'/Script/NavigationSystem.NavArea_Obstacle'",
+              "BodyInstance": "(PositionSolverIterationCount=8,VelocitySolverIterationCount=2,ProjectionSolverIterationCount=1,ObjectType=ECC_WorldDynamic,CollisionEnabled=QueryOnly,bLockTranslation=True,bLockRotation=True,bInterpolateWhenSubStepping=True,bInertiaConditioning=True,SolverAsyncDeltaTime=0.016667,CollisionProfileName=\"Custom\",CollisionResponses=(ResponseArray=((Channel=\"WorldStatic\",Response=ECR_Overlap),(Channel=\"WorldDynamic\",Response=ECR_Overlap),(Channel=\"Pawn\",Response=ECR_Overlap),(Channel=\"Visibility\",Response=ECR_Overlap),(Channel=\"Camera\",Response=ECR_Overlap),(Channel=\"PhysicsBody\",Response=ECR_Overlap),(Channel=\"Vehicle\",Response=ECR_Overlap),(Channel=\"Destructible\",Response=ECR_Overlap),(Channel=\"Projectile\",Response=ECR_Ignore),(Channel=\"DamageTraceHit\",Response=ECR_Ignore))),MassInKgOverride=100.000000,LinearDamping=0.010000,CustomDOFPlaneNormal=(X=0.000000,Y=0.000000,Z=0.000000),COMNudge=(X=0.000000,Y=0.000000,Z=0.000000),MassScale=1.000000,InertiaTensorScale=(X=1.000000,Y=1.000000,Z=1.000000),WalkableSlopeOverride=(),MaxAngularVelocity=3600.000000,CustomSleepThresholdMultiplier=1.000000,StabilizationThresholdMultiplier=1.000000,bEnableGravity=True,bAutoWeld=True,bStartAwake=True,bUpdateMassWhenScaleChanges=True)"
+            }
+          }
+        ]
+      },
+      {
+        "name": "LootComponent",
+        "class": "LootComponent_C"
+      },
+      {
+        "name": "OutlineComponent",
+        "class": "OutlineComponent_C"
+      }
+    ]
+  },
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 67,
+        "connection_count": 115,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_1",
+            "type": "Event",
+            "function": "Interact",
+            "owning_class": "SKEL_I_Interact_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_30.execute"
+                ]
+              },
+              {
+                "name": "Character",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                },
+                "connections": [
+                  "node_12.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "GetComponentByClass",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "ComponentClass",
+                "type": {
+                  "category": "class",
+                  "class": "ActorComponent"
+                },
+                "default": "/Game/FlexibleCombatSystem/Blueprints/Components/QuestReceiverComponent.QuestReceiverComponent_C"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "QuestReceiverComponent_C"
+                },
+                "connections": [
+                  "node_3.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "K2Node_AddDelegate",
+            "title": "Bind Event to Quest Objective Link",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "QuestReceiverComponent_C"
+                }
+              },
+              {
+                "name": "Delegate",
+                "type": {
+                  "category": "delegate",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "K2Node_CreateDelegate",
+            "title": "Create Event",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                },
+                "connections": [
+                  "node_3.Delegate"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "GetPlayerCharacter",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "PlayerIndex",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                },
+                "connections": [
+                  "node_2.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "CustomEvent",
+            "function": "ToggleInventory",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_21.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_9",
+            "type": "VariableSet",
+            "variable": "Loot State",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Loot State",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_46.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "byte"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "Loot State",
+            "pins_out": [
+              {
+                "name": "Loot State",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_50.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "VariableSet",
+            "variable": "CharacterRef",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "CharacterRef",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "CallFunction",
+            "function": "SetOwner",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "NewOwner",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_9.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "Event",
+            "function": "ReceiveBeginPlay",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_23.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "VariableSet",
+            "variable": "Loot State",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Loot State",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "byte"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "Event",
+            "function": "ToggleNotifyForAnim",
+            "owning_class": "SKEL_I_LootInterface_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_43.execute"
+                ]
+              },
+              {
+                "name": "ForceClose",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_43.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "CallFunction",
+            "function": "ToggleInventory",
+            "owning_class": "SKEL_BP_LootActorParent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "CallFunction",
+            "function": "GetPlayerController",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "PlayerIndex",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "PlayerController"
+                },
+                "connections": [
+                  "node_21.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_21",
+            "type": "CallFunction",
+            "function": "ToggleLootMenu",
+            "owning_class": "SKEL_I_PlayerController_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              },
+              {
+                "name": "LootComp",
+                "type": {
+                  "category": "object",
+                  "class": "LootComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "CallFunction",
+            "function": "K2_SetTimerDelegate",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Delegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "Time",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.500000"
+              },
+              {
+                "name": "bLooping",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "bMaxOncePerFrame",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "InitialStartDelay",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "InitialStartDelayVariance",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "TimerHandle"
+                },
+                "connections": [
+                  "node_26.Handle"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "CustomEvent",
+            "function": "PlayerValidCheck",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                },
+                "connections": [
+                  "node_23.Delegate"
+                ]
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_25",
+            "type": "CallFunction",
+            "function": "GetPlayerCharacter",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "PlayerIndex",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "CallFunction",
+            "function": "K2_ClearAndInvalidateTimerHandle",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Handle",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "TimerHandle",
+                  "is_reference": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "Event",
+            "function": "AddLootToDroppedLoot",
+            "owning_class": "SKEL_I_LootInterface_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_28.execute"
+                ]
+              },
+              {
+                "name": "DroppedItem",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo"
+                },
+                "connections": [
+                  "node_28.NewItem"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_28",
+            "type": "CallFunction",
+            "function": "AddLootDataRemake",
+            "owning_class": "SKEL_LootComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "LootComponent_C"
+                }
+              },
+              {
+                "name": "NewItem",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SlotInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_29",
+            "type": "VariableGet",
+            "variable": "LootComponent",
+            "pins_out": [
+              {
+                "name": "LootComponent",
+                "type": {
+                  "category": "object",
+                  "class": "LootComponent_C"
+                },
+                "connections": [
+                  "node_28.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_34.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_35.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_31",
+            "type": "VariableGet",
+            "variable": "CharacterRef",
+            "pins_out": [
+              {
+                "name": "CharacterRef",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                },
+                "connections": [
+                  "node_32.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_32",
+            "type": "CallFunction",
+            "function": "EqualEqual_ObjectObject",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_34.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_34",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_48.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_41.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_37",
+            "type": "K2Node_CreateWidget",
+            "title": "Create WB Popup Text Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Class",
+                "type": {
+                  "category": "class",
+                  "class": "UserWidget"
+                },
+                "default": "/Game/FlexibleCombatSystem/Widgets/Combat/WB_PopupText.WB_PopupText_C"
+              },
+              {
+                "name": "OwningPlayer",
+                "type": {
+                  "category": "object",
+                  "class": "PlayerController"
+                }
+              },
+              {
+                "name": "PopupText",
+                "type": {
+                  "category": "text"
+                },
+                "default": "Loot in Use!"
+              },
+              {
+                "name": "Colour",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateColor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_38.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "WB_PopupText_C"
+                },
+                "connections": [
+                  "node_38.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_38",
+            "type": "CallFunction",
+            "function": "AddToViewport",
+            "owning_class": "UserWidget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "UserWidget"
+                }
+              },
+              {
+                "name": "ZOrder",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_39",
+            "type": "CallFunction",
+            "function": "IsLocallyControlled",
+            "owning_class": "Pawn",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_41.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_41",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_37.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_42",
+            "type": "VariableGet",
+            "variable": "LootComponent",
+            "pins_out": [
+              {
+                "name": "LootComponent",
+                "type": {
+                  "category": "object",
+                  "class": "LootComponent_C"
+                },
+                "connections": [
+                  "node_21.LootComp"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_43",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_44.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_17.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_44",
+            "type": "VariableSet",
+            "variable": "Loot State",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Loot State",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator2"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "byte"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_45",
+            "type": "CallFunction",
+            "function": "IsLocallyControlled",
+            "owning_class": "Pawn",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_46.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_46",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_19.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_47",
+            "type": "CallFunction",
+            "function": "Not_PreBool",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_48.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_48",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_14.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_49",
+            "type": "VariableGet",
+            "variable": "CharacterRef",
+            "pins_out": [
+              {
+                "name": "CharacterRef",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                },
+                "connections": [
+                  "node_15.NewOwner"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_50",
+            "type": "K2Node_EnumEquality",
+            "title": "Equal (Enum)",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "byte"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_55.Index"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_51",
+            "type": "Event",
+            "function": "SetLooted",
+            "owning_class": "SKEL_I_LootInterface_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_52.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_52",
+            "type": "VariableSet",
+            "variable": "Loot State",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Loot State",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "byte"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_53",
+            "type": "VariableGet",
+            "variable": "Loot State",
+            "pins_out": [
+              {
+                "name": "Loot State",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_54.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_54",
+            "type": "K2Node_EnumEquality",
+            "title": "Equal (Enum)",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "byte"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_47.A"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_55",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator1"
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator2"
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_9.Loot State"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_57",
+            "type": "VariableGet",
+            "variable": "Loot State",
+            "pins_out": [
+              {
+                "name": "Loot State",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_58.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_58",
+            "type": "K2Node_EnumEquality",
+            "title": "Equal (Enum)",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "byte"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_59.Index"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_59",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator1"
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator2"
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_17.Loot State"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_61",
+            "type": "VariableGet",
+            "variable": "Loot State",
+            "pins_out": [
+              {
+                "name": "Loot State",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_62.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_62",
+            "type": "K2Node_EnumEquality",
+            "title": "Equal (Enum)",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "byte"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_30.Condition"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 1,
+        "connection_count": 0,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "BP_LootActorParent_AutoGenFunc",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "Quest Receiver",
+            "display_name": "Quest Receiver",
+            "type": {
+              "category": "object",
+              "class": "QuestReceiverComponent_C"
+            }
+          },
+          {
+            "name": "Quest Info",
+            "display_name": "Quest Info",
+            "type": {
+              "category": "struct",
+              "struct_name": "S_QuestInfo"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 31,
+        "connection_count": 68,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "BP_LootActorParent_AutoGenFunc",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Quest Receiver",
+                "type": {
+                  "category": "object",
+                  "class": "QuestReceiverComponent_C"
+                }
+              },
+              {
+                "name": "Quest Info",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_QuestInfo"
+                },
+                "connections": [
+                  "node_1.S_QuestInfo"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Quest Info",
+            "pins_in": [
+              {
+                "name": "S_QuestInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_QuestInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "QuestType_73_73FDB8A44115F514AB57E0B80427217A",
+                "type": {
+                  "category": "byte"
+                }
+              },
+              {
+                "name": "QuestObjectiveInfo_62_19199B544E04C821D44969A3D63ADA17",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_QuestObjectiveInfo\"\r\n}"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Quest Objective Info",
+            "pins_in": [
+              {
+                "name": "S_QuestObjectiveInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_QuestObjectiveInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ObjectiveName_12_B6C404F242449EA1FE2D92BC878C0CC3",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_26.InputPin"
+                ]
+              },
+              {
+                "name": "ContainerNameIFItemLootedfromEnemyorChest_28_B25EF129443592B14878A1AACE356163",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_25.InputPin"
+                ]
+              },
+              {
+                "name": "ObjectiveType_11_803590AC4168802FF2655F90C42C3B84",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_5.ObjectiveType_11_803590AC4168802FF2655F90C42C3B84"
+                ]
+              },
+              {
+                "name": "TotalObjectiveNumber_13_04FC5A53460BDB9B473E79829A76F2E2",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_5.TotalObjectiveNumber_13_04FC5A53460BDB9B473E79829A76F2E2"
+                ]
+              },
+              {
+                "name": "ObjectiveHasTracking?_22_12167D184E1A1A9B88BD09B53E86BD95",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_5.ObjectiveHasTracking?_22_12167D184E1A1A9B88BD09B53E86BD95",
+                  "node_13.Condition"
+                ]
+              },
+              {
+                "name": "ObjectiveMapName_19_5BC81B20408D41AFBDC762BF35A03007",
+                "type": {
+                  "category": "string"
+                },
+                "connections": [
+                  "node_15.B",
+                  "node_5.ObjectiveMapName_19_5BC81B20408D41AFBDC762BF35A03007"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "EqualEqual_TextText",
+            "owning_class": "KismetTextLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "text",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "text",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_4.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_18.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "K2Node_MakeStruct",
+            "title": "Make S Quest Objective Info",
+            "pins_in": [
+              {
+                "name": "ObjectiveName_12_B6C404F242449EA1FE2D92BC878C0CC3",
+                "type": {
+                  "category": "text"
+                }
+              },
+              {
+                "name": "ContainerNameIFItemLootedfromEnemyorChest_28_B25EF129443592B14878A1AACE356163",
+                "type": {
+                  "category": "text"
+                }
+              },
+              {
+                "name": "ObjectiveType_11_803590AC4168802FF2655F90C42C3B84",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator5"
+              },
+              {
+                "name": "TotalObjectiveNumber_13_04FC5A53460BDB9B473E79829A76F2E2",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              },
+              {
+                "name": "ObjectiveHasTracking?_22_12167D184E1A1A9B88BD09B53E86BD95",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              },
+              {
+                "name": "ObjectiveMapName_19_5BC81B20408D41AFBDC762BF35A03007",
+                "type": {
+                  "category": "string"
+                }
+              },
+              {
+                "name": "ObjectiveLocationAuto-Filled_16_F2D45F80439BCF3A7D489ABD40E7B8CF",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0.000000,0.000000,0.000000"
+              },
+              {
+                "name": "ObjectiveActorAuto-Filled_25_7072CA3C470D12D52C24F196A7670D60",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "S_QuestObjectiveInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_QuestObjectiveInfo"
+                },
+                "connections": [
+                  "node_18.QuestObjectiveData"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "K2_GetActorLocation",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_5.ObjectiveLocationAuto-Filled_16_F2D45F80439BCF3A7D489ABD40E7B8CF"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_14.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_14",
+            "type": "CallFunction",
+            "function": "GetCurrentLevelName",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "bRemovePrefixString",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_16.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "string"
+                },
+                "connections": [
+                  "node_15.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "CallFunction",
+            "function": "EqualEqual_StrStr",
+            "owning_class": "KismetStringLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "string"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "string"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_16.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_30.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_17",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Loot Setup Info",
+            "pins_in": [
+              {
+                "name": "S_LootSetupInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_LootSetupInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "PiecesOfLoot_15_BEC5702147F0F1C92C47568A1DA09DB2",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"S_ItemSetupData\"\r\n}"
+                }
+              },
+              {
+                "name": "DroppedContainerAuto-Filled_25_B3DAD69C41A92ADD0593F7A6E45F23E1",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_18",
+            "type": "CallFunction",
+            "function": "PassObjectiveUpdatedLocation",
+            "owning_class": "SKEL_QuestReceiverComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "QuestReceiverComponent_C"
+                }
+              },
+              {
+                "name": "QuestObjectiveData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_QuestObjectiveInfo"
+                }
+              },
+              {
+                "name": "ObjectiveArrayNumber",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_11.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "K2Node_Self",
+            "title": "Self-Reference",
+            "pins_out": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                },
+                "connections": [
+                  "node_5.ObjectiveActorAuto-Filled_25_7072CA3C470D12D52C24F196A7670D60"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_20",
+            "type": "VariableGet",
+            "variable": "LootSetupInfo",
+            "pins_out": [
+              {
+                "name": "LootSetupInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_LootSetupInfo"
+                },
+                "connections": [
+                  "node_17.S_LootSetupInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_21",
+            "type": "VariableGet",
+            "variable": "Quest Receiver",
+            "pins_out": [
+              {
+                "name": "Quest Receiver",
+                "type": {
+                  "category": "object",
+                  "class": "QuestReceiverComponent_C"
+                },
+                "connections": [
+                  "node_18.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_22",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Item Setup Data",
+            "pins_in": [
+              {
+                "name": "S_ItemSetupData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_ItemSetupData",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "DataTableInfo_3_2FA15C174759AA9409215D958F08D1BB",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                },
+                "connections": [
+                  "node_24.DataSetup"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_23",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Item Data",
+            "pins_in": [
+              {
+                "name": "S_ItemData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_ItemData",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Name_19_D86BFA0D4646588F0AE834BD2028D1AF",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_3.A"
+                ]
+              },
+              {
+                "name": "ItemSlot_66_BEB8B4954EA4C8F29D7CD481B4AA0E43",
+                "type": {
+                  "category": "byte"
+                }
+              },
+              {
+                "name": "EquipmentInfo_76_ACE340714B24BA3F9189858E1CF034C1",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_EquipmentInfo"
+                }
+              },
+              {
+                "name": "ThrowingInfo_70_75D4D1DA43B31E021879E18ED9D0CE31",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_ThrowingData"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_24",
+            "type": "CallFunction",
+            "function": "Get Item Data",
+            "owning_class": "SKEL_FunctionLibrary_C",
+            "pins_in": [
+              {
+                "name": "DataSetup",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SlotData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_ItemData"
+                },
+                "connections": [
+                  "node_23.S_ItemData"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "VariableGet",
+            "variable": "LootSetupInfo",
+            "pins_out": [
+              {
+                "name": "LootSetupInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_LootSetupInfo"
+                },
+                "connections": [
+                  "node_28.S_LootSetupInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_28",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Loot Setup Info",
+            "pins_in": [
+              {
+                "name": "S_LootSetupInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_LootSetupInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "LootName_11_1E13B58142281950599D9593C5F9A671",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_29.A"
+                ]
+              },
+              {
+                "name": "DroppedContainerAuto-Filled_25_B3DAD69C41A92ADD0593F7A6E45F23E1",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_29",
+            "type": "CallFunction",
+            "function": "EqualEqual_TextText",
+            "owning_class": "KismetTextLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "text",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "text",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_30.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "InitializeDroppedLoot",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 7,
+        "connection_count": 13,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "InitializeDroppedLoot",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "SetCollisionEnabled",
+            "owning_class": "PrimitiveComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "PrimitiveComponent"
+                }
+              },
+              {
+                "name": "NewType",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NoCollision"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "SetStaticMesh",
+            "owning_class": "StaticMeshComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMeshComponent"
+                }
+              },
+              {
+                "name": "NewMesh",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMesh"
+                },
+                "default": "/Game/FlexibleCombatSystem/Meshes/General/SM_DropBag.SM_DropBag"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "Setup Outline Variables",
+            "owning_class": "SKEL_OutlineComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "OutlineComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "OutlineComponent",
+            "pins_out": [
+              {
+                "name": "OutlineComponent",
+                "type": {
+                  "category": "object",
+                  "class": "OutlineComponent_C"
+                },
+                "connections": [
+                  "node_3.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "Item",
+            "pins_out": [
+              {
+                "name": "Item",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMeshComponent"
+                },
+                "connections": [
+                  "node_2.self",
+                  "node_1.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "Item2",
+            "pins_out": [
+              {
+                "name": "Item2",
+                "type": {
+                  "category": "object",
+                  "class": "StaticMeshComponent"
+                },
+                "connections": [
+                  "node_1.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ]
+      },
+      {
+        "name": "OnRep_DroppedLoot",
+        "graph_type": "Function",
+        "access": "private",
+        "node_count": 2,
+        "connection_count": 2,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "OnRep_DroppedLoot",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "InitializeDroppedLoot",
+            "owning_class": "SKEL_BP_LootActorParent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      },
+      {
+        "name": "OnRep_Loot State",
+        "graph_type": "Function",
+        "access": "private",
+        "node_count": 22,
+        "connection_count": 50,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "OnRep_Loot State",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "ToggleAnimation",
+            "owning_class": "SKEL_I_LootInterface_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_17.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "K2Node_Self",
+            "title": "Self-Reference",
+            "pins_out": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                },
+                "connections": [
+                  "node_1.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "DisableMovement",
+            "owning_class": "CharacterMovementComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "CharacterMovementComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_15.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "CharacterMovement",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "CharacterMovement",
+                "type": {
+                  "category": "object",
+                  "class": "CharacterMovementComponent"
+                },
+                "connections": [
+                  "node_3.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Character"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "CharacterRef",
+            "pins_out": [
+              {
+                "name": "CharacterRef",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                },
+                "connections": [
+                  "node_4.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "GetPlayerController",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "PlayerIndex",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "PlayerController"
+                },
+                "connections": [
+                  "node_7.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "CallFunction",
+            "function": "PassControlInput",
+            "owning_class": "SKEL_I_PlayerController_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_8.execute"
+                ]
+              },
+              {
+                "name": "Gamepad",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_8.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_13.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_9",
+            "type": "CallFunction",
+            "function": "SetMovementMode",
+            "owning_class": "CharacterMovementComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "CharacterMovementComponent"
+                }
+              },
+              {
+                "name": "NewMovementMode",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "MOVE_Walking"
+              },
+              {
+                "name": "NewCustomMode",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "CharacterMovement",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "CharacterMovement",
+                "type": {
+                  "category": "object",
+                  "class": "CharacterMovementComponent"
+                },
+                "connections": [
+                  "node_9.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Character"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "VariableGet",
+            "variable": "CharacterRef",
+            "pins_out": [
+              {
+                "name": "CharacterRef",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                },
+                "connections": [
+                  "node_10.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "VariableGet",
+            "variable": "Loot State",
+            "pins_out": [
+              {
+                "name": "Loot State",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_13.Selection"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "K2Node_SwitchEnum",
+            "title": "Switch on E_LootState",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Selection",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "NewEnumerator0",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_9.execute"
+                ]
+              },
+              {
+                "name": "NewEnumerator1",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "NewEnumerator2",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_9.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_14",
+            "type": "VariableGet",
+            "variable": "LootComponent",
+            "pins_out": [
+              {
+                "name": "LootComponent",
+                "type": {
+                  "category": "object",
+                  "class": "LootComponent_C"
+                },
+                "connections": [
+                  "node_15.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "CallFunction",
+            "function": "SetFocus",
+            "owning_class": "SKEL_LootComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "LootComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "VariableGet",
+            "variable": "Loot State",
+            "pins_out": [
+              {
+                "name": "Loot State",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_17.Selection"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "K2Node_SwitchEnum",
+            "title": "Switch on E_LootState",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Selection",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "NewEnumerator0",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_19.execute"
+                ]
+              },
+              {
+                "name": "NewEnumerator1",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_20.InputPin"
+                ]
+              },
+              {
+                "name": "NewEnumerator2",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_20.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_18",
+            "type": "VariableGet",
+            "variable": "LootComponent",
+            "pins_out": [
+              {
+                "name": "LootComponent",
+                "type": {
+                  "category": "object",
+                  "class": "LootComponent_C"
+                },
+                "connections": [
+                  "node_19.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "CallFunction",
+            "function": "Unbind",
+            "owning_class": "SKEL_LootComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "LootComponent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

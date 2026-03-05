@@ -1,0 +1,346 @@
+{
+  "schema_version": "1.0",
+  "name": "ABP_AI-PassiveUE5",
+  "path": "/Game/FlexibleCombatSystem/Animation/UE5-Mannequin/ABP_AI-PassiveUE5.ABP_AI-PassiveUE5",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "AnimInstance",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": true,
+    "has_widget_tree": false,
+    "has_state_machine": true
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "IsInAir?",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Speed",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 7,
+        "connection_count": 6,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_2",
+            "type": "Event",
+            "function": "BlueprintUpdateAnimation",
+            "owning_class": "AnimInstance",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DeltaTimeX",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "TryGetPawnOwner",
+            "owning_class": "AnimInstance",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "AnimInstance"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                },
+                "connections": [
+                  "node_4.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "GetVelocity",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_5.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "VSize",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_6.Speed"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "VariableSet",
+            "variable": "Speed",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Speed",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "AnimGraph",
+        "graph_type": "Function",
+        "node_count": 4,
+        "connection_count": 6,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "AnimGraphNode_Root",
+            "title": "Output Pose\nAnimGraph",
+            "pins_in": [
+              {
+                "name": "Result",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "AnimGraphNode_Slot",
+            "title": "Slot 'DefaultSlot'\nGroup 'DefaultGroup'",
+            "pins_in": [
+              {
+                "name": "Source",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_2.Source"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "AnimGraphNode_Slot",
+            "title": "Slot 'Upperbody'\nGroup 'DefaultGroup'",
+            "pins_in": [
+              {
+                "name": "Source",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_0.Result"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "AnimGraphNode_StateMachine",
+            "title": "DefaultLocomotion\nState Machine",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_1.Source"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

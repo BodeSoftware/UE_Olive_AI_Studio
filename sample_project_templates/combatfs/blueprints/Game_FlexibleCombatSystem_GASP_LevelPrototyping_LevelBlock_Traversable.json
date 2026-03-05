@@ -1,0 +1,3245 @@
+{
+  "schema_version": "1.0",
+  "name": "LevelBlock_Traversable",
+  "path": "/Game/FlexibleCombatSystem/GASP/LevelPrototyping/LevelBlock_Traversable.LevelBlock_Traversable",
+  "type": "Normal",
+  "parent_class": {
+    "name": "LevelBlock_C",
+    "source": "blueprint",
+    "path": "/Game/FlexibleCombatSystem/GASP/LevelPrototyping/LevelBlock.LevelBlock"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "Ledges",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "OppositeLedges",
+      "type": {
+        "category": "map",
+        "key_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}",
+        "value_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MinLedgeWidth",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Ledge_1",
+      "type": {
+        "category": "object",
+        "class": "SplineComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Ledge_2",
+      "type": {
+        "category": "object",
+        "class": "SplineComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Ledge_3",
+      "type": {
+        "category": "object",
+        "class": "SplineComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Ledge_4",
+      "type": {
+        "category": "object",
+        "class": "SplineComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Randomize Button",
+      "type": {
+        "category": "object",
+        "class": "LevelButton_C"
+      },
+      "category": "Default",
+      "defined_in": "LevelBlock",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "InitialTransform",
+      "type": {
+        "category": "struct",
+        "struct_name": "Transform"
+      },
+      "category": "Default",
+      "defined_in": "LevelBlock",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MinTransformOffset",
+      "type": {
+        "category": "struct",
+        "struct_name": "Transform"
+      },
+      "category": "Default",
+      "defined_in": "LevelBlock",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MaxTransformOffset",
+      "type": {
+        "category": "struct",
+        "struct_name": "Transform"
+      },
+      "category": "Default",
+      "defined_in": "LevelBlock",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Name",
+      "type": {
+        "category": "text"
+      },
+      "category": "Default",
+      "defined_in": "LevelBlock",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AutoNameFromHeight",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "LevelBlock",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "UseLevelVisualsColor",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "LevelBlock",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ColorGroup",
+      "type": {
+        "category": "name"
+      },
+      "category": "Default",
+      "defined_in": "LevelBlock",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MaterialParams",
+      "type": {
+        "category": "struct",
+        "struct_name": "S_GridMaterialParams"
+      },
+      "category": "Default",
+      "defined_in": "LevelBlock",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "BaseMaterial",
+      "type": {
+        "category": "object",
+        "class": "MaterialInterface"
+      },
+      "category": "Default",
+      "defined_in": "LevelBlock",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DynamicMaterial",
+      "type": {
+        "category": "object",
+        "class": "MaterialInstanceDynamic"
+      },
+      "category": "Default",
+      "defined_in": "LevelBlock",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "components": {
+    "root": "DefaultSceneRoot",
+    "tree": [
+      {
+        "name": "Ledge_1",
+        "class": "SplineComponent",
+        "properties": {
+          "Spline": "SplineData SplineDataLen=4 SplineData=AA==\r\n",
+          "SplineCurves": "(Position=(Points=((OutVal=(X=0.000000,Y=0.000000,Z=100.000000),ArriveTangent=(X=100.000000,Y=0.000000,Z=0.000000),LeaveTangent=(X=100.000000,Y=0.000000,Z=0.000000),InterpMode=CIM_CurveUser),(InVal=1.000000,OutVal=(X=100.000000,Y=0.000000,Z=100.000000),ArriveTangent=(X=100.000000,Y=0.000000,Z=0.000000),LeaveTangent=(X=100.000000,Y=0.000000,Z=0.000000),InterpMode=CIM_CurveUser))),Rotation=(Points=((OutVal=(X=0.707107,Y=0.000000,Z=0.000000,W=0.707107),ArriveTangent=(X=0.707107,Y=-0.000000,Z=0.000000,W=0.707107),LeaveTangent=(X=0.707107,Y=-0.000000,Z=0.000000,W=0.707107),InterpMode=CIM_CurveAuto),(InVal=1.000000,OutVal=(X=0.707107,Y=0.000000,Z=-0.000000,W=0.707107),ArriveTangent=(X=0.707107,Y=0.000000,Z=-0.000000,W=0.707107),LeaveTangent=(X=0.707107,Y=0.000000,Z=-0.000000,W=0.707107),InterpMode=CIM_CurveAuto))),Scale=(Points=((OutVal=(X=1.000000,Y=1.000000,Z=1.000000),InterpMode=CIM_CurveAuto),(InVal=1.000000,OutVal=(X=1.000000,Y=1.000000,Z=1.000000),InterpMode=CIM_CurveAuto))),ReparamTable=(Points=((),(InVal=10.000000,OutVal=0.100000),(InVal=20.000000,OutVal=0.200000),(InVal=30.000002,OutVal=0.300000),(InVal=40.000000,OutVal=0.400000),(InVal=50.000000,OutVal=0.500000),(InVal=60.000004,OutVal=0.600000),(InVal=70.000000,OutVal=0.700000),(InVal=80.000000,OutVal=0.800000),(InVal=90.000000,OutVal=0.900000),(InVal=100.000000,OutVal=1.000000))))",
+          "EditorSelectedSplineSegmentColor": "(R=0.828000,G=0.364000,B=0.003000,A=1.000000)",
+          "bShouldVisualizeScale": "True",
+          "ScaleVisualizationWidth": "5.000000"
+        }
+      },
+      {
+        "name": "Ledge_2",
+        "class": "SplineComponent",
+        "properties": {
+          "Spline": "SplineData SplineDataLen=4 SplineData=AA==\r\n",
+          "SplineCurves": "(Position=(Points=((OutVal=(X=0.000000,Y=100.000000,Z=100.000000),ArriveTangent=(X=100.000000,Y=0.000000,Z=0.000000),LeaveTangent=(X=100.000000,Y=0.000000,Z=0.000000),InterpMode=CIM_CurveUser),(InVal=1.000000,OutVal=(X=100.000000,Y=100.000000,Z=100.000000),ArriveTangent=(X=100.000000,Y=0.000000,Z=-0.000000),LeaveTangent=(X=100.000000,Y=0.000000,Z=-0.000000),InterpMode=CIM_CurveUser))),Rotation=(Points=((OutVal=(X=-0.707107,Y=-0.000000,Z=0.000000,W=0.707107),ArriveTangent=(X=-0.707107,Y=-0.000000,Z=-0.000000,W=0.707107),LeaveTangent=(X=-0.707107,Y=-0.000000,Z=-0.000000,W=0.707107),InterpMode=CIM_CurveAuto),(InVal=1.000000,OutVal=(X=-0.707107,Y=0.000000,Z=0.000000,W=0.707107),ArriveTangent=(X=-0.707107,Y=0.000000,Z=0.000000,W=0.707107),LeaveTangent=(X=-0.707107,Y=0.000000,Z=0.000000,W=0.707107),InterpMode=CIM_CurveAuto))),Scale=(Points=((OutVal=(X=1.000000,Y=1.000000,Z=1.000000),InterpMode=CIM_CurveAuto),(InVal=1.000000,OutVal=(X=1.000000,Y=1.000000,Z=1.000000),InterpMode=CIM_CurveAuto))),ReparamTable=(Points=((),(InVal=10.000000,OutVal=0.100000),(InVal=20.000000,OutVal=0.200000),(InVal=30.000002,OutVal=0.300000),(InVal=40.000000,OutVal=0.400000),(InVal=50.000000,OutVal=0.500000),(InVal=60.000004,OutVal=0.600000),(InVal=70.000000,OutVal=0.700000),(InVal=80.000000,OutVal=0.800000),(InVal=90.000000,OutVal=0.900000),(InVal=100.000000,OutVal=1.000000))))",
+          "EditorSelectedSplineSegmentColor": "(R=0.828000,G=0.364000,B=0.003000,A=1.000000)",
+          "bShouldVisualizeScale": "True",
+          "ScaleVisualizationWidth": "5.000000"
+        }
+      },
+      {
+        "name": "Ledge_3",
+        "class": "SplineComponent",
+        "properties": {
+          "Spline": "SplineData SplineDataLen=4 SplineData=AA==\r\n",
+          "SplineCurves": "(Position=(Points=((OutVal=(X=0.000000,Y=0.000000,Z=100.000000),ArriveTangent=(X=0.000002,Y=100.000000,Z=0.000000),LeaveTangent=(X=0.000002,Y=100.000000,Z=0.000000),InterpMode=CIM_CurveUser),(InVal=1.000000,OutVal=(X=0.000000,Y=100.000000,Z=100.000000),ArriveTangent=(X=0.000002,Y=100.000000,Z=-0.000000),LeaveTangent=(X=0.000002,Y=100.000000,Z=-0.000000),InterpMode=CIM_CurveUser))),Rotation=(Points=((OutVal=(X=-0.500000,Y=-0.500000,Z=0.500000,W=0.500000),ArriveTangent=(X=-0.500000,Y=-0.500000,Z=0.500000,W=0.500000),LeaveTangent=(X=-0.500000,Y=-0.500000,Z=0.500000,W=0.500000),InterpMode=CIM_CurveAuto),(InVal=1.000000,OutVal=(X=-0.500000,Y=-0.500000,Z=0.500000,W=0.500000),ArriveTangent=(X=-0.500000,Y=-0.500000,Z=0.500000,W=0.500000),LeaveTangent=(X=-0.500000,Y=-0.500000,Z=0.500000,W=0.500000),InterpMode=CIM_CurveAuto))),Scale=(Points=((OutVal=(X=1.000000,Y=1.000000,Z=1.000000),InterpMode=CIM_CurveAuto),(InVal=1.000000,OutVal=(X=1.000000,Y=1.000000,Z=1.000000),InterpMode=CIM_CurveAuto))),ReparamTable=(Points=((),(InVal=10.000000,OutVal=0.100000),(InVal=20.000000,OutVal=0.200000),(InVal=30.000002,OutVal=0.300000),(InVal=40.000000,OutVal=0.400000),(InVal=50.000000,OutVal=0.500000),(InVal=60.000004,OutVal=0.600000),(InVal=70.000000,OutVal=0.700000),(InVal=80.000000,OutVal=0.800000),(InVal=90.000000,OutVal=0.900000),(InVal=100.000000,OutVal=1.000000))))",
+          "EditorSelectedSplineSegmentColor": "(R=0.828000,G=0.364000,B=0.003000,A=1.000000)",
+          "bShouldVisualizeScale": "True",
+          "ScaleVisualizationWidth": "5.000000"
+        }
+      },
+      {
+        "name": "Ledge_4",
+        "class": "SplineComponent",
+        "properties": {
+          "Spline": "SplineData SplineDataLen=4 SplineData=AA==\r\n",
+          "SplineCurves": "(Position=(Points=((OutVal=(X=100.000000,Y=0.000000,Z=100.000000),ArriveTangent=(X=0.000002,Y=100.000000,Z=-0.000000),LeaveTangent=(X=0.000002,Y=100.000000,Z=-0.000000),InterpMode=CIM_CurveUser),(InVal=1.000000,OutVal=(X=100.000000,Y=100.000000,Z=100.000000),ArriveTangent=(X=0.000002,Y=100.000000,Z=-0.000000),LeaveTangent=(X=0.000002,Y=100.000000,Z=-0.000000),InterpMode=CIM_CurveUser))),Rotation=(Points=((OutVal=(X=0.500000,Y=0.500000,Z=0.500000,W=0.500000),ArriveTangent=(X=0.500000,Y=0.500000,Z=0.500000,W=0.500000),LeaveTangent=(X=0.500000,Y=0.500000,Z=0.500000,W=0.500000),InterpMode=CIM_CurveAuto),(InVal=1.000000,OutVal=(X=0.500000,Y=0.500000,Z=0.500000,W=0.500000),ArriveTangent=(X=0.500000,Y=0.500000,Z=0.500000,W=0.500000),LeaveTangent=(X=0.500000,Y=0.500000,Z=0.500000,W=0.500000),InterpMode=CIM_CurveAuto))),Scale=(Points=((OutVal=(X=1.000000,Y=1.000000,Z=1.000000),InterpMode=CIM_CurveAuto),(InVal=1.000000,OutVal=(X=1.000000,Y=1.000000,Z=1.000000),InterpMode=CIM_CurveAuto))),ReparamTable=(Points=((),(InVal=10.000000,OutVal=0.100000),(InVal=20.000000,OutVal=0.200000),(InVal=30.000002,OutVal=0.300000),(InVal=40.000000,OutVal=0.400000),(InVal=50.000000,OutVal=0.500000),(InVal=60.000004,OutVal=0.600000),(InVal=70.000000,OutVal=0.700000),(InVal=80.000000,OutVal=0.800000),(InVal=90.000000,OutVal=0.900000),(InVal=100.000000,OutVal=1.000000))))",
+          "EditorSelectedSplineSegmentColor": "(R=0.828000,G=0.364000,B=0.003000,A=1.000000)",
+          "bShouldVisualizeScale": "True",
+          "ScaleVisualizationWidth": "5.000000"
+        }
+      }
+    ]
+  },
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 3,
+        "connection_count": 0,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "ReceiveBeginPlay",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "Event",
+            "function": "ReceiveActorBeginOverlap",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "OtherActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "Event",
+            "function": "ReceiveTick",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DeltaSeconds",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 18,
+        "connection_count": 34,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "UserConstructionScript",
+            "owning_class": "SKEL_LevelBlock_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "VariableSet",
+            "variable": "Ledges",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Ledges",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableSet",
+            "variable": "OppositeLedges",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "OppositeLedges",
+                "type": {
+                  "category": "map",
+                  "key_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}",
+                  "value_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "map",
+                  "key_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}",
+                  "value_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "K2Node_MakeArray",
+            "title": "Make Array",
+            "pins_in": [
+              {
+                "name": "[0]",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "[1]",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "[2]",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "[3]",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}"
+                },
+                "connections": [
+                  "node_2.Ledges"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "K2Node_MakeMap",
+            "title": "Make Map",
+            "pins_in": [
+              {
+                "name": "Key 0",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "Value 0",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "Key 1",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "Value 1",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "Key 2",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "Value 2",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "Key 3",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "Value 3",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Map",
+                "type": {
+                  "category": "map",
+                  "key_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}",
+                  "value_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}"
+                },
+                "connections": [
+                  "node_3.OppositeLedges"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "Ledge_1",
+            "pins_out": [
+              {
+                "name": "Ledge_1",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_4.[0]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "VariableGet",
+            "variable": "Ledge_2",
+            "pins_out": [
+              {
+                "name": "Ledge_2",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_4.[1]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "VariableGet",
+            "variable": "Ledge_3",
+            "pins_out": [
+              {
+                "name": "Ledge_3",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_4.[2]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "Ledge_4",
+            "pins_out": [
+              {
+                "name": "Ledge_4",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_4.[3]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "Ledge_1",
+            "pins_out": [
+              {
+                "name": "Ledge_1",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_5.Key 0"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "VariableGet",
+            "variable": "Ledge_2",
+            "pins_out": [
+              {
+                "name": "Ledge_2",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_5.Value 0"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "VariableGet",
+            "variable": "Ledge_2",
+            "pins_out": [
+              {
+                "name": "Ledge_2",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_5.Key 1"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "VariableGet",
+            "variable": "Ledge_1",
+            "pins_out": [
+              {
+                "name": "Ledge_1",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_5.Value 1"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "VariableGet",
+            "variable": "Ledge_3",
+            "pins_out": [
+              {
+                "name": "Ledge_3",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_5.Key 2"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "VariableGet",
+            "variable": "Ledge_4",
+            "pins_out": [
+              {
+                "name": "Ledge_4",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_5.Value 2"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "VariableGet",
+            "variable": "Ledge_4",
+            "pins_out": [
+              {
+                "name": "Ledge_4",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_5.Key 3"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "VariableGet",
+            "variable": "Ledge_3",
+            "pins_out": [
+              {
+                "name": "Ledge_3",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_5.Value 3"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ]
+      },
+      {
+        "name": "GetLedgeTransforms",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "HitLocation",
+            "display_name": "Hit Location",
+            "type": {
+              "category": "struct",
+              "struct_name": "Vector"
+            }
+          },
+          {
+            "name": "ActorLocation",
+            "display_name": "Actor Location",
+            "type": {
+              "category": "struct",
+              "struct_name": "Vector"
+            }
+          },
+          {
+            "name": "TraversalTraceResultInOut",
+            "display_name": "Traversal Trace Result in Out",
+            "type": {
+              "category": "struct",
+              "struct_name": "S_TraversalCheckResult",
+              "is_reference": true
+            }
+          }
+        ],
+        "access": "public",
+        "category": "Default",
+        "node_count": 47,
+        "connection_count": 94,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "GetLedgeTransforms",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "HitLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "ActorLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "TraversalTraceResultInOut",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_TraversalCheckResult",
+                  "is_reference": true
+                },
+                "connections": [
+                  "node_21.StructRef",
+                  "node_28.StructRef",
+                  "node_22.StructRef",
+                  "node_34.StructRef",
+                  "node_36.S_TraversalCheckResult",
+                  "node_37.StructRef"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Default"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "Sequence",
+            "title": "Sequence",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then_0",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              },
+              {
+                "name": "then_1",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_32.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "OutputCount": "2"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "FindLedgeClosestToActor",
+            "owning_class": "SKEL_LevelBlock_Traversable_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "ActorLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "default": "0, 0, 0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_19.ClosestLedge"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableSet",
+            "variable": "OppositeLedge",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "OppositeLedge",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_37.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "OppositeLedges",
+            "pins_out": [
+              {
+                "name": "OppositeLedges",
+                "type": {
+                  "category": "map",
+                  "key_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}",
+                  "value_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}"
+                },
+                "connections": [
+                  "node_5.TargetMap"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "Map_Find",
+            "owning_class": "BlueprintMapLibrary",
+            "pins_in": [
+              {
+                "name": "TargetMap",
+                "type": {
+                  "category": "map",
+                  "key_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}",
+                  "value_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Key",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Value",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_3.OppositeLedge"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_35.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "OppositeLedge",
+            "pins_out": [
+              {
+                "name": "OppositeLedge",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_7.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_7",
+            "type": "CallFunction",
+            "function": "FindTransformClosestToWorldLocation",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "WorldLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "CoordinateSpace",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "World"
+              },
+              {
+                "name": "bUseScale",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue_Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_37.BackLedgeLocation_55_EB7453EF477E18645DAD9F8950BCF44F"
+                ]
+              },
+              {
+                "name": "ReturnValue_Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "connections": [
+                  "node_41.InRot"
+                ]
+              },
+              {
+                "name": "ReturnValue_Scale",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "CallFunction",
+            "function": "GetDistanceAlongSplineAtLocation",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "InLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "CoordinateSpace",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Local"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_15.Value"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "ClosestLedge",
+            "pins_out": [
+              {
+                "name": "ClosestLedge",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_8.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "ClosestLedge",
+            "pins_out": [
+              {
+                "name": "ClosestLedge",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_12.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_11",
+            "type": "VariableGet",
+            "variable": "HitLocation",
+            "pins_out": [
+              {
+                "name": "HitLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_12.WorldLocation"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_12",
+            "type": "CallFunction",
+            "function": "FindLocationClosestToWorldLocation",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "WorldLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "CoordinateSpace",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Local"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_8.InLocation"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "VariableGet",
+            "variable": "ClosestLedge",
+            "pins_out": [
+              {
+                "name": "ClosestLedge",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_14.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_14",
+            "type": "CallFunction",
+            "function": "GetSplineLength",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_16.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "CallFunction",
+            "function": "FClamp",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "Value",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "Min",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "Max",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_18.Distance"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "CallFunction",
+            "function": "Subtract_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_15.Max"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "VariableGet",
+            "variable": "ClosestLedge",
+            "pins_out": [
+              {
+                "name": "ClosestLedge",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_18.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_18",
+            "type": "CallFunction",
+            "function": "GetTransformAtDistanceAlongSpline",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "Distance",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "CoordinateSpace",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "World"
+              },
+              {
+                "name": "bUseScale",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue_Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_28.FrontLedgeLocation_50_52B8B8A84F10B0E0A9F287972F2C54D8"
+                ]
+              },
+              {
+                "name": "ReturnValue_Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "connections": [
+                  "node_40.InRot"
+                ]
+              },
+              {
+                "name": "ReturnValue_Scale",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "VariableSet",
+            "variable": "ClosestLedge",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ClosestLedge",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_27.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_20",
+            "type": "FunctionResult",
+            "function": "GetLedgeTransforms",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_21",
+            "type": "K2Node_SetFieldsInStruct",
+            "title": "Set members in S Traversal Check Result",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "StructRef",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_TraversalCheckResult",
+                  "is_reference": true
+                }
+              },
+              {
+                "name": "HasFrontLedge_34_6C547E244F41599C4D38E1909503CCBA",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_20.execute"
+                ]
+              },
+              {
+                "name": "StructOut",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_TraversalCheckResult",
+                  "is_reference": true
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_22",
+            "type": "K2Node_SetFieldsInStruct",
+            "title": "Set members in S Traversal Check Result",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "StructRef",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_TraversalCheckResult",
+                  "is_reference": true
+                }
+              },
+              {
+                "name": "HasFrontLedge_34_6C547E244F41599C4D38E1909503CCBA",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_31.execute"
+                ]
+              },
+              {
+                "name": "StructOut",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_TraversalCheckResult",
+                  "is_reference": true
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_23",
+            "type": "VariableGet",
+            "variable": "ClosestLedge",
+            "pins_out": [
+              {
+                "name": "ClosestLedge",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_24.self"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_24",
+            "type": "CallFunction",
+            "function": "GetSplineLength",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_25.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_25",
+            "type": "CallFunction",
+            "function": "GreaterEqual_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_27.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "VariableGet",
+            "variable": "MinLedgeWidth",
+            "pins_out": [
+              {
+                "name": "MinLedgeWidth",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_25.B"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_28.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_22.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_28",
+            "type": "K2Node_SetFieldsInStruct",
+            "title": "Set members in S Traversal Check Result",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "StructRef",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_TraversalCheckResult",
+                  "is_reference": true
+                }
+              },
+              {
+                "name": "HasFrontLedge_34_6C547E244F41599C4D38E1909503CCBA",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "FrontLedgeLocation_50_52B8B8A84F10B0E0A9F287972F2C54D8",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0.000000,0.000000,0.000000"
+              },
+              {
+                "name": "FrontLedgeNormal_51_3C4F46204EAF10E382D4D9A8E26ACB5A",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0.000000,0.000000,0.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "StructOut",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_TraversalCheckResult",
+                  "is_reference": true
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_29",
+            "type": "VariableGet",
+            "variable": "MinLedgeWidth",
+            "pins_out": [
+              {
+                "name": "MinLedgeWidth",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_30.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "CallFunction",
+            "function": "Divide_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "2.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_16.B",
+                  "node_15.Min"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_31",
+            "type": "FunctionResult",
+            "function": "GetLedgeTransforms",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_33",
+            "type": "FunctionResult",
+            "function": "GetLedgeTransforms",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_34",
+            "type": "K2Node_SetFieldsInStruct",
+            "title": "Set members in S Traversal Check Result",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "StructRef",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_TraversalCheckResult",
+                  "is_reference": true
+                }
+              },
+              {
+                "name": "HasBackLedge_41_8550E97541A4EDBCA44DB0B16F1B51C4",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_33.execute"
+                ]
+              },
+              {
+                "name": "StructOut",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_TraversalCheckResult",
+                  "is_reference": true
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_35",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_34.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_36",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Traversal Check Result",
+            "pins_in": [
+              {
+                "name": "S_TraversalCheckResult",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_TraversalCheckResult",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "FrontLedgeLocation_50_52B8B8A84F10B0E0A9F287972F2C54D8",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_7.WorldLocation"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_37",
+            "type": "K2Node_SetFieldsInStruct",
+            "title": "Set members in S Traversal Check Result",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "StructRef",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_TraversalCheckResult",
+                  "is_reference": true
+                }
+              },
+              {
+                "name": "HasBackLedge_41_8550E97541A4EDBCA44DB0B16F1B51C4",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "BackLedgeLocation_55_EB7453EF477E18645DAD9F8950BCF44F",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0.000000,0.000000,0.000000"
+              },
+              {
+                "name": "BackLedgeNormal_56_F05B9B4A4046704A49754F80A8C7BCE3",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0.000000,0.000000,0.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "StructOut",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_TraversalCheckResult",
+                  "is_reference": true
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_38",
+            "type": "VariableGet",
+            "variable": "ClosestLedge",
+            "pins_out": [
+              {
+                "name": "ClosestLedge",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_5.Key"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_39",
+            "type": "VariableGet",
+            "variable": "ActorLocation",
+            "pins_out": [
+              {
+                "name": "ActorLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_2.ActorLocation"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_40",
+            "type": "CallFunction",
+            "function": "GetUpVector",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "InRot",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0, 0, 0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_28.FrontLedgeNormal_51_3C4F46204EAF10E382D4D9A8E26ACB5A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_41",
+            "type": "CallFunction",
+            "function": "GetUpVector",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "InRot",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0, 0, 0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_37.BackLedgeNormal_56_F05B9B4A4046704A49754F80A8C7BCE3"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      },
+      {
+        "name": "FindLedgeClosestToActor",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "ActorLocation",
+            "display_name": "Actor Location",
+            "type": {
+              "category": "struct",
+              "struct_name": "Vector",
+              "is_reference": true,
+              "is_const": true
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "object",
+              "class": "SplineComponent"
+            }
+          }
+        ],
+        "access": "public",
+        "category": "Default",
+        "node_count": 28,
+        "connection_count": 49,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "FindLedgeClosestToActor",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              },
+              {
+                "name": "ActorLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "properties": {
+              "Category": "Default"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableGet",
+            "variable": "Ledges",
+            "pins_out": [
+              {
+                "name": "Ledges",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "FindLocationClosestToWorldLocation",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "WorldLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "CoordinateSpace",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "World"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_23.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "FunctionResult",
+            "function": "FindLedgeClosestToActor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "Ledges",
+            "pins_out": [
+              {
+                "name": "Ledges",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}"
+                },
+                "connections": [
+                  "node_5.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "Array_IsNotEmpty",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_6.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_7",
+            "type": "FunctionResult",
+            "function": "FindLedgeClosestToActor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_8",
+            "type": "CallFunction",
+            "function": "Vector_Distance",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "V1",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "V2",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_9.ClosestDistance",
+                  "node_14.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "VariableSet",
+            "variable": "ClosestDistance",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ClosestDistance",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_10.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_10",
+            "type": "VariableSet",
+            "variable": "ClosestIndex",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ClosestIndex",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_13",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_9.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_14",
+            "type": "CallFunction",
+            "function": "Less_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_19.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "VariableGet",
+            "variable": "ClosestDistance",
+            "pins_out": [
+              {
+                "name": "ClosestDistance",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_14.B"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_16",
+            "type": "VariableGet",
+            "variable": "Ledges",
+            "pins_out": [
+              {
+                "name": "Ledges",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}"
+                },
+                "connections": [
+                  "node_17.Array"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "K2Node_GetArrayItem",
+            "title": "GET",
+            "pins_in": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"SplineComponent\"\r\n}"
+                }
+              },
+              {
+                "name": "Dimension 1",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Output",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                },
+                "connections": [
+                  "node_3.ReturnValue"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_18",
+            "type": "VariableGet",
+            "variable": "ClosestIndex",
+            "pins_out": [
+              {
+                "name": "ClosestIndex",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_17.Dimension 1"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_19",
+            "type": "CallFunction",
+            "function": "BooleanOR",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_13.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "CallFunction",
+            "function": "EqualEqual_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_19.B"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_22",
+            "type": "VariableGet",
+            "variable": "ActorLocation",
+            "pins_out": [
+              {
+                "name": "ActorLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "connections": [
+                  "node_2.WorldLocation",
+                  "node_24.WorldLocation"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_23",
+            "type": "CallFunction",
+            "function": "Add_VectorVector",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_8.V1"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "CallFunction",
+            "function": "FindUpVectorClosestToWorldLocation",
+            "owning_class": "SplineComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SplineComponent"
+                }
+              },
+              {
+                "name": "WorldLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "CoordinateSpace",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "World"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_25.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_25",
+            "type": "CallFunction",
+            "function": "Multiply_VectorVector",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "10.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_23.B"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "VariableGet",
+            "variable": "ActorLocation",
+            "pins_out": [
+              {
+                "name": "ActorLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "connections": [
+                  "node_8.V2"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

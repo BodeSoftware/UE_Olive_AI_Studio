@@ -1,0 +1,2916 @@
+{
+  "schema_version": "1.0",
+  "name": "BP_AreaAttackTickParent",
+  "path": "/Game/FlexibleCombatSystem/Blueprints/Abilities/Children/BP_AreaAttackTickParent.BP_AreaAttackTickParent",
+  "type": "Normal",
+  "parent_class": {
+    "name": "BP_AbilityPlacementParent_C",
+    "source": "blueprint",
+    "path": "/Game/FlexibleCombatSystem/Blueprints/Abilities/BP_AbilityPlacementParent.BP_AbilityPlacementParent"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "ChannelTickTime",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SpellTickTimer",
+      "type": {
+        "category": "struct",
+        "struct_name": "TimerHandle"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SpellDamage_0",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CriticalHit_0",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Hit Actor",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"Actor\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "NiagaraFX",
+      "type": {
+        "category": "object",
+        "class": "NiagaraComponent"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SpellPlacementTimer",
+      "type": {
+        "category": "struct",
+        "struct_name": "TimerHandle"
+      },
+      "category": "Default",
+      "defined_in": "BP_AbilityPlacementParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AnimationSound",
+      "type": {
+        "category": "object",
+        "class": "AudioComponent"
+      },
+      "category": "Default",
+      "defined_in": "BP_AbilityPlacementParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AnimationPlayed",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "BP_AbilityPlacementParent",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 84,
+        "connection_count": 169,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "SpellEffect",
+            "owning_class": "SKEL_BP_AbilityPlacementParent_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "K2_SetTimerDelegate",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Delegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "Time",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "bLooping",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "bMaxOncePerFrame",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "InitialStartDelay",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "InitialStartDelayVariance",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "TimerHandle"
+                },
+                "connections": [
+                  "node_3.SpellTickTimer"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "K2Node_CreateDelegate",
+            "title": "Create Event",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                },
+                "connections": [
+                  "node_1.Delegate"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "VariableSet",
+            "variable": "SpellTickTimer",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SpellTickTimer",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "TimerHandle"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_16.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "TimerHandle"
+                },
+                "connections": [
+                  "node_19.Handle"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "CriticalHit_0",
+            "pins_out": [
+              {
+                "name": "CriticalHit_0",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_5.CriticalHit"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "PassDamageInfo",
+            "owning_class": "SKEL_TakingDamage_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TakingDamage_C"
+                }
+              },
+              {
+                "name": "Hit VFX",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"NiagaraSystem\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "AttackType",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator18"
+              },
+              {
+                "name": "Damage Type",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator0"
+              },
+              {
+                "name": "CriticalHit",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "SpecialDamageInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpecialDamageInfo"
+                }
+              },
+              {
+                "name": "Hit",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "HitResult"
+                }
+              },
+              {
+                "name": "Physical Anim Type",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "NewEnumerator2"
+              },
+              {
+                "name": "Hit Stop Info",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_HitStopInfo"
+                }
+              },
+              {
+                "name": "Stun Data",
+                "type": {
+                  "category": "object",
+                  "class": "PrimaryDataAsset"
+                }
+              },
+              {
+                "name": "Knockback Data",
+                "type": {
+                  "category": "object",
+                  "class": "PrimaryDataAsset"
+                }
+              },
+              {
+                "name": "PoiseDamage",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "ApplyPointDamage",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DamagedActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "BaseDamage",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "HitFromDirection",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "HitInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "HitResult",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "EventInstigator",
+                "type": {
+                  "category": "object",
+                  "class": "Controller"
+                }
+              },
+              {
+                "name": "DamageCauser",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "DamageTypeClass",
+                "type": {
+                  "category": "class",
+                  "class": "DamageType"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "VariableGet",
+            "variable": "SpellDamage_0",
+            "pins_out": [
+              {
+                "name": "SpellDamage_0",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_6.BaseDamage"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "CallFunction",
+            "function": "GetComponentByClass",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "ComponentClass",
+                "type": {
+                  "category": "class",
+                  "class": "ActorComponent"
+                },
+                "default": "/Game/FlexibleCombatSystem/Blueprints/Components/TakingDamage.TakingDamage_C"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "TakingDamage_C"
+                },
+                "connections": [
+                  "node_5.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "CallFunction",
+            "function": "SphereTraceMultiForObjects",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Start",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector",
+                  "is_const": true
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "End",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector",
+                  "is_const": true
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "Radius",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "ObjectTypes",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"byte\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "default": "ObjectTypeQuery1"
+              },
+              {
+                "name": "bTraceComplex",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "ActorsToIgnore",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"Actor\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "DrawDebugType",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "None"
+              },
+              {
+                "name": "bIgnoreSelf",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "TraceColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=1.000000,G=0.000000,B=0.000000,A=1.000000)"
+              },
+              {
+                "name": "TraceHitColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=0.000000,G=1.000000,B=0.000000,A=1.000000)"
+              },
+              {
+                "name": "DrawTime",
+                "type": {
+                  "category": "float"
+                },
+                "default": "5.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "OutHits",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"struct\",\r\n\t\"struct_name\": \"HitResult\"\r\n}"
+                }
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "CustomEvent",
+            "function": "SendSpellTick",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_35.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_12",
+            "type": "CallFunction",
+            "function": "BreakHitResult",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "Hit",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "HitResult",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "bBlockingHit",
+                "type": {
+                  "category": "bool"
+                }
+              },
+              {
+                "name": "bInitialOverlap",
+                "type": {
+                  "category": "bool"
+                }
+              },
+              {
+                "name": "Time",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "Distance",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_26.InputPin"
+                ]
+              },
+              {
+                "name": "ImpactPoint",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "Normal",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "ImpactNormal",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "PhysMat",
+                "type": {
+                  "category": "object",
+                  "class": "PhysicalMaterial"
+                }
+              },
+              {
+                "name": "HitActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_28.InputPin",
+                  "node_39.InputPin"
+                ]
+              },
+              {
+                "name": "HitComponent",
+                "type": {
+                  "category": "object",
+                  "class": "PrimitiveComponent"
+                }
+              },
+              {
+                "name": "HitBoneName",
+                "type": {
+                  "category": "name"
+                }
+              },
+              {
+                "name": "BoneName",
+                "type": {
+                  "category": "name"
+                }
+              },
+              {
+                "name": "HitItem",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "ElementIndex",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "FaceIndex",
+                "type": {
+                  "category": "int"
+                }
+              },
+              {
+                "name": "TraceStart",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "TraceEnd",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "K2Node_MakeArray",
+            "title": "Make Array",
+            "pins_in": [
+              {
+                "name": "[0]",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "ObjectTypeQuery4"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"byte\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "connections": [
+                  "node_10.ObjectTypes"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_16",
+            "type": "CallFunction",
+            "function": "Delay",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Duration",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.2"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_19.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "true"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Spell Info",
+            "pins_in": [
+              {
+                "name": "S_SpellInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpellInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SpellPlacement_79_DAD5AB3946C0D5D59E411EB46A5DD453",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpellPlacement"
+                },
+                "connections": [
+                  "node_18.S_SpellPlacement"
+                ]
+              },
+              {
+                "name": "DoesNotAllowLockOnCast_139_E9B36A49463B770F83B4AE995B9F8C14",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_18",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Spell Placement",
+            "pins_in": [
+              {
+                "name": "S_SpellPlacement",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpellPlacement",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SpellPS_28_33173E8B4D3D3B5FE1223688A509A844",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                },
+                "connections": [
+                  "node_56.SystemTemplate"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_19",
+            "type": "CallFunction",
+            "function": "K2_ClearAndInvalidateTimerHandle",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Handle",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "TimerHandle",
+                  "is_reference": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_77.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "CallFunction",
+            "function": "SendSpellTick",
+            "owning_class": "SKEL_BP_AreaAttackTickParent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_21",
+            "type": "VariableGet",
+            "variable": "MagicComponent",
+            "pins_out": [
+              {
+                "name": "MagicComponent",
+                "type": {
+                  "category": "object",
+                  "class": "MagicComponent_C"
+                },
+                "connections": [
+                  "node_22.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_22",
+            "type": "CallFunction",
+            "function": "Calculate Ability Damage",
+            "owning_class": "SKEL_MagicComponent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "MagicComponent_C"
+                }
+              },
+              {
+                "name": "S_SpellInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpellInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "MeleeAbility",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "RangedAbility",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_23.execute"
+                ]
+              },
+              {
+                "name": "Spell Damage",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_49.A"
+                ]
+              },
+              {
+                "name": "Critical Hit",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_41.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "VariableSet",
+            "variable": "SpellDamage_0",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SpellDamage_0",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_24.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "VariableSet",
+            "variable": "CriticalHit_0",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "CriticalHit_0",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_83.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_29",
+            "type": "VariableGet",
+            "variable": "Hit Actor",
+            "pins_out": [
+              {
+                "name": "Hit Actor",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"Actor\"\r\n}"
+                },
+                "connections": [
+                  "node_30.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "CallFunction",
+            "function": "Array_Add",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"Actor\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "NewItem",
+                "type": {
+                  "category": "object",
+                  "class": "Actor",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_31",
+            "type": "VariableGet",
+            "variable": "Hit Actor",
+            "pins_out": [
+              {
+                "name": "Hit Actor",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"Actor\"\r\n}"
+                },
+                "connections": [
+                  "node_32.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_32",
+            "type": "CallFunction",
+            "function": "Array_Contains",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"Actor\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "ItemToFind",
+                "type": {
+                  "category": "object",
+                  "class": "Actor",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_33.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_33",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_30.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_34",
+            "type": "VariableGet",
+            "variable": "Hit Actor",
+            "pins_out": [
+              {
+                "name": "Hit Actor",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"Actor\"\r\n}"
+                },
+                "connections": [
+                  "node_35.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_35",
+            "type": "CallFunction",
+            "function": "Array_Clear",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"Actor\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_22.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_42",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Spell Info",
+            "pins_in": [
+              {
+                "name": "S_SpellInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpellInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SpellPlacement_79_DAD5AB3946C0D5D59E411EB46A5DD453",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpellPlacement"
+                },
+                "connections": [
+                  "node_43.S_SpellPlacement"
+                ]
+              },
+              {
+                "name": "DoesNotAllowLockOnCast_139_E9B36A49463B770F83B4AE995B9F8C14",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_43",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Spell Placement",
+            "pins_in": [
+              {
+                "name": "S_SpellPlacement",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpellPlacement",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "TickFrequency_39_8D2BE5EC411AF683640A299027D3048F",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_1.Time"
+                ]
+              },
+              {
+                "name": "TickDuration_38_5F13DDBB47601A94BD291E9028F601D5",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_16.Duration"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_44",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Spell Info",
+            "pins_in": [
+              {
+                "name": "S_SpellInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpellInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "DamageType_80_CE826A504792B4A2C801578AAA92DA0E",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_5.Damage Type"
+                ]
+              },
+              {
+                "name": "SpecialDamageInfo_104_70183354402279A6A2D1E3B1FB525598",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpecialDamageInfo"
+                },
+                "connections": [
+                  "node_5.SpecialDamageInfo"
+                ]
+              },
+              {
+                "name": "DoesNotAllowLockOnCast_139_E9B36A49463B770F83B4AE995B9F8C14",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_45",
+            "type": "VariableGet",
+            "variable": "SpellPlacementLocation",
+            "pins_out": [
+              {
+                "name": "SpellPlacementLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_10.Start",
+                  "node_10.End"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_46",
+            "type": "VariableGet",
+            "variable": "SpellPlacementLocation",
+            "pins_out": [
+              {
+                "name": "SpellPlacementLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_57.Location"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_47",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Spell Info",
+            "pins_in": [
+              {
+                "name": "S_SpellInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpellInfo",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SpellPlacement_79_DAD5AB3946C0D5D59E411EB46A5DD453",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpellPlacement"
+                },
+                "connections": [
+                  "node_48.S_SpellPlacement"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_48",
+            "type": "K2Node_BreakStruct",
+            "title": "Break S Spell Placement",
+            "pins_in": [
+              {
+                "name": "S_SpellPlacement",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpellPlacement",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SpellRadius_33_D88BEF114759C6529917FE8EBFB161BE",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_53.A"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_49",
+            "type": "CallFunction",
+            "function": "Divide_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "3.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_50.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_50",
+            "type": "CallFunction",
+            "function": "Add_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "3.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_23.SpellDamage_0"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_52",
+            "type": "VariableGet",
+            "variable": "SpellPlacementRotation",
+            "pins_out": [
+              {
+                "name": "SpellPlacementRotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "connections": [
+                  "node_57.Rotation"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_53",
+            "type": "CallFunction",
+            "function": "Multiply_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.900000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_10.Radius"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_55",
+            "type": "CustomEvent",
+            "function": "SpawnNS",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_56.execute"
+                ]
+              },
+              {
+                "name": "Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_56.Location"
+                ]
+              },
+              {
+                "name": "Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "connections": [
+                  "node_56.Rotation"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_56",
+            "type": "CallFunction",
+            "function": "SpawnSystemAtLocation",
+            "owning_class": "NiagaraFunctionLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SystemTemplate",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraSystem"
+                }
+              },
+              {
+                "name": "Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "Scale",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "1.000000,1.000000,1.000000"
+              },
+              {
+                "name": "bAutoDestroy",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "bAutoActivate",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "PoolingMethod",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "None"
+              },
+              {
+                "name": "bPreCullCheck",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraComponent"
+                },
+                "connections": [
+                  "node_58.self",
+                  "node_70.NiagaraFX"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_57",
+            "type": "CallFunction",
+            "function": "SpawnNS",
+            "owning_class": "SKEL_BP_AreaAttackTickParent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0, 0, 0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_20.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_58",
+            "type": "CallFunction",
+            "function": "Activate",
+            "owning_class": "ActorComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ActorComponent"
+                }
+              },
+              {
+                "name": "bReset",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_70.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_59",
+            "type": "CallFunction",
+            "function": "DestroyAbility",
+            "owning_class": "SKEL_BP_AbilityParent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_AbilityParent_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_60",
+            "type": "VariableGet",
+            "variable": "AbilityInfo",
+            "pins_out": [
+              {
+                "name": "AbilityInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                },
+                "connections": [
+                  "node_61.DataSetup"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_61",
+            "type": "CallFunction",
+            "function": "Get Ability Data",
+            "owning_class": "SKEL_FunctionLibrary_C",
+            "pins_in": [
+              {
+                "name": "DataSetup",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SlotData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpellInfo"
+                },
+                "connections": [
+                  "node_17.S_SpellInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_62",
+            "type": "VariableGet",
+            "variable": "AbilityInfo",
+            "pins_out": [
+              {
+                "name": "AbilityInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                },
+                "connections": [
+                  "node_63.DataSetup"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_63",
+            "type": "CallFunction",
+            "function": "Get Ability Data",
+            "owning_class": "SKEL_FunctionLibrary_C",
+            "pins_in": [
+              {
+                "name": "DataSetup",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SlotData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpellInfo"
+                },
+                "connections": [
+                  "node_42.S_SpellInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_64",
+            "type": "VariableGet",
+            "variable": "AbilityInfo",
+            "pins_out": [
+              {
+                "name": "AbilityInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                },
+                "connections": [
+                  "node_65.DataSetup"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_65",
+            "type": "CallFunction",
+            "function": "Get Ability Data",
+            "owning_class": "SKEL_FunctionLibrary_C",
+            "pins_in": [
+              {
+                "name": "DataSetup",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SlotData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpellInfo"
+                },
+                "connections": [
+                  "node_47.S_SpellInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_66",
+            "type": "VariableGet",
+            "variable": "AbilityInfo",
+            "pins_out": [
+              {
+                "name": "AbilityInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                },
+                "connections": [
+                  "node_67.DataSetup"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_67",
+            "type": "CallFunction",
+            "function": "Get Ability Data",
+            "owning_class": "SKEL_FunctionLibrary_C",
+            "pins_in": [
+              {
+                "name": "DataSetup",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SlotData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpellInfo"
+                },
+                "connections": [
+                  "node_22.S_SpellInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_68",
+            "type": "VariableGet",
+            "variable": "AbilityInfo",
+            "pins_out": [
+              {
+                "name": "AbilityInfo",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                },
+                "connections": [
+                  "node_69.DataSetup"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_69",
+            "type": "CallFunction",
+            "function": "Get Ability Data",
+            "owning_class": "SKEL_FunctionLibrary_C",
+            "pins_in": [
+              {
+                "name": "DataSetup",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "DataTableRowHandle"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SlotData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "S_SpellInfo"
+                },
+                "connections": [
+                  "node_44.S_SpellInfo"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_70",
+            "type": "VariableSet",
+            "variable": "NiagaraFX",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "NiagaraFX",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraComponent"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_71",
+            "type": "VariableGet",
+            "variable": "NiagaraFX",
+            "pins_out": [
+              {
+                "name": "NiagaraFX",
+                "type": {
+                  "category": "object",
+                  "class": "NiagaraComponent"
+                },
+                "connections": [
+                  "node_73.self",
+                  "node_78.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_72",
+            "type": "CallFunction",
+            "function": "Delay",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Duration",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "true"
+            }
+          },
+          {
+            "id": "node_73",
+            "type": "CallFunction",
+            "function": "K2_DestroyComponent",
+            "owning_class": "ActorComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ActorComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_59.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_76",
+            "type": "CustomEvent",
+            "function": "MC_DestroyNS",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_77",
+            "type": "CallFunction",
+            "function": "MC_DestroyNS",
+            "owning_class": "SKEL_BP_AreaAttackTickParent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_78",
+            "type": "CallFunction",
+            "function": "K2_DestroyComponent",
+            "owning_class": "ActorComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ActorComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_72.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_79",
+            "type": "VariableGet",
+            "variable": "CharacterRef",
+            "pins_out": [
+              {
+                "name": "CharacterRef",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                },
+                "connections": [
+                  "node_6.DamageCauser"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_80",
+            "type": "K2Node_MakeArray",
+            "title": "Make Array",
+            "pins_in": [
+              {
+                "name": "[0]",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Array",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"Actor\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "connections": [
+                  "node_82.Option 0"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_81",
+            "type": "VariableGet",
+            "variable": "CharacterRef",
+            "pins_out": [
+              {
+                "name": "CharacterRef",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                },
+                "connections": [
+                  "node_80.[0]"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_82",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"Actor\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"Actor\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"Actor\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "connections": [
+                  "node_10.ActorsToIgnore"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_83",
+            "type": "CallFunction",
+            "function": "FriendlyFireSettings",
+            "owning_class": "SKEL_FunctionLibrary_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_10.execute"
+                ]
+              },
+              {
+                "name": "Self Damage Enabled",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_82.Index"
+                ]
+              },
+              {
+                "name": "Player Friendly Fire Enabled",
+                "type": {
+                  "category": "bool"
+                }
+              },
+              {
+                "name": "AI Friendly Fire Enabled",
+                "type": {
+                  "category": "bool"
+                }
+              },
+              {
+                "name": "Player To AI Friendly Fire",
+                "type": {
+                  "category": "bool"
+                }
+              },
+              {
+                "name": "AI To Player Friendly Fire",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 2,
+        "connection_count": 2,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "UserConstructionScript",
+            "owning_class": "SKEL_BP_AreaAttackTickParent_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}
