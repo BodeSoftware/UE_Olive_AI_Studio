@@ -23,10 +23,6 @@
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonWriter.h"
 #include "Serialization/JsonSerializer.h"
-#include "Kismet/KismetMathLibrary.h"
-#include "Kismet/KismetSystemLibrary.h"
-#include "Kismet/KismetStringLibrary.h"
-#include "Kismet/GameplayStatics.h"
 
 DEFINE_LOG_CATEGORY(LogOlivePlanResolver);
 
@@ -100,78 +96,6 @@ namespace
 
 	/** Number of catalog search results to request for disambiguation */
 	static constexpr int32 CATALOG_SEARCH_LIMIT = 5;
-
-	/**
-	 * Check whether a UFunction has an input parameter whose name matches the
-	 * given candidate (case-insensitive). Only non-return, non-out params count.
-	 *
-	 * @param Function The function to inspect
-	 * @param PinName The candidate pin name to match
-	 * @return True if Function has an input param matching PinName
-	 */
-	bool FunctionHasInputParam(const UFunction* Function, const FString& PinName)
-	{
-		if (!Function)
-		{
-			return false;
-		}
-		for (TFieldIterator<FProperty> It(Function); It; ++It)
-		{
-			const FProperty* Prop = *It;
-			if (Prop->HasAnyPropertyFlags(CPF_Parm)
-				&& !Prop->HasAnyPropertyFlags(CPF_ReturnParm | CPF_OutParm))
-			{
-				if (Prop->GetName().Equals(PinName, ESearchCase::IgnoreCase))
-				{
-					return true;
-				}
-			}
-		}
-		return false;
-	}
-
-	/**
-	 * Collect step input key names that are likely pin name candidates.
-	 * Filters out:
-	 *   - "Target" (wiring target, not a data pin)
-	 *   - Keys whose values start with "@" and whose key name is "self" (self-ref)
-	 *
-	 * @param StepInputs The step's Inputs map
-	 * @return Array of input key names that are pin-name candidates
-	 */
-	TArray<FString> CollectPinNameCandidates(const TMap<FString, FString>& StepInputs)
-	{
-		TArray<FString> Candidates;
-		for (const auto& Pair : StepInputs)
-		{
-			// Skip "Target" -- it's the wiring target, not a data pin
-			if (Pair.Key.Equals(TEXT("Target"), ESearchCase::IgnoreCase))
-			{
-				continue;
-			}
-			// Skip "self" when it's a reference (starts with @)
-			if (Pair.Key.Equals(TEXT("self"), ESearchCase::IgnoreCase) && Pair.Value.StartsWith(TEXT("@")))
-			{
-				continue;
-			}
-			Candidates.Add(Pair.Key);
-		}
-		return Candidates;
-	}
-
-	/**
-	 * Common utility library classes to search during alias fallback.
-	 * Searched in order; first match wins.
-	 */
-	TArray<UClass*> GetFallbackLibraryClasses()
-	{
-		TArray<UClass*> Classes;
-		Classes.Add(UKismetMathLibrary::StaticClass());
-		Classes.Add(UKismetSystemLibrary::StaticClass());
-		Classes.Add(UKismetStringLibrary::StaticClass());
-		Classes.Add(UGameplayStatics::StaticClass());
-		return Classes;
-	}
 }
 
 // ============================================================================
@@ -446,6 +370,11 @@ bool FOliveBlueprintPlanResolver::ExpandPlanInputs(
 		const bool bHasLocation = Step.Inputs.Contains(TEXT("Location"));
 		const bool bHasRotation = Step.Inputs.Contains(TEXT("Rotation"));
 
+		if (!bHasLocation && !bHasRotation)
+		{
+			continue; // No expansion needed
+		}
+
 		// Explicit SpawnTransform takes priority -- do not double-expand.
 		// If the AI also specified Location/Rotation alongside SpawnTransform,
 		// the Location/Rotation are left as-is (they will fail at wiring time
@@ -470,41 +399,26 @@ bool FOliveBlueprintPlanResolver::ExpandPlanInputs(
 		// Build a human-readable description of what was transferred
 		FString OriginalInputDesc;
 
-		if (!bHasLocation && !bHasRotation)
+		// Transfer Location input to the MakeTransform step
+		if (bHasLocation)
 		{
-			// Neither Location nor Rotation provided -- synthesize an identity
-			// transform (0,0,0 / 0,0,0 / 1,1,1) so the by-ref SpawnTransform
-			// pin is always wired. Without this, the pin stays unwired and the
-			// Blueprint fails to compile.
-			OriginalInputDesc = TEXT("(none -- identity transform)");
-
-			UE_LOG(LogOlivePlanResolver, Log,
-				TEXT("ExpandPlanInputs: step '%s' has no Location/Rotation/SpawnTransform. Synthesizing default identity MakeTransform."),
-				*Step.StepId);
+			const FString LocationValue = Step.Inputs[TEXT("Location")];
+			MakeTransformStep.Inputs.Add(TEXT("Location"), LocationValue);
+			Step.Inputs.Remove(TEXT("Location"));
+			OriginalInputDesc += FString::Printf(TEXT("Location=%s"), *LocationValue);
 		}
-		else
-		{
-			// Transfer Location input to the MakeTransform step
-			if (bHasLocation)
-			{
-				const FString LocationValue = Step.Inputs[TEXT("Location")];
-				MakeTransformStep.Inputs.Add(TEXT("Location"), LocationValue);
-				Step.Inputs.Remove(TEXT("Location"));
-				OriginalInputDesc += FString::Printf(TEXT("Location=%s"), *LocationValue);
-			}
 
-			// Transfer Rotation input to the MakeTransform step
-			if (bHasRotation)
+		// Transfer Rotation input to the MakeTransform step
+		if (bHasRotation)
+		{
+			const FString RotationValue = Step.Inputs[TEXT("Rotation")];
+			MakeTransformStep.Inputs.Add(TEXT("Rotation"), RotationValue);
+			Step.Inputs.Remove(TEXT("Rotation"));
+			if (!OriginalInputDesc.IsEmpty())
 			{
-				const FString RotationValue = Step.Inputs[TEXT("Rotation")];
-				MakeTransformStep.Inputs.Add(TEXT("Rotation"), RotationValue);
-				Step.Inputs.Remove(TEXT("Rotation"));
-				if (!OriginalInputDesc.IsEmpty())
-				{
-					OriginalInputDesc += TEXT(", ");
-				}
-				OriginalInputDesc += FString::Printf(TEXT("Rotation=%s"), *RotationValue);
+				OriginalInputDesc += TEXT(", ");
 			}
+			OriginalInputDesc += FString::Printf(TEXT("Rotation=%s"), *RotationValue);
 		}
 
 		// Wire MakeTransform output -> SpawnActor.SpawnTransform using @step.auto syntax
@@ -1463,129 +1377,6 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 			TEXT("    ResolveCallOp: '%s' -> function_name='%s', target_class='%s'"),
 			*Step.Target, *ResolvedFunctionName, *ResolvedClassName);
 
-		// --- Post-resolve alias pin validation ---
-		// When the match came from the alias map, the AI may have intended a
-		// different function than the one the alias points to. Example:
-		//   AI writes "GetForwardVector" with input "InRot"
-		//   Alias maps to "GetActorForwardVector" (no InRot pin)
-		//   AI actually wants UKismetMathLibrary::GetForwardVector(FRotator InRot)
-		//
-		// We validate that the resolved function has all the AI's input pin names.
-		// If not, we search common utility libraries for the ORIGINAL target name.
-		if (MatchMethod == EOliveFunctionMatchMethod::AliasMap && !Step.Inputs.IsEmpty())
-		{
-			const TArray<FString> PinCandidates = CollectPinNameCandidates(Step.Inputs);
-
-			if (PinCandidates.Num() > 0)
-			{
-				// Check which pin candidates are missing from the resolved function
-				TArray<FString> MissingPins;
-				for (const FString& Candidate : PinCandidates)
-				{
-					if (!FunctionHasInputParam(Function, Candidate))
-					{
-						MissingPins.Add(Candidate);
-					}
-				}
-
-				if (MissingPins.Num() > 0)
-				{
-					UE_LOG(LogOlivePlanResolver, Log,
-						TEXT("    ResolveCallOp: alias-resolved '%s' -> '%s::%s' but step has unmatched input pins: [%s]. Attempting fallback search for original name '%s'."),
-						*Step.Target, *ResolvedClassName, *ResolvedFunctionName,
-						*FString::Join(MissingPins, TEXT(", ")),
-						*Step.Target);
-
-					// Search common utility libraries for the ORIGINAL name (bypass alias map)
-					UFunction* FallbackFunction = nullptr;
-					UClass* FallbackClass = nullptr;
-					const TArray<UClass*> FallbackClasses = GetFallbackLibraryClasses();
-
-					for (UClass* LibClass : FallbackClasses)
-					{
-						if (!LibClass)
-						{
-							continue;
-						}
-						UFunction* CandidateFunc = LibClass->FindFunctionByName(*Step.Target);
-						if (!CandidateFunc)
-						{
-							continue;
-						}
-
-						// Verify this candidate actually has ALL the missing pins
-						bool bAllMissingFound = true;
-						for (const FString& MissingPin : MissingPins)
-						{
-							if (!FunctionHasInputParam(CandidateFunc, MissingPin))
-							{
-								bAllMissingFound = false;
-								break;
-							}
-						}
-
-						if (bAllMissingFound)
-						{
-							FallbackFunction = CandidateFunc;
-							FallbackClass = LibClass;
-							break;
-						}
-					}
-
-					if (FallbackFunction && FallbackClass)
-					{
-						// Replace the resolved function with the fallback
-						const FString FallbackFuncName = FallbackFunction->GetName();
-						const FString FallbackClassName = FallbackClass->GetName();
-
-						UE_LOG(LogOlivePlanResolver, Log,
-							TEXT("    ResolveCallOp: Alias fallback succeeded -- '%s' rerouted from '%s::%s' to '%s::%s' (input pins [%s] matched)"),
-							*Step.Target,
-							*ResolvedClassName, *ResolvedFunctionName,
-							*FallbackClassName, *FallbackFuncName,
-							*FString::Join(MissingPins, TEXT(", ")));
-
-						// Update Out properties with the fallback function
-						Out.Properties.Add(TEXT("function_name"), FallbackFuncName);
-						Out.Properties.Add(TEXT("target_class"), FallbackClassName);
-						Out.ResolvedOwningClass = FallbackClass;
-						Out.bIsPure = FallbackFunction->HasAnyFunctionFlags(FUNC_BlueprintPure);
-						Out.bIsLatent = FallbackFunction->HasMetaData(TEXT("Latent"));
-
-						// Record a resolver note for transparency
-						Out.ResolverNotes.Add(FOliveResolverNote{
-							TEXT("target"),
-							FString::Printf(TEXT("%s (alias -> %s::%s)"), *Step.Target, *ResolvedClassName, *ResolvedFunctionName),
-							FString::Printf(TEXT("%s::%s"), *FallbackClassName, *FallbackFuncName),
-							FString::Printf(TEXT("Alias-resolved function '%s' has no input pins [%s]. "
-								"Found matching function on %s with those pins."),
-								*ResolvedFunctionName,
-								*FString::Join(MissingPins, TEXT(", ")),
-								*FallbackClassName)
-						});
-
-						Warnings.Add(FString::Printf(
-							TEXT("Step '%s': alias '%s' -> '%s::%s' has no pins [%s]; "
-								"rerouted to '%s::%s' which does"),
-							*Step.StepId, *Step.Target,
-							*ResolvedClassName, *ResolvedFunctionName,
-							*FString::Join(MissingPins, TEXT(", ")),
-							*FallbackClassName, *FallbackFuncName));
-					}
-					else
-					{
-						// Fallback search failed -- proceed with original alias resolution.
-						// The executor will emit a "no pin named X" error which is actionable.
-						UE_LOG(LogOlivePlanResolver, Log,
-							TEXT("    ResolveCallOp: Alias fallback search found no match for '%s' with pins [%s]. Keeping alias result '%s::%s'."),
-							*Step.Target,
-							*FString::Join(MissingPins, TEXT(", ")),
-							*ResolvedClassName, *ResolvedFunctionName);
-					}
-				}
-			}
-		}
-
 		return true;
 	}
 
@@ -1762,7 +1553,6 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 	{
 		Suggestion += Suggestion.IsEmpty() ? TEXT("") : TEXT(" ");
 		Suggestion += TEXT("Specify target_class to narrow the search, or use blueprint.search_nodes to find available functions.");
-		Suggestion += TEXT(" If this function belongs to a component on a different Blueprint, apply the plan to that Blueprint instead.");
 	}
 
 	FOliveIRBlueprintPlanError Error = FOliveIRBlueprintPlanError::MakeStepError(
