@@ -14,7 +14,6 @@
 #include "Brain/OliveToolExecutionContext.h"
 #include "Chat/OliveRunManager.h"
 #include "OliveSnapshotManager.h"
-#include "Pipeline/OliveWritePipeline.h"
 #include "Misc/Guid.h"
 #include "Serialization/JsonSerializer.h"
 
@@ -271,10 +270,6 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 		Brain->BeginRun();
 	}
 
-	// Reset orphan baselines for delta tracking during this run
-	FOliveWritePipeline::Get().ClearOrphanBaselines();
-	FOliveWritePipeline::Get().bRunActive = true;
-
 	// 6. Set up callbacks with WeakSelf pattern (matches existing orchestrated path)
 	TWeakPtr<FOliveConversationManager> WeakSelf = AsShared();
 
@@ -472,10 +467,6 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 	{
 		Brain->BeginRun();
 	}
-
-	// Reset orphan baselines for delta tracking during this run
-	FOliveWritePipeline::Get().ClearOrphanBaselines();
-	FOliveWritePipeline::Get().bRunActive = true;
 
 	// Start a run if run mode is active
 	if (bRunModeActive && !FOliveRunManager::Get().HasActiveRun())

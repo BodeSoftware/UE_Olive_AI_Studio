@@ -19,13 +19,37 @@
 - See design docs for full list. Recent: `GHOST_NODE_PREVENTED`, `INTERFACE_GRAPH_CONFLICT`, `VALIDATION_EMPTY_SCRIPT`, `PYTHON_PLUGIN_NOT_AVAILABLE`, `PYTHON_NOT_AVAILABLE`, `PYTHON_EXECUTION_FAILED`
 
 ### Phase 3 Error Recovery (Master Plan v2) - Feb 2026
-- `plans/phase3-error-recovery-design.md` -- Changes 3.1-3.4: plan dedup (CRC32 hash via Evaluate param), progressive disclosure (3 tiers), stale strings, BP context injection.
+- `plans/phase3-error-recovery-design.md` -- Design for Changes 3.1-3.4
+- **Change 3.1 (plan dedup) key decision**: Pass ToolCallArgs INTO `Evaluate()` as new parameter instead of accessing HistoryStore. Avoids cross-module coupling. Hash = CRC32 of tool+asset_path+graph_name+condensed_plan_JSON.
+- **Change 3.1 requires**: `FOliveLoopDetector::HashString()` moved from private to public. `FOliveSelfCorrectionPolicy` gains `PreviousPlanHashes` TMap and `BuildPlanHash()` helper.
+- **Change 3.2 (progressive disclosure)**: Attempt 1 = code-only header + guidance. Attempt 2 = full header + guidance. Attempt 3+ = full + escalation.
+- **Change 3.3 (stale strings)**: `PLAN_RESOLVE_FAILED` now says "set_var on a component" (was "get_var for a component"). `PLAN_VALIDATION_FAILED` now mentions auto-wiring.
+- **Change 3.4 (BP context)**: `BuildBlueprintContextBlock()` on FOlivePromptAssembler. Called from GetActiveContext() for bIsBlueprint assets. Adds component/variable lists. ~25-38 tokens per typical BP. Requires `Blueprint.h`, `SimpleConstructionScript.h`, `SCS_Node.h` includes in OlivePromptAssembler.cpp.
+- **No FindLatest() needed**: Master plan suggested it but design avoids HistoryStore access entirely.
+- **No GetHistoryStore() accessor needed**: SelfCorrectionPolicy gets plan JSON via Evaluate parameter.
 
 ### Phase 2 Auto-Wiring (Master Plan v2) - Feb 2026
-- `plans/phase2-auto-wiring-design.md` -- Phase 1.5 (auto-wire component targets), Phase 5.5 (pre-compile validation + auto-fix), bIsRequired on pin manifest, validator softening.
+- `plans/phase2-auto-wiring-design.md` -- Detailed design for Changes 2.1-2.4
+- **Phase 1.5 (auto-wire component targets)**: New phase after PhaseCreateNodes. Injects UK2Node_VariableGet + TryCreateConnection for exactly-1-match SCS components. Runs OUTSIDE BatchScope (uses Schema->TryCreateConnection directly, not PinConnector).
+- **Phase 5.5 (pre-compile validation + auto-fix)**: New phase between SetDefaults and AutoLayout. Runs INSIDE BatchScope. Recovers orphaned impure nodes via exec_after plan intent. Defense-in-depth for unwired component Targets.
+- **New context fields**: AutoFixCount (int32), PreCompileIssues (TArray<FString>), NodeIdToStepId (TMap<FString,FString>), Plan (const FOliveIRBlueprintPlan*), FindStepIdForNode(UEdGraphNode*) method.
+- **Master plan discrepancies resolved**: `Context.GetCreatedNode()` -> use existing `GetNodePtr()` + Cast. `Context.GetNodeId(Node)` -> new `FindStepIdForNode()` (reverse lookup via StepToNodePtr iteration). `Context.Plan` -> added as raw pointer (set in Execute, valid during execution only).
+- **Validator softening**: CheckComponentFunctionTargets downgrades to warning when exactly 1 SCS component matches. Error when 0 or >1 matches. Needs `SimpleConstructionScript.h` and `SCS_Node.h` includes in OlivePlanValidator.cpp.
+- **bIsRequired**: New bool on FOlivePinManifestEntry. True for: exec input on non-event nodes, Self pin on non-static CallFunction. Populated in Build(), serialized as `"required": true` in ToJson(). Needs K2Node.h, K2Node_Event.h, K2Node_CustomEvent.h includes in OlivePinManifest.cpp.
+- **Implementation order**: 2.4 (bIsRequired) -> 2.1 (Phase 1.5) -> 2.2 (validator) -> 2.3 (Phase 5.5)
+- **No tool handler changes needed**: AutoFixCount and PreCompileIssues flow through existing PlanResult.Warnings array -> ResultData warnings JSON -> tool result.
 
 ### Phase 4 Template System - Feb 2026
-- `plans/phase4_template_implementation.md` -- FOliveTemplateSystem singleton. Scans `Content/Templates/` recursively. Catalog injection in `GetCapabilityKnowledge()`. ApplyTemplate uses `FOliveBlueprintWriter::Get()` directly (no tool re-entry). Error codes: `TEMPLATE_NOT_FOUND`, `TEMPLATE_NOT_FACTORY`, `TEMPLATE_APPLY_CREATE_FAILED`, `TEMPLATE_APPLY_PLAN_FAILED`.
+- `plans/phase4_template_implementation.md` -- 6-task implementation plan
+- **FOliveTemplateSystem**: Singleton at `Blueprint/Public/Template/OliveTemplateSystem.h`. Scans `Content/Templates/` recursively for JSON files. Builds auto-generated catalog block. Provides `ApplyTemplate()` for factory templates.
+- **File loading pattern**: Uses `IPlatformFile::IterateDirectoryRecursively()`, same as recipe loading in CrossSystemToolHandlers. Plugin dir resolved via `FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("UE_Olive_AI_Studio/Content/Templates"))`.
+- **Template tools always registered**: `RegisterTemplateTools()` called unconditionally in `RegisterAllTools()`. Handlers return errors if no templates loaded. Avoids startup ordering issues.
+- **Catalog injection**: Dynamic, in `GetCapabilityKnowledge()` -- appends catalog block for Auto/Blueprint profiles. NOT injected during LoadPromptTemplates to avoid startup ordering dependency.
+- **Startup position**: `FOliveTemplateSystem::Get().Initialize()` inserted after CrossSystem tools, before FocusProfileManager.
+- **ApplyTemplate execution**: All operations (create BP, add vars, add dispatchers, create functions, execute plans) happen inside a single write pipeline executor lambda. Uses `FOliveBlueprintWriter::Get()` directly, NOT tool handler re-entry.
+- **No Build.cs changes**: Blueprint sub-module already has recursive include paths that pick up `Blueprint/Public/Template/` and `Blueprint/Private/Template/`.
+- **New error codes**: `TEMPLATE_NOT_FOUND`, `TEMPLATE_NOT_FACTORY`, `TEMPLATE_APPLY_CREATE_FAILED`, `TEMPLATE_APPLY_PLAN_FAILED`
+- **New files**: `OliveTemplateSystem.h/cpp` (under `Blueprint/Public|Private/Template/`), `Content/Templates/factory/stat_component.json`, `Content/Templates/reference/component_patterns.json`
 
 ### Priority 0: Universal Node Manipulation - Feb 2026
 - `plans/priority0_universal_node.md` -- 5 tasks: validator fix, error classification, capability routing, universal add_node, get_node_pins
@@ -185,10 +209,3 @@
 - **`TOptional<FOliveWiringDiagnostic>`** added to `FOliveBlueprintWriteResult`. Non-breaking.
 - **Fires only on CONNECT_RESPONSE_DISALLOW** after autocast + SplitPin both fail.
 - **Depends on autocast integration** being complete first.
-
-### Log Improvements - Mar 2026
-- `plans/log-improvements-design.md` -- 6 tasks (T1-T6), 4 items
-- **modify_component fix**: `modified_properties_count` now reports `Properties.Num() - WriteResult.Warnings.Num()` (actual successes). Adds `requested_properties_count` and `failed_properties_count`. Guard: `FMath::Max(0, ...)` for edge case.
-- **Orphan delta tracking**: `OrphanBaselines` TMap + `bRunActive` flag on FOliveWritePipeline. Lazy baseline (first check per graph captures count). Delta reported on subsequent checks. Full count when no active run. ConversationManager sets `bRunActive = true` at `BeginRun()` (2 sites). Baselines cleared on next run start.
-- **interaction_caller.json**: Reference template (6 patterns). Covers overlap detection, input discovery, EIA vs InputKey, validity check, full caller architecture. Critical: states tool split (editor.run_python for IA/IMC assets, plan_json for event wiring).
-- **input_handling recipe**: Decision tree for EIA vs InputKey. Tags for manifest registration.

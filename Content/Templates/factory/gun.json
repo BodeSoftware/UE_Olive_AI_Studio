@@ -3,7 +3,7 @@
     "template_type": "factory",
     "display_name": "Gun",
 
-    "catalog_description": "Actor with mesh, muzzle point, fire/reload functions with full graph logic, ammo tracking, cooldown timer, and event dispatchers. Pair with the projectile template for a complete weapon system.",
+    "catalog_description": "Actor with mesh, muzzle point, fire/reload functions, ammo tracking, and event dispatchers. Pair with the projectile template for a complete weapon system.",
     "catalog_examples": "Pistol, Rifle, Shotgun, SMG, Sniper, Launcher",
 
     "parameters": {
@@ -138,12 +138,6 @@
                 "type": "Boolean",
                 "default": "true",
                 "category": "${weapon_name}"
-            },
-            {
-                "name": "bFireResult",
-                "type": "Boolean",
-                "default": "false",
-                "category": "${weapon_name}"
             }
         ],
 
@@ -169,100 +163,25 @@
         "functions": [
             {
                 "name": "Fire",
-                "description": "Attempt to fire. Checks bCanFire and ammo, decrements ammo, starts cooldown timer, fires OnFired. When ammo reaches zero, fires OnAmmoEmpty. Uses set_var pattern for multiple exit paths.",
-                "category": "${weapon_name}",
-                "access": "public",
+                "description": "Attempt to fire. Decrements ammo if available, fires OnFired. When ammo reaches zero, fires OnAmmoEmpty.",
                 "inputs": [],
                 "outputs": [
                     { "name": "bSuccess", "type": "Boolean" }
-                ],
-                "plan": {
-                    "steps": [
-                        { "step_id": "s_get_can_fire", "op": "get_var", "target": "bCanFire" },
-                        { "step_id": "s_get_ammo", "op": "get_var", "target": "CurrentAmmo" },
-                        { "step_id": "s_check_ammo_gt0", "op": "call", "target": "Greater_IntInt",
-                          "inputs": { "A": "@s_get_ammo.CurrentAmmo", "B": "0" } },
-                        { "step_id": "s_calc_new_ammo", "op": "call", "target": "Subtract_IntInt",
-                          "inputs": { "A": "@s_get_ammo.CurrentAmmo", "B": "1" } },
-                        { "step_id": "s_get_fire_rate", "op": "get_var", "target": "FireRate" },
-                        { "step_id": "s_calc_cooldown", "op": "call", "target": "Divide_DoubleDouble",
-                          "inputs": { "A": "1.0", "B": "@s_get_fire_rate.FireRate" } },
-                        { "step_id": "s_check_empty", "op": "call", "target": "EqualEqual_IntInt",
-                          "inputs": { "A": "@s_calc_new_ammo.ReturnValue", "B": "0" } },
-                        { "step_id": "s_get_result", "op": "get_var", "target": "bFireResult" },
-                        { "step_id": "s_init_fail", "op": "set_var", "target": "bFireResult",
-                          "inputs": { "bFireResult": "false" } },
-                        { "step_id": "s_check_can_fire", "op": "branch",
-                          "inputs": { "Condition": "@s_get_can_fire.bCanFire" },
-                          "exec_after": "s_init_fail",
-                          "exec_outputs": { "True": "s_branch_ammo", "False": "s_return" } },
-                        { "step_id": "s_branch_ammo", "op": "branch",
-                          "inputs": { "Condition": "@s_check_ammo_gt0.ReturnValue" },
-                          "exec_outputs": { "True": "s_set_ammo", "False": "s_return" } },
-                        { "step_id": "s_set_ammo", "op": "set_var", "target": "CurrentAmmo",
-                          "inputs": { "CurrentAmmo": "@s_calc_new_ammo.ReturnValue" } },
-                        { "step_id": "s_disable_fire", "op": "set_var", "target": "bCanFire",
-                          "inputs": { "bCanFire": "false" },
-                          "exec_after": "s_set_ammo" },
-                        { "step_id": "s_set_timer", "op": "call", "target": "SetTimer",
-                          "inputs": { "FunctionName": "ResetCanFire", "Time": "@s_calc_cooldown.ReturnValue", "bLooping": "false" },
-                          "exec_after": "s_disable_fire" },
-                        { "step_id": "s_call_on_fired", "op": "call_delegate", "target": "OnFired",
-                          "inputs": { "RemainingAmmo": "@s_calc_new_ammo.ReturnValue" },
-                          "exec_after": "s_set_timer" },
-                        { "step_id": "s_branch_empty", "op": "branch",
-                          "inputs": { "Condition": "@s_check_empty.ReturnValue" },
-                          "exec_after": "s_call_on_fired",
-                          "exec_outputs": { "True": "s_call_empty", "False": "s_set_success" } },
-                        { "step_id": "s_call_empty", "op": "call_delegate", "target": "OnAmmoEmpty" },
-                        { "step_id": "s_set_success", "op": "set_var", "target": "bFireResult",
-                          "inputs": { "bFireResult": "true" },
-                          "exec_after": "s_call_empty" },
-                        { "step_id": "s_return", "op": "return",
-                          "inputs": { "bSuccess": "@s_get_result.bFireResult" },
-                          "exec_after": "s_set_success" }
-                    ]
-                }
+                ]
             },
             {
                 "name": "ResetCanFire",
-                "description": "Called by cooldown timer to re-enable firing.",
-                "category": "${weapon_name}",
-                "access": "private",
+                "description": "Called by timer to re-enable firing after cooldown.",
                 "inputs": [],
-                "outputs": [],
-                "plan": {
-                    "steps": [
-                        { "step_id": "s_enable", "op": "set_var", "target": "bCanFire",
-                          "inputs": { "bCanFire": "true" } }
-                    ]
-                }
+                "outputs": []
             },
             {
                 "name": "Reload",
                 "description": "Restore ammo to max and fire OnReloaded.",
-                "category": "${weapon_name}",
-                "access": "public",
                 "inputs": [],
                 "outputs": [
                     { "name": "NewAmmo", "type": "Integer" }
-                ],
-                "plan": {
-                    "steps": [
-                        { "step_id": "s_get_max", "op": "get_var", "target": "MaxAmmo" },
-                        { "step_id": "s_set_ammo", "op": "set_var", "target": "CurrentAmmo",
-                          "inputs": { "CurrentAmmo": "@s_get_max.MaxAmmo" } },
-                        { "step_id": "s_enable_fire", "op": "set_var", "target": "bCanFire",
-                          "inputs": { "bCanFire": "true" },
-                          "exec_after": "s_set_ammo" },
-                        { "step_id": "s_call_reloaded", "op": "call_delegate", "target": "OnReloaded",
-                          "inputs": { "NewAmmo": "@s_get_max.MaxAmmo" },
-                          "exec_after": "s_enable_fire" },
-                        { "step_id": "s_return", "op": "return",
-                          "inputs": { "NewAmmo": "@s_get_max.MaxAmmo" },
-                          "exec_after": "s_call_reloaded" }
-                    ]
-                }
+                ]
             }
         ]
     }

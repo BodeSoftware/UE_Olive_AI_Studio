@@ -393,38 +393,4 @@ private:
 	 * @return GUID-based token string
 	 */
 	FString GenerateConfirmationToken();
-
-	// ============================================================================
-	// Orphan Detection Baseline (per-run delta tracking)
-	// ============================================================================
-public:
-
-	/**
-	 * Capture the current orphan count for a graph as the baseline.
-	 * Called lazily on first graph-edit check per run, NOT eagerly on run start.
-	 * Idempotent: does nothing if a baseline already exists for this graph.
-	 *
-	 * @param GraphPath Unique graph identifier (Blueprint path + graph name)
-	 * @param CurrentOrphanCount The current absolute orphan count
-	 */
-	void SetOrphanBaseline(const FString& GraphPath, int32 CurrentOrphanCount);
-
-	/**
-	 * Get the number of NEW orphans since the baseline was captured.
-	 * Returns the absolute count if no baseline exists (first check).
-	 *
-	 * @param GraphPath Unique graph identifier
-	 * @param CurrentOrphanCount The current absolute orphan count
-	 * @return Delta (new orphans since baseline), minimum 0
-	 */
-	int32 GetOrphanDelta(const FString& GraphPath, int32 CurrentOrphanCount) const;
-
-	/** Clear all orphan baselines (called at run start to reset previous run data) */
-	void ClearOrphanBaselines();
-
-	/** Per-run orphan baselines: graph path -> orphan count at start of run */
-	TMap<FString, int32> OrphanBaselines;
-
-	/** Whether a brain run is currently active (baselines are valid) */
-	bool bRunActive = false;
 };

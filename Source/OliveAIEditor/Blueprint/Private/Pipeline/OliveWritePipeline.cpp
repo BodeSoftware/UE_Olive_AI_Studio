@@ -503,45 +503,12 @@ FOliveWriteResult FOliveWritePipeline::StageVerify(
 				{
 					if (Graph && Graph->GetName() == GraphName)
 					{
-						// Collect orphan messages into a separate array first
-						TArray<FOliveIRMessage> OrphanMessages;
-						int32 AbsoluteOrphanCount = DetectOrphanedExecFlows(Graph, OrphanMessages);
-
-						if (AbsoluteOrphanCount > 0)
+						int32 OrphanCount = DetectOrphanedExecFlows(Graph, StructuralMessages);
+						if (OrphanCount > 0)
 						{
-							const FString GraphPath = FString::Printf(TEXT("%s::%s"),
-								*Blueprint->GetPathName(), *GraphName);
-
-							if (bRunActive)
-							{
-								// Lazy baseline: first check captures baseline, returns full count
-								// Subsequent checks return only new orphans
-								SetOrphanBaseline(GraphPath, AbsoluteOrphanCount);
-								int32 DeltaOrphanCount = GetOrphanDelta(GraphPath, AbsoluteOrphanCount);
-
-								if (DeltaOrphanCount > 0)
-								{
-									// Only append the last DeltaOrphanCount messages (newest orphans)
-									int32 StartIndex = FMath::Max(0, OrphanMessages.Num() - DeltaOrphanCount);
-									for (int32 i = StartIndex; i < OrphanMessages.Num(); i++)
-									{
-										StructuralMessages.Add(OrphanMessages[i]);
-									}
-								}
-
-								UE_LOG(LogOliveWritePipeline, Log,
-									TEXT("Orphan delta for '%s': %d new (absolute: %d, baseline: %d)"),
-									*GraphName, DeltaOrphanCount, AbsoluteOrphanCount,
-									AbsoluteOrphanCount - DeltaOrphanCount);
-							}
-							else
-							{
-								// No active run -- report everything (compile, one-off tools)
-								StructuralMessages.Append(OrphanMessages);
-								UE_LOG(LogOliveWritePipeline, Log,
-									TEXT("Detected %d orphaned exec flow(s) in graph '%s' of Blueprint '%s'"),
-									AbsoluteOrphanCount, *GraphName, *Blueprint->GetName());
-							}
+							UE_LOG(LogOliveWritePipeline, Log,
+								TEXT("Detected %d orphaned exec flow(s) in graph '%s' of Blueprint '%s'"),
+								OrphanCount, *GraphName, *Blueprint->GetName());
 						}
 						break;
 					}
@@ -551,41 +518,12 @@ FOliveWriteResult FOliveWritePipeline::StageVerify(
 				{
 					if (Graph && Graph->GetName() == GraphName)
 					{
-						// Collect orphan messages into a separate array first
-						TArray<FOliveIRMessage> OrphanMessages;
-						int32 AbsoluteOrphanCount = DetectOrphanedExecFlows(Graph, OrphanMessages);
-
-						if (AbsoluteOrphanCount > 0)
+						int32 OrphanCount = DetectOrphanedExecFlows(Graph, StructuralMessages);
+						if (OrphanCount > 0)
 						{
-							const FString GraphPath = FString::Printf(TEXT("%s::%s"),
-								*Blueprint->GetPathName(), *GraphName);
-
-							if (bRunActive)
-							{
-								SetOrphanBaseline(GraphPath, AbsoluteOrphanCount);
-								int32 DeltaOrphanCount = GetOrphanDelta(GraphPath, AbsoluteOrphanCount);
-
-								if (DeltaOrphanCount > 0)
-								{
-									int32 StartIndex = FMath::Max(0, OrphanMessages.Num() - DeltaOrphanCount);
-									for (int32 i = StartIndex; i < OrphanMessages.Num(); i++)
-									{
-										StructuralMessages.Add(OrphanMessages[i]);
-									}
-								}
-
-								UE_LOG(LogOliveWritePipeline, Log,
-									TEXT("Orphan delta for function '%s': %d new (absolute: %d, baseline: %d)"),
-									*GraphName, DeltaOrphanCount, AbsoluteOrphanCount,
-									AbsoluteOrphanCount - DeltaOrphanCount);
-							}
-							else
-							{
-								StructuralMessages.Append(OrphanMessages);
-								UE_LOG(LogOliveWritePipeline, Log,
-									TEXT("Detected %d orphaned exec flow(s) in function graph '%s' of Blueprint '%s'"),
-									AbsoluteOrphanCount, *GraphName, *Blueprint->GetName());
-							}
+							UE_LOG(LogOliveWritePipeline, Log,
+								TEXT("Detected %d orphaned exec flow(s) in function graph '%s' of Blueprint '%s'"),
+								OrphanCount, *GraphName, *Blueprint->GetName());
 						}
 						break;
 					}
@@ -1221,41 +1159,6 @@ TArray<TSharedPtr<FJsonValue>> FOliveWritePipeline::BuildStructuredChanges(const
 	}
 
 	return Changes;
-}
-
-// ============================================================================
-// Orphan Detection Baseline
-// ============================================================================
-
-void FOliveWritePipeline::SetOrphanBaseline(const FString& GraphPath, int32 CurrentOrphanCount)
-{
-	if (!OrphanBaselines.Contains(GraphPath))
-	{
-		OrphanBaselines.Add(GraphPath, CurrentOrphanCount);
-		UE_LOG(LogOliveWritePipeline, Verbose,
-			TEXT("Orphan baseline set for '%s': %d"), *GraphPath, CurrentOrphanCount);
-	}
-}
-
-int32 FOliveWritePipeline::GetOrphanDelta(const FString& GraphPath, int32 CurrentOrphanCount) const
-{
-	if (const int32* Baseline = OrphanBaselines.Find(GraphPath))
-	{
-		return FMath::Max(0, CurrentOrphanCount - *Baseline);
-	}
-	// No baseline = first check for this graph = report full count
-	return CurrentOrphanCount;
-}
-
-void FOliveWritePipeline::ClearOrphanBaselines()
-{
-	if (OrphanBaselines.Num() > 0)
-	{
-		UE_LOG(LogOliveWritePipeline, Verbose,
-			TEXT("Clearing orphan baselines (%d graphs tracked)"), OrphanBaselines.Num());
-	}
-	OrphanBaselines.Reset();
-	bRunActive = false;
 }
 
 // ============================================================================

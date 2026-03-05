@@ -136,20 +136,6 @@ PCG plugin headers: `C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/PCG/Sourc
 - NO autocast from Vector/Rotator to float — must use SplitPin or break_struct
 - OlivePinConnector::CreateConversionNode() is NOT IMPLEMENTED (returns nullptr) — use TryCreateConnection instead
 
-## Enhanced Input API Key Facts (UE 5.5)
-- Research report: `plans/research/enhanced-input-actions.md`
-- `UInputAction` and `UInputMappingContext` are `UDataAsset` subclasses (NOT blueprints) — `blueprint.create` cannot create them
-- Module `"EnhancedInput"` provides both classes; module `"InputBlueprintNodes"` provides `UK2Node_EnhancedInputAction`
-- Headers: `InputAction.h`, `InputMappingContext.h`, `EnhancedActionKeyMapping.h`, `EnhancedInputSubsystems.h` (all in EnhancedInput/Public)
-- Create assets via: `AssetTools.CreateAsset(Name, PackagePath, UInputAction::StaticClass(), nullptr)` — do NOT use factory classes (private to InputEditor module)
-- Add key mapping: `IMC->MapKey(InputAction*, FKey)` returns `FEnhancedActionKeyMapping&` for further modifier/trigger config
-- `EInputActionValueType`: Boolean (button), Axis1D (float), Axis2D (Vector2D), Axis3D (Vector)
-- `UK2Node_EnhancedInputAction::InputAction` MUST be set before `AllocateDefaultPins()` — null InputAction = no data pins, compile error
-- Exec pin names (ETriggerEvent values): `Triggered`, `Started`, `Ongoing`, `Canceled`, `Completed` — only `Triggered` visible by default
-- Node is ubergraph-only (`IsCompatibleWithGraph` checks GT_Ubergraph) and requires `Blueprint->SupportsInputEvents()` = true (Actor/Pawn/Character)
-- `editor.run_python` is the best current approach: `unreal.AssetToolsHelpers.get_asset_tools().create_asset(..., unreal.InputAction, None)`, then `imc.map_key(ia, unreal.Key.space_bar)`
-- `UEnhancedInputLocalPlayerSubsystem::AddMappingContext(IMC, Priority)` is a UFUNCTION(BlueprintCallable) — FindFunction will locate it for plan_json `call` ops
-
 ## Search Patterns
 - Use `find "C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/..." -name "*.h"` to locate headers
 - Engine also accessible at same path with UE_5.1, UE_5.6, UE_5.7 installed on C: drive

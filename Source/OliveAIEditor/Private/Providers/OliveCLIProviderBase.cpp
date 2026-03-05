@@ -515,12 +515,12 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 		InitialContextAssetPaths.Empty(); // Consume -- only inject once per user message
 	}
 
-	// Nudge pattern research in the imperative channel (stdin).
+	// Nudge community search in the imperative channel (stdin).
 	// CLAUDE.md workflow steps are treated as optional; stdin directives are followed
 	// more reliably. Only inject on initial messages, not continuations.
 	if (!IsContinuationMessage(UserMessage))
 	{
-		EffectiveMessage += TEXT("\n\nBefore building, research patterns from Library templates: search blueprint.list_templates(query=\"...\") for proven reference patterns from real projects, specific function templates may be available by blueprint.get_template(id, pattern=\"FuncName\") to study matching functions. Supplement with olive.search_community_blueprints if needed — community examples are mixed quality, compare several before using. These are references — adapt, simplify, or combine patterns to fit the user's needs.\n");
+		EffectiveMessage += TEXT("\n\nBefore building, call olive.search_community_blueprints to research how other developers approached similar patterns.\n");
 	}
 
 	// Initialize run context tracking for this new run
