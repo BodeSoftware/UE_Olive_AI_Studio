@@ -1,7 +1,7 @@
 ---
 name: researcher
 description: General-purpose research specialist. Use PROACTIVELY when you need to understand UE APIs, explore engine source code, investigate how competitors solve problems, look up protocol specs (MCP, JSON-RPC, OpenRouter), find best practices, or gather information before making decisions. MUST BE USED before the architect designs a module involving unfamiliar UE APIs or external protocols.
-tools: Read, Bash, Grep, Glob, WebSearch, WebFetch
+tools: Read, Bash, Grep, Glob, WebSearch, WebFetch, mcp__playwright__browser_navigate, mcp__playwright__browser_snapshot, mcp__playwright__browser_take_screenshot, mcp__playwright__browser_resize, mcp__playwright__browser_click, mcp__playwright__browser_hover, mcp__playwright__browser_console_messages, 
 model: sonnet
 memory: project
 ---

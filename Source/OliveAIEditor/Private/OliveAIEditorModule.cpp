@@ -11,6 +11,7 @@
 #include "Profiles/OliveFocusProfileManager.h"
 // DEPRECATED: #include "Brain/OliveToolPackManager.h" -- no longer initialized at startup
 #include "Services/OliveValidationEngine.h"
+#include "Services/OliveUtilityModel.h"
 #include "Catalog/OliveNodeCatalog.h"
 #include "MCP/OliveBlueprintToolHandlers.h"
 #include "MCP/OliveBTToolHandlers.h"
@@ -59,6 +60,75 @@ void FOliveAIEditorModule::StartupModule()
 	OnPostEngineInit();
 
 	UE_LOG(LogOliveAI, Log, TEXT("OliveAIEditor module started"));
+
+	// ---- Debug / Test console commands ----
+
+	// Olive.TestPresearch <message>
+	// Tests the full pre-search pipeline: keyword extraction -> template search -> format
+	IConsoleManager::Get().RegisterConsoleCommand(
+		TEXT("Olive.TestPresearch"),
+		TEXT("Test utility model keyword extraction + template pre-search. Usage: Olive.TestPresearch create a bow and arrow system"),
+		FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& Args)
+		{
+			FString TestMessage;
+			for (const FString& Arg : Args)
+			{
+				if (!TestMessage.IsEmpty()) TestMessage += TEXT(" ");
+				TestMessage += Arg;
+			}
+			if (TestMessage.IsEmpty())
+			{
+				TestMessage = TEXT("create a bow and arrow system for my character");
+			}
+
+			UE_LOG(LogOliveAI, Warning, TEXT("===== PRE-SEARCH TEST ====="));
+			UE_LOG(LogOliveAI, Warning, TEXT("Input: %s"), *TestMessage);
+
+			// Step 1: Keyword extraction
+			UE_LOG(LogOliveAI, Warning, TEXT("--- Step 1: Keyword Extraction ---"));
+			UE_LOG(LogOliveAI, Warning, TEXT("Utility model available: %s"), FOliveUtilityModel::IsAvailable() ? TEXT("YES") : TEXT("NO"));
+
+			TArray<FString> Keywords = FOliveUtilityModel::ExtractSearchKeywords(TestMessage, 12);
+			FString KeywordStr = FString::Join(Keywords, TEXT(", "));
+			UE_LOG(LogOliveAI, Warning, TEXT("Extracted %d keywords: [%s]"), Keywords.Num(), *KeywordStr);
+
+			// Step 2: Template search
+			UE_LOG(LogOliveAI, Warning, TEXT("--- Step 2: Template Search ---"));
+			FString SearchQuery = FString::Join(Keywords, TEXT(" "));
+			TArray<TSharedPtr<FJsonObject>> Results = FOliveTemplateSystem::Get().SearchTemplates(SearchQuery, 8);
+			UE_LOG(LogOliveAI, Warning, TEXT("Found %d matching templates"), Results.Num());
+
+			for (int32 i = 0; i < Results.Num(); ++i)
+			{
+				FString Id, Desc, Proj;
+				Results[i]->TryGetStringField(TEXT("template_id"), Id);
+				Results[i]->TryGetStringField(TEXT("catalog_description"), Desc);
+				Results[i]->TryGetStringField(TEXT("source_project"), Proj);
+
+				// Truncate description for readability
+				if (Desc.Len() > 80)
+				{
+					Desc = Desc.Left(80) + TEXT("...");
+				}
+				UE_LOG(LogOliveAI, Warning, TEXT("  [%d] %s (%s): %s"), i, *Id, *Proj, *Desc);
+			}
+
+			// Step 3: Settings check
+			UE_LOG(LogOliveAI, Warning, TEXT("--- Settings ---"));
+			const UOliveAISettings* S = UOliveAISettings::Get();
+			if (S)
+			{
+				UE_LOG(LogOliveAI, Warning, TEXT("  LLM expansion enabled: %s"), S->bEnableLLMKeywordExpansion ? TEXT("YES") : TEXT("NO"));
+				UE_LOG(LogOliveAI, Warning, TEXT("  Utility provider: %d"), (int32)S->UtilityModelProvider);
+				UE_LOG(LogOliveAI, Warning, TEXT("  Utility model: %s"), *S->UtilityModelId);
+				UE_LOG(LogOliveAI, Warning, TEXT("  Has templates: %s"), FOliveTemplateSystem::Get().HasTemplates() ? TEXT("YES") : TEXT("NO"));
+				UE_LOG(LogOliveAI, Warning, TEXT("  Catalog block length: %d chars"), FOliveTemplateSystem::Get().GetCatalogBlock().Len());
+			}
+
+			UE_LOG(LogOliveAI, Warning, TEXT("===== PRE-SEARCH TEST COMPLETE ====="));
+		}),
+		ECVF_Default
+	);
 }
 
 void FOliveAIEditorModule::ShutdownModule()

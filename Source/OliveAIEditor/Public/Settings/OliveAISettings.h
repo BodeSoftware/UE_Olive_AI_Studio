@@ -385,19 +385,20 @@ public:
 	// Utility Model Settings
 	// ==========================================
 
-	/** Provider used for lightweight utility completions (keyword expansion, etc.).
-	 *  Choose a fast, cheap model — this is called frequently for sub-second tasks. */
+	/** Provider for the utility model (keyword expansion, error classification, etc.)
+	 *  Should be a fast, cheap model. Leave as "None" to use the main provider as fallback. */
 	UPROPERTY(Config, EditAnywhere, Category="Utility Model",
 		meta=(DisplayName="Utility Model Provider"))
 	EOliveAIProvider UtilityModelProvider = EOliveAIProvider::OpenRouter;
 
-	/** Model ID for the utility provider (e.g., "anthropic/claude-3-5-haiku-latest" for OpenRouter) */
+	/** Model ID for utility tasks. Should be fast/cheap.
+	 *  Examples: "anthropic/claude-3-5-haiku-latest", "openai/gpt-4.1-nano", "google/gemini-2.0-flash" */
 	UPROPERTY(Config, EditAnywhere, Category="Utility Model",
 		meta=(DisplayName="Utility Model ID"))
 	FString UtilityModelId = TEXT("anthropic/claude-3-5-haiku-latest");
 
-	/** Optional dedicated API key for the utility provider.
-	 *  If empty, falls back to the matching main provider's API key. */
+	/** API key override for the utility model (optional — if empty, uses the key from the matching provider).
+	 *  Useful if your utility model uses a different account or provider than your main model. */
 	UPROPERTY(Config, EditAnywhere, Category="Utility Model",
 		meta=(DisplayName="Utility Model API Key (Optional)", PasswordField=true))
 	FString UtilityModelApiKey;
@@ -407,8 +408,8 @@ public:
 		meta=(DisplayName="Utility Model Timeout (seconds)", ClampMin=5, ClampMax=30))
 	int32 UtilityModelTimeoutSeconds = 10;
 
-	/** When enabled, uses the utility model to expand search keywords with synonyms.
-	 *  When disabled, falls back to basic tokenizer-based keyword extraction. */
+	/** Enable LLM-based keyword expansion for template pre-search.
+	 *  When disabled, falls back to basic tokenizer extraction (less accurate for synonyms). */
 	UPROPERTY(Config, EditAnywhere, Category="Utility Model",
 		meta=(DisplayName="Enable LLM Keyword Expansion"))
 	bool bEnableLLMKeywordExpansion = true;
@@ -422,6 +423,12 @@ public:
 
 	/** Get the API key for the currently selected provider */
 	FString GetCurrentApiKey() const;
+
+	/** Get the API key for a specific provider (not necessarily the active one) */
+	FString GetApiKeyForProvider(EOliveAIProvider InProvider) const;
+
+	/** Get the base URL for a specific provider (not necessarily the active one) */
+	FString GetBaseUrlForProvider(EOliveAIProvider InProvider) const;
 
 	/** Get the base URL for the currently selected provider */
 	FString GetCurrentBaseUrl() const;
