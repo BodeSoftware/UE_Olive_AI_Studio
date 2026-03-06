@@ -739,6 +739,21 @@ void FOliveMCPServer::HandleToolsCallAsync(
 
 	UE_LOG(LogOliveAI, Log, TEXT("MCP tools/call: %s (client: %s)"), *ToolName, *ClientId);
 
+	// Log tool call parameters for diagnostics
+	if (Arguments.IsValid())
+	{
+		FString ParamStr;
+		TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+			TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&ParamStr);
+		FJsonSerializer::Serialize(Arguments.ToSharedRef(), Writer);
+		// Truncate very long params (e.g. plan_json bodies) to keep logs readable
+		if (ParamStr.Len() > 500)
+		{
+			ParamStr = ParamStr.Left(500) + TEXT("...(truncated)");
+		}
+		UE_LOG(LogOliveAI, Log, TEXT("MCP tools/call params: %s"), *ParamStr);
+	}
+
 	// Fire event (pass Arguments so subscribers can inspect tool call parameters)
 	OnToolCalled.Broadcast(ToolName, ClientId, Arguments);
 

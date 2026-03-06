@@ -5,10 +5,12 @@ UE 5.5 installed at: `C:/Program Files/Epic Games/UE_5.5/`
 PCG plugin headers: `C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/PCG/Source/PCG/Public/`
 
 ## Key Research Reports
-- `plans/research/pcg-api-ue55.md` — Full PCG plugin public API (UPCGGraph, UPCGNode, UPCGPin, UPCGSettings, EPCGDataType, UPCGSubgraphSettings, UPCGComponent, UPCGSubsystem)
+- `plans/research/pcg-api-ue55.md` — Full PCG plugin public API
 - `plans/research/uanimstatetransitionnode-api-ue55.md` — (exists, topic unknown)
-- `plans/research/log-failure-analysis.md` — Session log failure analysis; 5 Olive false negatives documented; interface call gap is primary issue
-- `plans/research/interface-event-resolution.md` — Interface event resolution gap: ResolveEventOp and CreateEventNode never check ImplementedInterfaces
+- `plans/research/log-failure-analysis.md` — Session log failure analysis
+- `plans/research/interface-event-resolution.md` — Interface event resolution gap
+- `plans/research/competitive-tool-analysis.md` — Full competitor landscape (AIK, flopperam, chongdashu, gimmeDG, etc.), tool count analysis, MCP spec status
+- `plans/research/competitor-deep-dive-2026-03.md` — DEEP dive: NeoStack AIK (full changelog, ACP/MCP dual transport, Profiles, 500+ checks), Aura 12.0 (Telos 2.0, Dragon Agent, pricing tiers, 43 tools), Ultimate Co-Pilot (Python MCP bridge, scene population), Ludus AI (broken BP repair, coverage gaps), plus full comparison matrix and adoption recommendations
 
 ## PCG API Key Facts (UE 5.5)
 - Module name for PCG plugin is `"PCG"` (add to Build.cs PrivateDependencyModuleNames)
@@ -34,17 +36,19 @@ PCG plugin headers: `C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/PCG/Sourc
 - Hot reload: do NOT trigger automatically — AddCodeToProject handles it; prompt user otherwise
 - All reflection iteration must be on the game thread
 
-## NeoStack / AIK Architecture (plans/research/neostack-architecture.md)
-- Product: Agent Integration Kit by Betide Studio — docs at aik.betide.studio
-- MCP server: always-on HTTP server, port 9315 default, auto-starts with editor
-- DUAL transport on same port: SSE (`/sse`, MCP 2024-11-05) for Claude Code; Streamable HTTP (`/mcp`, MCP 2025-03-26) for Gemini CLI/Cursor
-- Claude Code STILL uses SSE transport (not Streamable HTTP) as of Feb 2026 — `.mcp.json` URL should be `/sse`
-- Process lifecycle: ONE process per user request (not per turn); Claude Code exits when task complete
-- Domain knowledge: Profiles inject system prompt additions; no AGENTS.md — Claude Code reads CLAUDE.md natively
-- Tool consolidation: v0.5.0 reduced from 27+ to 15 tools — fewer broader tools is the AIK philosophy
-- .mcp.json placed at project root, written dynamically after server binds with actual port
-- ACP (stdio subprocess) = in-editor chat; MCP HTTP = external agents (Cursor); both used simultaneously
-- No public source code — AIK is proprietary (GitHub has only EOSIntegrationKit, SteamIntegrationKit, etc.)
+## NeoStack / AIK Architecture (plans/research/competitor-deep-dive-2026-03.md)
+- Product: Agent Integration Kit by Betide Studio — docs at aik.betide.studio; $109.99 one-time on FAB
+- MCP server: port 9315, auto-starts with editor; SSE endpoint GET /sse
+- DUAL transport: ACP (bundled adapter binary) for Claude Code/Codex/Copilot/Cursor; MCP SSE for Gemini CLI; native OpenRouter client (API key only, no external process)
+- Profiles system: 5 built-in profiles (Full, Animation, Blueprint & Gameplay, Cinematics, VFX & Materials); whitelist tool access + custom instructions injected per profile; NO AGENTS.md — AIK does not generate CLAUDE.md
+- Tool consolidation (v0.5.0): 27+ → ~15 unified tools; ~15 publicly known names: edit_rigging, edit_animation_asset, edit_character_asset, edit_ai_tree, edit_graph, generate_asset, read_asset (partial list)
+- 36+ asset type readers for @-mention context injection
+- Validation: 500+ checks are crash-prevention guards added reactively in v0.3.0 after launch crashes — scattered null/type/state guards, NOT semantic plan validation. Plus v0.5.0 try/catch wrapper around all tool execution.
+- No plan-preview-before-execute; no structured self-correction; error recovery is the agent's responsibility
+- Asset coverage: Blueprint + ALL animation + Materials + Niagara + Sequencer + IK + Widget + BT/ST + PCG + MetaSounds + EQS + viewport screenshots + Python execution
+- @-mention UX: user types @AssetName in chat → asset reader auto-generates structured context for LLM
+- Multi-session: up to 8 concurrent agent sessions
+- Conversation handoff: switch connected agents mid-session with context preserved (v0.5.0)
 
 ## Delegate Node API Key Facts (UE 5.5)
 - Research report: `plans/research/delegate-nodes-ue55.md`
@@ -149,6 +153,38 @@ PCG plugin headers: `C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/PCG/Sourc
 - Node is ubergraph-only (`IsCompatibleWithGraph` checks GT_Ubergraph) and requires `Blueprint->SupportsInputEvents()` = true (Actor/Pawn/Character)
 - `editor.run_python` is the best current approach: `unreal.AssetToolsHelpers.get_asset_tools().create_asset(..., unreal.InputAction, None)`, then `imc.map_key(ia, unreal.Key.space_bar)`
 - `UEnhancedInputLocalPlayerSubsystem::AddMappingContext(IMC, Priority)` is a UFUNCTION(BlueprintCallable) — FindFunction will locate it for plan_json `call` ops
+
+## Aura (RamenVR) Key Facts
+- Architecture: UE plugin (per-engine-version) + local server process + hosted cloud backend (credit-based)
+- Three modes: Ask (analysis, no changes), Plan (stored as .md files in /Saved/.Aura/plans/), Agent (live changes with Keep/Reject/Review diff UI)
+- Telos 2.0: proprietary reasoning framework by MIT-trained researchers; claimed >99% accuracy on existing BP graphs, 25x error reduction, 10x speed at 1/10 cost vs competitors. Mechanism unknown — likely fine-tuned or RLHF on top of Claude Sonnet/Opus.
+- Dragon Agent (Aura 12.0, March 2 2026): fully autonomous via Unreal Python; runs without UE open; compiles C++, closes/reopens projects; orchestrates Claude Code. This is Olive's editor.run_python taken to full autonomy.
+- Agents: Blueprint (Telos), C++ (self-correcting claims), Python/Dragon, Art Tooling — each specialized, each consumes credits
+- 43 Unreal-native tools total (Blueprint, Level Design, 3D Modeling, Asset Generation, Code Generation)
+- MCP: exposes tools via MCP for Claude Code, VS Code, Cursor (external agent use). AccelByte vertical MCP integration published.
+- Pricing: Free 2-week trial ($40 credit), Pro $40/month ($40 credit), Ultra $200/month ($280 credit), Enterprise custom
+- Models: Claude Sonnet 4.6 (base), Haiku (cheap tasks), Opus 4.6 ("Super Mode"); credits consumed by subagent complexity
+- Known bug (Jan 2026 launch): "AI refuses to work on existing blueprints" — Telos 2.0 claims resolution; unconfirmed
+- Windows only (Mac planned); UE 5.3–5.7; does NOT train on asset/game data (conv data may be used; enterprise training off by default)
+
+## Competitor Pricing Summary (March 2026)
+- Aura: $40/month (Pro), $200/month (Ultra)
+- AIK (NeoStack): $109.99 one-time
+- Ultimate Engine Co-Pilot: one-time (price undisclosed, on FAB)
+- Kibibyte Blueprint Generator AI: on FAB (~3,300 generations/$1 with OpenAI key)
+- Ludus AI: free tier + paid (price undisclosed)
+- All require Windows
+
+## SpawnActor ExposeOnSpawn & Exec Pin Rollback (UE 5.5)
+- Research report: `plans/research/spawn-actor-expose-on-spawn-and-exec-rollback.md`
+- `UK2Node_SpawnActorFromClass::CreatePinsForClass` called from PostPlacedNewNode/ReconstructNode/OnClassPinChanged ONLY — NOT from AllocateDefaultPins. Olive's NewObject path skips it.
+- Fix for missing ExposeOnSpawn pins: call `SpawnActorNode->ReconstructNode()` AFTER setting the variable's CPF_ExposeOnSpawn flag. Must be inside the same FScopedTransaction. Then call `Graph->NotifyGraphChanged()`.
+- Alternative: reorder plan steps so variable creation happens BEFORE SpawnActor node allocation.
+- "Exec→Exec TypesIncompatible" is a MISLEADING diagnostic from OlivePinConnector. Real cause: `bOrphanedPin == true` on BeginPlay's exec out pin. `CanCreateConnection` returns CONNECT_RESPONSE_DISALLOW ("Cannot make new connections to orphaned pin") and BuildWiringDiagnostic has no bOrphanedPin case — falls through to TypesIncompatible.
+- `bOrphanedPin` IS serialized (UEdGraphPin::ExportTextItem line 1097) — NOT transient. Survives/restored by undo.
+- Root cause of orphaned exec pin after rollback: BeginPlay node was never Modify()-called before the failed plan wired it. K2Schema::TryCreateConnection calls MarkBlueprintAsModified but NOT Node->Modify(). OlivePinConnector calls Blueprint->Modify() but NOT individual node Modify().
+- Fix: In WireExecConnection, check `Pin->bOrphanedPin` before connecting. If true, call `OwningNode->ReconstructNode()` to clear it. Also call `BeginPlayNode->Modify()` before wiring exec in PhaseWireExec.
+- Fix for BuildWiringDiagnostic: add bOrphanedPin check before the generic else block → new EOliveWiringFailureReason::OrphanedPin.
 
 ## Search Patterns
 - Use `find "C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/..." -name "*.h"` to locate headers

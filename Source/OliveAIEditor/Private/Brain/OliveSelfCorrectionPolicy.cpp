@@ -7,6 +7,9 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "Dom/JsonObject.h"
+#include "Engine/Blueprint.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
 
 FOliveSelfCorrectionPolicy::FOliveSelfCorrectionPolicy()
 {
@@ -151,6 +154,13 @@ FOliveCorrectionDecision FOliveSelfCorrectionPolicy::Evaluate(
 			Decision.EnrichedMessage = BuildCompileErrorMessage(
 				ToolName, CompileErrors, SignatureAttempts, Policy.MaxRetriesPerError);
 		}
+		// Track failure for asset-switch detection
+		if (!AssetPath.IsEmpty())
+		{
+			CurrentWorkingAsset = AssetPath;
+			bCurrentAssetHasFailure = true;
+		}
+
 		UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Compile failure on '%s', attempt %d/%d"),
 			*AssetPath, SignatureAttempts, Policy.MaxRetriesPerError);
 		UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Injecting compile correction:\n%s"), *Decision.EnrichedMessage);
@@ -278,13 +288,61 @@ FOliveCorrectionDecision FOliveSelfCorrectionPolicy::Evaluate(
 				TEXT("\nNOTE: %d nodes were ROLLED BACK. Do NOT reference node IDs from the failed operation."),
 				ToolRolledBackNodeCount);
 		}
+		// Track failure for asset-switch detection
+		if (!AssetContext.IsEmpty())
+		{
+			CurrentWorkingAsset = AssetContext;
+			bCurrentAssetHasFailure = true;
+		}
+
 		UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Tool failure '%s' error '%s', attempt %d/%d"),
 			*ToolName, *ErrorCode, SignatureAttempts, Policy.MaxRetriesPerError);
 		UE_LOG(LogOliveAI, Log, TEXT("SelfCorrection: Injecting tool correction:\n%s"), *Decision.EnrichedMessage);
 		return Decision;
 	}
 
-	// Success — tool worked fine
+	// Success — check for premature asset switching
+	if (bCurrentAssetHasFailure && !CurrentWorkingAsset.IsEmpty())
+	{
+		const FString TargetAsset = ExtractAssetFromResult(ResultJson);
+		if (!TargetAsset.IsEmpty() && TargetAsset != CurrentWorkingAsset)
+		{
+			// Agent switched assets while the previous one still has errors — inform softly
+			Decision.Action = EOliveCorrectionAction::FeedBackErrors;
+			Decision.EnrichedMessage = FString::Printf(
+				TEXT("Note: '%s' had unresolved errors from your last operation. "
+					 "You may want to address those before continuing with '%s'. "
+					 "Use blueprint.read to check its current state, or if the errors are "
+					 "unfixable, let the user know what went wrong."),
+				*FPaths::GetBaseFilename(CurrentWorkingAsset),
+				*FPaths::GetBaseFilename(TargetAsset));
+
+			// Reset after one informational nudge — don't block
+			bCurrentAssetHasFailure = false;
+			CurrentWorkingAsset = TargetAsset;
+
+			UE_LOG(LogOliveAI, Log,
+				TEXT("SelfCorrection: Asset switch detected — '%s' (with failures) → '%s'. Soft nudge injected."),
+				*CurrentWorkingAsset, *TargetAsset);
+			return Decision;
+		}
+
+		if (!TargetAsset.IsEmpty() && TargetAsset == CurrentWorkingAsset)
+		{
+			// Success on the same asset — failures resolved
+			bCurrentAssetHasFailure = false;
+		}
+	}
+
+	// Update current working asset on success
+	{
+		const FString TargetAsset = ExtractAssetFromResult(ResultJson);
+		if (!TargetAsset.IsEmpty())
+		{
+			CurrentWorkingAsset = TargetAsset;
+		}
+	}
+
 	Decision.Action = EOliveCorrectionAction::Continue;
 	return Decision;
 }
@@ -294,6 +352,8 @@ void FOliveSelfCorrectionPolicy::Reset()
 	PreviousPlanHashes.Empty();
 	bIsInGranularFallback = false;
 	LastPlanFailureReason.Empty();
+	CurrentWorkingAsset.Empty();
+	bCurrentAssetHasFailure = false;
 }
 
 bool FOliveSelfCorrectionPolicy::HasCompileFailure(const FString& ResultJson, FString& OutErrors, FString& OutAssetPath, bool& OutHasStaleErrors, int32& OutRolledBackNodeCount) const
@@ -679,6 +739,16 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 	{
 		Guidance = TEXT("The user denied this operation. Ask the user how they would like to proceed instead of retrying.");
 	}
+	else if (ErrorCode == TEXT("RATE_LIMITED"))
+	{
+		Guidance = TEXT("Write rate limit reached (30 operations/minute). "
+			"Do NOT retry immediately — the same operation will fail again. "
+			"Options:\n"
+			"1. Wait 30-60 seconds, then retry\n"
+			"2. Continue with READ-ONLY operations (blueprint.read, project.search) while waiting\n"
+			"3. Work on a different Blueprint that doesn't need writes\n"
+			"The rate limit resets on a rolling 60-second window.");
+	}
 	else if (ErrorCode == TEXT("PREVIEW_REQUIRED"))
 	{
 		Guidance = TEXT("This operation requires a preview first. Call blueprint.preview_plan_json with the plan to get a preview, then confirm execution.");
@@ -714,8 +784,34 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 			"Common mistakes: set_var on a component (use get_var to read, then call setter), "
 			"invented function names (search with blueprint.search_nodes first), "
 			"wrong pin names (use @step.auto instead of guessing). "
-			"Call olive.get_recipe with a query describing what you need (e.g., 'component reference' or 'spawn actor') "
-			"to get the correct pattern. Fix the failing step and resubmit the corrected plan.");
+			"Fix the failing step and resubmit the corrected plan.");
+
+		// Enrich with SCS component list when asset context is available
+		if (!AssetContext.IsEmpty())
+		{
+			UBlueprint* BP = Cast<UBlueprint>(
+				StaticLoadObject(UBlueprint::StaticClass(), nullptr, *AssetContext));
+			if (BP && BP->SimpleConstructionScript)
+			{
+				TArray<FString> ComponentNames;
+				for (USCS_Node* SCSNode : BP->SimpleConstructionScript->GetAllNodes())
+				{
+					if (SCSNode && SCSNode->ComponentClass)
+					{
+						ComponentNames.Add(FString::Printf(TEXT("%s (%s)"),
+							*SCSNode->GetVariableName().ToString(),
+							*SCSNode->ComponentClass->GetName()));
+					}
+				}
+				if (ComponentNames.Num() > 0)
+				{
+					Guidance += FString::Printf(
+						TEXT("\nThis Blueprint's components: %s. "
+							 "If calling a component function, wire a get_var for the component to the Target input."),
+						*FString::Join(ComponentNames, TEXT(", ")));
+				}
+			}
+		}
 	}
 	else if (ErrorCode == TEXT("GRAPH_DRIFT"))
 	{
@@ -741,9 +837,12 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 	{
 		Guidance = TEXT("Two pins in the plan have incompatible types and no autocast exists. "
 			"The wiring_errors array contains specific alternatives. "
-			"Common fix: add a break_struct or make_struct intermediate step, "
-			"or change the input to use a ~suffix for a split sub-pin component "
-			"(e.g., '@get_loc.~ReturnValue_X' for Vector.X).");
+			"Common fixes:\n"
+			"- Vector -> Float: use ~suffix for sub-pin (e.g., '@get_loc.~ReturnValue_X'). "
+			"SplitPin is also available as a fallback.\n"
+			"- Scalar -> Struct: add a make_struct intermediate step\n"
+			"- Struct -> individual values: add a break_struct step\n"
+			"- If all else fails, try editor.run_python for direct pin manipulation");
 	}
 	else if (ErrorCode == TEXT("BP_CONNECT_PINS_FAILED"))
 	{
@@ -882,7 +981,8 @@ EOliveErrorCategory FOliveSelfCorrectionPolicy::ClassifyErrorCode(
 	// Retrying will never help; the AI needs to choose a different approach.
 	if (ErrorCode == TEXT("USER_DENIED")
 		|| ErrorCode == TEXT("TEMPLATE_NOT_FOUND")
-		|| ErrorCode == TEXT("TEMPLATE_NOT_FACTORY"))
+		|| ErrorCode == TEXT("TEMPLATE_NOT_FACTORY")
+		|| ErrorCode == TEXT("RATE_LIMITED"))
 	{
 		return EOliveErrorCategory::UnsupportedFeature;
 	}
@@ -953,4 +1053,41 @@ FString FOliveSelfCorrectionPolicy::BuildPlanHash(
 		*ToolName, *AssetPath, *GraphName, *PlanString);
 
 	return FOliveLoopDetector::HashString(Composite);
+}
+
+FString FOliveSelfCorrectionPolicy::ExtractAssetFromResult(const FString& ResultJson) const
+{
+	TSharedPtr<FJsonObject> JsonObj;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ResultJson);
+	if (!FJsonSerializer::Deserialize(Reader, JsonObj) || !JsonObj.IsValid())
+	{
+		return FString();
+	}
+
+	// Check top-level fields
+	FString AssetPath;
+	if (JsonObj->TryGetStringField(TEXT("asset_path"), AssetPath) && !AssetPath.IsEmpty())
+	{
+		return AssetPath;
+	}
+	if (JsonObj->TryGetStringField(TEXT("blueprint_path"), AssetPath) && !AssetPath.IsEmpty())
+	{
+		return AssetPath;
+	}
+
+	// Check inside "data" (standard write pipeline result format)
+	const TSharedPtr<FJsonObject>* DataObj = nullptr;
+	if (JsonObj->TryGetObjectField(TEXT("data"), DataObj) && DataObj && (*DataObj).IsValid())
+	{
+		if ((*DataObj)->TryGetStringField(TEXT("asset_path"), AssetPath) && !AssetPath.IsEmpty())
+		{
+			return AssetPath;
+		}
+		if ((*DataObj)->TryGetStringField(TEXT("blueprint_path"), AssetPath) && !AssetPath.IsEmpty())
+		{
+			return AssetPath;
+		}
+	}
+
+	return FString();
 }

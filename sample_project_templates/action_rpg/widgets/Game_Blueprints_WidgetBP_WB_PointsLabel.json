@@ -1,0 +1,805 @@
+{
+  "schema_version": "1.0",
+  "name": "WB_PointsLabel",
+  "path": "/Game/Blueprints/WidgetBP/WB_PointsLabel.WB_PointsLabel",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "UserWidget",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": true,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "SoulsItem",
+      "type": {
+        "category": "object",
+        "class": "RPGTokenItem"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "bAddSoulsButton",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 26,
+        "connection_count": 38,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "Construct",
+            "owning_class": "UserWidget",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "GetPlayerControllerBP",
+            "owning_class": "SKEL_BP_RPGFunctionLibrary_C",
+            "pins_out": [
+              {
+                "name": "Controller",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerController_C"
+                },
+                "connections": [
+                  "node_2.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "K2Node_AddDelegate",
+            "title": "Bind Event to On Souls Updated",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerController_C"
+                }
+              },
+              {
+                "name": "Delegate",
+                "type": {
+                  "category": "delegate",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_8.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "CustomEvent",
+            "function": "UpdateSoulsLabel",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                },
+                "connections": [
+                  "node_2.Delegate"
+                ]
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "NewSoulsValue",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "GetPlayerControllerBP",
+            "owning_class": "SKEL_BP_RPGFunctionLibrary_C",
+            "pins_out": [
+              {
+                "name": "Controller",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerController_C"
+                },
+                "connections": [
+                  "node_15.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "SoulsLabel",
+            "pins_out": [
+              {
+                "name": "SoulsLabel",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_6.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "SetText",
+            "owning_class": "TextBlock",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                }
+              },
+              {
+                "name": "InText",
+                "type": {
+                  "category": "text"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_10.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "K2Node_FormatText",
+            "title": "Format Text",
+            "pins_in": [
+              {
+                "name": "Format",
+                "type": {
+                  "category": "text"
+                },
+                "default": "{1}"
+              },
+              {
+                "name": "1",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Result",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_6.InText"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_8",
+            "type": "CallFunction",
+            "function": "UpdateSoulsLabel",
+            "owning_class": "SKEL_WB_PointsLabel_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "NewSoulsValue",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "UpdateAnimation",
+            "pins_out": [
+              {
+                "name": "UpdateAnimation",
+                "type": {
+                  "category": "object",
+                  "class": "WidgetAnimation"
+                },
+                "connections": [
+                  "node_10.InAnimation"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "CallFunction",
+            "function": "PlayAnimation",
+            "owning_class": "UserWidget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "UserWidget"
+                }
+              },
+              {
+                "name": "InAnimation",
+                "type": {
+                  "category": "object",
+                  "class": "WidgetAnimation"
+                }
+              },
+              {
+                "name": "StartAtTime",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "NumLoopsToPlay",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              },
+              {
+                "name": "PlayMode",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Forward"
+              },
+              {
+                "name": "PlaybackSpeed",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "bRestoreState",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "WidgetAnimationHandle"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "VariableGet",
+            "variable": "SoulsItem",
+            "pins_out": [
+              {
+                "name": "SoulsItem",
+                "type": {
+                  "category": "object",
+                  "class": "RPGTokenItem"
+                },
+                "connections": [
+                  "node_15.Item"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "CallFunction",
+            "function": "GetPlayerControllerBP",
+            "owning_class": "SKEL_BP_RPGFunctionLibrary_C",
+            "pins_out": [
+              {
+                "name": "Controller",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerController_C"
+                },
+                "connections": [
+                  "node_20.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "CallFunction",
+            "function": "AddInventoryItem",
+            "owning_class": "RPGPlayerControllerBase",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGPlayerControllerBase"
+                }
+              },
+              {
+                "name": "NewItem",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              },
+              {
+                "name": "ItemCount",
+                "type": {
+                  "category": "int"
+                },
+                "default": "50"
+              },
+              {
+                "name": "ItemLevel",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              },
+              {
+                "name": "bAutoSlot",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "VariableGet",
+            "variable": "SoulsItem",
+            "pins_out": [
+              {
+                "name": "SoulsItem",
+                "type": {
+                  "category": "object",
+                  "class": "RPGTokenItem"
+                },
+                "connections": [
+                  "node_13.NewItem"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "CallFunction",
+            "function": "GetInventoryItemCount",
+            "owning_class": "RPGPlayerControllerBase",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGPlayerControllerBase"
+                }
+              },
+              {
+                "name": "Item",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_7.1"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "Event",
+            "function": "BndEvt__AddSoulsButton_K2Node_ComponentBoundEvent_82_OnButtonClickedEvent__DelegateSignature",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_21",
+            "type": "Event",
+            "function": "PreConstruct",
+            "owning_class": "UserWidget",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_24.execute"
+                ]
+              },
+              {
+                "name": "IsDesignTime",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_22",
+            "type": "VariableGet",
+            "variable": "bAddSoulsButton",
+            "pins_out": [
+              {
+                "name": "bAddSoulsButton",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_25.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "VariableGet",
+            "variable": "AddSoulsButton",
+            "pins_out": [
+              {
+                "name": "AddSoulsButton",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                },
+                "connections": [
+                  "node_24.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "CallFunction",
+            "function": "SetVisibility",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "InVisibility",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Visible"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_25",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Collapsed"
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Visible"
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_24.InVisibility"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "functions": [],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

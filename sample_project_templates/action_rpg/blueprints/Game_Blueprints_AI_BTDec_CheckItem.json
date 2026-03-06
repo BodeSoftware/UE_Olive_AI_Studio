@@ -1,0 +1,324 @@
+{
+  "schema_version": "1.0",
+  "name": "BTDec_CheckItem",
+  "path": "/Game/Blueprints/AI/BTDec_CheckItem.BTDec_CheckItem",
+  "type": "Normal",
+  "parent_class": {
+    "name": "BTDecorator_BlueprintBase",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "Item",
+      "type": {
+        "category": "object",
+        "class": "RPGItem"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SlotType",
+      "type": {
+        "category": "struct",
+        "struct_name": "PrimaryAssetType"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 0,
+        "connection_count": 0,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 0,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": []
+      }
+    ],
+    "functions": [
+      {
+        "name": "PerformConditionCheckAI",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "OwnerController",
+            "display_name": "Owner Controller",
+            "type": {
+              "category": "object",
+              "class": "AIController"
+            }
+          },
+          {
+            "name": "ControlledPawn",
+            "display_name": "Controlled Pawn",
+            "type": {
+              "category": "object",
+              "class": "Pawn"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "protected",
+        "node_count": 7,
+        "connection_count": 12,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "PerformConditionCheckAI",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "OwnerController",
+                "type": {
+                  "category": "object",
+                  "class": "AIController"
+                }
+              },
+              {
+                "name": "ControlledPawn",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "PerformConditionCheckAI",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "GetPlayerControllerBP",
+            "owning_class": "SKEL_BP_RPGFunctionLibrary_C",
+            "pins_out": [
+              {
+                "name": "Controller",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerController_C"
+                },
+                "connections": [
+                  "node_3.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "GetSlottedItem",
+            "owning_class": "RPGPlayerControllerBase",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGPlayerControllerBase"
+                }
+              },
+              {
+                "name": "ItemSlot_ItemType",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PrimaryAssetType"
+                },
+                "default": "None"
+              },
+              {
+                "name": "ItemSlot_SlotNumber",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                },
+                "connections": [
+                  "node_4.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "EqualEqual_ObjectObject",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_1.ReturnValue"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "Item",
+            "pins_out": [
+              {
+                "name": "Item",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                },
+                "connections": [
+                  "node_4.B"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "SlotType",
+            "pins_out": [
+              {
+                "name": "SlotType",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PrimaryAssetType"
+                },
+                "connections": [
+                  "node_3.ItemSlot_ItemType"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

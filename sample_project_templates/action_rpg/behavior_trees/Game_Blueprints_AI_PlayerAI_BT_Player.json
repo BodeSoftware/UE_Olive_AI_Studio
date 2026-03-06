@@ -1,0 +1,469 @@
+{
+  "behavior_tree": {
+    "name": "BT_Player",
+    "path": "/Game/Blueprints/AI/PlayerAI/BT_Player.BT_Player",
+    "blackboard": "/Game/Blueprints/AI/BB_Base.BB_Base",
+    "root": {
+      "id": "node_0",
+      "node_type": "composite",
+      "class": "BTComposite_Selector",
+      "title": "Selector",
+      "composite_type": "selector",
+      "children": [
+        {
+          "id": "node_2",
+          "node_type": "composite",
+          "class": "BTComposite_Sequence",
+          "title": "Recover Health",
+          "composite_type": "sequence",
+          "children": [
+            {
+              "id": "node_3",
+              "node_type": "task",
+              "class": "BTTask_GoAroundTarget_C",
+              "title": "Go Around",
+              "properties": {
+                "RadiusRange": "700.000000",
+                "TickInterval": "(Interval=-1.000000)",
+                "bShowPropertyDetails": "True",
+                "bIgnoreRestartSelf": "False"
+              },
+              "blackboard_keys": [
+                "SelfActor",
+                "MoveToLocation"
+              ]
+            },
+            {
+              "id": "node_4",
+              "node_type": "task",
+              "class": "BTTask_MoveTo",
+              "title": "Move To Safe Location",
+              "decorators": [
+                {
+                  "id": "node_5",
+                  "node_type": "decorator",
+                  "class": "BTDecorator_TimeLimit",
+                  "title": "TimeLimit",
+                  "properties": {
+                    "TimeLimit": "(DefaultValue=3.000000,Key=\"\")",
+                    "bInverseCondition": "False",
+                    "FlowAbortMode": "Self"
+                  }
+                }
+              ],
+              "properties": {
+                "AcceptableRadius": "(DefaultValue=5.000000,Key=\"\")",
+                "FilterClass": "(DefaultValue=None,BaseClass=\"/Script/CoreUObject.Class'/Script/NavigationSystem.NavigationQueryFilter'\",Key=\"\")",
+                "ObservedBlackboardValueTolerance": "(DefaultValue=4.750000,Key=\"\")",
+                "bAllowStrafe": "(DefaultValue=False,Key=\"\")",
+                "bAllowPartialPath": "(DefaultValue=True,Key=\"\")",
+                "bTrackMovingGoal": "(DefaultValue=True,Key=\"\")",
+                "bRequireNavigableEndLocation": "(DefaultValue=True,Key=\"\")",
+                "bProjectGoalLocation": "(DefaultValue=True,Key=\"\")",
+                "bReachTestIncludesAgentRadius": "(DefaultValue=True,Key=\"\")",
+                "bReachTestIncludesGoalRadius": "(DefaultValue=True,Key=\"\")",
+                "bStartFromPreviousPath": "(DefaultValue=False,Key=\"\")",
+                "bIgnoreRestartSelf": "False"
+              },
+              "blackboard_keys": [
+                "MoveToLocation"
+              ]
+            },
+            {
+              "id": "node_6",
+              "node_type": "task",
+              "class": "BTTask_UseItem_C",
+              "title": "Try Recover Health",
+              "properties": {
+                "TickInterval": "(Interval=-1.000000)",
+                "bShowPropertyDetails": "True",
+                "bIgnoreRestartSelf": "False"
+              }
+            },
+            {
+              "id": "node_7",
+              "node_type": "task",
+              "class": "BTTask_Wait",
+              "title": "Wait",
+              "properties": {
+                "WaitTime": "(DefaultValue=1.000000,Key=\"\")",
+                "RandomDeviation": "(DefaultValue=0.000000,Key=\"\")",
+                "bIgnoreRestartSelf": "False"
+              }
+            }
+          ],
+          "decorators": [
+            {
+              "id": "node_8",
+              "node_type": "decorator",
+              "class": "BTDec_CheckHealth_C",
+              "title": "Is Health Low?",
+              "properties": {
+                "MinHealthPercentage": "0.500000",
+                "bShowPropertyDetails": "True",
+                "bCheckConditionOnlyBlackBoardChanges": "False",
+                "bInverseCondition": "False",
+                "FlowAbortMode": "None"
+              }
+            },
+            {
+              "id": "node_9",
+              "node_type": "decorator",
+              "class": "BTDec_CheckItem_C",
+              "title": "Has Health Potion?",
+              "properties": {
+                "Item": "/Script/ActionRPG.RPGPotionItem'/Game/Items/Potions/Potion_Health.Potion_Health'",
+                "SlotType": "Potion",
+                "bShowPropertyDetails": "True",
+                "bCheckConditionOnlyBlackBoardChanges": "False",
+                "bInverseCondition": "False",
+                "FlowAbortMode": "None"
+              }
+            }
+          ],
+          "properties": {
+            "bApplyDecoratorScope": "False"
+          }
+        },
+        {
+          "id": "node_10",
+          "node_type": "composite",
+          "class": "BTComposite_Selector",
+          "title": "Selector",
+          "composite_type": "selector",
+          "children": [
+            {
+              "id": "node_11",
+              "node_type": "composite",
+              "class": "BTComposite_Sequence",
+              "title": "Use Skill",
+              "composite_type": "sequence",
+              "children": [
+                {
+                  "id": "node_12",
+                  "node_type": "task",
+                  "class": "BTTask_AttackSkill_C",
+                  "title": "Use Skill",
+                  "properties": {
+                    "TickInterval": "(Interval=-1.000000)",
+                    "bShowPropertyDetails": "True",
+                    "bIgnoreRestartSelf": "False"
+                  }
+                }
+              ],
+              "decorators": [
+                {
+                  "id": "node_13",
+                  "node_type": "decorator",
+                  "class": "BTDec_CheckItem_C",
+                  "title": "Has Skill Equipped?",
+                  "properties": {
+                    "Item": "/Script/ActionRPG.RPGSkillItem'/Game/Items/Skills/Skill_Combust.Skill_Combust'",
+                    "SlotType": "Skill",
+                    "bShowPropertyDetails": "True",
+                    "bCheckConditionOnlyBlackBoardChanges": "False",
+                    "bInverseCondition": "False",
+                    "FlowAbortMode": "None"
+                  }
+                },
+                {
+                  "id": "node_14",
+                  "node_type": "decorator",
+                  "class": "BTTask_IsTargetSurrounded_C",
+                  "title": "Am I Surrounded?",
+                  "properties": {
+                    "Acceptable Distance": "300.000000",
+                    "MinSurrounders": "3",
+                    "Surrounding": "0",
+                    "bShowPropertyDetails": "True",
+                    "bCheckConditionOnlyBlackBoardChanges": "False",
+                    "bInverseCondition": "False",
+                    "FlowAbortMode": "None"
+                  },
+                  "blackboard_keys": [
+                    "SelfActor"
+                  ]
+                },
+                {
+                  "id": "node_15",
+                  "node_type": "decorator",
+                  "class": "BTDecorator_Cooldown",
+                  "title": "Cooldown",
+                  "properties": {
+                    "CoolDownTime": "(DefaultValue=10.000000,Key=\"\")",
+                    "bInverseCondition": "False",
+                    "FlowAbortMode": "None"
+                  }
+                }
+              ],
+              "properties": {
+                "bApplyDecoratorScope": "False"
+              }
+            },
+            {
+              "id": "node_16",
+              "node_type": "composite",
+              "class": "BTComposite_Sequence",
+              "title": "Attack Target",
+              "composite_type": "sequence",
+              "children": [
+                {
+                  "id": "node_17",
+                  "node_type": "task",
+                  "class": "BTTask_StopAndRotate_C",
+                  "title": "Stop And Rotate",
+                  "properties": {
+                    "NewVar": "(Pitch=0.000000,Yaw=0.000000,Roll=0.000000)",
+                    "TickInterval": "(Interval=-1.000000)",
+                    "bShowPropertyDetails": "True",
+                    "bIgnoreRestartSelf": "False"
+                  },
+                  "blackboard_keys": [
+                    "TargetToFollow"
+                  ]
+                },
+                {
+                  "id": "node_18",
+                  "node_type": "task",
+                  "class": "BTTask_MoveTo",
+                  "title": "Move To",
+                  "properties": {
+                    "AcceptableRadius": "(DefaultValue=5.000000,Key=\"\")",
+                    "FilterClass": "(DefaultValue=None,BaseClass=\"/Script/CoreUObject.Class'/Script/NavigationSystem.NavigationQueryFilter'\",Key=\"\")",
+                    "ObservedBlackboardValueTolerance": "(DefaultValue=4.750000,Key=\"\")",
+                    "bAllowStrafe": "(DefaultValue=False,Key=\"\")",
+                    "bAllowPartialPath": "(DefaultValue=True,Key=\"\")",
+                    "bTrackMovingGoal": "(DefaultValue=True,Key=\"\")",
+                    "bRequireNavigableEndLocation": "(DefaultValue=True,Key=\"\")",
+                    "bProjectGoalLocation": "(DefaultValue=True,Key=\"\")",
+                    "bReachTestIncludesAgentRadius": "(DefaultValue=True,Key=\"\")",
+                    "bReachTestIncludesGoalRadius": "(DefaultValue=True,Key=\"\")",
+                    "bStartFromPreviousPath": "(DefaultValue=False,Key=\"\")",
+                    "bIgnoreRestartSelf": "False"
+                  },
+                  "blackboard_keys": [
+                    "TargetToFollow"
+                  ]
+                },
+                {
+                  "id": "node_19",
+                  "node_type": "task",
+                  "class": "BTTask_AttackMelee_C",
+                  "title": "Attack",
+                  "properties": {
+                    "TickInterval": "(Interval=-1.000000)",
+                    "bShowPropertyDetails": "True",
+                    "bIgnoreRestartSelf": "False"
+                  },
+                  "blackboard_keys": [
+                    "TargetToFollow"
+                  ]
+                }
+              ],
+              "decorators": [
+                {
+                  "id": "node_20",
+                  "node_type": "decorator",
+                  "class": "BTDecorator_Blackboard",
+                  "title": "Close Enough to Enemy",
+                  "properties": {
+                    "IntValue": "0",
+                    "FloatValue": "300.000000",
+                    "NotifyObserver": "ResultChange",
+                    "BasicOperation": "Set",
+                    "ArithmeticOperation": "LessOrEqual",
+                    "TextOperation": "Equal",
+                    "bInverseCondition": "False",
+                    "FlowAbortMode": "None"
+                  },
+                  "blackboard_keys": [
+                    "DistToTarget"
+                  ]
+                }
+              ],
+              "properties": {
+                "bApplyDecoratorScope": "False"
+              }
+            },
+            {
+              "id": "node_21",
+              "node_type": "composite",
+              "class": "BTComposite_Sequence",
+              "title": "Follow Target",
+              "composite_type": "sequence",
+              "children": [
+                {
+                  "id": "node_22",
+                  "node_type": "task",
+                  "class": "BTTask_StopAttack_C",
+                  "title": "Stop Attacking",
+                  "properties": {
+                    "TickInterval": "(Interval=-1.000000)",
+                    "bShowPropertyDetails": "True",
+                    "bIgnoreRestartSelf": "False"
+                  }
+                },
+                {
+                  "id": "node_23",
+                  "node_type": "task",
+                  "class": "BTTask_MoveTo",
+                  "title": "Move To",
+                  "properties": {
+                    "AcceptableRadius": "(DefaultValue=5.000000,Key=\"\")",
+                    "FilterClass": "(DefaultValue=None,BaseClass=\"/Script/CoreUObject.Class'/Script/NavigationSystem.NavigationQueryFilter'\",Key=\"\")",
+                    "ObservedBlackboardValueTolerance": "(DefaultValue=4.750000,Key=\"\")",
+                    "bAllowStrafe": "(DefaultValue=False,Key=\"\")",
+                    "bAllowPartialPath": "(DefaultValue=True,Key=\"\")",
+                    "bTrackMovingGoal": "(DefaultValue=True,Key=\"\")",
+                    "bRequireNavigableEndLocation": "(DefaultValue=True,Key=\"\")",
+                    "bProjectGoalLocation": "(DefaultValue=True,Key=\"\")",
+                    "bReachTestIncludesAgentRadius": "(DefaultValue=True,Key=\"\")",
+                    "bReachTestIncludesGoalRadius": "(DefaultValue=True,Key=\"\")",
+                    "bStartFromPreviousPath": "(DefaultValue=False,Key=\"\")",
+                    "bIgnoreRestartSelf": "True"
+                  },
+                  "blackboard_keys": [
+                    "TargetToFollow"
+                  ]
+                },
+                {
+                  "id": "node_24",
+                  "node_type": "task",
+                  "class": "BTTask_Wait",
+                  "title": "Wait",
+                  "properties": {
+                    "WaitTime": "(DefaultValue=0.250000,Key=\"\")",
+                    "RandomDeviation": "(DefaultValue=0.000000,Key=\"\")",
+                    "bIgnoreRestartSelf": "False"
+                  }
+                }
+              ],
+              "properties": {
+                "bApplyDecoratorScope": "False"
+              }
+            }
+          ],
+          "decorators": [
+            {
+              "id": "node_25",
+              "node_type": "decorator",
+              "class": "BTDecorator_Blackboard",
+              "title": "Do I Have a Target?",
+              "properties": {
+                "IntValue": "0",
+                "FloatValue": "0.000000",
+                "NotifyObserver": "ResultChange",
+                "BasicOperation": "Set",
+                "ArithmeticOperation": "Equal",
+                "TextOperation": "Equal",
+                "bInverseCondition": "False",
+                "FlowAbortMode": "None"
+              },
+              "blackboard_keys": [
+                "TargetToFollow"
+              ]
+            },
+            {
+              "id": "node_26",
+              "node_type": "decorator",
+              "class": "BTTask_IsPlayingHighPriorityMontage_C",
+              "title": "Is Not Playing High Priority Animation",
+              "properties": {
+                "bShowPropertyDetails": "True",
+                "bCheckConditionOnlyBlackBoardChanges": "False",
+                "bInverseCondition": "True",
+                "FlowAbortMode": "None"
+              }
+            }
+          ],
+          "properties": {
+            "bApplyDecoratorScope": "False"
+          }
+        }
+      ],
+      "services": [
+        {
+          "id": "node_1",
+          "node_type": "service",
+          "class": "BTService_FindNearestTarget_C",
+          "title": "Find Nearest Target",
+          "properties": {
+            "ClosestDistance": "50000.000000",
+            "ControlledActor": "None",
+            "bShowPropertyDetails": "True",
+            "bShowEventDetails": "False",
+            "Interval": "0.400000",
+            "RandomDeviation": "0.100000",
+            "bCallTickOnSearchStart": "False",
+            "bRestartTimerOnEachActivation": "False"
+          },
+          "blackboard_keys": [
+            "TargetToFollow",
+            "DistToTarget"
+          ]
+        }
+      ],
+      "properties": {
+        "bApplyDecoratorScope": "False"
+      }
+    },
+    "used_tasks": [
+      "BTTask_GoAroundTarget_C",
+      "BTTask_MoveTo",
+      "BTTask_UseItem_C",
+      "BTTask_Wait",
+      "BTTask_AttackSkill_C",
+      "BTTask_StopAndRotate_C",
+      "BTTask_AttackMelee_C",
+      "BTTask_StopAttack_C"
+    ],
+    "used_decorators": [
+      "BTDec_CheckHealth_C",
+      "BTDec_CheckItem_C",
+      "BTDecorator_TimeLimit",
+      "BTDecorator_Blackboard",
+      "BTTask_IsPlayingHighPriorityMontage_C",
+      "BTTask_IsTargetSurrounded_C",
+      "BTDecorator_Cooldown"
+    ],
+    "used_services": [
+      "BTService_FindNearestTarget_C"
+    ]
+  },
+  "blackboard": {
+    "name": "BB_Base",
+    "path": "/Game/Blueprints/AI/BB_Base.BB_Base",
+    "keys": [
+      {
+        "name": "TargetToFollow",
+        "key_type": "object",
+        "base_class": "Actor"
+      },
+      {
+        "name": "DistToTarget",
+        "key_type": "float"
+      },
+      {
+        "name": "IsAttacking",
+        "key_type": "bool"
+      },
+      {
+        "name": "SelfActor",
+        "key_type": "object",
+        "base_class": "Actor"
+      },
+      {
+        "name": "isRanged",
+        "key_type": "bool"
+      },
+      {
+        "name": "MoveToLocation",
+        "key_type": "vector"
+      },
+      {
+        "name": "CanSeePlayer",
+        "key_type": "bool"
+      }
+    ]
+  }
+}

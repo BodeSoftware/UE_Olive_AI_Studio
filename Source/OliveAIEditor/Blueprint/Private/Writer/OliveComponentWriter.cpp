@@ -432,7 +432,7 @@ FOliveBlueprintWriteResult FOliveComponentWriter::ReparentComponent(
 					USCS_Node* Current = ToSearch.Pop();
 					for (USCS_Node* Child : Current->GetChildNodes())
 					{
-						if (Child == NewParentNode)
+						if (Child == CheckNode)
 						{
 							CheckNode = Current;
 							break;

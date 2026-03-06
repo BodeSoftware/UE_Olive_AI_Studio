@@ -1,0 +1,779 @@
+{
+  "schema_version": "1.0",
+  "name": "BTService_FindNearestTarget",
+  "path": "/Game/Blueprints/AI/BTService_FindNearestTarget.BTService_FindNearestTarget",
+  "type": "Normal",
+  "parent_class": {
+    "name": "BTService_BlueprintBase",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "TargetToFollow",
+      "type": {
+        "category": "struct",
+        "struct_name": "BlackboardKeySelector"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DistToTarget",
+      "type": {
+        "category": "struct",
+        "struct_name": "BlackboardKeySelector"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ClosestDistance",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ControlledActor",
+      "type": {
+        "category": "object",
+        "class": "Actor"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 21,
+        "connection_count": 41,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "ReceiveTickAI",
+            "owning_class": "BTService_BlueprintBase",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_13.execute"
+                ]
+              },
+              {
+                "name": "OwnerController",
+                "type": {
+                  "category": "object",
+                  "class": "AIController"
+                }
+              },
+              {
+                "name": "ControlledPawn",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                },
+                "connections": [
+                  "node_1.ControlledActor",
+                  "node_19.self"
+                ]
+              },
+              {
+                "name": "DeltaSeconds",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableSet",
+            "variable": "ControlledActor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ControlledActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_20.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "VariableSet",
+            "variable": "ClosestDistance",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ClosestDistance",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "Less_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_5.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "ClosestDistance",
+            "pins_out": [
+              {
+                "name": "ClosestDistance",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_3.B"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "SetBlackboardValueAsObject",
+            "owning_class": "BTFunctionLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Key",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "BlackboardKeySelector",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Value",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "VariableGet",
+            "variable": "TargetToFollow",
+            "pins_out": [
+              {
+                "name": "TargetToFollow",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "BlackboardKeySelector"
+                },
+                "connections": [
+                  "node_6.Key"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "DistToTarget",
+            "pins_out": [
+              {
+                "name": "DistToTarget",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "BlackboardKeySelector"
+                },
+                "connections": [
+                  "node_11.Key"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "CallFunction",
+            "function": "SetBlackboardValueAsFloat",
+            "owning_class": "BTFunctionLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Key",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "BlackboardKeySelector",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Value",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "VariableGet",
+            "variable": "ClosestDistance",
+            "pins_out": [
+              {
+                "name": "ClosestDistance",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_11.Value"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "VariableSet",
+            "variable": "ClosestDistance",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ClosestDistance",
+                "type": {
+                  "category": "float"
+                },
+                "default": "99999997952.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_15",
+            "type": "K2Node_Composite",
+            "title": "IsValidAndAlive\nCollapsed Graph",
+            "pins_in": [
+              {
+                "name": "NPC",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_14.Condition"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_16",
+            "type": "VariableGet",
+            "variable": "ControlledActor",
+            "pins_out": [
+              {
+                "name": "ControlledActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_17.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "CallFunction",
+            "function": "GetDistanceTo",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "OtherActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor",
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_3.A",
+                  "node_2.ClosestDistance"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "name"
+                },
+                "default": "Player"
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "name"
+                },
+                "default": "Enemy"
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "name"
+                },
+                "connections": [
+                  "node_20.Tag"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_19",
+            "type": "CallFunction",
+            "function": "ActorHasTag",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "Tag",
+                "type": {
+                  "category": "name"
+                },
+                "default": "Player"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_18.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "CallFunction",
+            "function": "GetAllActorsWithTag",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Tag",
+                "type": {
+                  "category": "name"
+                },
+                "default": "None"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "OutActors",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"Actor\"\r\n}"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      }
+    ],
+    "functions": [],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

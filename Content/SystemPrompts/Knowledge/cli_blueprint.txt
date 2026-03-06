@@ -75,9 +75,20 @@ Array: {"category":"array","value_type":{"category":"float"}}
 
 ## Templates & Pattern Sources
 Templates are reference material, not scripts. Study patterns, then build your own approach.
-- Library templates: extracted from real shipped projects. Use blueprint.list_templates(query="...") to search, blueprint.get_template(id, pattern="FuncName") to read a function's full node graph. Adapt naming to fit the user's project.
-- Factory templates: blueprint.create with template_id creates structure (components, variables, function stubs). After creation, write your own plan_json for each function.
-- Community blueprints: olive.search_community_blueprints(query) for 150K+ community examples. Mixed quality — compare multiple results before committing.
+Often you will find library templates are the best quality (if available), factory templates
+are still good quality, and community blueprints have a mixed variety. Compare several
+templates for each Blueprint need in your plan (or function if doing a function-level search).
+- Library templates: extracted from real shipped projects with full node graphs. Search with
+  blueprint.list_templates(query="..."), read specific functions with
+  blueprint.get_template(id, pattern="FuncName"). The catalog lists domain keywords per
+  project so you know what's available.
+- Factory templates: blueprint.create with template_id for quick scaffolding. Good for
+  getting started — you can also extract individual functions with get_template.
+- Community blueprints: olive.search_community_blueprints(query) for 150K+ community
+  examples. Mixed quality — compare multiple results before committing.
+- Recipes: olive.get_recipe(query) has tested wiring patterns for common tasks.
+- Search strategy: search for the specific thing (e.g., "bow", "arrow", "shield"), not just
+  the generic category ("weapon"). Multiple narrow searches beat one broad search.
 
 ## plan_json Scope
 - plan_json CREATES new nodes. It cannot reference existing nodes by ID or internal name.
@@ -91,6 +102,7 @@ Templates are reference material, not scripts. Study patterns, then build your o
 - If something genuinely cannot be done with available tools, tell the user what you built, what you could not do, and why.
 - plan_json is atomic (all-or-nothing); granular tools are incremental. Choose based on the situation.
 - After a plan_json failure, all nodes from that plan are rolled back — they do not exist. Do NOT use connect_pins or add_node with node IDs from a failed plan. Instead: fix the plan and retry apply_plan_json, or start fresh with granular tools using new add_node calls.
+- After applying plan_json to a complex function (5+ steps), read the function back with blueprint.read_function to verify the graph looks correct. Disconnected data wires don't always cause compile errors.
 - Component functions (SetVelocityInLocalSpace, SetSimulatePhysics, etc.) require target_class when the component is NOT on the current Blueprint's SCS. If you're calling a function on a spawned actor's component, you need a reference to that component first.
 - Component refs: `@ComponentName` auto-expands to get_var (dotless @refs). Do NOT use `@ComponentName.auto` — that looks for a step named "ComponentName".
 - Component classes: StaticMeshComponent, SphereComponent, BoxComponent, CapsuleComponent, ArrowComponent, ProjectileMovementComponent, SceneComponent, AudioComponent

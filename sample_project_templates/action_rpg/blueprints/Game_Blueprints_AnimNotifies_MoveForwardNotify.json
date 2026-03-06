@@ -1,0 +1,410 @@
+{
+  "schema_version": "1.0",
+  "name": "MoveForwardNotify",
+  "path": "/Game/Blueprints/AnimNotifies/MoveForwardNotify.MoveForwardNotify",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "AnimNotify",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": false,
+    "has_functions": false,
+    "has_variables": false,
+    "has_components": false,
+    "has_macros": false,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "MoveValue",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [],
+    "functions": [
+      {
+        "name": "Received_Notify",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "MeshComp",
+            "display_name": "Mesh Comp",
+            "type": {
+              "category": "object",
+              "class": "SkeletalMeshComponent"
+            }
+          },
+          {
+            "name": "Animation",
+            "display_name": "Animation",
+            "type": {
+              "category": "object",
+              "class": "AnimSequenceBase"
+            }
+          },
+          {
+            "name": "EventReference",
+            "display_name": "Event Reference",
+            "type": {
+              "category": "struct",
+              "struct_name": "AnimNotifyEventReference",
+              "is_reference": true,
+              "is_const": true
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "public",
+        "const": true,
+        "node_count": 8,
+        "connection_count": 19,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "Received_Notify",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              },
+              {
+                "name": "MeshComp",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                },
+                "connections": [
+                  "node_6.self"
+                ]
+              },
+              {
+                "name": "Animation",
+                "type": {
+                  "category": "object",
+                  "class": "AnimSequenceBase"
+                }
+              },
+              {
+                "name": "EventReference",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "AnimNotifyEventReference",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "Received_Notify",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "Cast",
+            "title": "Cast To BP_PlayerCharacter",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AsBP Player Character",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                },
+                "connections": [
+                  "node_3.self",
+                  "node_5.self"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "BP_PlayerCharacter_C",
+              "TargetClassPath": "/Game/Blueprints/BP_PlayerCharacter.BP_PlayerCharacter_C"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "K2_AddActorWorldOffset",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "DeltaLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "bSweep",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "bTeleport",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "SweepHitResult",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "HitResult"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "Multiply_VectorFloat",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_3.DeltaLocation"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "GetForwardVector",
+            "owning_class": "SceneComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_4.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "GetOwner",
+            "owning_class": "ActorComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ActorComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_2.Object"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "VariableGet",
+            "variable": "MoveValue",
+            "pins_out": [
+              {
+                "name": "MoveValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_4.B"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

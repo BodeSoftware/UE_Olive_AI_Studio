@@ -3327,6 +3327,36 @@ FString FOliveLibraryIndex::BuildCatalog() const
 		TEXT("Library templates (%d blueprints, %d functions total):\n"),
 		Templates.Num(), TotalFunctions);
 
+	// Common/noise words to exclude from domain keyword extraction
+	static const TSet<FString> CatalogStopWords = {
+		TEXT("actor"), TEXT("component"), TEXT("blueprint"), TEXT("function"),
+		TEXT("event"), TEXT("variable"), TEXT("node"), TEXT("graph"),
+		TEXT("parent"), TEXT("base"), TEXT("default"), TEXT("custom"),
+		TEXT("comp"), TEXT("get"), TEXT("set"), TEXT("make"), TEXT("break"),
+		TEXT("add"), TEXT("remove"), TEXT("update"), TEXT("init"),
+		TEXT("begin"), TEXT("end"), TEXT("play"), TEXT("stop"),
+		TEXT("notify"), TEXT("anim"), TEXT("animation"), TEXT("modifier"),
+		TEXT("apply"), TEXT("revert"), TEXT("data"), TEXT("type"),
+		TEXT("name"), TEXT("value"), TEXT("index"), TEXT("array"),
+		TEXT("bool"), TEXT("float"), TEXT("int"), TEXT("string"),
+		TEXT("vector"), TEXT("rotator"), TEXT("transform"), TEXT("class"),
+		TEXT("object"), TEXT("struct"), TEXT("enum"), TEXT("delegate"),
+		TEXT("new"), TEXT("old"), TEXT("current"), TEXT("target"),
+		TEXT("source"), TEXT("input"), TEXT("output"), TEXT("result"),
+		TEXT("state"), TEXT("status"), TEXT("info"), TEXT("config"),
+		TEXT("owner"), TEXT("self"), TEXT("other"), TEXT("temp"),
+		TEXT("time"), TEXT("delta"), TEXT("alpha"), TEXT("rate"),
+		TEXT("length"), TEXT("count"), TEXT("max"), TEXT("min"),
+		TEXT("check"), TEXT("is"), TEXT("has"), TEXT("can"),
+		TEXT("on"), TEXT("off"), TEXT("enabled"), TEXT("disabled"),
+		TEXT("true"), TEXT("false"), TEXT("none"), TEXT("null"),
+		TEXT("curve"), TEXT("key"), TEXT("select"), TEXT("clear"),
+		TEXT("first"), TEXT("last"), TEXT("next"), TEXT("prev"),
+		TEXT("left"), TEXT("right"), TEXT("up"), TEXT("down"),
+		TEXT("based"), TEXT("extractor"), TEXT("motion"), TEXT("speed"),
+		TEXT("foot"), TEXT("move"), TEXT("sequence")
+	};
+
 	for (const auto& ProjectPair : ByProject)
 	{
 		// Count functions in this project
@@ -3336,8 +3366,48 @@ FString FOliveLibraryIndex::BuildCatalog() const
 			ProjectFunctions += T->Functions.Num();
 		}
 
+		// Extract domain keywords from tags across all templates in this project
+		TMap<FString, int32> TagFrequency;
+		for (const FOliveLibraryTemplateInfo* T : ProjectPair.Value)
+		{
+			TArray<FString> TagTokens;
+			T->Tags.ParseIntoArray(TagTokens, TEXT(" "));
+			for (const FString& Token : TagTokens)
+			{
+				FString Lower = Token.ToLower();
+				if (Lower.Len() >= 3 && !CatalogStopWords.Contains(Lower))
+				{
+					TagFrequency.FindOrAdd(Lower)++;
+				}
+			}
+		}
+
+		// Sort by frequency and take top 25 domain keywords
+		TArray<TPair<FString, int32>> SortedTags;
+		for (const auto& TagPair : TagFrequency)
+		{
+			SortedTags.Add(TagPair);
+		}
+		SortedTags.Sort([](const TPair<FString, int32>& A, const TPair<FString, int32>& B)
+		{
+			return A.Value > B.Value;
+		});
+
+		FString KeywordList;
+		const int32 MaxKeywords = 25;
+		for (int32 i = 0; i < FMath::Min(MaxKeywords, SortedTags.Num()); i++)
+		{
+			if (!KeywordList.IsEmpty()) KeywordList += TEXT(", ");
+			KeywordList += SortedTags[i].Key;
+		}
+
 		Catalog += FString::Printf(TEXT("- %s: %d blueprints, %d functions\n"),
 			*ProjectPair.Key, ProjectPair.Value.Num(), ProjectFunctions);
+
+		if (!KeywordList.IsEmpty())
+		{
+			Catalog += FString::Printf(TEXT("  Covers: %s\n"), *KeywordList);
+		}
 
 		// List factory templates (those with parameters) individually
 		for (const FOliveLibraryTemplateInfo* T : ProjectPair.Value)

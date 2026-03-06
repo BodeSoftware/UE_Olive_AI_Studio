@@ -1,0 +1,1067 @@
+{
+  "schema_version": "1.0",
+  "name": "ABP_Player",
+  "path": "/Game/Characters/ABP_Player.ABP_Player",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "AnimInstance",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": true,
+    "has_widget_tree": false,
+    "has_state_machine": true
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "Speed",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Direction",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "bAttacking",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DeathAnimIndex",
+      "type": {
+        "category": "int"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "PlayerCharacter",
+      "type": {
+        "category": "object",
+        "class": "BP_PlayerCharacter_C"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "bDead",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "bInventoryCamera",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 29,
+        "connection_count": 48,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "BlueprintUpdateAnimation",
+            "owning_class": "AnimInstance",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DeltaTimeX",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "TryGetPawnOwner",
+            "owning_class": "AnimInstance",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "AnimInstance"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                },
+                "connections": [
+                  "node_11.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "GetVelocity",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_4.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "VSize",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_5.Speed"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableSet",
+            "variable": "Speed",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Speed",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "VariableSet",
+            "variable": "bAttacking",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "bAttacking",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "Cast",
+            "title": "Cast To BP_PlayerCharacter",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_9.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AsBP Player Character",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                },
+                "connections": [
+                  "node_9.PlayerCharacter"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "BP_PlayerCharacter_C",
+              "TargetClassPath": "/Game/Blueprints/BP_PlayerCharacter.BP_PlayerCharacter_C"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "VariableSet",
+            "variable": "PlayerCharacter",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "PlayerCharacter",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "PlayerCharacter",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_18.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_8.execute"
+                ]
+              },
+              {
+                "name": "PlayerCharacter",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "Sequence",
+            "title": "Sequence",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then_0",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_13.InputPin"
+                ]
+              },
+              {
+                "name": "then_1",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_20.execute"
+                ]
+              },
+              {
+                "name": "then_2",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_27.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "OutputCount": "3"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "VariableGet",
+            "variable": "PlayerCharacter",
+            "pins_out": [
+              {
+                "name": "PlayerCharacter",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                },
+                "connections": [
+                  "node_3.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "VariableGet",
+            "variable": "PlayerCharacter",
+            "pins_out": [
+              {
+                "name": "PlayerCharacter",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                },
+                "connections": [
+                  "node_20.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "VariableGet",
+            "variable": "PlayerCharacter",
+            "pins_out": [
+              {
+                "name": "PlayerCharacter",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                },
+                "connections": [
+                  "node_23.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "VariableSet",
+            "variable": "bDead",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "bDead",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_12.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "CallFunction",
+            "function": "GetActiveAbilitiesWithTags",
+            "owning_class": "RPGCharacterBase",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGCharacterBase"
+                }
+              },
+              {
+                "name": "AbilityTags",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTagContainer"
+                },
+                "default": "(GameplayTags=((TagName=\"Ability.Melee\")))"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              },
+              {
+                "name": "ActiveAbilities",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"RPGGameplayAbility\"\r\n}"
+                },
+                "connections": [
+                  "node_21.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_21",
+            "type": "CallFunction",
+            "function": "Array_Length",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"RPGGameplayAbility\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_22.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_22",
+            "type": "CallFunction",
+            "function": "Greater_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_6.bAttacking"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "CallFunction",
+            "function": "IsAlive",
+            "owning_class": "SKEL_BP_Character_C",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_Character_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Return",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_24.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "CallFunction",
+            "function": "Not_PreBool",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_18.bDead"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_25",
+            "type": "VariableGet",
+            "variable": "PlayerCharacter",
+            "pins_out": [
+              {
+                "name": "PlayerCharacter",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                },
+                "connections": [
+                  "node_26.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "VariableGet",
+            "variable": "bInventoryCamera",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "bInventoryCamera",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_27.bInventoryCamera"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "BP_PlayerCharacter_C"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "VariableSet",
+            "variable": "bInventoryCamera",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "bInventoryCamera",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "AnimGraph",
+        "graph_type": "Function",
+        "node_count": 5,
+        "connection_count": 8,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "AnimGraphNode_Root",
+            "title": "Output Pose\nAnimGraph",
+            "pins_in": [
+              {
+                "name": "Result",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "AnimGraphNode_StateMachine",
+            "title": "New State Machine\nState Machine",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_2.BlendPose_1"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "AnimGraphNode_BlendListByBool",
+            "title": "Blend Poses by bool",
+            "pins_in": [
+              {
+                "name": "BlendPose_0",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "BlendPose_1",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "default": "(LinkID=-1,SourceLinkID=-1)"
+              },
+              {
+                "name": "BlendTime_0",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "BlendTime_1",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.100000"
+              },
+              {
+                "name": "bActiveValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "False"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_0.Result"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "AnimGraphNode_SequencePlayer",
+            "title": "Anim_Sword_Idle\nSequence Player",
+            "pins_out": [
+              {
+                "name": "Pose",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PoseLink"
+                },
+                "connections": [
+                  "node_2.BlendPose_0"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "bInventoryCamera",
+            "pins_out": [
+              {
+                "name": "bInventoryCamera",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_2.bActiveValue"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

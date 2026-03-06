@@ -1,0 +1,902 @@
+{
+  "schema_version": "1.0",
+  "name": "StopAndStartAI_NS",
+  "path": "/Game/Blueprints/AnimNotifies/StopAndStartAI_NS.StopAndStartAI_NS",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "AnimNotifyState",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": false,
+    "has_functions": false,
+    "has_variables": false,
+    "has_components": false,
+    "has_macros": false,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "graphs": {
+    "event_graphs": [],
+    "functions": [
+      {
+        "name": "Received_NotifyBegin",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "MeshComp",
+            "display_name": "Mesh Comp",
+            "type": {
+              "category": "object",
+              "class": "SkeletalMeshComponent"
+            }
+          },
+          {
+            "name": "Animation",
+            "display_name": "Animation",
+            "type": {
+              "category": "object",
+              "class": "AnimSequenceBase"
+            }
+          },
+          {
+            "name": "TotalDuration",
+            "display_name": "Total Duration",
+            "type": {
+              "category": "float"
+            },
+            "default": "0.0"
+          },
+          {
+            "name": "EventReference",
+            "display_name": "Event Reference",
+            "type": {
+              "category": "struct",
+              "struct_name": "AnimNotifyEventReference",
+              "is_reference": true,
+              "is_const": true
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "public",
+        "const": true,
+        "node_count": 14,
+        "connection_count": 32,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "Received_NotifyBegin",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "MeshComp",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                },
+                "connections": [
+                  "node_2.self"
+                ]
+              },
+              {
+                "name": "Animation",
+                "type": {
+                  "category": "object",
+                  "class": "AnimSequenceBase"
+                }
+              },
+              {
+                "name": "TotalDuration",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "EventReference",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "AnimNotifyEventReference",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "Received_NotifyBegin",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "GetOwner",
+            "owning_class": "ActorComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ActorComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_7.Object"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "GetAIController",
+            "owning_class": "AIBlueprintHelperLibrary",
+            "pins_in": [
+              {
+                "name": "ControlledActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "AIController"
+                },
+                "connections": [
+                  "node_5.self",
+                  "node_6.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "StopLogic",
+            "owning_class": "BrainComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BrainComponent"
+                }
+              },
+              {
+                "name": "Reason",
+                "type": {
+                  "category": "string"
+                },
+                "default": "Stop by Attacked "
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_13.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "BrainComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "AIController"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "BrainComponent",
+                "type": {
+                  "category": "object",
+                  "class": "BrainComponent"
+                },
+                "connections": [
+                  "node_4.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "AIController"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "StopMovement",
+            "owning_class": "Controller",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Controller"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "Cast",
+            "title": "Cast To BP_EnemyCharacter",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_8.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_10.InputPin"
+                ]
+              },
+              {
+                "name": "AsBP Enemy Character",
+                "type": {
+                  "category": "object",
+                  "class": "BP_EnemyCharacter_C"
+                },
+                "connections": [
+                  "node_8.self",
+                  "node_9.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "BP_EnemyCharacter_C",
+              "TargetClassPath": "/Game/Blueprints/BP_EnemyCharacter.BP_EnemyCharacter_C"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "VariableSet",
+            "variable": "IsWeaponAttacked",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsWeaponAttacked",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_EnemyCharacter_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "BP_EnemyCharacter_C"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "VariableGet",
+            "variable": "bResult",
+            "pins_out": [
+              {
+                "name": "bResult",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_1.ReturnValue"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_13",
+            "type": "VariableSet",
+            "variable": "bResult",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "bResult",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Received_NotifyEnd",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "MeshComp",
+            "display_name": "Mesh Comp",
+            "type": {
+              "category": "object",
+              "class": "SkeletalMeshComponent"
+            }
+          },
+          {
+            "name": "Animation",
+            "display_name": "Animation",
+            "type": {
+              "category": "object",
+              "class": "AnimSequenceBase"
+            }
+          },
+          {
+            "name": "EventReference",
+            "display_name": "Event Reference",
+            "type": {
+              "category": "struct",
+              "struct_name": "AnimNotifyEventReference",
+              "is_reference": true,
+              "is_const": true
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "public",
+        "const": true,
+        "node_count": 13,
+        "connection_count": 27,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "Received_NotifyEnd",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "MeshComp",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                },
+                "connections": [
+                  "node_2.self"
+                ]
+              },
+              {
+                "name": "Animation",
+                "type": {
+                  "category": "object",
+                  "class": "AnimSequenceBase"
+                }
+              },
+              {
+                "name": "EventReference",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "AnimNotifyEventReference",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "Received_NotifyEnd",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "GetOwner",
+            "owning_class": "ActorComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ActorComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_6.Object"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "GetAIController",
+            "owning_class": "AIBlueprintHelperLibrary",
+            "pins_in": [
+              {
+                "name": "ControlledActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "AIController"
+                },
+                "connections": [
+                  "node_4.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "BrainComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "AIController"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "BrainComponent",
+                "type": {
+                  "category": "object",
+                  "class": "BrainComponent"
+                },
+                "connections": [
+                  "node_5.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "AIController"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "RestartLogic",
+            "owning_class": "BrainComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BrainComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_9.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "Cast",
+            "title": "Cast To BP_EnemyCharacter",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_11.InputPin"
+                ]
+              },
+              {
+                "name": "AsBP Enemy Character",
+                "type": {
+                  "category": "object",
+                  "class": "BP_EnemyCharacter_C"
+                },
+                "connections": [
+                  "node_7.self",
+                  "node_12.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "BP_EnemyCharacter_C",
+              "TargetClassPath": "/Game/Blueprints/BP_EnemyCharacter.BP_EnemyCharacter_C"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "VariableSet",
+            "variable": "IsWeaponAttacked",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "IsWeaponAttacked",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_EnemyCharacter_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "BP_EnemyCharacter_C"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "VariableGet",
+            "variable": "bResult",
+            "pins_out": [
+              {
+                "name": "bResult",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_1.ReturnValue"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_9",
+            "type": "VariableSet",
+            "variable": "bResult",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "bResult",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

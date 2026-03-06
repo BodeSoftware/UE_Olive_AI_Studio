@@ -1,0 +1,1125 @@
+{
+  "schema_version": "1.0",
+  "name": "WB_PurchaseItem",
+  "path": "/Game/Blueprints/WidgetBP/Inventory/WB_PurchaseItem.WB_PurchaseItem",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "UserWidget",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": true,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "Owning List",
+      "type": {
+        "category": "object",
+        "class": "WB_InventoryList_C"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ItemClass",
+      "type": {
+        "category": "object",
+        "class": "RPGItem"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ConfirmSlot",
+      "type": {
+        "category": "object",
+        "class": "NamedSlot"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 38,
+        "connection_count": 71,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "Construct",
+            "owning_class": "UserWidget",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableGet",
+            "variable": "ItemIcon",
+            "pins_out": [
+              {
+                "name": "ItemIcon",
+                "type": {
+                  "category": "object",
+                  "class": "Image"
+                },
+                "connections": [
+                  "node_5.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "ItemNameLabel",
+            "pins_out": [
+              {
+                "name": "ItemNameLabel",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_3.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "SetText",
+            "owning_class": "TextBlock",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                }
+              },
+              {
+                "name": "InText",
+                "type": {
+                  "category": "text"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_26.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "ItemClass",
+            "pins_out": [
+              {
+                "name": "ItemClass",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                },
+                "connections": [
+                  "node_11.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "SetBrush",
+            "owning_class": "Image",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Image"
+                }
+              },
+              {
+                "name": "InBrush",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "Owning List",
+            "pins_out": [
+              {
+                "name": "Owning List",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InventoryList_C"
+                },
+                "connections": [
+                  "node_7.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "VariableGet",
+            "variable": "EquipmentButton",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InventoryList_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "EquipmentButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_EquipmentSlot_C"
+                },
+                "connections": [
+                  "node_8.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WB_InventoryList_C"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "CallFunction",
+            "function": "UpdateEquipmentSlot",
+            "owning_class": "SKEL_WB_EquipmentSlot_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_EquipmentSlot_C"
+                }
+              },
+              {
+                "name": "EquippedItem",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_15.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "ItemClass",
+            "pins_out": [
+              {
+                "name": "ItemClass",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                },
+                "connections": [
+                  "node_8.EquippedItem"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "Event",
+            "function": "BndEvt__InventoryButton_K2Node_ComponentBoundEvent_53_OnButtonClickedEvent__DelegateSignature",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_21.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_11",
+            "type": "VariableGet",
+            "variable": "ItemIcon",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ItemIcon",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush"
+                },
+                "connections": [
+                  "node_5.InBrush"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "RPGItem"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "VariableGet",
+            "variable": "ItemClass",
+            "pins_out": [
+              {
+                "name": "ItemClass",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                },
+                "connections": [
+                  "node_13.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "VariableGet",
+            "variable": "ItemName",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ItemName",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_3.InText"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "RPGItem"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "VariableGet",
+            "variable": "Owning List",
+            "pins_out": [
+              {
+                "name": "Owning List",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InventoryList_C"
+                },
+                "connections": [
+                  "node_15.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "CallFunction",
+            "function": "CloseList",
+            "owning_class": "SKEL_WB_InventoryList_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InventoryList_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "VariableGet",
+            "variable": "PriceLabel",
+            "pins_out": [
+              {
+                "name": "PriceLabel",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_17.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "CallFunction",
+            "function": "SetText",
+            "owning_class": "TextBlock",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                }
+              },
+              {
+                "name": "InText",
+                "type": {
+                  "category": "text"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "VariableGet",
+            "variable": "ItemClass",
+            "pins_out": [
+              {
+                "name": "ItemClass",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                },
+                "connections": [
+                  "node_19.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "VariableGet",
+            "variable": "Price",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Price",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_34.B"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "RPGItem"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "K2Node_FormatText",
+            "title": "Format Text",
+            "pins_in": [
+              {
+                "name": "Format",
+                "type": {
+                  "category": "text"
+                },
+                "default": "{1} souls"
+              },
+              {
+                "name": "1",
+                "type": {
+                  "category": "int"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Result",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_17.InText"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_21",
+            "type": "K2Node_CreateWidget",
+            "title": "Create WB Purchase Confirm Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Class",
+                "type": {
+                  "category": "class",
+                  "class": "UserWidget"
+                },
+                "default": "/Game/Blueprints/WidgetBP/Inventory/WB_PurchaseConfirm.WB_PurchaseConfirm_C"
+              },
+              {
+                "name": "OwningPlayer",
+                "type": {
+                  "category": "object",
+                  "class": "PlayerController"
+                }
+              },
+              {
+                "name": "ItemType",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_23.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "WB_PurchaseConfirm_C"
+                },
+                "connections": [
+                  "node_23.self",
+                  "node_30.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_22",
+            "type": "VariableGet",
+            "variable": "ItemClass",
+            "pins_out": [
+              {
+                "name": "ItemClass",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                },
+                "connections": [
+                  "node_21.ItemType"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_23",
+            "type": "K2Node_AddDelegate",
+            "title": "Bind Event to On Clicked Confirm",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_PurchaseConfirm_C"
+                }
+              },
+              {
+                "name": "Delegate",
+                "type": {
+                  "category": "delegate",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_37.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_24",
+            "type": "CustomEvent",
+            "function": "ClickedConfirmEvent",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                },
+                "connections": [
+                  "node_23.Delegate"
+                ]
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_8.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_25",
+            "type": "VariableGet",
+            "variable": "DescriptionLabel",
+            "pins_out": [
+              {
+                "name": "DescriptionLabel",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_26.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "CallFunction",
+            "function": "SetText",
+            "owning_class": "TextBlock",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                }
+              },
+              {
+                "name": "InText",
+                "type": {
+                  "category": "text"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_35.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "VariableGet",
+            "variable": "ItemClass",
+            "pins_out": [
+              {
+                "name": "ItemClass",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                },
+                "connections": [
+                  "node_28.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_28",
+            "type": "VariableGet",
+            "variable": "ItemDescription",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ItemDescription",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_26.InText"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "RPGItem"
+            }
+          },
+          {
+            "id": "node_33",
+            "type": "CustomEvent",
+            "function": "UpdatePriceLabel",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_17.execute"
+                ]
+              },
+              {
+                "name": "Quantity",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_34.A"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_34",
+            "type": "CallFunction",
+            "function": "Multiply_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_20.1"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_35",
+            "type": "CallFunction",
+            "function": "UpdatePriceLabel",
+            "owning_class": "SKEL_WB_PurchaseItem_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "Quantity",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_36",
+            "type": "VariableGet",
+            "variable": "ConfirmSlot",
+            "pins_out": [
+              {
+                "name": "ConfirmSlot",
+                "type": {
+                  "category": "object",
+                  "class": "NamedSlot"
+                },
+                "connections": [
+                  "node_37.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_37",
+            "type": "CallFunction",
+            "function": "AddChild",
+            "owning_class": "PanelWidget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "PanelWidget"
+                }
+              },
+              {
+                "name": "Content",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "PanelSlot"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      }
+    ],
+    "functions": [],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

@@ -415,6 +415,13 @@ public:
 		meta=(DisplayName="Enable LLM Keyword Expansion"))
 	bool bEnableLLMKeywordExpansion = true;
 
+	/** Enable template discovery pass before autonomous agent runs.
+	 *  Pre-searches library, factory, and community templates using smart keywords,
+	 *  then injects curated results into the agent's prompt for better template awareness. */
+	UPROPERTY(Config, EditAnywhere, Category="Utility Model",
+		meta=(DisplayName="Enable Template Discovery Pass"))
+	bool bEnableTemplateDiscoveryPass = true;
+
 	// ==========================================
 	// Utility Functions
 	// ==========================================

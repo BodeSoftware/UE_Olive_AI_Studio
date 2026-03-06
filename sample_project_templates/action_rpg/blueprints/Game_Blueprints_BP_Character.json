@@ -1,0 +1,2224 @@
+{
+  "schema_version": "1.0",
+  "name": "BP_Character",
+  "path": "/Game/Blueprints/BP_Character.BP_Character",
+  "type": "Normal",
+  "parent_class": {
+    "name": "RPGCharacterBase",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "CurrentWeapon",
+      "type": {
+        "category": "object",
+        "class": "WeaponActor_C"
+      },
+      "category": "Attack",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "IsProtectedByShield",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Health",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "bInvincible",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Health",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "CurrentWeaponSlot",
+      "type": {
+        "category": "struct",
+        "struct_name": "RPGItemSlot"
+      },
+      "category": "Attack",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AttackDelayCount",
+      "type": {
+        "category": "int"
+      },
+      "category": "Attack",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AttackDelayTime",
+      "type": {
+        "category": "float"
+      },
+      "category": "Attack",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "MeleeStartSection",
+      "type": {
+        "category": "name"
+      },
+      "category": "Attack",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "HighPriorityMontage",
+      "type": {
+        "category": "object",
+        "class": "AnimMontage"
+      },
+      "category": "Animation",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "OnSkillAttack",
+      "type": {
+        "category": "multicastdelegate"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "bStunned",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Health",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 3,
+        "connection_count": 2,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "ReceiveTick",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DeltaSeconds",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "CustomEvent",
+            "function": "DelayedDestroy",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "K2_DestroyActor",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 1,
+        "connection_count": 0,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "IsAlive",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "Return",
+            "display_name": "Return",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "public",
+        "pure": true,
+        "category": "Health",
+        "node_count": 4,
+        "connection_count": 6,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "IsAlive",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Health"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "IsAlive",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Return",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "Greater_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_1.Return"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "GetHealth",
+            "owning_class": "RPGCharacterBase",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGCharacterBase"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_2.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      },
+      {
+        "name": "PlayHighPriorityMontage",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "Montage",
+            "display_name": "Montage",
+            "type": {
+              "category": "object",
+              "class": "AnimMontage"
+            }
+          },
+          {
+            "name": "StartSectionName",
+            "display_name": "Start Section Name",
+            "type": {
+              "category": "name"
+            }
+          }
+        ],
+        "access": "public",
+        "category": "Animation",
+        "node_count": 7,
+        "connection_count": 19,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "PlayHighPriorityMontage",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              },
+              {
+                "name": "Montage",
+                "type": {
+                  "category": "object",
+                  "class": "AnimMontage"
+                },
+                "connections": [
+                  "node_1.Montage",
+                  "node_5.HighPriorityMontage"
+                ]
+              },
+              {
+                "name": "StartSectionName",
+                "type": {
+                  "category": "name"
+                },
+                "connections": [
+                  "node_6.StartSectionName"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Animation"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "Montage_IsPlaying",
+            "owning_class": "AnimInstance",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "AnimInstance"
+                }
+              },
+              {
+                "name": "Montage",
+                "type": {
+                  "category": "object",
+                  "class": "AnimMontage",
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_2.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "Mesh",
+            "pins_out": [
+              {
+                "name": "Mesh",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                },
+                "connections": [
+                  "node_4.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "GetAnimInstance",
+            "owning_class": "SkeletalMeshComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "AnimInstance"
+                },
+                "connections": [
+                  "node_1.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableSet",
+            "variable": "HighPriorityMontage",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "HighPriorityMontage",
+                "type": {
+                  "category": "object",
+                  "class": "AnimMontage"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "AnimMontage"
+                },
+                "connections": [
+                  "node_6.AnimMontage"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "PlayAnimMontage",
+            "owning_class": "Character",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Character"
+                }
+              },
+              {
+                "name": "AnimMontage",
+                "type": {
+                  "category": "object",
+                  "class": "AnimMontage"
+                }
+              },
+              {
+                "name": "InPlayRate",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "StartSectionName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "None"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      },
+      {
+        "name": "IsPlayingHighPriorityMontage",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "Return Value",
+            "display_name": "Return Value",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "public",
+        "pure": true,
+        "category": "Animation",
+        "node_count": 6,
+        "connection_count": 10,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "IsPlayingHighPriorityMontage",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Animation"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "Montage_IsPlaying",
+            "owning_class": "AnimInstance",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "AnimInstance"
+                }
+              },
+              {
+                "name": "Montage",
+                "type": {
+                  "category": "object",
+                  "class": "AnimMontage",
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_4.Return Value"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "GetAnimInstance",
+            "owning_class": "SkeletalMeshComponent",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "AnimInstance"
+                },
+                "connections": [
+                  "node_1.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "HighPriorityMontage",
+            "pins_out": [
+              {
+                "name": "HighPriorityMontage",
+                "type": {
+                  "category": "object",
+                  "class": "AnimMontage"
+                },
+                "connections": [
+                  "node_1.Montage"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "FunctionResult",
+            "function": "IsPlayingHighPriorityMontage",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Return Value",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "Mesh",
+            "pins_out": [
+              {
+                "name": "Mesh",
+                "type": {
+                  "category": "object",
+                  "class": "SkeletalMeshComponent"
+                },
+                "connections": [
+                  "node_2.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ]
+      },
+      {
+        "name": "IsUsingMelee",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "Result",
+            "display_name": "Result",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "public",
+        "pure": true,
+        "category": "Animation",
+        "node_count": 5,
+        "connection_count": 10,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "IsUsingMelee",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Animation"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "Array_Length",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"RPGGameplayAbility\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_2.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "Greater_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_3.Result"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "FunctionResult",
+            "function": "IsUsingMelee",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Result",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "GetActiveAbilitiesWithTags",
+            "owning_class": "RPGCharacterBase",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGCharacterBase"
+                }
+              },
+              {
+                "name": "AbilityTags",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTagContainer"
+                },
+                "default": "(GameplayTags=((TagName=\"Ability.Melee\")))"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "ActiveAbilities",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"RPGGameplayAbility\"\r\n}"
+                },
+                "connections": [
+                  "node_1.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      },
+      {
+        "name": "IsUsingSkill",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "Result",
+            "display_name": "Result",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "public",
+        "pure": true,
+        "category": "Animation",
+        "node_count": 5,
+        "connection_count": 10,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "IsUsingSkill",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Animation"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "Array_Length",
+            "owning_class": "KismetArrayLibrary",
+            "pins_in": [
+              {
+                "name": "TargetArray",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"RPGGameplayAbility\"\r\n}",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_2.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "Greater_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_3.Result"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "FunctionResult",
+            "function": "IsUsingSkill",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Result",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "GetActiveAbilitiesWithTags",
+            "owning_class": "RPGCharacterBase",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGCharacterBase"
+                }
+              },
+              {
+                "name": "AbilityTags",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTagContainer"
+                },
+                "default": "(GameplayTags=((TagName=\"Ability.Skill\")))"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "ActiveAbilities",
+                "type": {
+                  "category": "array",
+                  "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"RPGGameplayAbility\"\r\n}"
+                },
+                "connections": [
+                  "node_1.TargetArray"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      },
+      {
+        "name": "CanUseAnyAbility",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "Result",
+            "display_name": "Result",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "public",
+        "pure": true,
+        "category": "Animation",
+        "node_count": 9,
+        "connection_count": 14,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "CanUseAnyAbility",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "Category": "Animation"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "CanUseAnyAbility",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Result",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "Not_PreBool",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_4.B"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "IsAlive",
+            "owning_class": "SKEL_BP_Character_C",
+            "pins_out": [
+              {
+                "name": "Return",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_4.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "BooleanAND",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "C",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_1.Result"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "IsGamePaused",
+            "owning_class": "GameplayStatics",
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_2.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "Not_PreBool",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_4.C"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "CallFunction",
+            "function": "IsUsingSkill",
+            "owning_class": "SKEL_BP_Character_C",
+            "pins_out": [
+              {
+                "name": "Result",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_6.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      },
+      {
+        "name": "DoMeleeAttack",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 9,
+        "connection_count": 18,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "DoMeleeAttack",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "ActivateAbilitiesWithItemSlot",
+            "owning_class": "RPGCharacterBase",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGCharacterBase"
+                }
+              },
+              {
+                "name": "ItemSlot",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RPGItemSlot"
+                }
+              },
+              {
+                "name": "bAllowRemoteActivation",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_8.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_8.ReturnValue"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "VariableGet",
+            "variable": "CurrentWeaponSlot",
+            "pins_out": [
+              {
+                "name": "CurrentWeaponSlot",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RPGItemSlot"
+                },
+                "connections": [
+                  "node_1.ItemSlot"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "BooleanAND",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_3.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "Not_PreBool",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_4.B"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "CanUseAnyAbility",
+            "owning_class": "SKEL_BP_Character_C",
+            "pins_out": [
+              {
+                "name": "Result",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_4.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "CallFunction",
+            "function": "IsUsingMelee",
+            "owning_class": "SKEL_BP_Character_C",
+            "pins_out": [
+              {
+                "name": "Result",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_5.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "FunctionResult",
+            "function": "DoMeleeAttack",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "DoSkillAttack",
+        "graph_type": "Function",
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "public",
+        "node_count": 6,
+        "connection_count": 12,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "DoSkillAttack",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "DoSkillAttack",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "ActivateAbilitiesWithTags",
+            "owning_class": "RPGCharacterBase",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGCharacterBase"
+                }
+              },
+              {
+                "name": "AbilityTags",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTagContainer"
+                },
+                "default": "(GameplayTags=((TagName=\"Ability.Skill\")))"
+              },
+              {
+                "name": "bAllowRemoteActivation",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_1.ReturnValue"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "CanUseAnyAbility",
+            "owning_class": "SKEL_BP_Character_C",
+            "pins_out": [
+              {
+                "name": "Result",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_2.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "K2Node_CallDelegate",
+            "title": "Call On Skill Attack",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_Character_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "UseItemPotion",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 3,
+        "connection_count": 4,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UseItemPotion",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "ActivateAbilitiesWithItemSlot",
+            "owning_class": "RPGCharacterBase",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGCharacterBase"
+                }
+              },
+              {
+                "name": "ItemSlot",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RPGItemSlot"
+                }
+              },
+              {
+                "name": "bAllowRemoteActivation",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "K2Node_MakeStruct",
+            "title": "Make RPGItem Slot",
+            "pins_in": [
+              {
+                "name": "ItemType",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PrimaryAssetType"
+                },
+                "default": "Potion"
+              },
+              {
+                "name": "SlotNumber",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "RPGItemSlot",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RPGItemSlot"
+                },
+                "connections": [
+                  "node_1.ItemSlot"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "event_dispatchers": [
+    {
+      "name": "OnSkillAttack",
+      "category": "Default"
+    }
+  ],
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

@@ -188,4 +188,13 @@ private:
 	/** The last plan failure error text (so granular mode knows what to avoid) */
 	FString LastPlanFailureReason;
 
+	/** The asset currently being worked on — tracks for premature switching detection */
+	FString CurrentWorkingAsset;
+
+	/** Whether the current asset has unresolved failures */
+	bool bCurrentAssetHasFailure = false;
+
+	/** Extract asset path from a tool result JSON string */
+	FString ExtractAssetFromResult(const FString& ResultJson) const;
+
 };

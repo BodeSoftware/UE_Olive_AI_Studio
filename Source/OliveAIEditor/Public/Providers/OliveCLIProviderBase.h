@@ -340,6 +340,16 @@ protected:
 	bool IsContinuationMessage(const FString& Message) const;
 
 	/**
+	 * Extract meaningful keywords from a user message for asset search.
+	 * Splits on spaces, keeps words 4+ chars, filters out common stop words
+	 * and UE jargon that would match too broadly. Caps at 5 keywords.
+	 *
+	 * @param Message  The user's message text
+	 * @return Array of lowercase keyword strings suitable for project index search
+	 */
+	TArray<FString> ExtractKeywordsFromMessage(const FString& Message) const;
+
+	/**
 	 * Build an enriched prompt for a continuation message by injecting context
 	 * from the previous autonomous run. Includes the original task, what was done
 	 * (grouped by asset with deduped tool names), run outcome, and action directive.

@@ -26,6 +26,8 @@
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
 #include "EdGraph/EdGraph.h"
+#include "Index/OliveProjectIndex.h"
+#include "Services/OliveUtilityModel.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogOliveCLIProvider, Log, All);
 
@@ -350,6 +352,18 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 		UE_LOG(LogOliveCLIProvider, Warning, TEXT("Failed to load blueprint_design_patterns.txt knowledge pack"));
 	}
 
+	FString EventsVsFunctions;
+	if (!FFileHelper::LoadFileToString(EventsVsFunctions, *FPaths::Combine(KnowledgeDir, TEXT("events_vs_functions.txt"))))
+	{
+		UE_LOG(LogOliveCLIProvider, Warning, TEXT("Failed to load events_vs_functions.txt knowledge pack"));
+	}
+
+	FString NodeRouting;
+	if (!FFileHelper::LoadFileToString(NodeRouting, *FPaths::Combine(KnowledgeDir, TEXT("node_routing.txt"))))
+	{
+		UE_LOG(LogOliveCLIProvider, Warning, TEXT("Failed to load node_routing.txt knowledge pack"));
+	}
+
 	FString AgentContext;
 	AgentContext += TEXT("# Olive AI Studio - Agent Context\n\n");
 	AgentContext += TEXT("You are an AI assistant integrated with Unreal Engine 5.5 via Olive AI Studio.\n");
@@ -362,6 +376,7 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 	AgentContext += TEXT("- Complete the FULL task: create structures, wire graph logic, compile, and verify. Do not stop partway.\n");
 	AgentContext += TEXT("- After each compile pass, ask yourself: 'Have I built everything the user asked for?' If not, continue building the next part.\n");
 	AgentContext += TEXT("- Before finishing, verify you built EVERY part the user asked for — don't stop after the first Blueprint compiles.\n");
+	AgentContext += TEXT("- Batch independent tool calls (add_variable, add_component) in a single response when possible.\n");
 	AgentContext += TEXT("- After creating from a template (blueprint.create with template_id), check the result for the list of created functions. Write plan_json for EACH function -- they are empty stubs. Do NOT call blueprint.read or read_function after template creation.\n\n");
 
 	if (!BlueprintKnowledge.IsEmpty())
@@ -382,6 +397,20 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 	{
 		AgentContext += TEXT("---\n\n");
 		AgentContext += DesignPatterns;
+		AgentContext += TEXT("\n\n");
+	}
+
+	if (!EventsVsFunctions.IsEmpty())
+	{
+		AgentContext += TEXT("---\n\n");
+		AgentContext += EventsVsFunctions;
+		AgentContext += TEXT("\n\n");
+	}
+
+	if (!NodeRouting.IsEmpty())
+	{
+		AgentContext += TEXT("---\n\n");
+		AgentContext += NodeRouting;
 		AgentContext += TEXT("\n\n");
 	}
 
@@ -480,6 +509,75 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 		InitialContextAssetPaths.Empty(); // Consume -- only inject once per user message
 	}
 
+	// Pre-populate related asset context: extract keywords from the user message
+	// and search the project index for potentially relevant existing assets.
+	// This gives the AI awareness of what already exists without needing a search tool call.
+	if (!IsContinuationMessage(UserMessage) && FOliveProjectIndex::Get().IsReady())
+	{
+		TArray<FString> Keywords = ExtractKeywordsFromMessage(UserMessage);
+		if (Keywords.Num() > 0)
+		{
+			TSet<FString> AlreadySeen;
+			TArray<FOliveAssetInfo> RelatedAssets;
+
+			for (const FString& Keyword : Keywords)
+			{
+				TArray<FOliveAssetInfo> Results = FOliveProjectIndex::Get().SearchAssets(Keyword, 5);
+				for (const FOliveAssetInfo& Result : Results)
+				{
+					if (!AlreadySeen.Contains(Result.Path))
+					{
+						AlreadySeen.Add(Result.Path);
+						RelatedAssets.Add(Result);
+					}
+				}
+			}
+
+			if (RelatedAssets.Num() > 0)
+			{
+				// Cap at 10 to avoid prompt bloat
+				const int32 MaxRelated = FMath::Min(RelatedAssets.Num(), 10);
+				EffectiveMessage += TEXT("\n\n## Existing Assets That May Be Relevant\n");
+				for (int32 i = 0; i < MaxRelated; ++i)
+				{
+					EffectiveMessage += FString::Printf(TEXT("- %s (%s)\n"),
+						*RelatedAssets[i].Path, *RelatedAssets[i].AssetClass.ToString());
+				}
+				EffectiveMessage += TEXT("Use project.search if you need more details on any of these.\n");
+
+				UE_LOG(LogOliveCLIProvider, Log,
+					TEXT("Injected %d related assets from keyword search (keywords: %s)"),
+					MaxRelated, *FString::Join(Keywords, TEXT(", ")));
+			}
+		}
+	}
+
+	// Template discovery pass — pre-search library/factory/community templates
+	// using utility model for smart keyword generation. Results injected as
+	// reference material before the decomposition directive.
+	if (!IsContinuationMessage(UserMessage))
+	{
+		const UOliveAISettings* DiscoverySettings = UOliveAISettings::Get();
+		if (DiscoverySettings && DiscoverySettings->bEnableTemplateDiscoveryPass)
+		{
+			FOliveDiscoveryResult Discovery = FOliveUtilityModel::RunDiscoveryPass(UserMessage);
+			FString DiscoveryBlock = FOliveUtilityModel::FormatDiscoveryForPrompt(Discovery);
+
+			if (!DiscoveryBlock.IsEmpty())
+			{
+				EffectiveMessage += TEXT("\n\n");
+				EffectiveMessage += DiscoveryBlock;
+
+				UE_LOG(LogOliveCLIProvider, Log,
+					TEXT("Discovery pass: %d results in %.1fs (LLM=%s, queries: %s)"),
+					Discovery.Entries.Num(),
+					Discovery.ElapsedSeconds,
+					Discovery.bUsedLLM ? TEXT("yes") : TEXT("no"),
+					*FString::Join(Discovery.SearchQueries, TEXT("; ")));
+			}
+		}
+	}
+
 	// Structured decomposition directive in the imperative channel (stdin).
 	// Forces the agent to enumerate all game entities before searching templates.
 	// Only inject on initial messages, not continuations.
@@ -494,7 +592,12 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 		EffectiveMessage += TEXT("\"Does this thing exist in the world with its own transform?\" → separate Blueprint.\n");
 		EffectiveMessage += TEXT("\"Is it a value on an existing actor?\" → variable. \"Is it a capability?\" → component.\n");
 		EffectiveMessage += TEXT("Weapons, projectiles, doors, keys, vehicles = always separate actors.\n\n");
-		EffectiveMessage += TEXT("After listing assets, research patterns with blueprint.list_templates(query=\"...\"), then build each asset fully before starting the next.\n");
+		EffectiveMessage += TEXT("After listing assets, research patterns — check Reference Templates Found above if present, and search blueprint.list_templates(query=\"...\") for additional patterns.\n\n");
+		EffectiveMessage += TEXT("Build the COMPLETE system. For each Blueprint:\n");
+		EffectiveMessage += TEXT("1. Create structure (components, variables, functions)\n");
+		EffectiveMessage += TEXT("2. Write ALL graph logic with apply_plan_json for every function\n");
+		EffectiveMessage += TEXT("3. Compile to 0 errors\n");
+		EffectiveMessage += TEXT("Do not stop until every asset is fully built, wired, and compiled.\n");
 	}
 
 	// Initialize run context tracking for this new run
@@ -1025,6 +1128,55 @@ void FOliveCLIProviderBase::HandleResponseCompleteAutonomous(int32 ReturnCode)
 	CurrentOnComplete.ExecuteIfBound(AccumulatedResponse, Usage);
 }
 
+TArray<FString> FOliveCLIProviderBase::ExtractKeywordsFromMessage(const FString& Message) const
+{
+	// Simple tokenizer: split on spaces/punctuation, keep words 4+ chars,
+	// filter out common stop words and UE jargon that would match too broadly.
+	static const TSet<FString> StopWords = {
+		TEXT("the"), TEXT("and"), TEXT("for"), TEXT("with"), TEXT("that"),
+		TEXT("this"), TEXT("from"), TEXT("have"), TEXT("make"), TEXT("create"),
+		TEXT("add"), TEXT("set"), TEXT("get"), TEXT("use"), TEXT("when"),
+		TEXT("blueprint"), TEXT("actor"), TEXT("component"), TEXT("variable"),
+		TEXT("function"), TEXT("event"), TEXT("unreal"), TEXT("game"),
+		TEXT("player"), TEXT("system"), TEXT("class"), TEXT("type"),
+		TEXT("need"), TEXT("want"), TEXT("like"), TEXT("should"), TEXT("would"),
+		TEXT("could"), TEXT("into"), TEXT("also"), TEXT("each"), TEXT("every"),
+		TEXT("some"), TEXT("other"), TEXT("then"), TEXT("than"), TEXT("just"),
+	};
+
+	TArray<FString> Words;
+	Message.ParseIntoArray(Words, TEXT(" "), true);
+
+	TArray<FString> Keywords;
+	for (FString& Word : Words)
+	{
+		// Strip @-mention prefix and punctuation
+		Word.RemoveFromStart(TEXT("@"));
+		Word = Word.TrimStartAndEnd();
+
+		// Remove trailing punctuation
+		while (Word.Len() > 0 && !FChar::IsAlnum(Word[Word.Len() - 1]))
+		{
+			Word.LeftChopInline(1);
+		}
+
+		Word = Word.ToLower();
+
+		if (Word.Len() >= 3 && !StopWords.Contains(Word))
+		{
+			Keywords.AddUnique(Word);
+		}
+	}
+
+	// Cap keywords to avoid excessive searches
+	if (Keywords.Num() > 5)
+	{
+		Keywords.SetNum(5);
+	}
+
+	return Keywords;
+}
+
 bool FOliveCLIProviderBase::IsContinuationMessage(const FString& Message) const
 {
 	FString Lower = Message.ToLower().TrimStartAndEnd();
@@ -1455,6 +1607,27 @@ FString FOliveCLIProviderBase::BuildCLISystemPrompt(const FString& UserTask, con
 			TEXT("cli_blueprint knowledge pack not found. Using minimal fallback."));
 		SystemPrompt += TEXT("You are an Unreal Engine 5.5 Blueprint specialist.\n");
 		SystemPrompt += TEXT("Use blueprint.create, add_component, add_variable, apply_plan_json.\n\n");
+	}
+
+	const FString DesignPatterns = Assembler.GetKnowledgePackById(TEXT("blueprint_design_patterns"));
+	if (!DesignPatterns.IsEmpty())
+	{
+		SystemPrompt += DesignPatterns;
+		SystemPrompt += TEXT("\n\n");
+	}
+
+	const FString EventsVsFunctions = Assembler.GetKnowledgePackById(TEXT("events_vs_functions"));
+	if (!EventsVsFunctions.IsEmpty())
+	{
+		SystemPrompt += EventsVsFunctions;
+		SystemPrompt += TEXT("\n\n");
+	}
+
+	const FString NodeRouting = Assembler.GetKnowledgePackById(TEXT("node_routing"));
+	if (!NodeRouting.IsEmpty())
+	{
+		SystemPrompt += NodeRouting;
+		SystemPrompt += TEXT("\n\n");
 	}
 
 	// ==========================================
