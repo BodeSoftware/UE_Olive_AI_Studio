@@ -169,6 +169,7 @@ public:
 		FOnOliveError OnError
 	) override;
 
+	virtual bool SupportsAutonomousMode() const override { return true; }
 	virtual void CancelRequest() override;
 	virtual bool IsBusy() const override { return bIsBusy; }
 	virtual FString GetLastError() const override { return LastError; }
@@ -292,13 +293,22 @@ protected:
 	);
 
 	/**
-	 * Set up the autonomous agent sandbox directory with .mcp.json and CLAUDE.md.
+	 * Set up the autonomous agent sandbox directory.
 	 * Creates {ProjectDir}/Saved/OliveAI/AgentSandbox/ with:
-	 * - .mcp.json pointing to mcp-bridge.js via absolute path
-	 * - CLAUDE.md with agent role context (from AGENTS.md content)
+	 * - AGENTS.md with agent role context and knowledge packs (read by all CLIs)
+	 * - Provider-specific files via WriteProviderSpecificSandboxFiles()
 	 * Stores the path in AutonomousSandboxDir for use as working directory.
 	 */
-	void SetupAutonomousSandbox();
+	virtual void SetupAutonomousSandbox();
+
+	/**
+	 * Write provider-specific files into the sandbox directory.
+	 * Called at the end of SetupAutonomousSandbox().
+	 * Default: no-op. Claude overrides to write .mcp.json.
+	 *
+	 * @param AgentContext The built agent context string (rules + knowledge packs)
+	 */
+	virtual void WriteProviderSpecificSandboxFiles(const FString& AgentContext);
 
 	/**
 	 * Handle process completion for orchestrated mode.

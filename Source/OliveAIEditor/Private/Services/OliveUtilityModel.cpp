@@ -99,8 +99,9 @@ bool FOliveUtilityModel::SendSimpleCompletion(
 			break;
 		}
 
-		// Skip ClaudeCode as tier-1 (it's a CLI provider, handled in tier 3)
-		const bool bIsHTTPProvider = (UtilProvider != EOliveAIProvider::ClaudeCode);
+		// Skip CLI providers as tier-1 (handled in tier 3)
+		const bool bIsHTTPProvider = (UtilProvider != EOliveAIProvider::ClaudeCode
+			&& UtilProvider != EOliveAIProvider::Codex);
 		const bool bHasCredentials = !ApiKey.IsEmpty()
 			|| UtilProvider == EOliveAIProvider::Ollama
 			|| UtilProvider == EOliveAIProvider::OpenAICompatible;
@@ -123,7 +124,7 @@ bool FOliveUtilityModel::SendSimpleCompletion(
 	{
 		const EOliveAIProvider MainProvider = Settings->Provider;
 
-		if (MainProvider != EOliveAIProvider::ClaudeCode)
+		if (MainProvider != EOliveAIProvider::ClaudeCode && MainProvider != EOliveAIProvider::Codex)
 		{
 			const FString MainApiKey = Settings->GetCurrentApiKey();
 			const FString MainBaseUrl = Settings->GetCurrentBaseUrl();
@@ -181,7 +182,7 @@ bool FOliveUtilityModel::IsAvailable()
 	// Tier 1: Utility provider configured?
 	{
 		const EOliveAIProvider UtilProvider = Settings->UtilityModelProvider;
-		if (UtilProvider != EOliveAIProvider::ClaudeCode)
+		if (UtilProvider != EOliveAIProvider::ClaudeCode && UtilProvider != EOliveAIProvider::Codex)
 		{
 			FString ApiKey = Settings->UtilityModelApiKey;
 			if (ApiKey.IsEmpty())
@@ -207,7 +208,9 @@ bool FOliveUtilityModel::IsAvailable()
 	}
 
 	// Tier 2: Main provider is HTTP-based?
-	if (Settings->Provider != EOliveAIProvider::ClaudeCode && Settings->IsProviderConfigured())
+	if (Settings->Provider != EOliveAIProvider::ClaudeCode
+		&& Settings->Provider != EOliveAIProvider::Codex
+		&& Settings->IsProviderConfigured())
 	{
 		return true;
 	}
@@ -585,6 +588,7 @@ FString FOliveUtilityModel::ProviderEnumToName(EOliveAIProvider Provider)
 	switch (Provider)
 	{
 	case EOliveAIProvider::ClaudeCode:        return TEXT("Claude Code CLI");
+	case EOliveAIProvider::Codex:             return TEXT("Codex CLI");
 	case EOliveAIProvider::OpenRouter:        return TEXT("OpenRouter");
 	case EOliveAIProvider::ZAI:               return TEXT("Z.ai");
 	case EOliveAIProvider::Anthropic:         return TEXT("Anthropic");

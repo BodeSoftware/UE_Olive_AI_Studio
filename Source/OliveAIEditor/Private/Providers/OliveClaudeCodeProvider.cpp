@@ -15,6 +15,7 @@
 #include "Settings/OliveAISettings.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/FileManager.h"
+#include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -368,6 +369,40 @@ void FOliveClaudeCodeProvider::ParseOutputLine(const FString& Line)
 		LastError = ErrorMsg;
 		CurrentOnError.ExecuteIfBound(ErrorMsg);
 	}
+}
+
+// ==========================================
+// Sandbox Files (Claude-specific)
+// ==========================================
+
+void FOliveClaudeCodeProvider::WriteProviderSpecificSandboxFiles(const FString& AgentContext)
+{
+	// --- Write .mcp.json with absolute path to mcp-bridge.js ---
+	// Claude Code discovers MCP servers via .mcp.json in the working directory.
+	// Codex connects directly via HTTP, so only Claude needs this.
+	const FString PluginDir = FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("UE_Olive_AI_Studio")));
+	const FString BridgePath = FPaths::Combine(PluginDir, TEXT("mcp-bridge.js"));
+	FString BridgePathJson = BridgePath.Replace(TEXT("\\"), TEXT("/"));
+
+	const FString McpConfig = FString::Printf(
+		TEXT("{\n")
+		TEXT("  \"mcpServers\": {\n")
+		TEXT("    \"olive-ai-studio\": {\n")
+		TEXT("      \"command\": \"node\",\n")
+		TEXT("      \"args\": [\"%s\"]\n")
+		TEXT("    }\n")
+		TEXT("  }\n")
+		TEXT("}\n"),
+		*BridgePathJson
+	);
+
+	const FString McpConfigPath = FPaths::Combine(AutonomousSandboxDir, TEXT(".mcp.json"));
+	FFileHelper::SaveStringToFile(McpConfig, *McpConfigPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+
+	// --- Write CLAUDE.md (Claude reads this with higher priority than AGENTS.md) ---
+	const FString ClaudeMdPath = FPaths::Combine(AutonomousSandboxDir, TEXT("CLAUDE.md"));
+	FFileHelper::SaveStringToFile(AgentContext, *ClaudeMdPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 }
 
 // ==========================================

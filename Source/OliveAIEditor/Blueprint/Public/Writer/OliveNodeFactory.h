@@ -638,4 +638,8 @@ private:
 
 	/** Last error message */
 	FString LastError;
+
+	/** Fuzzy suggestions from the most recent failed FindFunction call.
+	 *  Each entry is "FunctionName (ClassName)". Populated on failure, cleared on success. */
+	TArray<FString> LastFuzzySuggestions;
 };

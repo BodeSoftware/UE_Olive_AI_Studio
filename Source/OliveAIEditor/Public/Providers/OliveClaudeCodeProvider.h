@@ -92,6 +92,12 @@ protected:
 
 	/** Returns "Claude" for error messages */
 	virtual FString GetCLIName() const override { return TEXT("Claude"); }
+
+	/**
+	 * Writes .mcp.json (pointing to mcp-bridge.js) and CLAUDE.md into the sandbox.
+	 * Codex connects to MCP directly via HTTP; Claude Code needs the stdio bridge.
+	 */
+	virtual void WriteProviderSpecificSandboxFiles(const FString& AgentContext) override;
 };
 
 /**

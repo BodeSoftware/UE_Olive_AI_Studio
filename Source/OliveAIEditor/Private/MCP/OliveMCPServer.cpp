@@ -331,11 +331,11 @@ bool FOliveMCPServer::HandleRequest(const FHttpServerRequest& Request, const FHt
 	// Process the request
 	TSharedPtr<FJsonObject> Response = ProcessJsonRpcRequest(JsonRequest, ClientId);
 
-	// Notifications don't get responses
+	// Notifications don't get responses — return 202 Accepted per Streamable HTTP MCP spec
 	if (OliveJsonRpc::IsNotification(JsonRequest))
 	{
-		// Send empty 204 response
-		TUniquePtr<FHttpServerResponse> HttpResponse = FHttpServerResponse::Create(TEXT(""), TEXT("application/json"));
+		TUniquePtr<FHttpServerResponse> HttpResponse = MakeUnique<FHttpServerResponse>();
+		HttpResponse->Code = EHttpServerResponseCodes::Accepted;
 		OnComplete(MoveTemp(HttpResponse));
 		return true;
 	}

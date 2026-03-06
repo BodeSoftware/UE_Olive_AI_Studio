@@ -2034,8 +2034,9 @@ UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FS
 		return Func;
 	};
 
-	// Helper: report match method and return
-	auto ReportMatch = [&OutMatchMethod, &bUsedAlias](EOliveFunctionMatchMethod Method) {
+	// Helper: report match method, clear fuzzy suggestions, and return
+	auto ReportMatch = [this, &OutMatchMethod, &bUsedAlias](EOliveFunctionMatchMethod Method) {
+		LastFuzzySuggestions.Empty();
 		if (OutMatchMethod)
 		{
 			// If the alias map was used, report AliasMap; otherwise report the actual search stage
@@ -2402,6 +2403,177 @@ UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FS
 		}
 	}
 
+	// --- Fuzzy suggestion collection ---
+	// Scan all functions on the searched classes and score by similarity to
+	// ResolvedName. We collect the top 5 closest matches to include in the
+	// error message so the AI can self-correct.
+	struct FFuzzySuggestion
+	{
+		FString FuncName;
+		FString ClassName;
+		int32 Score; // Higher is better
+	};
+
+	TArray<FFuzzySuggestion> Suggestions;
+	const FString LowerResolved = ResolvedName.ToLower();
+	const int32 ResolvedLen = LowerResolved.Len();
+
+	// Avoid duplicates across classes
+	TSet<FString> SeenFunctions;
+
+	for (UClass* SearchClass : AllSearchedClasses)
+	{
+		if (!SearchClass)
+		{
+			continue;
+		}
+
+		for (TFieldIterator<UFunction> FuncIt(SearchClass, EFieldIteratorFlags::IncludeSuper); FuncIt; ++FuncIt)
+		{
+			UFunction* Func = *FuncIt;
+			if (!Func || !Func->HasAnyFunctionFlags(FUNC_BlueprintCallable | FUNC_BlueprintPure))
+			{
+				continue;
+			}
+
+			FString FuncName = Func->GetName();
+			if (SeenFunctions.Contains(FuncName))
+			{
+				continue;
+			}
+			SeenFunctions.Add(FuncName);
+
+			const FString LowerFunc = FuncName.ToLower();
+
+			int32 Score = 0;
+
+			// Exact case-insensitive match would have been found already, skip
+			if (LowerFunc == LowerResolved)
+			{
+				continue;
+			}
+
+			// Scoring criteria (cumulative):
+			// 1. Substring containment (either direction) — strong signal
+			if (LowerFunc.Contains(LowerResolved))
+			{
+				// Query is a substring of the function name
+				Score += 80;
+			}
+			else if (LowerResolved.Contains(LowerFunc))
+			{
+				// Function name is a substring of the query
+				Score += 70;
+			}
+
+			// 2. Common prefix length — medium signal
+			int32 PrefixLen = 0;
+			const int32 MinLen = FMath::Min(LowerFunc.Len(), ResolvedLen);
+			for (int32 i = 0; i < MinLen; i++)
+			{
+				if (LowerFunc[i] == LowerResolved[i])
+				{
+					PrefixLen++;
+				}
+				else
+				{
+					break;
+				}
+			}
+			// Award points proportional to prefix match ratio
+			if (PrefixLen >= 3)
+			{
+				Score += (PrefixLen * 40) / ResolvedLen;
+			}
+
+			// 3. Word-level overlap — handles different ordering (e.g., "GetActorLocation" vs "GetLocationActor")
+			// Split on uppercase boundaries and check for common words
+			{
+				auto SplitCamelCase = [](const FString& Str) -> TArray<FString>
+				{
+					TArray<FString> Words;
+					FString Current;
+					for (int32 i = 0; i < Str.Len(); i++)
+					{
+						TCHAR Ch = Str[i];
+						if (FChar::IsUpper(Ch) && Current.Len() > 0)
+						{
+							Words.Add(Current.ToLower());
+							Current = FString::Chr(Ch);
+						}
+						else
+						{
+							Current += Ch;
+						}
+					}
+					if (Current.Len() > 0)
+					{
+						Words.Add(Current.ToLower());
+					}
+					return Words;
+				};
+
+				TArray<FString> QueryWords = SplitCamelCase(ResolvedName);
+				TArray<FString> FuncWords = SplitCamelCase(FuncName);
+
+				int32 CommonWords = 0;
+				for (const FString& QW : QueryWords)
+				{
+					if (QW.Len() < 2) continue; // Skip trivial words
+					for (const FString& FW : FuncWords)
+					{
+						if (QW == FW)
+						{
+							CommonWords++;
+							break;
+						}
+					}
+				}
+
+				if (CommonWords > 0 && QueryWords.Num() > 0)
+				{
+					Score += (CommonWords * 30) / QueryWords.Num();
+				}
+			}
+
+			// Minimum threshold to avoid noise
+			if (Score >= 20)
+			{
+				Suggestions.Add({FuncName, SearchClass->GetName(), Score});
+			}
+		}
+	}
+
+	// Sort by score descending, take top 5
+	Suggestions.Sort([](const FFuzzySuggestion& A, const FFuzzySuggestion& B)
+	{
+		return A.Score > B.Score;
+	});
+
+	const int32 MaxSuggestions = 5;
+	if (Suggestions.Num() > MaxSuggestions)
+	{
+		Suggestions.SetNum(MaxSuggestions);
+	}
+
+	// Build suggestion string and populate LastFuzzySuggestions for FindFunctionEx
+	FString SuggestionStr;
+	LastFuzzySuggestions.Empty();
+	if (Suggestions.Num() > 0)
+	{
+		SuggestionStr = TEXT(" | Closest matches: ");
+		for (int32 i = 0; i < Suggestions.Num(); i++)
+		{
+			if (i > 0)
+			{
+				SuggestionStr += TEXT(", ");
+			}
+			FString Entry = FString::Printf(TEXT("%s (%s)"), *Suggestions[i].FuncName, *Suggestions[i].ClassName);
+			SuggestionStr += Entry;
+			LastFuzzySuggestions.Add(MoveTemp(Entry));
+		}
+	}
+
 	UE_LOG(LogOliveNodeFactory, Warning,
 		TEXT("FindFunction('%s' [resolved='%s'], class='%s'): FAILED -- searched specified class + Blueprint GeneratedClass + "
 			 "Blueprint FunctionGraphs + parent class hierarchy + SCS component classes + "
@@ -2409,8 +2581,8 @@ UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FS
 			 "library classes [KismetSystemLibrary, KismetMathLibrary, KismetStringLibrary, KismetArrayLibrary, "
 			 "GameplayStatics, Object, Actor, SceneComponent, PrimitiveComponent, Pawn, Character] + "
 			 "universal library search (all UBlueprintFunctionLibrary subclasses) + "
-			 "K2_ fuzzy match (%d searched classes)"),
-		*FunctionName, *ResolvedName, *ClassName, AllSearchedClasses.Num());
+			 "K2_ fuzzy match (%d searched classes)%s"),
+		*FunctionName, *ResolvedName, *ClassName, AllSearchedClasses.Num(), *SuggestionStr);
 	return nullptr;
 }
 
@@ -2593,6 +2765,13 @@ FOliveFunctionSearchResult FOliveNodeFactory::FindFunctionEx(
 	Result.SearchedLocations.Add(
 		FString::Printf(TEXT("K2_ fuzzy match across %d searched classes"), FuzzyClassCount));
 
+	// Append fuzzy suggestions collected by FindFunction (if any)
+	if (LastFuzzySuggestions.Num() > 0)
+	{
+		FString SuggestionsLine = TEXT("Did you mean: ") + FString::Join(LastFuzzySuggestions, TEXT(", ")) + TEXT("?");
+		Result.SearchedLocations.Add(MoveTemp(SuggestionsLine));
+	}
+
 	return Result;
 }
 
@@ -2622,6 +2801,7 @@ const TMap<FString, FString>& FOliveNodeFactory::GetAliasMap()
 		Map.Add(TEXT("GetScale"), TEXT("GetActorScale3D"));
 		Map.Add(TEXT("SetScale"), TEXT("SetActorScale3D"));
 		Map.Add(TEXT("GetTransform"), TEXT("GetActorTransform"));
+		Map.Add(TEXT("GetActorTransform"), TEXT("GetTransform"));
 		Map.Add(TEXT("SetTransform"), TEXT("K2_SetActorTransform"));
 
 		// Direction vectors (AActor -- NOT K2_ prefixed)
@@ -2655,6 +2835,7 @@ const TMap<FString, FString>& FOliveNodeFactory::GetAliasMap()
 		Map.Add(TEXT("DestroyActor"), TEXT("K2_DestroyActor"));
 		Map.Add(TEXT("DestroyComponent"), TEXT("K2_DestroyComponent"));
 		Map.Add(TEXT("AttachToActor"), TEXT("K2_AttachToActor"));
+		Map.Add(TEXT("AttachActorToComponent"), TEXT("K2_AttachToComponent"));
 		Map.Add(TEXT("AttachToComponent"), TEXT("K2_AttachToComponent"));
 		Map.Add(TEXT("DetachFromActor"), TEXT("K2_DetachFromActor"));
 		Map.Add(TEXT("GetOwner"), TEXT("GetOwner"));

@@ -90,4 +90,8 @@ Templates are reference material, not scripts. Study patterns, then build your o
 - Self-correct on errors. If one approach fails, try a different tool or technique.
 - If something genuinely cannot be done with available tools, tell the user what you built, what you could not do, and why.
 - plan_json is atomic (all-or-nothing); granular tools are incremental. Choose based on the situation.
+- After a plan_json failure, all nodes from that plan are rolled back — they do not exist. Do NOT use connect_pins or add_node with node IDs from a failed plan. Instead: fix the plan and retry apply_plan_json, or start fresh with granular tools using new add_node calls.
+- Component functions (SetVelocityInLocalSpace, SetSimulatePhysics, etc.) require target_class when the component is NOT on the current Blueprint's SCS. If you're calling a function on a spawned actor's component, you need a reference to that component first.
+- Component refs: `@ComponentName` auto-expands to get_var (dotless @refs). Do NOT use `@ComponentName.auto` — that looks for a step named "ComponentName".
 - Component classes: StaticMeshComponent, SphereComponent, BoxComponent, CapsuleComponent, ArrowComponent, ProjectileMovementComponent, SceneComponent, AudioComponent
+- If you're struggling with a complex pattern (timelines, animation montages, AI behavior, physics), search blueprint.list_templates(query="timeline") for working examples. Library templates have tagged functions — try different keywords to find relevant implementations.

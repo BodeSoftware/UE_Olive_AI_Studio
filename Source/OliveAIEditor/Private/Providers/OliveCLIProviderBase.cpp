@@ -327,31 +327,9 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 	AutonomousSandboxDir = FPaths::Combine(ProjectDir, TEXT("Saved/OliveAI/AgentSandbox"));
 	IFileManager::Get().MakeDirectory(*AutonomousSandboxDir, true);
 
-	// --- Write .mcp.json with absolute path to mcp-bridge.js ---
+	// --- Build agent context (shared across all CLI providers) ---
 	const FString PluginDir = FPaths::ConvertRelativePathToFull(
 		FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("UE_Olive_AI_Studio")));
-	const FString BridgePath = FPaths::Combine(PluginDir, TEXT("mcp-bridge.js"));
-	// Normalize to forward slashes for JSON
-	FString BridgePathJson = BridgePath.Replace(TEXT("\\"), TEXT("/"));
-
-	const FString McpConfig = FString::Printf(
-		TEXT("{\n")
-		TEXT("  \"mcpServers\": {\n")
-		TEXT("    \"olive-ai-studio\": {\n")
-		TEXT("      \"command\": \"node\",\n")
-		TEXT("      \"args\": [\"%s\"]\n")
-		TEXT("    }\n")
-		TEXT("  }\n")
-		TEXT("}\n"),
-		*BridgePathJson
-	);
-
-	const FString McpConfigPath = FPaths::Combine(AutonomousSandboxDir, TEXT(".mcp.json"));
-	FFileHelper::SaveStringToFile(McpConfig, *McpConfigPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
-
-	// --- Write CLAUDE.md with agent role context ---
-	// Read knowledge packs from plugin Content/ — single source of truth for both
-	// orchestrated and autonomous modes
 	const FString KnowledgeDir = FPaths::Combine(PluginDir, TEXT("Content/SystemPrompts/Knowledge"));
 
 	FString BlueprintKnowledge;
@@ -372,59 +350,54 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 		UE_LOG(LogOliveCLIProvider, Warning, TEXT("Failed to load blueprint_design_patterns.txt knowledge pack"));
 	}
 
-	FString AgentsContent;
-	const FString AgentsPath = FPaths::Combine(PluginDir, TEXT("AGENTS.md"));
-	FFileHelper::LoadFileToString(AgentsContent, *AgentsPath);
+	FString AgentContext;
+	AgentContext += TEXT("# Olive AI Studio - Agent Context\n\n");
+	AgentContext += TEXT("You are an AI assistant integrated with Unreal Engine 5.5 via Olive AI Studio.\n");
+	AgentContext += TEXT("Your job is to help users create and modify game assets (Blueprints, Behavior Trees, PCG graphs, etc.) using the MCP tools provided.\n\n");
+	AgentContext += TEXT("## Critical Rules\n");
+	AgentContext += TEXT("- You are NOT a plugin developer. Do NOT modify plugin source code.\n");
+	AgentContext += TEXT("- Use ONLY the MCP tools to create and edit game assets.\n");
+	AgentContext += TEXT("- All asset paths should be under `/Game/` (the project's Content directory).\n");
+	AgentContext += TEXT("- When creating Blueprints, use `blueprint.create` (with optional template_id for templates) -- never try to create .uasset files manually.\n");
+	AgentContext += TEXT("- Complete the FULL task: create structures, wire graph logic, compile, and verify. Do not stop partway.\n");
+	AgentContext += TEXT("- After each compile pass, ask yourself: 'Have I built everything the user asked for?' If not, continue building the next part.\n");
+	AgentContext += TEXT("- Before finishing, verify you built EVERY part the user asked for — don't stop after the first Blueprint compiles.\n");
+	AgentContext += TEXT("- After creating from a template (blueprint.create with template_id), check the result for the list of created functions. Write plan_json for EACH function -- they are empty stubs. Do NOT call blueprint.read or read_function after template creation.\n\n");
 
-	FString ClaudeMd;
-	ClaudeMd += TEXT("# Olive AI Studio - Agent Context\n\n");
-	ClaudeMd += TEXT("You are an AI assistant integrated with Unreal Engine 5.5 via Olive AI Studio.\n");
-	ClaudeMd += TEXT("Your job is to help users create and modify game assets (Blueprints, Behavior Trees, PCG graphs, etc.) using the MCP tools provided.\n\n");
-	ClaudeMd += TEXT("## Critical Rules\n");
-	ClaudeMd += TEXT("- You are NOT a plugin developer. Do NOT modify plugin source code.\n");
-	ClaudeMd += TEXT("- Use ONLY the MCP tools to create and edit game assets.\n");
-	ClaudeMd += TEXT("- All asset paths should be under `/Game/` (the project's Content directory).\n");
-	ClaudeMd += TEXT("- When creating Blueprints, use `blueprint.create` (with optional template_id for templates) -- never try to create .uasset files manually.\n");
-	ClaudeMd += TEXT("- Complete the FULL task: create structures, wire graph logic, compile, and verify. Do not stop partway.\n");
-	ClaudeMd += TEXT("- After each compile pass, ask yourself: 'Have I built everything the user asked for?' If not, continue building the next part.\n");
-	ClaudeMd += TEXT("- Before finishing, verify you built EVERY part the user asked for — don't stop after the first Blueprint compiles.\n");
-	ClaudeMd += TEXT("- After creating from a template (blueprint.create with template_id), check the result for the list of created functions. Write plan_json for EACH function -- they are empty stubs. Do NOT call blueprint.read or read_function after template creation.\n\n");
-
-	// Append knowledge packs — operational guidance for the agent
 	if (!BlueprintKnowledge.IsEmpty())
 	{
-		ClaudeMd += TEXT("---\n\n");
-		ClaudeMd += BlueprintKnowledge;
-		ClaudeMd += TEXT("\n\n");
+		AgentContext += TEXT("---\n\n");
+		AgentContext += BlueprintKnowledge;
+		AgentContext += TEXT("\n\n");
 	}
 
 	if (!RecipeRouting.IsEmpty())
 	{
-		ClaudeMd += TEXT("---\n\n");
-		ClaudeMd += RecipeRouting;
-		ClaudeMd += TEXT("\n\n");
+		AgentContext += TEXT("---\n\n");
+		AgentContext += RecipeRouting;
+		AgentContext += TEXT("\n\n");
 	}
 
 	if (!DesignPatterns.IsEmpty())
 	{
-		ClaudeMd += TEXT("---\n\n");
-		ClaudeMd += DesignPatterns;
-		ClaudeMd += TEXT("\n\n");
+		AgentContext += TEXT("---\n\n");
+		AgentContext += DesignPatterns;
+		AgentContext += TEXT("\n\n");
 	}
 
-	const FString ClaudeMdPath = FPaths::Combine(AutonomousSandboxDir, TEXT("CLAUDE.md"));
-	FFileHelper::SaveStringToFile(ClaudeMd, *ClaudeMdPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+	// --- Write AGENTS.md (read by all CLI providers: Claude, Codex, Gemini, etc.) ---
+	const FString SandboxAgentsPath = FPaths::Combine(AutonomousSandboxDir, TEXT("AGENTS.md"));
+	FFileHelper::SaveStringToFile(AgentContext, *SandboxAgentsPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 
-	// --- Write AGENTS.md (copy from plugin dir) ---
-	// Claude Code reads AGENTS.md for agent-specific workflow guidance.
-	// The plugin's AGENTS.md is already written for the agent role (tool usage, plan JSON, etc.)
-	if (!AgentsContent.IsEmpty())
-	{
-		const FString SandboxAgentsPath = FPaths::Combine(AutonomousSandboxDir, TEXT("AGENTS.md"));
-		FFileHelper::SaveStringToFile(AgentsContent, *SandboxAgentsPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
-	}
+	// --- Provider-specific sandbox files (e.g., .mcp.json for Claude, no-op for Codex) ---
+	WriteProviderSpecificSandboxFiles(AgentContext);
 
 	UE_LOG(LogOliveCLIProvider, Log, TEXT("Autonomous sandbox created at: %s"), *AutonomousSandboxDir);
+}
+
+void FOliveCLIProviderBase::WriteProviderSpecificSandboxFiles(const FString& AgentContext)
+{
+	// Default: no-op. Subclasses override to write provider-specific files.
 }
 
 void FOliveCLIProviderBase::SendMessageAutonomous(
@@ -513,30 +486,15 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 	if (!IsContinuationMessage(UserMessage))
 	{
 		EffectiveMessage += TEXT("\n\n## Required: Asset Decomposition\n\n");
-		EffectiveMessage += TEXT("Before calling ANY tools, think through the complete system design:\n\n");
-		EffectiveMessage += TEXT("1. **Identify every game entity** that needs its own Blueprint. A \"game entity\" is anything that:\n");
-		EffectiveMessage += TEXT("   - Exists as a separate actor in the world (weapons, projectiles, pickups, doors, keys)\n");
-		EffectiveMessage += TEXT("   - Has its own mesh, collision, or movement (NOT just a variable on another Blueprint)\n");
-		EffectiveMessage += TEXT("   - Could be spawned, equipped, dropped, or destroyed independently\n\n");
-		EffectiveMessage += TEXT("2. **List your planned assets** in this format:\n");
-		EffectiveMessage += TEXT("   ASSETS:\n");
-		EffectiveMessage += TEXT("   1. BP_Name — Type (Actor/Pawn/Character/Interface) — one-line purpose\n");
-		EffectiveMessage += TEXT("   2. BP_Name — Type — purpose\n");
-		EffectiveMessage += TEXT("   3. Modify @ExistingBP — what changes\n\n");
-		EffectiveMessage += TEXT("3. Then research patterns and build each asset fully before starting the next.\n\n");
-		EffectiveMessage += TEXT("Example — \"create a bow and arrow system\":\n");
+		EffectiveMessage += TEXT("Before calling ANY tools, list every game entity that needs its own Blueprint:\n\n");
 		EffectiveMessage += TEXT("ASSETS:\n");
-		EffectiveMessage += TEXT("1. BP_Bow — Actor — skeletal/static mesh, attach to character, handles aiming, charging, spawns arrows\n");
-		EffectiveMessage += TEXT("2. BP_Arrow — Actor — projectile with gravity arc, damage on hit, auto-destroy\n");
-		EffectiveMessage += TEXT("3. Modify @BP_ThirdPersonCharacter — add bow reference variable, equip/fire input handling, attach point\n\n");
-		EffectiveMessage += TEXT("Example — \"create a door and key system\":\n");
-		EffectiveMessage += TEXT("ASSETS:\n");
-		EffectiveMessage += TEXT("1. BPI_Lockable — Interface — Lock/Unlock/IsLocked functions\n");
-		EffectiveMessage += TEXT("2. BP_Key — Actor — pickup, stores which doors it opens\n");
-		EffectiveMessage += TEXT("3. BP_LockedDoor — Actor — implements BPI_Lockable, opens when unlocked\n");
-		EffectiveMessage += TEXT("4. Modify @BP_ThirdPersonCharacter — key inventory array, interact input, overlap detection\n\n");
-		EffectiveMessage += TEXT("Do NOT skip this step. Think first, list assets, then build.\n\n");
-		EffectiveMessage += TEXT("After listing your assets, research patterns: blueprint.list_templates(query=\"...\") for proven reference patterns (library templates are highest quality — from real shipped projects; factory templates are good for quick scaffolding; community blueprints are mixed quality — browse several and use your judgment). Adapt and improvise as needed. Then build each asset fully before starting the next.\n");
+		EffectiveMessage += TEXT("1. BP_Name — Type — purpose\n");
+		EffectiveMessage += TEXT("2. ...\n");
+		EffectiveMessage += TEXT("N. Modify @ExistingBP — changes\n\n");
+		EffectiveMessage += TEXT("\"Does this thing exist in the world with its own transform?\" → separate Blueprint.\n");
+		EffectiveMessage += TEXT("\"Is it a value on an existing actor?\" → variable. \"Is it a capability?\" → component.\n");
+		EffectiveMessage += TEXT("Weapons, projectiles, doors, keys, vehicles = always separate actors.\n\n");
+		EffectiveMessage += TEXT("After listing assets, research patterns with blueprint.list_templates(query=\"...\"), then build each asset fully before starting the next.\n");
 	}
 
 	// Initialize run context tracking for this new run

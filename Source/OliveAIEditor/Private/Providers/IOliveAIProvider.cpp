@@ -4,6 +4,7 @@
 #include "Providers/OliveOpenRouterProvider.h"
 #include "Providers/OliveAnthropicProvider.h"
 #include "Providers/OliveClaudeCodeProvider.h"
+#include "Providers/OliveCodexProvider.h"
 #include "Providers/OliveOpenAIProvider.h"
 #include "Providers/OliveOllamaProvider.h"
 #include "Providers/OliveOpenAICompatibleProvider.h"
@@ -140,6 +141,12 @@ TSharedPtr<IOliveAIProvider> FOliveProviderFactory::CreateProvider(const FString
 		return MakeShared<FOliveClaudeCodeProvider>();
 	}
 
+	if (ProviderName.Equals(TEXT("codex"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("Codex CLI"), ESearchCase::IgnoreCase))
+	{
+		return MakeShared<FOliveCodexProvider>();
+	}
+
 	if (ProviderName.Equals(TEXT("anthropic"), ESearchCase::IgnoreCase) ||
 		ProviderName.Equals(TEXT("Anthropic"), ESearchCase::CaseSensitive))
 	{
@@ -181,6 +188,12 @@ TArray<FString> FOliveProviderFactory::GetAvailableProviders()
 	if (FOliveClaudeCodeProvider::IsClaudeCodeInstalled())
 	{
 		Providers.Add(TEXT("Claude Code CLI"));
+	}
+
+	// Codex CLI - uses ChatGPT subscription or OPENAI_API_KEY
+	if (FOliveCodexProvider::IsCodexInstalled())
+	{
+		Providers.Add(TEXT("Codex CLI"));
 	}
 
 	// OpenRouter - API key required

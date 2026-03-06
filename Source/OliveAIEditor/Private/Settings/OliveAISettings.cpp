@@ -38,6 +38,9 @@ bool LooksLikeModelForProvider(EOliveAIProvider Provider, const FString& InModel
 	case EOliveAIProvider::ClaudeCode:
 		// Claude Code CLI models are also "claude-*" ids.
 		return ModelId.StartsWith(TEXT("claude-")) || ModelId.Contains(TEXT("claude"));
+	case EOliveAIProvider::Codex:
+		// Codex CLI uses OpenAI models (o3, gpt-4.1, etc.)
+		return ModelId.StartsWith(TEXT("o")) || ModelId.StartsWith(TEXT("gpt-")) || ModelId.Contains(TEXT("codex"));
 	case EOliveAIProvider::OpenAI:
 		// OpenAI commonly uses gpt-* and o* models.
 		return ModelId.StartsWith(TEXT("gpt-")) || ModelId.StartsWith(TEXT("o1")) || ModelId.StartsWith(TEXT("o3"));
@@ -145,6 +148,8 @@ FString UOliveAISettings::GetApiKeyForProvider(EOliveAIProvider InProvider) cons
 	{
 		case EOliveAIProvider::ClaudeCode:
 			return TEXT(""); // Claude Code CLI uses subscription, no API key needed
+		case EOliveAIProvider::Codex:
+			return TEXT(""); // Codex CLI uses codex login or OPENAI_API_KEY env var
 		case EOliveAIProvider::OpenRouter:
 			return OpenRouterApiKey;
 		case EOliveAIProvider::ZAI:
@@ -170,6 +175,8 @@ FString UOliveAISettings::GetBaseUrlForProvider(EOliveAIProvider InProvider) con
 	{
 		case EOliveAIProvider::ClaudeCode:
 			return TEXT(""); // Claude Code CLI is a local process, no URL
+		case EOliveAIProvider::Codex:
+			return TEXT(""); // Codex CLI is a local process, no URL
 		case EOliveAIProvider::OpenRouter:
 			return TEXT("https://openrouter.ai/api/v1/chat/completions");
 		case EOliveAIProvider::ZAI:
@@ -198,8 +205,8 @@ FString UOliveAISettings::GetCurrentBaseUrl() const
 
 bool UOliveAISettings::IsProviderConfigured() const
 {
-	// Claude Code CLI uses subscription, check if installed
-	if (Provider == EOliveAIProvider::ClaudeCode)
+	// CLI providers use subscription/login, check if installed
+	if (Provider == EOliveAIProvider::ClaudeCode || Provider == EOliveAIProvider::Codex)
 	{
 		// Will be validated by the provider itself
 		return true;

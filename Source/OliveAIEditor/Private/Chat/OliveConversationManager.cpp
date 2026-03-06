@@ -218,7 +218,7 @@ bool FOliveConversationManager::IsAutonomousProvider() const
 	const UOliveAISettings* Settings = UOliveAISettings::Get();
 	const bool bAutonomousEnabled = Settings && Settings->bUseAutonomousMCPMode;
 
-	return bAutonomousEnabled && Provider->GetProviderName() == TEXT("Claude Code CLI");
+	return bAutonomousEnabled && Provider->SupportsAutonomousMode();
 }
 
 void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message)

@@ -47,6 +47,8 @@ FString ProviderDisplayName(EOliveAIProvider ProviderType)
 	{
 	case EOliveAIProvider::ClaudeCode:
 		return TEXT("Claude Code CLI");
+	case EOliveAIProvider::Codex:
+		return TEXT("Codex CLI");
 	case EOliveAIProvider::OpenRouter:
 		return TEXT("OpenRouter");
 	case EOliveAIProvider::ZAI:
@@ -72,6 +74,11 @@ EOliveAIProvider ProviderFromDisplayName(const FString& ProviderName)
 		ProviderName.Equals(TEXT("claudecode"), ESearchCase::IgnoreCase))
 	{
 		return EOliveAIProvider::ClaudeCode;
+	}
+	if (ProviderName.Equals(TEXT("Codex CLI"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("codex"), ESearchCase::IgnoreCase))
+	{
+		return EOliveAIProvider::Codex;
 	}
 	if (ProviderName.Equals(TEXT("OpenRouter"), ESearchCase::IgnoreCase) ||
 		ProviderName.Equals(TEXT("openrouter"), ESearchCase::IgnoreCase))

@@ -54,3 +54,14 @@
 - **Fix 1 timeouts lowered**: `CLI_IDLE_TIMEOUT_SECONDS` 120->90, `CLI_EXTENDED_IDLE_TIMEOUT_SECONDS` 180->150, `AutonomousIdleToolSeconds` default 240->120.
 - **Fix 1 key insight**: The existing `HandleResponseCompleteAutonomous` had a branch at line 993 that explicitly logged "reporting to user instead of auto-continuing" for read-op stalls. This was the wrong policy -- the AI needed a push, not a death sentence.
 - **Fix 2 (template rewrite)**: `pickup_interaction.json` rewritten from 4 patterns + CRITICAL RULES to 1 pattern with 7 sequential steps. 66 lines, no MUST/NEVER language. Preserves metadata fields for catalog compatibility.
+
+## Codex CLI Provider - Mar 2026
+- `plans/codex-cli-provider-design.md` -- FOliveCodexProvider subclass of FOliveCLIProviderBase
+- **Key Codex CLI facts**: `codex exec --json` for non-interactive JSONL output. Native Rust binary via npm. No `--max-turns`, no `--append-system-prompt`, no `--strict-mcp-config`.
+- **Direct HTTP MCP**: Codex connects directly to `http://localhost:PORT/mcp` via `-c 'mcp_servers.olive.url="..."'`. No mcp-bridge.js needed.
+- **Sandbox refactor**: `SetupAutonomousSandbox()` made virtual. New `WriteProviderSpecificSandboxFiles()` hook. Claude writes `.mcp.json` + `CLAUDE.md`. Codex writes nothing (MCP via CLI flag).
+- **IsAutonomousProvider fix**: New `SupportsAutonomousMode()` virtual on IOliveAIProvider (default false, true in FOliveCLIProviderBase). Replaces hardcoded `== "Claude Code CLI"` check.
+- **EOliveAIProvider::Codex**: New enum value. No API key field (auth via `codex login` or `OPENAI_API_KEY` env var).
+- **JSONL format MUST be verified empirically** before implementing ParseOutputLine().
+- **Phase 1 = autonomous only**. Orchestrated mode deferred (no system prompt injection mechanism).
+- **Codex binary discovery**: `where codex` -> npm global `codex.exe` path. Prefer native `.exe` over Node.js launcher.

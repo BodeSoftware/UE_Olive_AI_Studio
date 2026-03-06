@@ -309,6 +309,13 @@ public:
 	// Status
 	// ==========================================
 
+	/**
+	 * Whether this provider supports autonomous MCP mode.
+	 * CLI-based providers (Claude Code, Codex) return true.
+	 * API-based providers return false (default).
+	 */
+	virtual bool SupportsAutonomousMode() const { return false; }
+
 	/** Check if a request is in progress */
 	virtual bool IsBusy() const = 0;
 

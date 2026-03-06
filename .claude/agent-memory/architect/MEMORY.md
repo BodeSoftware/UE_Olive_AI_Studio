@@ -195,9 +195,10 @@
 - **No C++ structural changes**: Only string content in the stdin message builder. No new classes, no pipeline changes, no tool changes.
 - **Escalation path**: If agent still skips decomposition, next step is two-phase CLI (first turn = decomposition only with --max-turns 1).
 
+### Codex CLI Provider - Mar 2026
+- `plans/codex-cli-provider-design.md` -- FOliveCodexProvider subclass of CLIProviderBase
+- See `autonomous-mode-decisions.md` for full details. Key: direct HTTP MCP (no bridge), `codex exec --json`, `SupportsAutonomousMode()` virtual, `WriteProviderSpecificSandboxFiles()` hook.
+
 ### Log Improvements - Mar 2026
 - `plans/log-improvements-design.md` -- 6 tasks (T1-T6), 4 items
-- **modify_component fix**: `modified_properties_count` now reports `Properties.Num() - WriteResult.Warnings.Num()` (actual successes). Adds `requested_properties_count` and `failed_properties_count`. Guard: `FMath::Max(0, ...)` for edge case.
-- **Orphan delta tracking**: `OrphanBaselines` TMap + `bRunActive` flag on FOliveWritePipeline. Lazy baseline (first check per graph captures count). Delta reported on subsequent checks. Full count when no active run. ConversationManager sets `bRunActive = true` at `BeginRun()` (2 sites). Baselines cleared on next run start.
-- **interaction_caller.json**: Reference template (6 patterns). Covers overlap detection, input discovery, EIA vs InputKey, validity check, full caller architecture. Critical: states tool split (editor.run_python for IA/IMC assets, plan_json for event wiring).
-- **input_handling recipe**: Decision tree for EIA vs InputKey. Tags for manifest registration.
+- See `autonomous-mode-decisions.md` for earlier autonomous mode details.

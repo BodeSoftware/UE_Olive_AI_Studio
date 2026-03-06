@@ -13,6 +13,7 @@ UENUM(BlueprintType)
 enum class EOliveAIProvider : uint8
 {
 	ClaudeCode UMETA(DisplayName = "Claude Code CLI (No API Key)"),
+	Codex      UMETA(DisplayName = "Codex CLI (ChatGPT / API Key)"),
 	OpenRouter UMETA(DisplayName = "OpenRouter (API Key)"),
 	ZAI        UMETA(DisplayName = "Z.ai (API Key)"),
 	Anthropic UMETA(DisplayName = "Anthropic (API Key)"),
