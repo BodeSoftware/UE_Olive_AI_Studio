@@ -133,6 +133,21 @@ namespace
 			|| ToolName.Contains(TEXT("modify_component"))
 			|| ToolName.Contains(TEXT("create_from_template"));
 	}
+
+	/** Quick heuristic for messages that imply write/mutation intent. */
+	bool MessageImpliesMutation(const FString& Message)
+	{
+		const FString Lower = Message.ToLower();
+		return Lower.Contains(TEXT("add")) || Lower.Contains(TEXT("create"))
+			|| Lower.Contains(TEXT("edit")) || Lower.Contains(TEXT("modify"))
+			|| Lower.Contains(TEXT("update")) || Lower.Contains(TEXT("change"))
+			|| Lower.Contains(TEXT("rename")) || Lower.Contains(TEXT("connect"))
+			|| Lower.Contains(TEXT("wire")) || Lower.Contains(TEXT("set "))
+			|| Lower.Contains(TEXT("remove")) || Lower.Contains(TEXT("delete"))
+			|| Lower.Contains(TEXT("refactor")) || Lower.Contains(TEXT("make "))
+			|| Lower.Contains(TEXT("build")) || Lower.Contains(TEXT("implement"))
+			|| Lower.Contains(TEXT("spawn"));
+	}
 }
 
 // ==========================================
@@ -603,6 +618,14 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 		EffectiveMessage += TEXT("2. Write ALL graph logic with apply_plan_json for every function\n");
 		EffectiveMessage += TEXT("3. Compile to 0 errors\n");
 		EffectiveMessage += TEXT("Do not stop until every asset is fully built, wired, and compiled.\n");
+	}
+
+	// Guardrail: for write-oriented tasks, require at least one tool call before final text.
+	if (!IsContinuationMessage(UserMessage) && MessageImpliesMutation(UserMessage))
+	{
+		EffectiveMessage += TEXT("\n\n## Tool Execution Requirement\n");
+		EffectiveMessage += TEXT("Before any final explanation text, execute at least one MCP tool call that makes concrete progress.\n");
+		EffectiveMessage += TEXT("If no tool call is needed, explicitly explain why in one sentence.\n");
 	}
 
 	// Initialize run context tracking for this new run
@@ -1116,6 +1139,48 @@ void FOliveCLIProviderBase::HandleResponseCompleteAutonomous(int32 ReturnCode)
 		LastTool > 0.0 ? FPlatformTime::Seconds() - LastTool : -1.0,
 		AccumulatedResponse.Len(),
 		LastRunContext.ToolCallLog.Num());
+
+	// Guardrail: successful exit with no MCP tool activity is treated as a failed autonomous run.
+	// Retry once with a strict nudge, then report explicit error instead of silent text-only success.
+	if (ReturnCode == 0 && LastRunContext.ToolCallLog.Num() == 0)
+	{
+		if (AutoContinueCount < MaxAutoContinues)
+		{
+			AutoContinueCount++;
+
+			UE_LOG(LogOliveCLIProvider, Warning,
+				TEXT("Autonomous run produced no tool calls (attempt %d/%d) - retrying with strict tool-use nudge"),
+				AutoContinueCount, MaxAutoContinues);
+
+			bIsBusy = false;
+
+			FOnOliveStreamChunk SavedOnChunk = CurrentOnChunk;
+			FOnOliveComplete SavedOnComplete = CurrentOnComplete;
+			FOnOliveError SavedOnError = CurrentOnError;
+
+			bIsAutoContinuation = true;
+
+			AsyncTask(ENamedThreads::GameThread, [this, SavedOnChunk, SavedOnComplete, SavedOnError]()
+			{
+				if (!(*AliveGuard))
+				{
+					return;
+				}
+
+				FString NudgePrompt = BuildContinuationPrompt(
+					TEXT("You made zero MCP tool calls. Make your first tool call immediately. Do not provide explanation-only text."));
+				SendMessageAutonomous(NudgePrompt, SavedOnChunk, SavedOnComplete, SavedOnError);
+			});
+
+			return;
+		}
+
+		bIsBusy = false;
+		CurrentOnError.ExecuteIfBound(FString::Printf(
+			TEXT("%s run completed without MCP tool calls. The task was not executed. Retry with a more explicit actionable request."),
+			*GetCLIName()));
+		return;
+	}
 
 	if (ReturnCode != 0 && AccumulatedResponse.IsEmpty())
 	{

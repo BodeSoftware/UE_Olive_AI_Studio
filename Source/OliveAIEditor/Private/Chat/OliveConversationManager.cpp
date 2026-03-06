@@ -249,7 +249,7 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 		const FString TruncatedMessage = Message.Left(60);
 		const FString SnapshotLabel = FString::Printf(TEXT("Pre-autonomous: %s"), *TruncatedMessage);
 		FOliveToolResult SnapshotResult = FOliveSnapshotManager::Get().CreateSnapshot(
-			SnapshotLabel, ActiveContextPaths, TEXT("Auto-snapshot before autonomous Claude Code run"));
+			SnapshotLabel, ActiveContextPaths, TEXT("Auto-snapshot before autonomous provider run"));
 
 		if (SnapshotResult.bSuccess)
 		{
@@ -379,8 +379,9 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 	}
 
 	// 8. Launch autonomous provider -- tools are discovered via MCP, no orchestration
-	UE_LOG(LogOliveAI, Log, TEXT("Launching autonomous Claude Code run for message: %.80s%s"),
-		*Message.Left(80), Message.Len() > 80 ? TEXT("...") : TEXT(""));
+	const FString ProviderName = Provider->GetProviderName();
+	UE_LOG(LogOliveAI, Log, TEXT("Launching autonomous run (%s) for message: %.80s%s"),
+		*ProviderName, *Message.Left(80), Message.Len() > 80 ? TEXT("...") : TEXT(""));
 
 	Provider->SendMessageAutonomous(Message, OnChunk, OnComplete, OnErr);
 }

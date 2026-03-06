@@ -206,6 +206,7 @@ FString FOliveCodexProvider::GetCLIArgumentsAutonomous() const
 	// -C <sandbox>: explicit working directory so Codex reads AGENTS.md from there
 	// --add-dir <project>: grant access to project Content/ for MCP tool operations
 	// -c mcp_servers.olive.url=...: direct HTTP MCP connection (no bridge)
+	// -c mcp_servers={olive=...}: isolate Codex from user-global MCP servers for Olive-launched runs
 
 	const int32 MCPPort = FOliveMCPServer::Get().GetActualPort();
 	const FString ProjectDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
@@ -224,12 +225,57 @@ FString FOliveCodexProvider::GetCLIArgumentsAutonomous() const
 	return FString::Printf(
 		TEXT("exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --ephemeral %s")
 		TEXT("-C \"%s\" --add-dir \"%s\" ")
-		TEXT("-c \"mcp_servers.olive.url=\\\"http://localhost:%d/mcp\\\"\""),
+		TEXT("-c \"mcp_servers.olive.url=\\\"http://localhost:%d/mcp\\\"\" ")
+		TEXT("-c \"mcp_servers={olive={url=\\\"http://localhost:%d/mcp\\\"}}\""),
 		*ModelArg,
 		*AutonomousSandboxDir,
 		*ProjectDir,
+		MCPPort,
 		MCPPort
 	);
+}
+
+bool FOliveCodexProvider::ExtractMcpToolNameFromJsonLine(const FString& Line, FString& OutToolName)
+{
+	OutToolName.Empty();
+
+	TSharedPtr<FJsonObject> JsonObject;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Line);
+	if (!FJsonSerializer::Deserialize(Reader, JsonObject) || !JsonObject.IsValid())
+	{
+		return false;
+	}
+
+	FString Type;
+	if (!JsonObject->TryGetStringField(TEXT("type"), Type) || Type != TEXT("item.completed"))
+	{
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject>* ItemObj;
+	if (!JsonObject->TryGetObjectField(TEXT("item"), ItemObj) || !ItemObj || !(*ItemObj).IsValid())
+	{
+		return false;
+	}
+
+	FString ItemType;
+	if (!(*ItemObj)->TryGetStringField(TEXT("type"), ItemType))
+	{
+		return false;
+	}
+
+	if (ItemType != TEXT("mcp_call") && ItemType != TEXT("mcp_tool_call"))
+	{
+		return false;
+	}
+
+	// Codex has emitted both "name" (older) and "tool" (newer) fields.
+	if (!(*ItemObj)->TryGetStringField(TEXT("name"), OutToolName) || OutToolName.IsEmpty())
+	{
+		(*ItemObj)->TryGetStringField(TEXT("tool"), OutToolName);
+	}
+
+	return !OutToolName.IsEmpty();
 }
 
 void FOliveCodexProvider::ParseOutputLine(const FString& Line)
@@ -240,6 +286,7 @@ void FOliveCodexProvider::ParseOutputLine(const FString& Line)
 	// {"type":"item.started","item":{"id":"...","type":"agent_message"|"command_execution",...}}
 	// {"type":"item.completed","item":{"id":"...","type":"agent_message","text":"..."}}
 	// {"type":"item.completed","item":{"id":"...","type":"command_execution","command":"...","aggregated_output":"...","exit_code":0}}
+	// {"type":"item.completed","item":{"id":"...","type":"mcp_tool_call","tool":"blueprint.read",...}}
 	// {"type":"turn.completed","usage":{...}}
 
 	TSharedPtr<FJsonObject> JsonObject;
@@ -300,11 +347,14 @@ void FOliveCodexProvider::ParseOutputLine(const FString& Line)
 			Chunk.Text = FString::Printf(TEXT("[Shell] %s"), *Command);
 			CurrentOnChunk.ExecuteIfBound(Chunk);
 		}
-		else if (ItemType == TEXT("mcp_call"))
+		else if (ItemType == TEXT("mcp_call") || ItemType == TEXT("mcp_tool_call"))
 		{
 			// MCP tool call completed
 			FString ToolName;
-			(*ItemObj)->TryGetStringField(TEXT("name"), ToolName);
+			if (!(*ItemObj)->TryGetStringField(TEXT("name"), ToolName) || ToolName.IsEmpty())
+			{
+				(*ItemObj)->TryGetStringField(TEXT("tool"), ToolName);
+			}
 			UE_LOG(LogOliveCodex, Log, TEXT("Agent MCP tool: %s"), *ToolName);
 
 			FScopeLock Lock(&CallbackLock);

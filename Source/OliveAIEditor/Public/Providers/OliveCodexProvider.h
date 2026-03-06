@@ -40,6 +40,7 @@ public:
 	static bool IsCodexInstalled();
 	static FString GetCodexExecutablePath();
 	static FString GetCodexVersion();
+	static bool ExtractMcpToolNameFromJsonLine(const FString& Line, FString& OutToolName);
 
 protected:
 	// FOliveCLIProviderBase virtual hooks
