@@ -307,6 +307,14 @@ namespace OliveBlueprintSchemas
 	 */
 	TSharedPtr<FJsonObject> BlueprintListTemplates();
 
+	/**
+	 * Schema for blueprint.create_from_library
+	 * Clone a library template into a real Blueprint asset.
+	 * Params: {template_id: string, path: string, mode?: "structure"|"portable"|"full",
+	 *          remap?: object, graphs?: string[], parent_class_override?: string}
+	 */
+	TSharedPtr<FJsonObject> BlueprintCreateFromLibrary();
+
 	// ============================================================================
 	// AnimBP Writer Tool Schemas
 	// ============================================================================

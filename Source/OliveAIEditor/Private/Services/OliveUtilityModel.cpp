@@ -1036,7 +1036,16 @@ FString FOliveUtilityModel::FormatDiscoveryForPrompt(const FOliveDiscoveryResult
 
 			if (!Entry->ParentClass.IsEmpty())
 			{
-				Output += Entry->ParentClass + TEXT(". ");
+				// Label component templates clearly so the agent understands the architecture
+				const bool bIsComponent = Entry->ParentClass.Contains(TEXT("Component"));
+				if (bIsComponent)
+				{
+					Output += TEXT("[") + Entry->ParentClass + TEXT(" — attach to actor] ");
+				}
+				else
+				{
+					Output += Entry->ParentClass + TEXT(". ");
+				}
 			}
 
 			if (Entry->MatchedFunctions.Num() > 0)

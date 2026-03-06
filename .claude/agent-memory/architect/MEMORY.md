@@ -199,6 +199,16 @@
 - `plans/codex-cli-provider-design.md` -- FOliveCodexProvider subclass of CLIProviderBase
 - See `autonomous-mode-decisions.md` for full details. Key: direct HTTP MCP (no bridge), `codex exec --json`, `SupportsAutonomousMode()` virtual, `WriteProviderSpecificSandboxFiles()` hook.
 
-### Log Improvements - Mar 2026
-- `plans/log-improvements-design.md` -- 6 tasks (T1-T6), 4 items
-- See `autonomous-mode-decisions.md` for earlier autonomous mode details.
+### Library Clone Tool - Mar 2026
+- `plans/library-clone-design.md` -- `blueprint.create_from_library` tool
+- **FOliveLibraryCloner** in `OliveLibraryCloner.h/.cpp` under `Blueprint/Template/`. NOT a singleton (per-operation).
+- **3 modes**: structure (vars+comps+sigs), portable (+ engine-resolvable nodes), full (everything, broken refs as warnings)
+- **Root native ancestor strategy**: Walk `depends_on` chain to first native parent when source-project BP parent unresolvable. Flatten intermediate ancestors' vars/components.
+- **Resolution pipeline**: remap map -> alias map -> live resolution (ClassResolver/FindFunction/FindStruct) -> fallback (skip/demote)
+- **Type demotion**: Unresolvable Object->UObject*, Struct->FString, Enum->uint8. All with warnings.
+- **Node type mapping**: Library `type` field -> OliveNodeTypes constant. 10 mapped types. ControlRigGraphNode always skipped.
+- **6-phase per-graph pipeline**: Classify -> Create -> WireExec -> WireData -> SetDefaults -> AutoLayout
+- **New error codes**: `LIBRARY_TEMPLATE_NOT_FOUND`, `LIBRARY_CLONE_PARENT_UNRESOLVABLE`, `LIBRARY_CLONE_CREATE_FAILED`, `LIBRARY_CLONE_LOAD_FAILED`
+- **Confirmation tier**: Tier 1 (auto-execute). Tags: `{blueprint, write, create, template, library}`.
+- **Key edge case**: Sibling function calls -- create all function signatures (empty) BEFORE populating graph nodes, so FindFunction resolves them via SkeletonGeneratedClass.
+- **5-phase implementation order**: Core cloner (structure) -> Graph cloning (portable) -> Tool handler + schema -> Full mode + polish -> Knowledge update

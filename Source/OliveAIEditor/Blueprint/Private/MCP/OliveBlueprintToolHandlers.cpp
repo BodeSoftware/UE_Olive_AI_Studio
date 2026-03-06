@@ -41,6 +41,7 @@
 #include "IR/OliveIRSchema.h"
 #include "IR/BlueprintPlanIR.h"
 #include "Template/OliveTemplateSystem.h"
+#include "Template/OliveLibraryCloner.h"
 #include "K2Node_Timeline.h"
 #include "Engine/TimelineTemplate.h"
 #include "Curves/CurveFloat.h"
@@ -1930,7 +1931,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 		if (!WriteResult.bSuccess)
 		{
 			// Convert errors to FOliveWriteResult format
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			UE_LOG(LogOliveBPTools, Error, TEXT("blueprint.create failed: path='%s' parent='%s' type=%d error='%s'"),
 				*AssetPath, *ParentClass, static_cast<int32>(BlueprintType), *ErrorMsg);
 			return FOliveWriteResult::ExecutionError(
@@ -2039,7 +2040,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintSetParentClass(cons
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_REPARENT_FAILED"),
 				ErrorMsg,
@@ -2141,7 +2142,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddInterface(const 
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_ADD_INTERFACE_FAILED"),
 				ErrorMsg,
@@ -2232,7 +2233,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveInterface(con
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_REMOVE_INTERFACE_FAILED"),
 				ErrorMsg,
@@ -2363,7 +2364,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintDelete(const TShare
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_DELETE_FAILED"),
 				ErrorMsg,
@@ -2753,7 +2754,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 
 			if (!WriteResult.bSuccess)
 			{
-				FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+				FString ErrorMsg = WriteResult.GetFirstError();
 				return FOliveWriteResult::ExecutionError(
 					TEXT("BP_MODIFY_VARIABLE_FAILED"),
 					ErrorMsg,
@@ -2901,7 +2902,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 
 			if (!WriteResult.bSuccess)
 			{
-				FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+				FString ErrorMsg = WriteResult.GetFirstError();
 				return FOliveWriteResult::ExecutionError(
 					TEXT("BP_MODIFY_VARIABLE_FAILED"),
 					ErrorMsg,
@@ -2970,7 +2971,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_ADD_VARIABLE_FAILED"),
 				ErrorMsg,
@@ -3069,7 +3070,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveVariable(cons
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_REMOVE_VARIABLE_FAILED"),
 				ErrorMsg,
@@ -3190,7 +3191,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddComponent(const 
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_ADD_COMPONENT_FAILED"),
 				ErrorMsg,
@@ -3288,7 +3289,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveComponent(con
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_REMOVE_COMPONENT_FAILED"),
 				ErrorMsg,
@@ -3434,7 +3435,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintModifyComponent(con
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_MODIFY_COMPONENT_FAILED"),
 				ErrorMsg,
@@ -3560,7 +3561,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintReparentComponent(c
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_REPARENT_COMPONENT_FAILED"),
 				ErrorMsg,
@@ -3735,7 +3736,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAddFunctionType_Function(
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_ADD_FUNCTION_FAILED"),
 				ErrorMsg,
@@ -3835,7 +3836,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAddFunctionType_CustomEvent(
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_ADD_CUSTOM_EVENT_FAILED"),
 				ErrorMsg,
@@ -3930,7 +3931,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAddFunctionType_EventDispatc
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_ADD_DISPATCHER_FAILED"),
 				ErrorMsg,
@@ -4000,7 +4001,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAddFunctionType_Override(
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_OVERRIDE_FUNCTION_FAILED"),
 				ErrorMsg,
@@ -4130,7 +4131,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveFunction(cons
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_REMOVE_FUNCTION_FAILED"),
 				ErrorMsg,
@@ -4427,7 +4428,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddNode(const TShar
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 
 			// Defense-in-depth: detect duplicate native event from NodeFactory
 			FString ErrorCode = TEXT("BP_ADD_NODE_FAILED");
@@ -4607,7 +4608,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveNode(const TS
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_REMOVE_NODE_FAILED"),
 				ErrorMsg,
@@ -4791,7 +4792,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintConnectPins(const T
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 
 			// Check for structured wiring diagnostic (type incompatibility)
 			if (WriteResult.WiringDiagnostic.IsSet())
@@ -4931,7 +4932,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintDisconnectPins(cons
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_DISCONNECT_PINS_FAILED"),
 				ErrorMsg,
@@ -5033,7 +5034,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintSetPinDefault(const
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_SET_PIN_DEFAULT_FAILED"),
 				ErrorMsg,
@@ -5145,7 +5146,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintSetNodeProperty(con
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_SET_NODE_PROPERTY_FAILED"),
 				ErrorMsg,
@@ -5822,7 +5823,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAnimBPAddStateMachine(const 
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("ANIMBP_ADD_STATE_MACHINE_FAILED"),
 				ErrorMsg,
@@ -5941,7 +5942,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAnimBPAddState(const TShared
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("ANIMBP_ADD_STATE_FAILED"),
 				ErrorMsg,
@@ -6072,7 +6073,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAnimBPAddTransition(const TS
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("ANIMBP_ADD_TRANSITION_FAILED"),
 				ErrorMsg,
@@ -6215,7 +6216,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAnimBPSetTransitionRule(cons
 
 		if (!WriteResult.bSuccess)
 		{
-			FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+			FString ErrorMsg = WriteResult.GetFirstError();
 			return FOliveWriteResult::ExecutionError(
 				TEXT("ANIMBP_SET_TRANSITION_RULE_FAILED"),
 				ErrorMsg,
@@ -6318,7 +6319,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleWidgetAddWidget(const TShare
 		{
 			return FOliveWriteResult::ExecutionError(
 				TEXT("WIDGET_ADD_FAILED"),
-				WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error"),
+				WriteResult.GetFirstError(),
 				TEXT("Check widget class name and parent widget"));
 		}
 
@@ -6399,7 +6400,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleWidgetRemoveWidget(const TSh
 		{
 			return FOliveWriteResult::ExecutionError(
 				TEXT("WIDGET_REMOVE_FAILED"),
-				WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error"),
+				WriteResult.GetFirstError(),
 				TEXT("Check that the widget exists in the Widget Blueprint"));
 		}
 
@@ -6502,7 +6503,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleWidgetSetProperty(const TSha
 		{
 			return FOliveWriteResult::ExecutionError(
 				TEXT("WIDGET_PROPERTY_SET_FAILED"),
-				WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error"),
+				WriteResult.GetFirstError(),
 				TEXT("Check that the widget and property exist and the value is valid for the property type"));
 		}
 
@@ -6608,7 +6609,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleWidgetBindProperty(const TSh
 		{
 			return FOliveWriteResult::ExecutionError(
 				TEXT("WIDGET_PROPERTY_BIND_FAILED"),
-				WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error"),
+				WriteResult.GetFirstError(),
 				TEXT("Check that the widget, property, and function exist and are compatible"));
 		}
 
@@ -8440,7 +8441,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 
 					if (!WriteResult.bSuccess)
 					{
-						FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
+						FString ErrorMsg = WriteResult.GetFirstError();
 						return FOliveWriteResult::ExecutionError(
 							TEXT("OP_FAILED"),
 							FString::Printf(TEXT("Op %d failed (id='%s', tool='%s'): %s"),
@@ -8750,7 +8751,19 @@ void FOliveBlueprintToolHandlers::RegisterTemplateTools()
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.list_templates"));
 
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered template tools (get_template, list_templates)"));
+	Registry.RegisterTool(
+		TEXT("blueprint.create_from_library"),
+		TEXT("Clone a library template into a real Blueprint asset. Creates the asset with all structure "
+			"(variables, components, dispatchers) and optionally recreates node graphs. "
+			"Handles missing dependencies gracefully with type demotion and skip logic."),
+		OliveBlueprintSchemas::BlueprintCreateFromLibrary(),
+		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintCreateFromLibrary),
+		{TEXT("blueprint"), TEXT("write"), TEXT("create"), TEXT("template"), TEXT("library")},
+		TEXT("blueprint")
+	);
+	RegisteredToolNames.Add(TEXT("blueprint.create_from_library"));
+
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered template tools (get_template, list_templates, create_from_library)"));
 }
 
 FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintListTemplates(const TSharedPtr<FJsonObject>& Params)
@@ -9028,3 +9041,134 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreateFromTemplate(
 	return FOliveTemplateSystem::Get().ApplyTemplate(TemplateId, UserParams, PresetName, AssetPath);
 }
 
+FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreateFromLibrary(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("MISSING_PARAMS"),
+			TEXT("No parameters provided"),
+			TEXT("Provide template_id and path at minimum."));
+	}
+
+	// 1. Extract and validate required params
+	FString TemplateId;
+	if (!Params->TryGetStringField(TEXT("template_id"), TemplateId) || TemplateId.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("MISSING_PARAM"),
+			TEXT("'template_id' is required"),
+			TEXT("Provide a library template ID. Use blueprint.list_templates(query=\"...\") to search."));
+	}
+
+	FString AssetPath;
+	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("MISSING_PARAM"),
+			TEXT("'path' is required"),
+			TEXT("Provide target asset path like '/Game/Blueprints/BP_MyArrow'"));
+	}
+
+	// 2. Extract optional params
+	FString ModeStr = TEXT("portable");
+	Params->TryGetStringField(TEXT("mode"), ModeStr);
+
+	ELibraryCloneMode Mode = ELibraryCloneMode::Portable;
+	if (ModeStr.Equals(TEXT("structure"), ESearchCase::IgnoreCase))
+	{
+		Mode = ELibraryCloneMode::Structure;
+	}
+	else if (ModeStr.Equals(TEXT("full"), ESearchCase::IgnoreCase))
+	{
+		Mode = ELibraryCloneMode::Full;
+	}
+
+	// Parse remap map
+	TMap<FString, FString> RemapMap;
+	const TSharedPtr<FJsonObject>* RemapObj = nullptr;
+	if (Params->TryGetObjectField(TEXT("remap"), RemapObj) && RemapObj && (*RemapObj).IsValid())
+	{
+		for (const auto& Pair : (*RemapObj)->Values)
+		{
+			FString Val;
+			if (Pair.Value->TryGetString(Val))
+			{
+				RemapMap.Add(Pair.Key, Val);
+			}
+		}
+	}
+
+	// Parse optional graphs whitelist
+	TArray<FString> GraphWhitelist;
+	const TArray<TSharedPtr<FJsonValue>>* GraphsArray = nullptr;
+	if (Params->TryGetArrayField(TEXT("graphs"), GraphsArray) && GraphsArray)
+	{
+		for (const TSharedPtr<FJsonValue>& Val : *GraphsArray)
+		{
+			FString GraphName;
+			if (Val->TryGetString(GraphName))
+			{
+				GraphWhitelist.Add(GraphName);
+			}
+		}
+	}
+
+	FString ParentClassOverride;
+	Params->TryGetStringField(TEXT("parent_class_override"), ParentClassOverride);
+
+	// 3. Execute the clone
+	UE_LOG(LogOliveBPTools, Log, TEXT("Cloning library template '%s' to '%s' (mode=%s)"),
+		*TemplateId, *AssetPath, *ModeStr);
+
+	FOliveLibraryCloner Cloner;
+	FLibraryCloneResult CloneResult = Cloner.Clone(
+		TemplateId, AssetPath, Mode, RemapMap, GraphWhitelist, ParentClassOverride);
+
+	// 4. Convert to tool result
+	if (CloneResult.bSuccess)
+	{
+		TSharedPtr<FJsonObject> ResultJson = CloneResult.ToJson();
+		return FOliveToolResult::Success(ResultJson);
+	}
+
+	// Check for specific fatal errors to provide targeted suggestions
+	for (const FString& Warning : CloneResult.Warnings)
+	{
+		if (Warning.StartsWith(TEXT("LIBRARY_TEMPLATE_NOT_FOUND")))
+		{
+			return FOliveToolResult::Error(
+				TEXT("LIBRARY_TEMPLATE_NOT_FOUND"),
+				Warning,
+				TEXT("Check the template_id. Use blueprint.list_templates(query=\"...\") to search."));
+		}
+		if (Warning.StartsWith(TEXT("LIBRARY_CLONE_PARENT_UNRESOLVABLE")))
+		{
+			return FOliveToolResult::Error(
+				TEXT("LIBRARY_CLONE_PARENT_UNRESOLVABLE"),
+				Warning,
+				TEXT("Provide parent_class_override or add entries to remap."));
+		}
+		if (Warning.StartsWith(TEXT("LIBRARY_CLONE_CREATE_FAILED")))
+		{
+			return FOliveToolResult::Error(
+				TEXT("LIBRARY_CLONE_CREATE_FAILED"),
+				Warning,
+				TEXT("Check that the path is valid and doesn't already exist."));
+		}
+	}
+
+	// Generic failure -- serialize full result JSON into the suggestion for diagnostics
+	TSharedPtr<FJsonObject> ResultJson = CloneResult.ToJson();
+	FString DiagnosticsString;
+	if (ResultJson.IsValid())
+	{
+		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&DiagnosticsString);
+		FJsonSerializer::Serialize(ResultJson.ToSharedRef(), Writer);
+	}
+
+	return FOliveToolResult::Error(
+		TEXT("LIBRARY_CLONE_FAILED"),
+		TEXT("Library clone failed. Check the warnings and remap_suggestions in the diagnostics."),
+		DiagnosticsString.IsEmpty() ? TEXT("Review template_id, path, and remap parameters.") : DiagnosticsString);
+}

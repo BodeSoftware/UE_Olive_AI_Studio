@@ -1176,6 +1176,49 @@ namespace OliveBlueprintSchemas
 		return Schema;
 	}
 
+	TSharedPtr<FJsonObject> BlueprintCreateFromLibrary()
+	{
+		TSharedPtr<FJsonObject> Properties = MakeProperties();
+
+		Properties->SetObjectField(TEXT("template_id"),
+			StringProp(TEXT("Library template ID (e.g., 'combatfs_arrow_component'). Use blueprint.list_templates to search.")));
+
+		Properties->SetObjectField(TEXT("path"),
+			StringProp(TEXT("Target asset path for the new Blueprint (e.g., '/Game/Blueprints/BP_MyArrow')")));
+
+		Properties->SetObjectField(TEXT("mode"),
+			EnumProp(TEXT("Clone depth. 'structure': variables + components + function signatures. "
+				"'portable': structure + engine-resolvable graph nodes (skips source-project-specific calls). "
+				"'full': everything, broken refs as warnings."),
+				{TEXT("structure"), TEXT("portable"), TEXT("full")}));
+
+		// remap: object with additionalProperties
+		TSharedPtr<FJsonObject> RemapProp = MakeSchema(TEXT("object"));
+		RemapProp->SetStringField(TEXT("description"),
+			TEXT("Optional type remapping. Keys are source class names (e.g., 'BP_ArrowParent_C'), "
+				"values are target equivalents."));
+		TSharedPtr<FJsonObject> RemapAdditional = MakeSchema(TEXT("string"));
+		RemapProp->SetObjectField(TEXT("additionalProperties"), RemapAdditional);
+		Properties->SetObjectField(TEXT("remap"), RemapProp);
+
+		Properties->SetObjectField(TEXT("graphs"),
+			ArrayProp(TEXT("Optional: only clone these graph names. If omitted, clones all."),
+				MakeSchema(TEXT("string"))));
+
+		Properties->SetObjectField(TEXT("parent_class_override"),
+			StringProp(TEXT("Override the parent class instead of using the template's.")));
+
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		Schema->SetStringField(TEXT("description"),
+			TEXT("Clone a library template into a real Blueprint asset. Creates the asset with all structure "
+				"(variables, components, dispatchers) and optionally recreates node graphs. "
+				"Handles missing dependencies gracefully with type demotion and skip logic."));
+		Schema->SetObjectField(TEXT("properties"), Properties);
+		AddRequired(Schema, {TEXT("template_id"), TEXT("path")});
+
+		return Schema;
+	}
+
 	// ============================================================================
 	// AnimBP Writer Tool Schemas
 	// ============================================================================

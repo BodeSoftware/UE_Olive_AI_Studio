@@ -187,6 +187,30 @@
 - Sub-pin naming: `{ParentPinName}_{ComponentName}` (e.g., `ReturnValue_X`, `Location_Pitch`)
 - ConversionNote for SplitPin: `ConversionNodeType = "SplitPin(X)"` etc.
 
+## Library Clone Tool (Phase 1+2: Structure + Graph Cloning, Completed)
+- `OliveLibraryCloner.h` at `Blueprint/Public/Template/`; `OliveLibraryCloner.cpp` at `Blueprint/Private/Template/`
+- NOT a singleton; instantiate fresh per clone operation (like FOlivePlanExecutor)
+- Log category: `LogOliveLibraryCloner`
+- `FLibraryCloneResult::ToJson()` for structured reporting
+- Resolution pipeline: `ApplyRemap()` (strips _C, case-insensitive) -> `FOliveClassResolver::Resolve()`
+- `ResolveStruct()`: searches 9 engine module prefixes with string concatenation (NOT FString::Printf due to UE 5.5 literal requirement)
+- `ResolveParentClass()`: root native ancestor strategy -- walks depends_on chain, deepest resolvable wins
+- Type demotion: object->UObject*, struct->String, enum->Byte, array element types also demoted
+- Variables with `defined_in: "component"` are skipped (created by AddComponent)
+- Components use `components.tree` (recursive hierarchical JSON), NOT flat array
+- Library template functions live in `graphs.functions[]` (not top-level `functions`)
+- Function signatures extracted from `inputs`/`outputs` on the function graph JSON (not from FunctionEntry/FunctionResult nodes)
+- Intermediate compile via `FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::SkipSave)` -- CRITICAL for FindFunction to resolve sibling calls
+- **Phase 2 Graph Cloning**: 6-phase pipeline per graph: ClassifyNodes -> CreateNodes -> WireExecConnections -> WireDataConnections -> SetPinDefaults -> AutoLayout
+- `NodeMap`/`NodeIdMap` cleared per-graph (library node IDs like "node_0" repeat across graphs)
+- `FCloneGraphResult.ExecGapsBridged`/`ExecGapsUnbridgeable` for exec gap repair reporting
+- Classification: FunctionEntry/FunctionResult/Knot/Reroute/ControlRig always Skip; Branch/Sequence/Event/CustomEvent/Comment always Create; CallFunction resolves via FindFunction; VariableGet/Set checks `VariableExistsOnBlueprint()`; Cast resolves target class; Timeline skipped
+- Exec gap repair: for skipped nodes with exactly 1 exec-in + 1 exec-out, bridge across; multiple outs = unbridgeable
+- `FindPinByName()`: exact match -> case-insensitive -> space-stripped fallback
+- `IsAssetReference()`: checks /Game/, /Script/ prefixes and UE quote+path format
+- `TemplateClassName` field stores source template's `DisplayName` for self-call detection in CallFunction classification
+- `VariableExistsOnBlueprint()` checks NewVariables + FlattenedVariableNames + SCS components
+
 ## Enriched Wiring Error Messages (Completed)
 - `OliveWiringDiagnostic.h` at `Blueprint/Public/Writer/` -- standalone header to avoid circular deps
 - `EOliveWiringFailureReason` enum: TypesIncompatible, StructToScalar, ScalarToStruct, ObjectCastRequired, ContainerMismatch, DirectionMismatch, SameNode, AlreadyConnected, Unknown

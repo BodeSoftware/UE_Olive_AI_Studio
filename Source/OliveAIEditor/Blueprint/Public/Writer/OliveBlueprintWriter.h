@@ -122,6 +122,16 @@ struct OLIVEAIEDITOR_API FOliveBlueprintWriteResult
 	 * @return JSON object containing result data
 	 */
 	TSharedPtr<FJsonObject> ToJson() const;
+
+	/** Returns the first non-empty error string, or DefaultMsg if none. */
+	FString GetFirstError(const FString& DefaultMsg = TEXT("Operation failed")) const
+	{
+		for (const FString& E : Errors)
+		{
+			if (!E.IsEmpty()) return E;
+		}
+		return DefaultMsg;
+	}
 };
 
 /**

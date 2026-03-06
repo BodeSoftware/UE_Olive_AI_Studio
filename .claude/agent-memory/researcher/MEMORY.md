@@ -11,6 +11,7 @@ PCG plugin headers: `C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/PCG/Sourc
 - `plans/research/interface-event-resolution.md` — Interface event resolution gap
 - `plans/research/competitive-tool-analysis.md` — Full competitor landscape (AIK, flopperam, chongdashu, gimmeDG, etc.), tool count analysis, MCP spec status
 - `plans/research/competitor-deep-dive-2026-03.md` — DEEP dive: NeoStack AIK (full changelog, ACP/MCP dual transport, Profiles, 500+ checks), Aura 12.0 (Telos 2.0, Dragon Agent, pricing tiers, 43 tools), Ultimate Co-Pilot (Python MCP bridge, scene population), Ludus AI (broken BP repair, coverage gaps), plus full comparison matrix and adoption recommendations
+- `plans/research/multi-agent-architectures.md` — Roo Code boomerang/orchestrator, Aider architect/editor split, Claude Code subagents, Devin 2.0, token optimization patterns, reflection agent research
 
 ## PCG API Key Facts (UE 5.5)
 - Module name for PCG plugin is `"PCG"` (add to Build.cs PrivateDependencyModuleNames)

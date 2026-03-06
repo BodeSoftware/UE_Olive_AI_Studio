@@ -784,6 +784,12 @@ UK2Node* FOliveNodeFactory::CreateSpawnActorNode(
 		ClassPin->DefaultObject = ActorClass;
 	}
 
+	// Re-allocate pins to pick up any ExposeOnSpawn variables on the target class.
+	// ReconstructNode() calls ReallocatePinsDuringReconstruction() -> CreatePinsForClass(),
+	// which reads CPF_ExposeOnSpawn from SkeletonGeneratedClass live.
+	// It calls Modify() internally, so it's safe inside the existing transaction.
+	SpawnNode->ReconstructNode();
+
 	return SpawnNode;
 }
 

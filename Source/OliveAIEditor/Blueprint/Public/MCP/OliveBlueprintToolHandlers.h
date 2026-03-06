@@ -156,6 +156,9 @@ private:
 	FOliveToolResult HandleBlueprintGetTemplate(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlueprintListTemplates(const TSharedPtr<FJsonObject>& Params);
 
+	/** Clone a library template into a real Blueprint asset */
+	FOliveToolResult HandleBlueprintCreateFromLibrary(const TSharedPtr<FJsonObject>& Params);
+
 	// ============================================================================
 	// Graph Writer Tool Handlers
 	// ============================================================================

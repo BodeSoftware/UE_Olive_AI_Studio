@@ -560,7 +560,11 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 		const UOliveAISettings* DiscoverySettings = UOliveAISettings::Get();
 		if (DiscoverySettings && DiscoverySettings->bEnableTemplateDiscoveryPass)
 		{
-			FOliveDiscoveryResult Discovery = FOliveUtilityModel::RunDiscoveryPass(UserMessage);
+			const FString& DiscoveryInput =
+				(LastRunContext.bValid && !LastRunContext.OriginalMessage.IsEmpty())
+				? LastRunContext.OriginalMessage
+				: UserMessage;
+			FOliveDiscoveryResult Discovery = FOliveUtilityModel::RunDiscoveryPass(DiscoveryInput);
 			FString DiscoveryBlock = FOliveUtilityModel::FormatDiscoveryForPrompt(Discovery);
 
 			if (!DiscoveryBlock.IsEmpty())
@@ -592,7 +596,8 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 		EffectiveMessage += TEXT("\"Does this thing exist in the world with its own transform?\" → separate Blueprint.\n");
 		EffectiveMessage += TEXT("\"Is it a value on an existing actor?\" → variable. \"Is it a capability?\" → component.\n");
 		EffectiveMessage += TEXT("Weapons, projectiles, doors, keys, vehicles = always separate actors.\n\n");
-		EffectiveMessage += TEXT("After listing assets, research patterns — check Reference Templates Found above if present, and search blueprint.list_templates(query=\"...\") for additional patterns.\n\n");
+		EffectiveMessage += TEXT("After listing assets, research patterns — check Reference Templates Found above if present, and search blueprint.list_templates(query=\"...\") for additional patterns.\n");
+		EffectiveMessage += TEXT("If a Reference Template is labeled [ActorComponent], your plan should include a matching component Blueprint — not functions copied onto the actor.\n\n");
 		EffectiveMessage += TEXT("Build the COMPLETE system. For each Blueprint:\n");
 		EffectiveMessage += TEXT("1. Create structure (components, variables, functions)\n");
 		EffectiveMessage += TEXT("2. Write ALL graph logic with apply_plan_json for every function\n");
