@@ -212,13 +212,20 @@
 - `VariableExistsOnBlueprint()` checks NewVariables + FlattenedVariableNames + SCS components
 
 ## Enriched Wiring Error Messages (Completed)
-- `OliveWiringDiagnostic.h` at `Blueprint/Public/Writer/` -- standalone header to avoid circular deps
-- `EOliveWiringFailureReason` enum: TypesIncompatible, StructToScalar, ScalarToStruct, ObjectCastRequired, ContainerMismatch, DirectionMismatch, SameNode, AlreadyConnected, Unknown
-- `FOliveWiringAlternative` struct: Label, Action, Confidence (high/medium/low)
-- `FOliveWiringDiagnostic`: Reason, SourceTypeName, TargetTypeName, pin names, SchemaMessage, WhyAutoFixFailed, Alternatives array, ToJson(), ToHumanReadable(), ReasonToString()
-- `FOliveBlueprintWriteResult.WiringDiagnostic` field: `TOptional<FOliveWiringDiagnostic>` (not a UPROPERTY)
-- `FOlivePinConnector::BuildWiringDiagnostic()` + `SuggestAlternatives()` private methods
-- `FOliveSmartWireResult.bIsTypeIncompatible` flag for error code selection in PhaseWireData
-- New error codes: `DATA_WIRE_INCOMPATIBLE` (plan_json), `BP_CONNECT_PINS_INCOMPATIBLE` (connect_pins tool)
-- Self-correction guidance for both new error codes in OliveSelfCorrectionPolicy.cpp
-- Both new error codes are Category A (FixableMistake) by default fallthrough
+- `OliveWiringDiagnostic.h` at `Blueprint/Public/Writer/`
+- Error codes: `DATA_WIRE_INCOMPATIBLE` (plan_json), `BP_CONNECT_PINS_INCOMPATIBLE` (connect_pins)
+- Both Category A (FixableMistake) in SelfCorrectionPolicy
+
+## Agent Pipeline (Phase 8, Phases 2-7 Implemented)
+- `FOliveAgentPipeline` at `Public/Brain/OliveAgentPipeline.h` / `Private/Brain/OliveAgentPipeline.cpp`
+- NOT a singleton; stack-instantiate per run (like FOlivePlanExecutor)
+- Pipeline: Router -> Scout -> [Researcher if not Simple] -> Architect -> Validator; Reviewer runs separately post-Builder
+- `SendAgentCompletion()`: 3-tier fallback (agent model config -> main HTTP provider -> Claude CLI --print)
+- **Critical**: `FOliveUtilityModel::ProviderEnumToName()` is PRIVATE -- local `ProviderEnumToName()` helper in anonymous namespace
+- `BuildAssetStateSummary()` defined in second anonymous namespace block -- forward-declared in first block (C++ merges anonymous namespaces in same TU)
+- Tick-pump pattern: `FTSTicker::GetCoreTicker().Tick(0.01f)` + `FPlatformProcess::Sleep(0.01f)` loop
+- Required includes: `AssetRegistry/AssetRegistryModule.h`, `Components/ActorComponent.h`, `UObject/UObjectGlobals.h`
+- `FindFirstObject<UClass>(*Name, EFindFirstObjectOptions::NativeFirst)` for class resolution (same as OliveClassResolver.cpp)
+- Total pipeline timeout: 60s; per-agent timeouts: Router 10s, Scout 10s, Researcher 15s, Architect 30s, Reviewer 15s
+- Graceful degradation: Router fails -> default Moderate; Scout fails -> unranked context; Researcher fails -> skip; Architect fails -> no plan
+- Class alias table: ~40 common UE short names (Actor, Character, StaticMeshComponent, etc.) for Validator

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DeveloperSettings.h"
+#include "Brain/OliveAgentConfig.h"
 #include "OliveAISettings.generated.h"
 
 /**
@@ -423,6 +424,118 @@ public:
 	bool bEnableTemplateDiscoveryPass = true;
 
 	// ==========================================
+	// Agent Pipeline Settings
+	// ==========================================
+
+	/** Customize models for individual pipeline agents.
+	 *  When disabled, all agents use your main provider and model.
+	 *  When enabled, per-agent provider and model selectors appear below. */
+	UPROPERTY(Config, EditAnywhere, Category="Agent Pipeline",
+		meta=(DisplayName="Customize Agent Models"))
+	bool bCustomizeAgentModels = false;
+
+	// --- Router Agent ---
+
+	/** Provider for the Router agent (classifies task complexity).
+	 *  Should be fast and cheap -- this is a single classification call. */
+	UPROPERTY(Config, EditAnywhere, Category="Agent Pipeline",
+		meta=(DisplayName="Router: Provider",
+			  EditCondition="bCustomizeAgentModels",
+			  EditConditionHides,
+			  ToolTip="Provider for task complexity classification. Recommended: fast/cheap model."))
+	EOliveAIProvider RouterProvider = EOliveAIProvider::OpenRouter;
+
+	/** Model for the Router agent */
+	UPROPERTY(Config, EditAnywhere, Category="Agent Pipeline",
+		meta=(DisplayName="Router: Model",
+			  EditCondition="bCustomizeAgentModels",
+			  EditConditionHides))
+	FString RouterModel = TEXT("anthropic/claude-3-5-haiku-latest");
+
+	// --- Scout Agent ---
+
+	/** Provider for the Scout agent (discovers relevant assets and templates). */
+	UPROPERTY(Config, EditAnywhere, Category="Agent Pipeline",
+		meta=(DisplayName="Scout: Provider",
+			  EditCondition="bCustomizeAgentModels",
+			  EditConditionHides,
+			  ToolTip="Provider for asset/template discovery. Recommended: fast/cheap model."))
+	EOliveAIProvider ScoutProvider = EOliveAIProvider::OpenRouter;
+
+	/** Model for the Scout agent */
+	UPROPERTY(Config, EditAnywhere, Category="Agent Pipeline",
+		meta=(DisplayName="Scout: Model",
+			  EditCondition="bCustomizeAgentModels",
+			  EditConditionHides))
+	FString ScoutModel = TEXT("anthropic/claude-3-5-haiku-latest");
+
+	// --- Researcher Agent ---
+
+	/** Provider for the Researcher agent (analyzes architecture of existing assets).
+	 *  Only runs for Moderate/Complex tasks. */
+	UPROPERTY(Config, EditAnywhere, Category="Agent Pipeline",
+		meta=(DisplayName="Researcher: Provider",
+			  EditCondition="bCustomizeAgentModels",
+			  EditConditionHides,
+			  ToolTip="Provider for existing asset analysis. Runs only on Moderate/Complex tasks."))
+	EOliveAIProvider ResearcherProvider = EOliveAIProvider::OpenRouter;
+
+	/** Model for the Researcher agent */
+	UPROPERTY(Config, EditAnywhere, Category="Agent Pipeline",
+		meta=(DisplayName="Researcher: Model",
+			  EditCondition="bCustomizeAgentModels",
+			  EditConditionHides))
+	FString ResearcherModel = TEXT("anthropic/claude-3-5-haiku-latest");
+
+	// --- Architect Agent ---
+
+	/** Provider for the Architect agent (produces the Build Plan).
+	 *  This is the most important sub-agent -- use a capable model. */
+	UPROPERTY(Config, EditAnywhere, Category="Agent Pipeline",
+		meta=(DisplayName="Architect: Provider",
+			  EditCondition="bCustomizeAgentModels",
+			  EditConditionHides,
+			  ToolTip="Provider for Build Plan generation. Recommended: capable reasoning model (Sonnet/GPT-4o)."))
+	EOliveAIProvider ArchitectProvider = EOliveAIProvider::OpenRouter;
+
+	/** Model for the Architect agent */
+	UPROPERTY(Config, EditAnywhere, Category="Agent Pipeline",
+		meta=(DisplayName="Architect: Model",
+			  EditCondition="bCustomizeAgentModels",
+			  EditConditionHides))
+	FString ArchitectModel = TEXT("anthropic/claude-sonnet-4");
+
+	// --- Reviewer Agent ---
+
+	/** Provider for the Reviewer agent (checks Builder output against Build Plan).
+	 *  Runs after the Builder completes. */
+	UPROPERTY(Config, EditAnywhere, Category="Agent Pipeline",
+		meta=(DisplayName="Reviewer: Provider",
+			  EditCondition="bCustomizeAgentModels",
+			  EditConditionHides,
+			  ToolTip="Provider for post-build review. Recommended: same tier as Architect."))
+	EOliveAIProvider ReviewerProvider = EOliveAIProvider::OpenRouter;
+
+	/** Model for the Reviewer agent */
+	UPROPERTY(Config, EditAnywhere, Category="Agent Pipeline",
+		meta=(DisplayName="Reviewer: Model",
+			  EditCondition="bCustomizeAgentModels",
+			  EditConditionHides))
+	FString ReviewerModel = TEXT("anthropic/claude-sonnet-4");
+
+	// --- General Pipeline Settings ---
+
+	/** Timeout per agent call in seconds */
+	UPROPERTY(Config, EditAnywhere, Category="Agent Pipeline",
+		meta=(DisplayName="Agent Timeout (seconds)", ClampMin=5, ClampMax=60))
+	int32 AgentTimeoutSeconds = 15;
+
+	/** Run the Reviewer agent after the Builder completes to check plan compliance */
+	UPROPERTY(Config, EditAnywhere, Category="Agent Pipeline",
+		meta=(DisplayName="Enable Post-Build Review"))
+	bool bEnablePostBuildReview = true;
+
+	// ==========================================
 	// Utility Functions
 	// ==========================================
 
@@ -443,6 +556,17 @@ public:
 
 	/** Check if the current provider is configured (has API key) */
 	bool IsProviderConfigured() const;
+
+	/**
+	 * Resolve the provider configuration for a specific agent role.
+	 * When bCustomizeAgentModels is false, returns the main provider+model config.
+	 * When true, returns the per-agent config.
+	 * Falls through to CLI --print if no API key is available.
+	 *
+	 * @param Role  The agent role to resolve
+	 * @return Resolved model configuration (check bIsValid)
+	 */
+	FOliveAgentModelConfig GetAgentModelConfig(EOliveAgentRole Role) const;
 
 	/** Get selected model for a specific provider, with legacy fallback for current provider */
 	FString GetSelectedModelForProvider(EOliveAIProvider InProvider) const;
