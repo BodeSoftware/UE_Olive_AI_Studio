@@ -169,8 +169,8 @@ public:
 	/** Maximum total runtime for autonomous CLI mode (seconds). 0 = no limit.
 	 *  Acts as a cost-control safety net. The activity and idle timeouts catch hung processes. */
 	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
-		meta=(DisplayName="Autonomous Max Runtime (seconds)", ClampMin=0, ClampMax=1800))
-	int32 AutonomousMaxRuntimeSeconds = 900;
+		meta=(DisplayName="Autonomous Max Runtime (seconds)", ClampMin=0, ClampMax=3600))
+	int32 AutonomousMaxRuntimeSeconds = 1800;
 
 	/** Maximum seconds with no MCP tool call before killing an autonomous CLI process.
 	 *  This catches "thinking but not acting" -- the AI produces stdout but makes no progress.

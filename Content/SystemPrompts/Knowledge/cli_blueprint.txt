@@ -102,13 +102,14 @@ templates for each Blueprint need in your plan (or function if doing a function-
 
 ## Pin Name Verification
 
-BEFORE writing a plan_json call with `call` ops, verify the function's actual pin names:
-- If you have a template reference: use `blueprint.get_template(id, pattern="FuncName")` to see real pin names
-- If calling a function you added: the pin names match the parameter names from `blueprint.add_function`
-- If calling a UE engine function: use the Component API Reference (injected above) for signatures. If not listed, call `blueprint.describe_node_type` with the function name to see its pins.
-- NEVER guess pin names from memory. Common mistakes: "Speed" vs "LaunchVelocity", "Location" vs "NewLocation", "Hit from Direction" vs "HitFromDirection"
+Verify pin names when possible — check template references first, then Component API Reference, then describe_node_type. If none of these have the answer, trust your UE5 knowledge and use `@step.auto` for pin wiring — the resolver handles standard pin patterns automatically. Don't simplify your design because you couldn't verify a pin name.
 
-If you're unsure about a pin name, it's faster to check than to fail, rollback, and retry.
+Priority order:
+1. Template references (`blueprint.get_template` with pattern) — highest quality, full node graphs
+2. Component API Reference (injected in pipeline prompt) — function signatures for key components
+3. Functions you added yourself — pin names match the parameter names from `blueprint.add_function`
+4. `@step.auto` — automatic type-based pin matching, works for ~80% of connections
+5. Your UE5 knowledge — you know Unreal. If you know a pin name, use it.
 
 ## plan_json Scope
 - plan_json CREATES new nodes. It cannot reference existing nodes by ID or internal name.

@@ -442,9 +442,9 @@ FString FOliveAgentPipelineResult::FormatForPromptInjection() const
 	{
 		Output += TEXT("4. For each function/event:\n");
 		Output += TEXT("   a. If reference templates are listed above, call `blueprint.get_template(template_id, pattern=\"FunctionName\")` ");
-		Output += TEXT("to see actual pin names and node patterns BEFORE writing plan_json. Do not guess pin names.\n");
-		Output += TEXT("   b. Write graph logic with apply_plan_json. Scale freely -- use as many steps as needed, ");
-		Output += TEXT("but only when you've verified the pin names.\n");
+		Output += TEXT("to study real node patterns and pin names. Use the Component API Reference for function signatures.\n");
+		Output += TEXT("   b. Write graph logic with apply_plan_json. Use `@step.auto` for pin wiring when unsure -- ");
+		Output += TEXT("the resolver handles standard pin patterns automatically. Do not simplify your design.\n");
 		Output += TEXT("   c. Compile after each function. Fix the first error before moving on.\n");
 	}
 

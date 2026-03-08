@@ -5,7 +5,9 @@ UE 5.5 installed at: `C:/Program Files/Epic Games/UE_5.5/`
 PCG plugin headers: `C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/PCG/Source/PCG/Public/`
 
 ## Key Research Reports
-- `plans/research/bow-arrow-session-log-analysis-2026-03-08b.md` — Post-bug-fix run analysis (2026-03-08): 88% tool success, 67% plan_json success, Bug 1 confirmed working, Bug 4 partially broken, 5 new failure patterns documented
+- `plans/research/bow-arrow-session-log-analysis-2026-03-08d.md` — Run 08d: QUALITY RECOVERED. 86% tool success, 57% plan_json (lower but all recovered), ~20min total. No gutted functions. All 3 BPs compile SUCCESS. Reviewer SATISFIED. Fix B triggered x2, worked. 1800s runtime used ~17.8min, no kill. Zero auto-continues. 10 recommendations filed.
+- `plans/research/bow-arrow-session-log-analysis-2026-03-08c.md` — Post-fix run analysis (2026-03-08c): REGRESSION. 77% tool success, 67% plan_json, ~36min total. Fix B (rollback) confirmed x2, Fix A unobservable. describe_node_type failed for SetFieldOfView+K2_AttachToComponent (catalog gaps) → StartAim gutted, NockArrow retried. 900s wall-clock kill mid-work. 8 recommendations filed.
+- `plans/research/bow-arrow-session-log-analysis-2026-03-08b.md` — Previous run: 88% tool success, 67% plan_json, ~19min total
 - `plans/research/pcg-api-ue55.md` — Full PCG plugin public API
 - `plans/research/uanimstatetransitionnode-api-ue55.md` — (exists, topic unknown)
 - `plans/research/log-failure-analysis.md` — Session log failure analysis

@@ -1477,7 +1477,7 @@ FString FOliveCLIProviderBase::BuildContinuationPrompt(const FString& UserMessag
 	{
 		Prompt += TEXT("**Do NOT re-read these assets** -- their current state is shown above.\n");
 		Prompt += TEXT("1. Implement the remaining empty functions (0-1 nodes = empty stubs) using `blueprint.apply_plan_json`.\n");
-		Prompt += TEXT("   Verify pin names before writing plan_json (use template references or blueprint.describe_node_type). Compile after each function's graph is complete.\n");
+		Prompt += TEXT("   Compile after each function's graph is complete. Use `@step.auto` for pin wiring when unsure.\n");
 		Prompt += TEXT("2. Wire event graph logic if needed.\n");
 		Prompt += TEXT("3. Compile each Blueprint and verify 0 errors.\n");
 	}
