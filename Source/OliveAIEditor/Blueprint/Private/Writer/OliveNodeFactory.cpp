@@ -1817,9 +1817,15 @@ UEdGraphNode* FOliveNodeFactory::CreateNodeByClass(
 
 		if (!FuncName.IsEmpty())
 		{
+			// Skip alias map re-resolution when properties were already resolved
+			// by the plan resolver (marked with "_resolved" flag). This prevents
+			// double-aliasing where e.g. "GetForwardVector" gets re-aliased to
+			// the wrong function after the resolver already resolved it correctly.
+			const bool bSkipAlias = Properties.Contains(TEXT("_resolved"));
+
 			// Try resolving the function via FindFunctionEx (searches alias map,
 			// Blueprint hierarchy, SCS components, interfaces, library classes)
-			FOliveFunctionSearchResult SearchResult = FindFunctionEx(FuncName, FuncClassName, Blueprint);
+			FOliveFunctionSearchResult SearchResult = FindFunctionEx(FuncName, FuncClassName, Blueprint, bSkipAlias);
 
 			// If class was specified but search failed, retry without class for broader search
 			if (!SearchResult.IsValid() && !FuncClassName.IsEmpty())
@@ -1828,7 +1834,7 @@ UEdGraphNode* FOliveNodeFactory::CreateNodeByClass(
 					TEXT("CreateNodeByClass: Function '%s' not found on class '%s', "
 						 "retrying broad search"),
 					*FuncName, *FuncClassName);
-				SearchResult = FindFunctionEx(FuncName, TEXT(""), Blueprint);
+				SearchResult = FindFunctionEx(FuncName, TEXT(""), Blueprint, bSkipAlias);
 			}
 
 			if (SearchResult.IsValid())
@@ -1982,7 +1988,7 @@ UClass* FOliveNodeFactory::FindClass(const FString& ClassName)
 	return nullptr;
 }
 
-UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FString& ClassName, UBlueprint* Blueprint, EOliveFunctionMatchMethod* OutMatchMethod)
+UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FString& ClassName, UBlueprint* Blueprint, EOliveFunctionMatchMethod* OutMatchMethod, bool bSkipAliasMap)
 {
 	// Initialize out-param
 	if (OutMatchMethod)
@@ -1993,8 +1999,11 @@ UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FS
 	// --- Step 0: Alias lookup ---
 	// Before any class search, check if the function name is a known alias.
 	// If so, replace with the canonical name for all subsequent searches.
+	// When bSkipAliasMap is true (resolver already resolved the alias), skip
+	// to avoid double-resolution that maps back to the wrong function.
 	FString ResolvedName = FunctionName;
 	bool bUsedAlias = false;
+	if (!bSkipAliasMap)
 	{
 		const TMap<FString, FString>& Aliases = GetAliasMap();
 		FString LowerName = FunctionName.ToLower();
@@ -2132,10 +2141,42 @@ UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FS
 				}
 				else
 				{
+					// Function graph exists but no UFunction on skeleton.
+					// Blueprint likely hasn't been compiled since this function was created.
+					// Refresh nodes to regenerate the skeleton class with function stubs.
 					UE_LOG(LogOliveNodeFactory, Log,
-						TEXT("FindFunction: Found function graph '%s' but no UFunction. "
-							 "Blueprint may need compilation."),
+						TEXT("FindFunction: Found function graph '%s' but no UFunction "
+							 "-- refreshing nodes to update skeleton"),
 						*ResolvedName);
+
+					FBlueprintEditorUtils::RefreshAllNodes(Blueprint);
+
+					// Retry lookup after refresh
+					if (Blueprint->SkeletonGeneratedClass)
+					{
+						FoundFunction = Blueprint->SkeletonGeneratedClass->FindFunctionByName(
+							FName(*ResolvedName));
+					}
+					if (!FoundFunction && Blueprint->GeneratedClass)
+					{
+						FoundFunction = Blueprint->GeneratedClass->FindFunctionByName(
+							FName(*ResolvedName));
+					}
+					if (FoundFunction)
+					{
+						UE_LOG(LogOliveNodeFactory, Log,
+							TEXT("FindFunction('%s'): found after node refresh"),
+							*ResolvedName);
+						ReportMatch(EOliveFunctionMatchMethod::FunctionGraph);
+						return FoundFunction;
+					}
+					else
+					{
+						UE_LOG(LogOliveNodeFactory, Warning,
+							TEXT("FindFunction: Node refresh did not produce UFunction "
+								 "for '%s'. Continuing search."),
+							*ResolvedName);
+					}
 				}
 			}
 		}
@@ -2599,12 +2640,13 @@ UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FS
 FOliveFunctionSearchResult FOliveNodeFactory::FindFunctionEx(
 	const FString& FunctionName,
 	const FString& ClassName,
-	UBlueprint* Blueprint)
+	UBlueprint* Blueprint,
+	bool bSkipAliasMap)
 {
 	FOliveFunctionSearchResult Result;
 
 	// Delegate to existing FindFunction for the actual search
-	Result.Function = FindFunction(FunctionName, ClassName, Blueprint, &Result.MatchMethod);
+	Result.Function = FindFunction(FunctionName, ClassName, Blueprint, &Result.MatchMethod, bSkipAliasMap);
 
 	// If found, populate MatchedClassName and return early -- no search history needed
 	if (Result.Function)

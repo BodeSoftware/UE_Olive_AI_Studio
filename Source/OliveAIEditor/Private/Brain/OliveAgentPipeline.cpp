@@ -19,10 +19,16 @@
 #include "Template/OliveTemplateSystem.h"
 #include "Reader/OliveBlueprintReader.h"
 #include "IR/BlueprintIR.h"
+#include "MCP/OliveMCPServer.h"
+#include "Async/TaskGraphInterfaces.h"
 #include "Containers/Ticker.h"
 #include "HAL/PlatformProcess.h"
+#include "Misc/FileHelper.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "Components/ActorComponent.h"
 #include "UObject/UObjectGlobals.h"
+#include "Writer/OliveClassAPIHelper.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogOliveAgentPipeline, Log, All);
 
@@ -69,7 +75,7 @@ FString RoleToString(EOliveAgentRole Role)
 }
 
 /** Total pipeline timeout in seconds. If exceeded, remaining stages are skipped. */
-static constexpr double PIPELINE_TOTAL_TIMEOUT = 60.0;
+static constexpr double PIPELINE_TOTAL_TIMEOUT = 300.0;
 
 /** Maximum number of existing assets to return from project index search. */
 static constexpr int32 MAX_PROJECT_SEARCH_RESULTS = 20;
@@ -330,10 +336,31 @@ FString FOliveAgentPipelineResult::FormatForPromptInjection() const
 		Output += TEXT("\n\n");
 	}
 
-	// Section 2.5: Implementation Reference (from Scout's auto-loaded template content)
-	if (!Scout.TemplateContent.IsEmpty() && !bWantsSimpleLogic)
+	// Section 2.5: Template references for Builder (fetch full data on demand)
+	if (Scout.TemplateReferences.Num() > 0 && !bWantsSimpleLogic)
 	{
-		Output += Scout.TemplateContent;
+		Output += TEXT("## Implementation Reference Templates\n\n");
+		Output += TEXT("Study these templates before writing graph logic. ");
+		Output += TEXT("Call `blueprint.get_template(template_id, pattern=\"FunctionName\")` to read each function's node patterns.\n\n");
+
+		for (const FOliveTemplateReference& Ref : Scout.TemplateReferences)
+		{
+			Output += TEXT("- **") + Ref.TemplateId + TEXT("**");
+			if (!Ref.ParentClass.IsEmpty())
+			{
+				Output += TEXT(" (") + Ref.ParentClass + TEXT(")");
+			}
+			if (Ref.MatchedFunctions.Num() > 0)
+			{
+				Output += TEXT(": study ");
+				for (int32 i = 0; i < Ref.MatchedFunctions.Num(); i++)
+				{
+					if (i > 0) Output += TEXT(", ");
+					Output += TEXT("`") + Ref.MatchedFunctions[i] + TEXT("`");
+				}
+			}
+			Output += TEXT("\n");
+		}
 		Output += TEXT("\n");
 	}
 
@@ -367,6 +394,14 @@ FString FOliveAgentPipelineResult::FormatForPromptInjection() const
 		Output += TEXT("\n");
 	}
 
+	// Section 3.5: Component API Reference (Aider-style repo map)
+	if (!Architect.ComponentAPIMap.IsEmpty())
+	{
+		Output += TEXT("\n");
+		Output += Architect.ComponentAPIMap;
+		Output += TEXT("\n");
+	}
+
 	// Section 4: Existing Asset Context (from Scout + Researcher)
 	if (Scout.RelevantAssets.Num() > 0)
 	{
@@ -394,23 +429,26 @@ FString FOliveAgentPipelineResult::FormatForPromptInjection() const
 	// Section 5: Execution directive
 	Output += TEXT("## Execution\n\n");
 	Output += TEXT("Follow the Build Plan above. For each asset in Order:\n");
-	Output += TEXT("1. Create structure (components, variables, interfaces, dispatchers)\n");
+	Output += TEXT("1. Create structure first (components, variables, interfaces, dispatchers) -- batch these freely\n");
+	Output += TEXT("2. Add all function signatures -- batch these freely\n");
+	Output += TEXT("3. Compile the structure (catches type errors early)\n");
 
 	if (bWantsSimpleLogic)
 	{
-		Output += TEXT("2. Write graph logic as described in the plan. The user wants ");
+		Output += TEXT("4. Write graph logic as described in the plan. The user wants ");
 		Output += TEXT("placeholder/simple logic -- PrintString stubs are acceptable.\n");
 	}
 	else
 	{
-		Output += TEXT("2. For each function/event:\n");
-		Output += TEXT("   a. If library templates were referenced above, use `blueprint.get_template(template_id, pattern=\"FunctionName\")` ");
-		Output += TEXT("to study how similar functions are built. Base your plan_json on real node patterns.\n");
-		Output += TEXT("   b. Write graph logic with apply_plan_json. Use the actual node types, function calls, ");
-		Output += TEXT("and wiring patterns from the reference -- do not simplify to PrintString.\n");
+		Output += TEXT("4. For each function/event:\n");
+		Output += TEXT("   a. If reference templates are listed above, call `blueprint.get_template(template_id, pattern=\"FunctionName\")` ");
+		Output += TEXT("to see actual pin names and node patterns BEFORE writing plan_json. Do not guess pin names.\n");
+		Output += TEXT("   b. Write graph logic with apply_plan_json. Scale freely -- use as many steps as needed, ");
+		Output += TEXT("but only when you've verified the pin names.\n");
+		Output += TEXT("   c. Compile after each function. Fix the first error before moving on.\n");
 	}
 
-	Output += TEXT("3. Compile to 0 errors before moving to the next asset\n");
+	Output += TEXT("5. Do not move to the next asset until current asset compiles to 0 errors.\n");
 	Output += TEXT("Do not stop until every asset in the plan is fully built and compiled.\n");
 
 	return Output;
@@ -500,7 +538,10 @@ bool FOliveAgentPipeline::SendAgentCompletion(
 		}
 	}
 
-	// --- Tier 3: Claude Code CLI --print ---
+	// --- Tier 3: Claude Code CLI --print via stdin pipe ---
+	// Uses CreateProc + stdin pipe instead of ExecProcess to avoid Windows'
+	// ~32K character limit on command-line arguments. The prompt is piped via
+	// stdin, and stdout is read after the process exits.
 	{
 		if (FOliveClaudeCodeProvider::IsClaudeCodeInstalled())
 		{
@@ -518,49 +559,125 @@ bool FOliveAgentPipeline::SendAgentCompletion(
 					CombinedPrompt = UserPrompt;
 				}
 
-				// Escape double quotes for command line
-				FString EscapedPrompt = CombinedPrompt.Replace(TEXT("\""), TEXT("\\\""));
-
 				const bool bIsJs = ClaudePath.EndsWith(TEXT(".js")) || ClaudePath.EndsWith(TEXT(".mjs"));
 
-				FString StdOut;
-				FString StdErr;
-				int32 ReturnCode = -1;
+				// Args: --print reads from stdin when no prompt argument is given
+				const FString BaseArgs = TEXT("--print --output-format text --max-turns 1");
 
-				const FString Args = FString::Printf(
-					TEXT("--print --output-format text --max-turns 1 \"%s\""),
-					*EscapedPrompt);
-
-				bool bLaunched = false;
+				FString Executable;
+				FString Args;
 				if (bIsJs)
 				{
-					const FString FullArgs = FString::Printf(TEXT("\"%s\" %s"), *ClaudePath, *Args);
-					bLaunched = FPlatformProcess::ExecProcess(
-						TEXT("node"), *FullArgs, &ReturnCode, &StdOut, &StdErr);
+					Executable = TEXT("node");
+					Args = FString::Printf(TEXT("\"%s\" %s"), *ClaudePath, *BaseArgs);
 				}
 				else
 				{
-					bLaunched = FPlatformProcess::ExecProcess(
-						*ClaudePath, *Args, &ReturnCode, &StdOut, &StdErr);
+					Executable = ClaudePath;
+					Args = BaseArgs;
 				}
 
-				if (bLaunched && ReturnCode == 0)
+				// Create pipes for stdin and stdout
+				void* StdoutRead = nullptr;
+				void* StdoutWrite = nullptr;
+				void* StdinRead = nullptr;
+				void* StdinWrite = nullptr;
+
+				if (!FPlatformProcess::CreatePipe(StdoutRead, StdoutWrite))
 				{
-					FString Trimmed = StdOut.TrimStartAndEnd();
-					if (!Trimmed.IsEmpty())
+					UE_LOG(LogOliveAgentPipeline, Verbose,
+						TEXT("[%s] Tier 3: failed to create stdout pipe"), *RoleToString(Role));
+				}
+				else if (!FPlatformProcess::CreatePipe(StdinRead, StdinWrite, /*bWritePipeLocal=*/true))
+				{
+					FPlatformProcess::ClosePipe(StdoutRead, StdoutWrite);
+					UE_LOG(LogOliveAgentPipeline, Verbose,
+						TEXT("[%s] Tier 3: failed to create stdin pipe"), *RoleToString(Role));
+				}
+				else
+				{
+					// Spawn process with pipes
+					uint32 ProcessId = 0;
+					FProcHandle ProcHandle = FPlatformProcess::CreateProc(
+						*Executable, *Args,
+						false, true, true,  // bLaunchDetached, bLaunchHidden, bLaunchReallyHidden
+						&ProcessId, 0, nullptr,
+						StdoutWrite,  // child writes stdout here
+						StdinRead     // child reads stdin from here
+					);
+
+					if (!ProcHandle.IsValid())
 					{
-						OutResponse = Trimmed;
+						FPlatformProcess::ClosePipe(StdoutRead, StdoutWrite);
+						FPlatformProcess::ClosePipe(StdinRead, StdinWrite);
 						UE_LOG(LogOliveAgentPipeline, Verbose,
-							TEXT("[%s] Tier 3 (Claude CLI) success, response length: %d"),
-							*RoleToString(Role), OutResponse.Len());
-						return true;
+							TEXT("[%s] Tier 3: failed to spawn CLI process"), *RoleToString(Role));
+					}
+					else
+					{
+						// Close pipe ends we don't use
+						FPlatformProcess::ClosePipe(nullptr, StdoutWrite);
+						StdoutWrite = nullptr;
+						FPlatformProcess::ClosePipe(StdinRead, nullptr);
+						StdinRead = nullptr;
+
+						// Write prompt via stdin, then close to signal EOF
+						FPlatformProcess::WritePipe(StdinWrite, CombinedPrompt);
+						FPlatformProcess::ClosePipe(nullptr, StdinWrite);
+						StdinWrite = nullptr;
+
+						// Read stdout while waiting for process to exit
+						FString StdOut;
+						const double Tier3Start = FPlatformTime::Seconds();
+						bool bTimedOut = false;
+
+						while (FPlatformProcess::IsProcRunning(ProcHandle))
+						{
+							StdOut += FPlatformProcess::ReadPipe(StdoutRead);
+
+							if (FPlatformTime::Seconds() - Tier3Start >= static_cast<double>(Timeout))
+							{
+								FPlatformProcess::TerminateProc(ProcHandle, true);
+								FPlatformProcess::ClosePipe(StdoutRead, nullptr);
+								bTimedOut = true;
+								UE_LOG(LogOliveAgentPipeline, Warning,
+									TEXT("[%s] Tier 3 (Claude CLI) timed out after %.1fs"),
+									*RoleToString(Role), Timeout);
+								break;
+							}
+
+							FPlatformProcess::Sleep(0.05f);
+						}
+
+						// Read any remaining output after exit (skip if already closed by timeout)
+						if (!bTimedOut)
+						{
+							StdOut += FPlatformProcess::ReadPipe(StdoutRead);
+							FPlatformProcess::ClosePipe(StdoutRead, nullptr);
+						}
+
+						int32 ReturnCode = -1;
+						FPlatformProcess::GetProcReturnCode(ProcHandle, &ReturnCode);
+						FPlatformProcess::CloseProc(ProcHandle);
+
+						if (ReturnCode == 0)
+						{
+							FString Trimmed = StdOut.TrimStartAndEnd();
+							if (!Trimmed.IsEmpty())
+							{
+								OutResponse = Trimmed;
+								UE_LOG(LogOliveAgentPipeline, Verbose,
+									TEXT("[%s] Tier 3 (Claude CLI) success, response length: %d"),
+									*RoleToString(Role), OutResponse.Len());
+								return true;
+							}
+						}
+
+						UE_LOG(LogOliveAgentPipeline, Verbose,
+							TEXT("[%s] Tier 3 (Claude CLI) failed: code=%d, output=%d chars"),
+							*RoleToString(Role), ReturnCode, StdOut.Len());
 					}
 				}
-
-				UE_LOG(LogOliveAgentPipeline, Verbose,
-					TEXT("[%s] Tier 3 (Claude CLI) failed: code=%d, err=%s"),
-					*RoleToString(Role), ReturnCode,
-					StdErr.IsEmpty() ? TEXT("(no stderr)") : *StdErr.Left(200));
 			}
 		}
 	}
@@ -579,6 +696,16 @@ FOliveAgentPipelineResult FOliveAgentPipeline::Execute(
 	const FString& UserMessage,
 	const TArray<FString>& ContextAssetPaths)
 {
+	// Detect CLI-only mode: if all agents would fall through to CLI --print,
+	// use the optimized 2-call path (Scout + Planner) to minimize cold-start overhead.
+	// CLI cold start is ~4-5s per process, so 5 sequential agents = 20-25s overhead.
+	if (IsCLIOnlyMode())
+	{
+		UE_LOG(LogOliveAgentPipeline, Log,
+			TEXT("CLI-only mode detected. Using optimized 2-call pipeline (Scout + Planner)."));
+		return ExecuteCLIPath(UserMessage, ContextAssetPaths);
+	}
+
 	FOliveAgentPipelineResult Result;
 	const double PipelineStartTime = FPlatformTime::Seconds();
 
@@ -892,81 +1019,65 @@ FOliveScoutResult FOliveAgentPipeline::RunScout(
 	FOliveDiscoveryResult DiscoveryResult = FOliveUtilityModel::RunDiscoveryPass(UserMessage, 8);
 	Result.DiscoveryBlock = FOliveUtilityModel::FormatDiscoveryForPrompt(DiscoveryResult);
 
-	// Part 1.5: Auto-load key function content from top library template matches.
-	// This is a pure C++ operation (lazy-load JSON + format) -- no LLM call, ~0ms.
+	// Part 1.5: Build structural overviews + reference list from top library matches.
+	// GetTemplateOverview() reads from in-memory metadata -- instant, no disk I/O.
 	{
 		const FOliveLibraryIndex& LibIndex = FOliveTemplateSystem::Get().GetLibraryIndex();
 
 		if (LibIndex.IsInitialized())
 		{
-			// Budget: max 2 templates, max 2 functions each, to stay under ~800 tokens
-			static constexpr int32 MAX_TEMPLATE_CONTENT_TEMPLATES = 2;
-			static constexpr int32 MAX_TEMPLATE_CONTENT_FUNCTIONS = 2;
-
+			static constexpr int32 MAX_OVERVIEW_TEMPLATES = 3;
 			int32 TemplatesLoaded = 0;
-			FString ContentBlock;
+			FString OverviewBlock;
 
 			for (const FOliveDiscoveryEntry& Entry : DiscoveryResult.Entries)
 			{
-				if (TemplatesLoaded >= MAX_TEMPLATE_CONTENT_TEMPLATES)
+				if (TemplatesLoaded >= MAX_OVERVIEW_TEMPLATES)
 				{
 					break;
 				}
 
-				// Only auto-load library templates (factory/reference don't have node data)
+				// Only load library templates (factory/reference don't have structural metadata)
 				if (Entry.SourceType != TEXT("library"))
 				{
 					continue;
 				}
 
-				// Only load if there are matched functions (means the search was targeted)
-				if (Entry.MatchedFunctions.Num() == 0)
+				FString Overview = LibIndex.GetTemplateOverview(Entry.TemplateId);
+				if (Overview.IsEmpty())
 				{
 					continue;
 				}
 
-				// Load top matched functions
-				int32 FunctionsLoaded = 0;
-				for (const FString& FuncName : Entry.MatchedFunctions)
+				if (OverviewBlock.IsEmpty())
 				{
-					if (FunctionsLoaded >= MAX_TEMPLATE_CONTENT_FUNCTIONS)
-					{
-						break;
-					}
-
-					FString FuncContent = LibIndex.GetFunctionContent(Entry.TemplateId, FuncName);
-
-					// Skip not-found results
-					if (FuncContent.IsEmpty() || FuncContent.StartsWith(FOliveLibraryIndex::GetFuncNotFoundSentinel()))
-					{
-						continue;
-					}
-
-					if (ContentBlock.IsEmpty())
-					{
-						ContentBlock += TEXT("## Implementation Reference\n\n");
-						ContentBlock += TEXT("These are real function implementations from library templates. ");
-						ContentBlock += TEXT("Study the node patterns, not just the names.\n\n");
-					}
-
-					ContentBlock += FuncContent;
-					ContentBlock += TEXT("\n\n");
-					FunctionsLoaded++;
+					OverviewBlock += TEXT("## Template Architecture Reference\n\n");
+					OverviewBlock += TEXT("Structural overviews of relevant library templates.\n\n");
 				}
 
-				if (FunctionsLoaded > 0)
+				OverviewBlock += Overview;
+				OverviewBlock += TEXT("\n");
+				TemplatesLoaded++;
+
+				// Build reference entry for Builder
+				if (Entry.MatchedFunctions.Num() > 0)
 				{
-					TemplatesLoaded++;
+					FOliveTemplateReference Ref;
+					Ref.TemplateId = Entry.TemplateId;
+					Ref.DisplayName = Entry.DisplayName;
+					Ref.ParentClass = Entry.ParentClass;
+					Ref.MatchedFunctions = Entry.MatchedFunctions;
+					Result.TemplateReferences.Add(MoveTemp(Ref));
 				}
 			}
 
-			Result.TemplateContent = ContentBlock;
+			Result.TemplateOverviews = OverviewBlock;
 
-			if (!ContentBlock.IsEmpty())
+			if (!OverviewBlock.IsEmpty())
 			{
 				UE_LOG(LogOliveAgentPipeline, Log,
-					TEXT("  Scout: auto-loaded %d template function(s), %d chars"),
-					TemplatesLoaded, ContentBlock.Len());
+					TEXT("  Scout: loaded %d template overviews, %d chars, %d references"),
+					TemplatesLoaded, OverviewBlock.Len(), Result.TemplateReferences.Num());
 			}
 		}
 	}
@@ -1305,11 +1416,11 @@ FOliveArchitectResult FOliveAgentPipeline::RunArchitect(
 		ArchitectUserPrompt += TEXT("\n");
 	}
 
-	// Implementation reference content (actual function graphs from library templates)
-	if (!ScoutResult.TemplateContent.IsEmpty())
+	// Template structural overviews (architecture-level, no node graph data)
+	if (!ScoutResult.TemplateOverviews.IsEmpty())
 	{
 		ArchitectUserPrompt += TEXT("\n");
-		ArchitectUserPrompt += ScoutResult.TemplateContent;
+		ArchitectUserPrompt += ScoutResult.TemplateOverviews;
 		ArchitectUserPrompt += TEXT("\n");
 	}
 
@@ -1325,6 +1436,9 @@ FOliveArchitectResult FOliveAgentPipeline::RunArchitect(
 
 		// Parse the plan to extract structured data for the Validator
 		ParseBuildPlan(Result.BuildPlan, Result);
+
+		// Build compact API reference for components mentioned in the plan
+		Result.ComponentAPIMap = BuildComponentAPIMap(Result);
 	}
 	else
 	{
@@ -1489,6 +1603,964 @@ FOliveValidatorResult FOliveAgentPipeline::RunValidator(const FOliveArchitectRes
 }
 
 // ---------------------------------------------------------------------------
+// CLI-Optimized Pipeline
+// ---------------------------------------------------------------------------
+
+bool FOliveAgentPipeline::IsCLIOnlyMode() const
+{
+	const UOliveAISettings* Settings = UOliveAISettings::Get();
+	if (!Settings)
+	{
+		return false;
+	}
+
+	// If per-agent models are configured, check whether any agent has API access.
+	// Even one HTTP-capable agent means we should use the full pipeline for that agent.
+	if (Settings->bCustomizeAgentModels)
+	{
+		// Probe representative roles to see if any tier resolves to HTTP
+		static const EOliveAgentRole RolesToProbe[] = {
+			EOliveAgentRole::Router,
+			EOliveAgentRole::Architect
+		};
+
+		for (EOliveAgentRole Role : RolesToProbe)
+		{
+			const FOliveAgentModelConfig AgentConfig = Settings->GetAgentModelConfig(Role);
+			if (AgentConfig.bIsValid && !AgentConfig.bIsCLIFallback)
+			{
+				return false;  // At least one agent has HTTP access
+			}
+		}
+	}
+
+	// If the main provider is HTTP-based, Tier 2 will work for all agents
+	if (Settings->Provider != EOliveAIProvider::ClaudeCode
+		&& Settings->Provider != EOliveAIProvider::Codex)
+	{
+		return false;
+	}
+
+	// All tiers fall through to CLI --print
+	return true;
+}
+
+FOliveAgentPipelineResult FOliveAgentPipeline::ExecuteCLIPath(
+	const FString& UserMessage,
+	const TArray<FString>& ContextAssetPaths)
+{
+	FOliveAgentPipelineResult Result;
+	const double PipelineStartTime = FPlatformTime::Seconds();
+
+	UE_LOG(LogOliveAgentPipeline, Log,
+		TEXT("CLI pipeline starting for message: \"%s\" (%d context assets)"),
+		*UserMessage.Left(100), ContextAssetPaths.Num());
+
+	// --- Skip Router: default to Moderate ---
+	// Saves one CLI cold start (~4-5s). Moderate is the safe middle ground --
+	// it enables Researcher-level analysis (embedded in Planner) without being excessive.
+	Result.Router.Complexity = EOliveTaskComplexity::Moderate;
+	Result.Router.Reasoning = TEXT("CLI mode: Router skipped, defaulted to Moderate");
+	Result.Router.bSuccess = true;
+	Result.Router.ElapsedSeconds = 0.0;
+
+	UE_LOG(LogOliveAgentPipeline, Log,
+		TEXT("  Router: SKIPPED (CLI mode, defaulted to Moderate)"));
+
+	// --- Stage 1: Scout (pure C++ -- zero LLM calls) ---
+	// Template discovery + content auto-load + project index keyword search.
+	// The LLM ranking pass (Part 3 of RunScout) is skipped entirely.
+	{
+		const double ScoutStart = FPlatformTime::Seconds();
+
+		// Part 1: Template discovery pass (pure C++)
+		FOliveDiscoveryResult DiscoveryResult = FOliveUtilityModel::RunDiscoveryPass(UserMessage, 8);
+		Result.Scout.DiscoveryBlock = FOliveUtilityModel::FormatDiscoveryForPrompt(DiscoveryResult);
+
+		// Part 1.5: Build structural overviews + reference list from top library matches.
+		// GetTemplateOverview() reads from in-memory metadata -- instant, no disk I/O.
+		{
+			const FOliveLibraryIndex& LibIndex = FOliveTemplateSystem::Get().GetLibraryIndex();
+
+			if (LibIndex.IsInitialized())
+			{
+				static constexpr int32 MAX_OVERVIEW_TEMPLATES = 3;
+				int32 TemplatesLoaded = 0;
+				FString OverviewBlock;
+
+				for (const FOliveDiscoveryEntry& Entry : DiscoveryResult.Entries)
+				{
+					if (TemplatesLoaded >= MAX_OVERVIEW_TEMPLATES)
+					{
+						break;
+					}
+
+					// Only load library templates (factory/reference don't have structural metadata)
+					if (Entry.SourceType != TEXT("library"))
+					{
+						continue;
+					}
+
+					FString Overview = LibIndex.GetTemplateOverview(Entry.TemplateId);
+					if (Overview.IsEmpty())
+					{
+						continue;
+					}
+
+					if (OverviewBlock.IsEmpty())
+					{
+						OverviewBlock += TEXT("## Template Architecture Reference\n\n");
+						OverviewBlock += TEXT("Structural overviews of relevant library templates.\n\n");
+					}
+
+					OverviewBlock += Overview;
+					OverviewBlock += TEXT("\n");
+					TemplatesLoaded++;
+
+					// Build reference entry for Builder
+					if (Entry.MatchedFunctions.Num() > 0)
+					{
+						FOliveTemplateReference Ref;
+						Ref.TemplateId = Entry.TemplateId;
+						Ref.DisplayName = Entry.DisplayName;
+						Ref.ParentClass = Entry.ParentClass;
+						Ref.MatchedFunctions = Entry.MatchedFunctions;
+						Result.Scout.TemplateReferences.Add(MoveTemp(Ref));
+					}
+				}
+
+				Result.Scout.TemplateOverviews = OverviewBlock;
+
+				if (!OverviewBlock.IsEmpty())
+				{
+					UE_LOG(LogOliveAgentPipeline, Log,
+						TEXT("  Scout (CLI): loaded %d template overviews, %d chars, %d references"),
+						TemplatesLoaded, OverviewBlock.Len(), Result.Scout.TemplateReferences.Num());
+				}
+			}
+		}
+
+		// Part 2: Project index search (pure C++, no LLM ranking)
+		// Include @-mentioned context assets with explicit relevance tag
+		for (const FString& ContextPath : ContextAssetPaths)
+		{
+			TOptional<FOliveAssetInfo> AssetInfo = FOliveProjectIndex::Get().GetAssetByPath(ContextPath);
+			if (AssetInfo.IsSet())
+			{
+				FOliveScoutResult::FAssetEntry Entry;
+				Entry.Path = AssetInfo->Path;
+				Entry.AssetClass = AssetInfo->AssetClass.ToString();
+				Entry.Relevance = TEXT("explicitly referenced by user");
+				Result.Scout.RelevantAssets.Add(MoveTemp(Entry));
+			}
+		}
+
+		// Keyword search for additional related assets (no LLM ranking, just top hits)
+		TArray<FString> Keywords = FOliveUtilityModel::ExtractSearchKeywords(UserMessage, 8);
+		for (const FString& Keyword : Keywords)
+		{
+			TArray<FOliveAssetInfo> SearchResults = FOliveProjectIndex::Get().SearchAssets(Keyword, 5);
+			for (const FOliveAssetInfo& AssetInfo : SearchResults)
+			{
+				// Avoid duplicates
+				bool bAlreadyAdded = false;
+				for (const auto& Existing : Result.Scout.RelevantAssets)
+				{
+					if (Existing.Path == AssetInfo.Path)
+					{
+						bAlreadyAdded = true;
+						break;
+					}
+				}
+				if (bAlreadyAdded)
+				{
+					continue;
+				}
+
+				FOliveScoutResult::FAssetEntry Entry;
+				Entry.Path = AssetInfo.Path;
+				Entry.AssetClass = AssetInfo.AssetClass.ToString();
+				Entry.Relevance = TEXT("keyword match");
+				Result.Scout.RelevantAssets.Add(MoveTemp(Entry));
+
+				if (Result.Scout.RelevantAssets.Num() >= 10)
+				{
+					break;
+				}
+			}
+
+			if (Result.Scout.RelevantAssets.Num() >= 10)
+			{
+				break;
+			}
+		}
+
+		Result.Scout.bSuccess = true;  // Pure C++, always succeeds
+		Result.Scout.ElapsedSeconds = FPlatformTime::Seconds() - ScoutStart;
+
+		UE_LOG(LogOliveAgentPipeline, Log,
+			TEXT("  Scout (CLI, no LLM): %d assets, discovery %d chars, template overviews %d chars, %d refs (%.1fs)"),
+			Result.Scout.RelevantAssets.Num(),
+			Result.Scout.DiscoveryBlock.Len(),
+			Result.Scout.TemplateOverviews.Len(),
+			Result.Scout.TemplateReferences.Num(),
+			Result.Scout.ElapsedSeconds);
+	}
+
+	// --- Stage 2: Planner (MCP-enabled if possible, otherwise single-shot) ---
+	{
+		// Try MCP-enabled Planner first (reads templates on demand via tool calls).
+		// Falls back to single-shot if MCP server isn't running or CLI not available.
+		if (FOliveMCPServer::Get().IsRunning() && FOliveClaudeCodeProvider::IsClaudeCodeInstalled())
+		{
+			Result.Architect = RunPlannerWithTools(UserMessage, Result.Scout, ContextAssetPaths);
+		}
+
+		// Fallback: single-shot Planner with all template data inlined
+		if (!Result.Architect.bSuccess)
+		{
+			UE_LOG(LogOliveAgentPipeline, Log,
+				TEXT("  Planner (MCP) %s, falling back to single-shot"),
+				Result.Architect.ElapsedSeconds > 0.0 ? TEXT("failed") : TEXT("skipped"));
+			Result.Architect = RunPlanner(UserMessage, Result.Scout, ContextAssetPaths);
+		}
+
+		UE_LOG(LogOliveAgentPipeline, Log,
+			TEXT("  Planner (CLI): %s, %d assets in plan, %d chars (%.1fs)"),
+			Result.Architect.bSuccess ? TEXT("success") : TEXT("FAILED"),
+			Result.Architect.AssetOrder.Num(),
+			Result.Architect.BuildPlan.Len(),
+			Result.Architect.ElapsedSeconds);
+	}
+
+	// --- Stage 3: Validator (pure C++, no LLM) ---
+	if (Result.Architect.bSuccess)
+	{
+		Result.Validator = RunValidator(Result.Architect);
+
+		UE_LOG(LogOliveAgentPipeline, Log,
+			TEXT("  Validator: %d issues, blocking=%s (%.3fs)"),
+			Result.Validator.Issues.Num(),
+			Result.Validator.bHasBlockingIssues ? TEXT("YES") : TEXT("no"),
+			Result.Validator.ElapsedSeconds);
+	}
+
+	// The pipeline is valid if the Planner succeeded or Scout produced discovery results
+	Result.bValid = Result.Architect.bSuccess
+		|| !Result.Scout.DiscoveryBlock.IsEmpty()
+		|| Result.Scout.RelevantAssets.Num() > 0;
+
+	Result.TotalElapsedSeconds = FPlatformTime::Seconds() - PipelineStartTime;
+
+	UE_LOG(LogOliveAgentPipeline, Log,
+		TEXT("CLI pipeline complete: valid=%s, %.1fs total"),
+		Result.bValid ? TEXT("true") : TEXT("false"),
+		Result.TotalElapsedSeconds);
+
+	return Result;
+}
+
+FOliveArchitectResult FOliveAgentPipeline::RunPlanner(
+	const FString& UserMessage,
+	const FOliveScoutResult& ScoutResult,
+	const TArray<FString>& ContextAssetPaths)
+{
+	FOliveArchitectResult Result;
+	const double StartTime = FPlatformTime::Seconds();
+
+	// Build user prompt with ALL context (what Router+Scout+Researcher+Architect
+	// normally gather across 4 separate agents)
+	FString PlannerUserPrompt;
+	PlannerUserPrompt.Reserve(8192);
+
+	// Task description
+	PlannerUserPrompt += TEXT("## Task\n\n");
+	PlannerUserPrompt += UserMessage;
+	PlannerUserPrompt += TEXT("\n\n**Complexity**: Moderate\n");
+
+	// Existing assets with inline IR data (replaces Researcher's analysis)
+	if (ScoutResult.RelevantAssets.Num() > 0)
+	{
+		PlannerUserPrompt += TEXT("\n## Existing Assets\n\n");
+
+		const int32 AssetsToAnalyze = FMath::Min(ScoutResult.RelevantAssets.Num(), MAX_RESEARCHER_ASSETS);
+		for (int32 i = 0; i < AssetsToAnalyze; i++)
+		{
+			const FOliveScoutResult::FAssetEntry& Asset = ScoutResult.RelevantAssets[i];
+			PlannerUserPrompt += TEXT("- ");
+			PlannerUserPrompt += Asset.Path;
+			PlannerUserPrompt += TEXT(" (") + Asset.AssetClass + TEXT(")");
+			if (!Asset.Relevance.IsEmpty())
+			{
+				PlannerUserPrompt += TEXT(" -- ") + Asset.Relevance;
+			}
+			PlannerUserPrompt += TEXT("\n");
+
+			// Load Blueprint IR inline (what Researcher normally does in a separate LLM call)
+			if (Asset.AssetClass.Contains(TEXT("Blueprint")))
+			{
+				TOptional<FOliveIRBlueprint> IR = FOliveBlueprintReader::Get().ReadBlueprintSummary(Asset.Path);
+				if (IR.IsSet())
+				{
+					const FOliveIRBlueprint& BP = IR.GetValue();
+					PlannerUserPrompt += TEXT("  Parent: ") + BP.ParentClass.Name + TEXT("\n");
+
+					// Variables (skip SCS-internal)
+					{
+						TArray<FString> VarEntries;
+						for (const FOliveIRVariable& Var : BP.Variables)
+						{
+							if (!Var.Name.StartsWith(TEXT("DefaultComponent_")))
+							{
+								VarEntries.Add(Var.Name + TEXT(" (") + Var.Type.GetDisplayName() + TEXT(")"));
+							}
+						}
+						if (VarEntries.Num() > 0)
+						{
+							PlannerUserPrompt += TEXT("  Variables: ") + FString::Join(VarEntries, TEXT(", ")) + TEXT("\n");
+						}
+					}
+
+					// Components
+					if (BP.Components.Num() > 0)
+					{
+						TArray<FString> CompEntries;
+						for (const FOliveIRComponent& Comp : BP.Components)
+						{
+							CompEntries.Add(Comp.Name + TEXT(" (") + Comp.ComponentClass + TEXT(")"));
+						}
+						PlannerUserPrompt += TEXT("  Components: ") + FString::Join(CompEntries, TEXT(", ")) + TEXT("\n");
+					}
+
+					// Functions
+					if (BP.FunctionNames.Num() > 0)
+					{
+						PlannerUserPrompt += TEXT("  Functions: ") + FString::Join(BP.FunctionNames, TEXT(", ")) + TEXT("\n");
+					}
+
+					// Interfaces
+					if (BP.Interfaces.Num() > 0)
+					{
+						TArray<FString> IntEntries;
+						for (const auto& Iface : BP.Interfaces)
+						{
+							IntEntries.Add(Iface.Name);
+						}
+						PlannerUserPrompt += TEXT("  Interfaces: ") + FString::Join(IntEntries, TEXT(", ")) + TEXT("\n");
+					}
+
+					// Event dispatchers
+					if (BP.EventDispatchers.Num() > 0)
+					{
+						TArray<FString> DispEntries;
+						for (const auto& Disp : BP.EventDispatchers)
+						{
+							DispEntries.Add(Disp.Name);
+						}
+						PlannerUserPrompt += TEXT("  Dispatchers: ") + FString::Join(DispEntries, TEXT(", ")) + TEXT("\n");
+					}
+				}
+			}
+		}
+	}
+
+	// Template discovery block
+	if (!ScoutResult.DiscoveryBlock.IsEmpty())
+	{
+		PlannerUserPrompt += TEXT("\n");
+		PlannerUserPrompt += ScoutResult.DiscoveryBlock;
+		PlannerUserPrompt += TEXT("\n");
+	}
+
+	// Template structural overviews (architecture-level, no node graph data)
+	if (!ScoutResult.TemplateOverviews.IsEmpty())
+	{
+		PlannerUserPrompt += TEXT("\n");
+		PlannerUserPrompt += ScoutResult.TemplateOverviews;
+		PlannerUserPrompt += TEXT("\n");
+	}
+
+	// Send to LLM (uses Architect role for model config -- same tier resolution)
+	FString SystemPrompt = BuildPlannerSystemPrompt();
+	FString Response;
+	FString Error;
+
+	if (SendAgentCompletion(EOliveAgentRole::Architect, SystemPrompt, PlannerUserPrompt, Response, Error))
+	{
+		Result.BuildPlan = Response;
+		Result.bSuccess = true;
+
+		// Parse the plan to extract structured data for the Validator
+		ParseBuildPlan(Result.BuildPlan, Result);
+
+		// Build compact API reference for components mentioned in the plan
+		Result.ComponentAPIMap = BuildComponentAPIMap(Result);
+	}
+	else
+	{
+		UE_LOG(LogOliveAgentPipeline, Warning,
+			TEXT("Planner LLM call failed: %s. No Build Plan produced."), *Error);
+		Result.bSuccess = false;
+	}
+
+	Result.ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
+	return Result;
+}
+
+// ---------------------------------------------------------------------------
+// RunPlannerWithTools -- MCP-enabled Planner
+// ---------------------------------------------------------------------------
+
+FOliveArchitectResult FOliveAgentPipeline::RunPlannerWithTools(
+	const FString& UserMessage,
+	const FOliveScoutResult& ScoutResult,
+	const TArray<FString>& ContextAssetPaths)
+{
+	FOliveArchitectResult Result;
+	const double StartTime = FPlatformTime::Seconds();
+
+	// --- Build user prompt (compact: no template overviews, just headers) ---
+	FString PlannerUserPrompt;
+	PlannerUserPrompt.Reserve(4096);
+
+	// Task description
+	PlannerUserPrompt += TEXT("## Task\n\n");
+	PlannerUserPrompt += UserMessage;
+	PlannerUserPrompt += TEXT("\n\n**Complexity**: Moderate\n");
+
+	// Existing assets with inline IR data (same as RunPlanner)
+	if (ScoutResult.RelevantAssets.Num() > 0)
+	{
+		PlannerUserPrompt += TEXT("\n## Existing Assets\n\n");
+
+		const int32 AssetsToAnalyze = FMath::Min(ScoutResult.RelevantAssets.Num(), MAX_RESEARCHER_ASSETS);
+		for (int32 i = 0; i < AssetsToAnalyze; i++)
+		{
+			const FOliveScoutResult::FAssetEntry& Asset = ScoutResult.RelevantAssets[i];
+			PlannerUserPrompt += TEXT("- ");
+			PlannerUserPrompt += Asset.Path;
+			PlannerUserPrompt += TEXT(" (") + Asset.AssetClass + TEXT(")");
+			if (!Asset.Relevance.IsEmpty())
+			{
+				PlannerUserPrompt += TEXT(" -- ") + Asset.Relevance;
+			}
+			PlannerUserPrompt += TEXT("\n");
+
+			// Load Blueprint IR inline
+			if (Asset.AssetClass.Contains(TEXT("Blueprint")))
+			{
+				TOptional<FOliveIRBlueprint> IR = FOliveBlueprintReader::Get().ReadBlueprintSummary(Asset.Path);
+				if (IR.IsSet())
+				{
+					const FOliveIRBlueprint& BP = IR.GetValue();
+					PlannerUserPrompt += TEXT("  Parent: ") + BP.ParentClass.Name + TEXT("\n");
+
+					// Variables (skip SCS-internal)
+					{
+						TArray<FString> VarEntries;
+						for (const FOliveIRVariable& Var : BP.Variables)
+						{
+							if (!Var.Name.StartsWith(TEXT("DefaultComponent_")))
+							{
+								VarEntries.Add(Var.Name + TEXT(" (") + Var.Type.GetDisplayName() + TEXT(")"));
+							}
+						}
+						if (VarEntries.Num() > 0)
+						{
+							PlannerUserPrompt += TEXT("  Variables: ") + FString::Join(VarEntries, TEXT(", ")) + TEXT("\n");
+						}
+					}
+
+					// Components
+					if (BP.Components.Num() > 0)
+					{
+						TArray<FString> CompEntries;
+						for (const FOliveIRComponent& Comp : BP.Components)
+						{
+							CompEntries.Add(Comp.Name + TEXT(" (") + Comp.ComponentClass + TEXT(")"));
+						}
+						PlannerUserPrompt += TEXT("  Components: ") + FString::Join(CompEntries, TEXT(", ")) + TEXT("\n");
+					}
+
+					// Functions
+					if (BP.FunctionNames.Num() > 0)
+					{
+						PlannerUserPrompt += TEXT("  Functions: ") + FString::Join(BP.FunctionNames, TEXT(", ")) + TEXT("\n");
+					}
+
+					// Interfaces
+					if (BP.Interfaces.Num() > 0)
+					{
+						TArray<FString> IntEntries;
+						for (const auto& Iface : BP.Interfaces)
+						{
+							IntEntries.Add(Iface.Name);
+						}
+						PlannerUserPrompt += TEXT("  Interfaces: ") + FString::Join(IntEntries, TEXT(", ")) + TEXT("\n");
+					}
+
+					// Event dispatchers
+					if (BP.EventDispatchers.Num() > 0)
+					{
+						TArray<FString> DispEntries;
+						for (const auto& Disp : BP.EventDispatchers)
+						{
+							DispEntries.Add(Disp.Name);
+						}
+						PlannerUserPrompt += TEXT("  Dispatchers: ") + FString::Join(DispEntries, TEXT(", ")) + TEXT("\n");
+					}
+				}
+			}
+		}
+	}
+
+	// Template discovery block (compact catalog info)
+	if (!ScoutResult.DiscoveryBlock.IsEmpty())
+	{
+		PlannerUserPrompt += TEXT("\n");
+		PlannerUserPrompt += ScoutResult.DiscoveryBlock;
+		PlannerUserPrompt += TEXT("\n");
+	}
+
+	// Template references as compact headers (~300-400 chars each).
+	// NOTE: TemplateOverviews is intentionally NOT included. The Planner
+	// fetches full details on-demand via get_template tool calls.
+	if (ScoutResult.TemplateReferences.Num() > 0)
+	{
+		PlannerUserPrompt += TEXT("\n## Available Templates\n\n");
+		PlannerUserPrompt += TEXT("Read these with `blueprint.get_template` before writing the Build Plan.\n\n");
+		for (const FOliveTemplateReference& Ref : ScoutResult.TemplateReferences)
+		{
+			PlannerUserPrompt += TEXT("- **") + Ref.DisplayName + TEXT("** (`") + Ref.TemplateId + TEXT("`)");
+			if (!Ref.ParentClass.IsEmpty())
+			{
+				PlannerUserPrompt += TEXT(" -- Parent: ") + Ref.ParentClass;
+			}
+			if (Ref.MatchedFunctions.Num() > 0)
+			{
+				PlannerUserPrompt += TEXT("\n  Matched to your task: ") + FString::Join(Ref.MatchedFunctions, TEXT(", "));
+			}
+			PlannerUserPrompt += TEXT("\n");
+		}
+	}
+
+	// --- Build system prompt ---
+	FString SystemPrompt = BuildPlannerSystemPrompt();
+
+	// Append tool usage instructions
+	SystemPrompt += TEXT("\n\n## Available Tools\n\n");
+	SystemPrompt += TEXT("You have access to these read-only MCP tools:\n");
+	SystemPrompt += TEXT("- `blueprint.get_template(template_id, pattern?)` -- Read a template's structure or a specific function's node graph\n");
+	SystemPrompt += TEXT("- `blueprint.list_templates(query?)` -- Search for templates by keyword\n");
+	SystemPrompt += TEXT("- `blueprint.describe(path)` -- Read an existing Blueprint's structure\n\n");
+
+	if (ScoutResult.TemplateReferences.Num() > 0)
+	{
+		SystemPrompt += TEXT("If templates are listed in the prompt, call `blueprint.get_template` on each matched template ");
+		SystemPrompt += TEXT("to study their function implementations before writing the Build Plan. ");
+		SystemPrompt += TEXT("Base your function descriptions on real patterns you observe.\n");
+	}
+	else
+	{
+		SystemPrompt += TEXT("If no templates are listed, design the plan from your Unreal Engine knowledge.\n");
+	}
+	SystemPrompt += TEXT("When done researching, output ONLY the Build Plan (starting with ## Build Plan header).\n");
+
+	// --- Set MCP tool filter (only read tools) ---
+	// Use exact tool names as prefixes. These are unique enough that no other
+	// tool name starts with any of them (e.g., nothing starts with "blueprint.describe"
+	// other than "blueprint.describe" itself).
+	const TSet<FString> PlannerToolPrefixes = {
+		TEXT("blueprint.get_template"),
+		TEXT("blueprint.list_templates"),
+		TEXT("blueprint.describe")
+	};
+	FOliveMCPServer::Get().SetToolFilter(PlannerToolPrefixes);
+
+	// --- Set up sandbox directory ---
+	const FString SandboxDir = SetupPlannerSandbox();
+	if (SandboxDir.IsEmpty())
+	{
+		UE_LOG(LogOliveAgentPipeline, Warning, TEXT("  Planner (MCP): failed to create sandbox"));
+		FOliveMCPServer::Get().ClearToolFilter();
+		return Result;  // bSuccess = false triggers fallback
+	}
+
+	// --- Spawn CLI process ---
+	const FString ClaudePath = FOliveClaudeCodeProvider::GetClaudeExecutablePath();
+	const bool bIsJs = ClaudePath.EndsWith(TEXT(".js")) || ClaudePath.EndsWith(TEXT(".mjs"));
+
+	// Key differences from SendAgentCompletion Tier 3:
+	// --max-turns 15: enough to read 3-5 templates, not enough for adventures
+	// --output-format stream-json: parseable output for text extraction
+	static constexpr int32 PLANNER_MAX_TURNS = 15;
+	const FString BaseArgs = FString::Printf(
+		TEXT("--print --output-format stream-json --verbose --dangerously-skip-permissions --max-turns %d"),
+		PLANNER_MAX_TURNS);
+
+	FString Executable;
+	FString Args;
+	if (bIsJs)
+	{
+		Executable = TEXT("node");
+		Args = FString::Printf(TEXT("\"%s\" %s"), *ClaudePath, *BaseArgs);
+	}
+	else
+	{
+		Executable = ClaudePath;
+		Args = BaseArgs;
+	}
+
+	// Combine system + user prompt for stdin delivery
+	FString StdinContent = SystemPrompt + TEXT("\n\n---\n\n") + PlannerUserPrompt;
+
+	// Create pipes
+	void* StdoutRead = nullptr;
+	void* StdoutWrite = nullptr;
+	void* StdinRead = nullptr;
+	void* StdinWrite = nullptr;
+
+	bool bPipesOk = FPlatformProcess::CreatePipe(StdoutRead, StdoutWrite)
+		&& FPlatformProcess::CreatePipe(StdinRead, StdinWrite, /*bWritePipeLocal=*/true);
+
+	if (!bPipesOk)
+	{
+		if (StdoutRead)
+		{
+			FPlatformProcess::ClosePipe(StdoutRead, StdoutWrite);
+		}
+		UE_LOG(LogOliveAgentPipeline, Warning, TEXT("  Planner (MCP): failed to create pipes"));
+		FOliveMCPServer::Get().ClearToolFilter();
+		return Result;
+	}
+
+	uint32 ProcessId = 0;
+	FProcHandle ProcHandle = FPlatformProcess::CreateProc(
+		*Executable, *Args,
+		false, true, true,  // bLaunchDetached, bLaunchHidden, bLaunchReallyHidden
+		&ProcessId, 0,
+		*SandboxDir,        // Working directory with .mcp.json
+		StdoutWrite,        // child writes stdout here
+		StdinRead           // child reads stdin from here
+	);
+
+	if (!ProcHandle.IsValid())
+	{
+		FPlatformProcess::ClosePipe(StdoutRead, StdoutWrite);
+		FPlatformProcess::ClosePipe(StdinRead, StdinWrite);
+		UE_LOG(LogOliveAgentPipeline, Warning, TEXT("  Planner (MCP): failed to spawn CLI process"));
+		FOliveMCPServer::Get().ClearToolFilter();
+		return Result;
+	}
+
+	// Close pipe ends we don't use
+	FPlatformProcess::ClosePipe(nullptr, StdoutWrite);
+	StdoutWrite = nullptr;
+	FPlatformProcess::ClosePipe(StdinRead, nullptr);
+	StdinRead = nullptr;
+
+	// Write prompt via stdin, then close to signal EOF
+	FPlatformProcess::WritePipe(StdinWrite, StdinContent);
+	FPlatformProcess::ClosePipe(nullptr, StdinWrite);
+	StdinWrite = nullptr;
+
+	UE_LOG(LogOliveAgentPipeline, Log,
+		TEXT("  Planner (MCP): launched with %d char prompt, max %d turns, PID=%u"),
+		StdinContent.Len(), PLANNER_MAX_TURNS, ProcessId);
+
+	// --- Read loop with tick-pumping ---
+	// Unlike SendAgentCompletion Tier 3 which just sleeps, this pumps the game
+	// thread ticker so the MCP server can process tool calls during our wait.
+	// Tool call flow: Claude -> mcp-bridge.js -> HTTP -> MCP server -> Tick() handler
+	static constexpr double PLANNER_TIMEOUT_SECONDS = 180.0;
+
+	FString RawOutput;
+	bool bTimedOut = false;
+
+	while (FPlatformProcess::IsProcRunning(ProcHandle))
+	{
+		// Read any available stdout
+		RawOutput += FPlatformProcess::ReadPipe(StdoutRead);
+
+		// Check timeout
+		if (FPlatformTime::Seconds() - StartTime >= PLANNER_TIMEOUT_SECONDS)
+		{
+			FPlatformProcess::TerminateProc(ProcHandle, true);
+			bTimedOut = true;
+			UE_LOG(LogOliveAgentPipeline, Warning,
+				TEXT("  Planner (MCP): timed out after %.0fs"), PLANNER_TIMEOUT_SECONDS);
+			break;
+		}
+
+		// Pump game thread ticker (processes MCP HTTP listener)
+		FTSTicker::GetCoreTicker().Tick(0.01f);
+		// Drain game thread task queue — this is where AsyncTask(GameThread) lambdas
+		// from the MCP server's tool dispatch actually execute.
+		// Guard: ProcessThreadUntilIdle asserts if called recursively (e.g., when
+		// we're inside an AsyncTask(GameThread) lambda from auto-continue).
+		if (IsInGameThread() && !FTaskGraphInterface::Get().IsThreadProcessingTasks(ENamedThreads::GameThread))
+		{
+			FTaskGraphInterface::Get().ProcessThreadUntilIdle(ENamedThreads::GameThread);
+		}
+		FPlatformProcess::Sleep(0.01f);
+	}
+
+	// Read remaining output after process exits
+	if (!bTimedOut)
+	{
+		RawOutput += FPlatformProcess::ReadPipe(StdoutRead);
+	}
+	FPlatformProcess::ClosePipe(StdoutRead, nullptr);
+
+	int32 ReturnCode = -1;
+	FPlatformProcess::GetProcReturnCode(ProcHandle, &ReturnCode);
+	FPlatformProcess::CloseProc(ProcHandle);
+
+	// --- Clear tool filter ---
+	FOliveMCPServer::Get().ClearToolFilter();
+
+	// --- Extract final text from stream-json ---
+	if (ReturnCode == 0 || !RawOutput.IsEmpty())
+	{
+		FString PlanText = ParseStreamJsonFinalText(RawOutput);
+		if (!PlanText.IsEmpty())
+		{
+			Result.BuildPlan = PlanText;
+			Result.bSuccess = true;
+			ParseBuildPlan(Result.BuildPlan, Result);
+
+			// Build compact API reference for components mentioned in the plan
+			Result.ComponentAPIMap = BuildComponentAPIMap(Result);
+
+			UE_LOG(LogOliveAgentPipeline, Log,
+				TEXT("  Planner (MCP): success, %d char plan, %d assets, %.1fs"),
+				Result.BuildPlan.Len(), Result.AssetOrder.Num(),
+				FPlatformTime::Seconds() - StartTime);
+		}
+	}
+
+	if (!Result.bSuccess)
+	{
+		UE_LOG(LogOliveAgentPipeline, Warning,
+			TEXT("  Planner (MCP): failed (code=%d, output=%d chars, timedOut=%s)"),
+			ReturnCode, RawOutput.Len(), bTimedOut ? TEXT("true") : TEXT("false"));
+	}
+
+	Result.ElapsedSeconds = FPlatformTime::Seconds() - StartTime;
+	return Result;
+}
+
+// ---------------------------------------------------------------------------
+// SetupPlannerSandbox
+// ---------------------------------------------------------------------------
+
+FString FOliveAgentPipeline::SetupPlannerSandbox()
+{
+	const FString ProjectDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+	const FString SandboxDir = FPaths::Combine(ProjectDir, TEXT("Saved/OliveAI/PlannerSandbox"));
+
+	if (!IFileManager::Get().MakeDirectory(*SandboxDir, /*Tree=*/true))
+	{
+		UE_LOG(LogOliveAgentPipeline, Warning,
+			TEXT("SetupPlannerSandbox: failed to create directory: %s"), *SandboxDir);
+		return FString();
+	}
+
+	// .mcp.json -- same format as FOliveClaudeCodeProvider::WriteProviderSpecificSandboxFiles
+	const FString PluginDir = FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("UE_Olive_AI_Studio")));
+	const FString BridgePath = FPaths::Combine(PluginDir, TEXT("mcp-bridge.js"));
+	FString BridgePathJson = BridgePath.Replace(TEXT("\\"), TEXT("/"));
+
+	const FString McpConfig = FString::Printf(
+		TEXT("{\n")
+		TEXT("  \"mcpServers\": {\n")
+		TEXT("    \"olive-ai-studio\": {\n")
+		TEXT("      \"command\": \"node\",\n")
+		TEXT("      \"args\": [\"%s\"]\n")
+		TEXT("    }\n")
+		TEXT("  }\n")
+		TEXT("}\n"),
+		*BridgePathJson
+	);
+
+	const FString McpConfigPath = FPaths::Combine(SandboxDir, TEXT(".mcp.json"));
+	if (!FFileHelper::SaveStringToFile(McpConfig, *McpConfigPath,
+		FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+	{
+		UE_LOG(LogOliveAgentPipeline, Warning,
+			TEXT("SetupPlannerSandbox: failed to write .mcp.json to %s"), *McpConfigPath);
+		return FString();
+	}
+
+	// CLAUDE.md -- minimal, Planner-specific
+	const FString ClaudeMd =
+		TEXT("# Planner Agent\n\n")
+		TEXT("You are an Unreal Engine Blueprint architect. Your job is to research templates ")
+		TEXT("and produce a Build Plan.\n\n")
+		TEXT("## Rules\n")
+		TEXT("- Use ONLY the MCP tools provided (blueprint.get_template, blueprint.list_templates, blueprint.describe)\n")
+		TEXT("- Do NOT create or modify any files\n")
+		TEXT("- Do NOT use bash, read, write, or any other tools\n")
+		TEXT("- After researching, output the Build Plan as your final text response\n");
+
+	const FString ClaudeMdPath = FPaths::Combine(SandboxDir, TEXT("CLAUDE.md"));
+	if (!FFileHelper::SaveStringToFile(ClaudeMd, *ClaudeMdPath,
+		FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+	{
+		UE_LOG(LogOliveAgentPipeline, Warning,
+			TEXT("SetupPlannerSandbox: failed to write CLAUDE.md to %s"), *ClaudeMdPath);
+		return FString();
+	}
+
+	return SandboxDir;
+}
+
+// ---------------------------------------------------------------------------
+// ParseStreamJsonFinalText
+// ---------------------------------------------------------------------------
+
+FString FOliveAgentPipeline::ParseStreamJsonFinalText(const FString& StreamOutput)
+{
+	TArray<FString> TextBlocks;
+	FString CurrentBlock;
+
+	TArray<FString> Lines;
+	StreamOutput.ParseIntoArrayLines(Lines);
+
+	for (const FString& Line : Lines)
+	{
+		FString Trimmed = Line.TrimStartAndEnd();
+		if (Trimmed.IsEmpty() || !Trimmed.StartsWith(TEXT("{")))
+		{
+			continue;
+		}
+
+		TSharedPtr<FJsonObject> JsonObject;
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Trimmed);
+		if (!FJsonSerializer::Deserialize(Reader, JsonObject) || !JsonObject.IsValid())
+		{
+			continue;
+		}
+
+		FString Type;
+		if (!JsonObject->TryGetStringField(TEXT("type"), Type))
+		{
+			continue;
+		}
+
+		if (Type == TEXT("assistant"))
+		{
+			// Start of a new assistant message -- save any accumulated block
+			if (!CurrentBlock.IsEmpty())
+			{
+				TextBlocks.Add(CurrentBlock);
+				CurrentBlock.Empty();
+			}
+
+			// Extract text content from message.content[]
+			const TSharedPtr<FJsonObject>* MessageObj = nullptr;
+			if (JsonObject->TryGetObjectField(TEXT("message"), MessageObj))
+			{
+				const TArray<TSharedPtr<FJsonValue>>* ContentArray = nullptr;
+				if ((*MessageObj)->TryGetArrayField(TEXT("content"), ContentArray))
+				{
+					for (const TSharedPtr<FJsonValue>& ContentValue : *ContentArray)
+					{
+						const TSharedPtr<FJsonObject>* ContentObj = nullptr;
+						if (ContentValue->TryGetObject(ContentObj))
+						{
+							FString ContentType;
+							if ((*ContentObj)->TryGetStringField(TEXT("type"), ContentType)
+								&& ContentType == TEXT("text"))
+							{
+								FString TextValue;
+								if ((*ContentObj)->TryGetStringField(TEXT("text"), TextValue))
+								{
+									CurrentBlock += TextValue;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		else if (Type == TEXT("content_block_delta"))
+		{
+			// Streaming delta -- accumulate text from delta.text
+			const TSharedPtr<FJsonObject>* DeltaObj = nullptr;
+			if (JsonObject->TryGetObjectField(TEXT("delta"), DeltaObj))
+			{
+				FString DeltaType;
+				if ((*DeltaObj)->TryGetStringField(TEXT("type"), DeltaType)
+					&& DeltaType == TEXT("text_delta"))
+				{
+					FString TextValue;
+					if ((*DeltaObj)->TryGetStringField(TEXT("text"), TextValue))
+					{
+						CurrentBlock += TextValue;
+					}
+				}
+			}
+		}
+		else if (Type == TEXT("tool_use") || Type == TEXT("tool_call")
+			|| Type == TEXT("content_block_start"))
+		{
+			// Tool call boundary -- check if this is a tool_use content block
+			bool bIsToolBlock = (Type == TEXT("tool_use") || Type == TEXT("tool_call"));
+			if (Type == TEXT("content_block_start"))
+			{
+				const TSharedPtr<FJsonObject>* ContentBlockObj = nullptr;
+				if (JsonObject->TryGetObjectField(TEXT("content_block"), ContentBlockObj))
+				{
+					FString BlockType;
+					if ((*ContentBlockObj)->TryGetStringField(TEXT("type"), BlockType)
+						&& BlockType == TEXT("tool_use"))
+					{
+						bIsToolBlock = true;
+					}
+				}
+			}
+
+			if (bIsToolBlock && !CurrentBlock.IsEmpty())
+			{
+				TextBlocks.Add(CurrentBlock);
+				CurrentBlock.Empty();
+			}
+		}
+		// tool_result, result, message_stop, message_start, error -- skip
+	}
+
+	// Save final block
+	if (!CurrentBlock.IsEmpty())
+	{
+		TextBlocks.Add(CurrentBlock);
+	}
+
+	if (TextBlocks.Num() == 0)
+	{
+		// No JSON parsed -- treat raw output as plain text (fallback for
+		// non-stream-json output or if Claude outputs plain text)
+		FString Fallback = StreamOutput.TrimStartAndEnd();
+		return Fallback.IsEmpty() ? FString() : Fallback;
+	}
+
+	// Look for the block containing "## Build Plan" (search from the end)
+	for (int32 i = TextBlocks.Num() - 1; i >= 0; --i)
+	{
+		int32 HeaderIdx = TextBlocks[i].Find(TEXT("## Build Plan"));
+		if (HeaderIdx != INDEX_NONE)
+		{
+			// Extract from "## Build Plan" to end of block
+			return TextBlocks[i].Mid(HeaderIdx).TrimStartAndEnd();
+		}
+	}
+
+	// No "## Build Plan" header found -- return the last text block
+	return TextBlocks.Last().TrimStartAndEnd();
+}
+
+// ---------------------------------------------------------------------------
 // Prompt Builders
 // ---------------------------------------------------------------------------
 
@@ -1637,6 +2709,61 @@ FString FOliveAgentPipeline::BuildReviewerSystemPrompt()
 		"\n"
 		"Be precise. Only report genuinely missing items -- do not flag cosmetic differences "
 		"(naming case, extra helper functions)."
+	);
+}
+
+FString FOliveAgentPipeline::BuildPlannerSystemPrompt()
+{
+	return TEXT(
+		"You are an Unreal Engine Blueprint architect and analyst. Given a task description, "
+		"existing asset data (with Blueprint structure), and template references:\n"
+		"\n"
+		"1. First, analyze the architecture of any existing assets provided "
+		"(parent classes, components, public interfaces, dispatchers). "
+		"Understand how the new assets must interact with them.\n"
+		"\n"
+		"2. Then produce a Build Plan following this format:\n"
+		"\n"
+		"## Build Plan\n"
+		"\n"
+		"### Order\n"
+		"1. BP_Name (create)\n"
+		"2. @ExistingBP (modify)\n"
+		"\n"
+		"### BP_Name\n"
+		"- **Action**: create\n"
+		"- **Parent Class**: <real UE class, e.g., AActor, APawn, ACharacter, UActorComponent>\n"
+		"- **Components**: VarName (UComponentClass) -- purpose\n"
+		"- **Variables**: VarName (Type, default: value) -- purpose\n"
+		"- **Event Dispatchers**: Name(ParamType Param, ...) -- purpose\n"
+		"- **Interfaces**: UInterfaceName -- purpose\n"
+		"- **Functions**: Name(Params) -> ReturnType -- natural language description of logic\n"
+		"- **Events**: EventName [ComponentName if delegate] -- what happens\n"
+		"\n"
+		"### @ExistingBP\n"
+		"- **Action**: modify\n"
+		"- **Add Variables**: ...\n"
+		"- **Add Functions**: ...\n"
+		"- **Add Events**: ...\n"
+		"\n"
+		"### Interactions\n"
+		"- How assets communicate (dispatchers, interfaces, direct calls)\n"
+		"\n"
+		"## Rules\n"
+		"- Order is mandatory: assets must be listed in dependency order\n"
+		"- Use UE class names (Actor, Character, SphereComponent are fine -- Validator normalizes)\n"
+		"- Function logic is natural language (the Builder translates to plan_json)\n"
+		"- For delegate events, specify which component (e.g., OnComponentBeginOverlap [BoxComp])\n"
+		"- Modify blocks (@prefix) only list CHANGES\n"
+		"- If a function needs latent ops (Delay, Timeline), note it must be a Custom Event\n"
+		"- Keep function descriptions to 1-2 sentences\n"
+		"- If Implementation Reference content is provided, study the function graph patterns "
+		"(node types, wiring flow, variable usage) and base your function descriptions on "
+		"those real patterns. Do not simplify to PrintString unless the user explicitly asks for stubs.\n"
+		"- When describing function logic, reference specific patterns you observed "
+		"(e.g., \"line trace -> branch on hit -> apply damage\" not \"deal damage to target\")\n"
+		"\n"
+		"Output ONLY the Build Plan. No preamble, no explanation."
 	);
 }
 
@@ -2122,6 +3249,111 @@ void FOliveAgentPipeline::ParseBuildPlan(
 }
 
 // ---------------------------------------------------------------------------
+// BuildComponentAPIMap -- compact API reference for Builder prompt
+// ---------------------------------------------------------------------------
+
+FString FOliveAgentPipeline::BuildComponentAPIMap(const FOliveArchitectResult& ArchResult)
+{
+	// Budget cap -- keeps the API map to ~750-800 tokens in the Builder prompt
+	static constexpr int32 API_MAP_BUDGET = 3000;
+
+	// Collect unique component class names across all assets
+	TSet<FString> UniqueClassNames;
+	for (const auto& AssetPair : ArchResult.Components)
+	{
+		for (const TPair<FString, FString>& CompPair : AssetPair.Value)
+		{
+			const FString& ClassName = CompPair.Value;
+			if (!ClassName.IsEmpty())
+			{
+				UniqueClassNames.Add(ClassName);
+			}
+		}
+	}
+
+	if (UniqueClassNames.Num() == 0)
+	{
+		return FString();
+	}
+
+	// Resolve each unique class name to a UClass* and format its API summary
+	TArray<TPair<FString, FString>> ClassSummaries; // (DisplayName, FormattedSummary)
+	for (const FString& ClassName : UniqueClassNames)
+	{
+		// Try multiple resolution strategies: exact, U-prefix, stripped-U
+		UClass* ResolvedClass = FindFirstObjectSafe<UClass>(*ClassName);
+		if (!ResolvedClass)
+		{
+			ResolvedClass = FindFirstObjectSafe<UClass>(*(TEXT("U") + ClassName));
+		}
+		if (!ResolvedClass && ClassName.StartsWith(TEXT("U")))
+		{
+			ResolvedClass = FindFirstObjectSafe<UClass>(*ClassName.Mid(1));
+		}
+
+		if (!ResolvedClass)
+		{
+			UE_LOG(LogOliveAgentPipeline, Verbose,
+				TEXT("BuildComponentAPIMap: could not resolve class '%s', skipping"), *ClassName);
+			continue;
+		}
+
+		FString Summary = FOliveClassAPIHelper::FormatCompactAPISummary(ResolvedClass);
+		if (!Summary.IsEmpty())
+		{
+			// Use the short class name without prefix for display
+			FString DisplayName = ResolvedClass->GetName();
+			if (DisplayName.StartsWith(TEXT("U")))
+			{
+				DisplayName = DisplayName.Mid(1);
+			}
+			ClassSummaries.Add(TPair<FString, FString>(DisplayName, Summary));
+		}
+	}
+
+	if (ClassSummaries.Num() == 0)
+	{
+		return FString();
+	}
+
+	// Build the output with budget tracking
+	FString Output;
+	Output.Reserve(API_MAP_BUDGET + 256);
+	Output += TEXT("## Component API Reference\n\n");
+	Output += TEXT("Use set_var/get_var for properties, call for functions.\n");
+
+	int32 CurrentLen = Output.Len();
+	int32 ClassesIncluded = 0;
+
+	for (const TPair<FString, FString>& Entry : ClassSummaries)
+	{
+		// FormatCompactAPISummary already includes the "### ClassName" header
+		FString ClassBlock = TEXT("\n") + Entry.Value;
+
+		if (CurrentLen + ClassBlock.Len() > API_MAP_BUDGET && ClassesIncluded > 0)
+		{
+			// Over budget -- report how many classes were omitted
+			int32 Remaining = ClassSummaries.Num() - ClassesIncluded;
+			if (Remaining > 0)
+			{
+				Output += FString::Printf(TEXT("\n... and %d more component type(s) omitted.\n"), Remaining);
+			}
+			break;
+		}
+
+		Output += ClassBlock;
+		CurrentLen += ClassBlock.Len();
+		ClassesIncluded++;
+	}
+
+	UE_LOG(LogOliveAgentPipeline, Log,
+		TEXT("BuildComponentAPIMap: %d/%d component classes resolved, %d chars"),
+		ClassesIncluded, UniqueClassNames.Num(), Output.Len());
+
+	return Output;
+}
+
+// ---------------------------------------------------------------------------
 // Validator Helpers
 // ---------------------------------------------------------------------------
 
@@ -2464,11 +3696,11 @@ float FOliveAgentPipeline::GetTimeout(EOliveAgentRole Role)
 {
 	switch (Role)
 	{
-	case EOliveAgentRole::Router:     return 10.0f;
-	case EOliveAgentRole::Scout:      return 10.0f;
-	case EOliveAgentRole::Researcher: return 15.0f;
-	case EOliveAgentRole::Architect:  return 30.0f;
-	case EOliveAgentRole::Reviewer:   return 15.0f;
-	default:                          return 15.0f;
+	case EOliveAgentRole::Router:     return 30.0f;
+	case EOliveAgentRole::Scout:      return 30.0f;
+	case EOliveAgentRole::Researcher: return 60.0f;
+	case EOliveAgentRole::Architect:  return 120.0f;
+	case EOliveAgentRole::Reviewer:   return 60.0f;
+	default:                          return 60.0f;
 	}
 }

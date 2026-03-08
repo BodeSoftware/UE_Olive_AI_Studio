@@ -3237,12 +3237,13 @@ FString FOliveLibraryIndex::GetTemplateOverview(const FString& TemplateId) const
 		Result += TEXT("\n");
 	}
 
-	// Functions
+	// Functions -- full detail for every function (tags, descriptions, node counts)
 	if (Info->Functions.Num() > 0)
 	{
 		Result += FString::Printf(TEXT("\nFunctions (%d):\n"), Info->Functions.Num());
-		for (const FOliveLibraryFunctionSummary& Func : Info->Functions)
+		for (int32 i = 0; i < Info->Functions.Num(); i++)
 		{
+			const FOliveLibraryFunctionSummary& Func = Info->Functions[i];
 			Result += FString::Printf(TEXT("  - %s"), *Func.Name);
 			if (Func.NodeCount > 0)
 			{

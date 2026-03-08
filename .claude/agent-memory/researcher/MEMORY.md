@@ -5,6 +5,7 @@ UE 5.5 installed at: `C:/Program Files/Epic Games/UE_5.5/`
 PCG plugin headers: `C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/PCG/Source/PCG/Public/`
 
 ## Key Research Reports
+- `plans/research/bow-arrow-session-log-analysis-2026-03-08b.md` — Post-bug-fix run analysis (2026-03-08): 88% tool success, 67% plan_json success, Bug 1 confirmed working, Bug 4 partially broken, 5 new failure patterns documented
 - `plans/research/pcg-api-ue55.md` — Full PCG plugin public API
 - `plans/research/uanimstatetransitionnode-api-ue55.md` — (exists, topic unknown)
 - `plans/research/log-failure-analysis.md` — Session log failure analysis
@@ -12,6 +13,7 @@ PCG plugin headers: `C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/PCG/Sourc
 - `plans/research/competitive-tool-analysis.md` — Full competitor landscape (AIK, flopperam, chongdashu, gimmeDG, etc.), tool count analysis, MCP spec status
 - `plans/research/competitor-deep-dive-2026-03.md` — DEEP dive: NeoStack AIK (full changelog, ACP/MCP dual transport, Profiles, 500+ checks), Aura 12.0 (Telos 2.0, Dragon Agent, pricing tiers, 43 tools), Ultimate Co-Pilot (Python MCP bridge, scene population), Ludus AI (broken BP repair, coverage gaps), plus full comparison matrix and adoption recommendations
 - `plans/research/multi-agent-architectures.md` — Roo Code boomerang/orchestrator, Aider architect/editor split, Claude Code subagents, Devin 2.0, token optimization patterns, reflection agent research
+- `plans/research/context-management-approaches.md` — Aider/Cursor/Roo/Windsurf/Copilot/Continue context strategies; tiered template overview proposal for Olive Planner
 
 ## PCG API Key Facts (UE 5.5)
 - Module name for PCG plugin is `"PCG"` (add to Build.cs PrivateDependencyModuleNames)
@@ -186,6 +188,29 @@ PCG plugin headers: `C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/PCG/Sourc
 - Root cause of orphaned exec pin after rollback: BeginPlay node was never Modify()-called before the failed plan wired it. K2Schema::TryCreateConnection calls MarkBlueprintAsModified but NOT Node->Modify(). OlivePinConnector calls Blueprint->Modify() but NOT individual node Modify().
 - Fix: In WireExecConnection, check `Pin->bOrphanedPin` before connecting. If true, call `OwningNode->ReconstructNode()` to clear it. Also call `BeginPlayNode->Modify()` before wiring exec in PhaseWireExec.
 - Fix for BuildWiringDiagnostic: add bOrphanedPin check before the generic else block → new EOliveWiringFailureReason::OrphanedPin.
+
+## Template Context Budget (2026-03-07 research)
+- `GetTemplateOverview()` produces ~2,500-4,000 chars per template with 40 functions (3 templates = 27-31K chars)
+- Primary cost is per-function detail: 15 detailed entries at ~100-200 chars each + descriptions/tags
+- Planner/Architect needs: template name, type, description, function names only, fetch hint
+- Planner does NOT need: node counts, per-function description text, per-function tag lists
+- Aider uses signature-only repo map (function declarations, no bodies) — 5-8x smaller than full overview
+- "Lost in the middle" research: LLM accuracy drops 30%+ when relevant info is buried mid-context
+- Recommendation: add `GetTemplateHeaderForPlanner()` (300-400 chars per template) — name + parent + 1-sentence description + comma-separated function names + fetch hint
+- Use `MatchedFunctions` from `FOliveDiscoveryEntry` to highlight relevant functions in the header
+- Cap total `TemplateOverviews` block at 6,000 chars in Scout/ExecuteCLIPath
+- Keep full `GetTemplateOverview()` for `blueprint.get_template` tool responses (Builder use only)
+
+## Error Recovery Patterns (2026-03-07 research)
+- Full report: `plans/research/error-recovery-patterns.md`
+- FUNCTION_NOT_FOUND bug: current `FuzzyMatch()` uses catalog-wide search → returns wrong-class results (e.g., `SetSphereRadius` when asked for `SetSpeed` on ProjectileMovementComponent). Fix: scope to target class via `TFieldIterator<UFunction>(ResolvedClass)`
+- `FindFunctionEx().SearchedLocations` trail is built but NOT included in the error sent to Builder — only goes to UE_LOG. It IS in ErrorMessage string but Suggestion uses wrong-class catalog matches.
+- Property-vs-function confusion: `MaxSpeed` is FProperty not UFunction — Builder should get "use set_var not call" hint when function name matches a property name
+- Four-part actionable error format (practitioner: 20%→95% recovery): (1) error type (2) specific details (3) diagnosis with causes (4) numbered recovery steps with exact tool names
+- Cursor enforces "read before write" via system prompt only — soft, skippable. No tool-layer enforcement exists anywhere yet.
+- Aider repo map = signature-only function list injected upfront — eliminates need for read-before-write entirely; 5-8x smaller than full content
+- Structured reflection (arxiv 2509.18847): explicit diagnose+propose format on failure yields large gains on BFCL v3. Must be structured, not just "think harder."
+- Intrinsic self-correction WITHOUT external validator makes accuracy WORSE (ACL 2025) — don't tell model to reconsider unless you have ground truth to compare against
 
 ## Search Patterns
 - Use `find "C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/..." -name "*.h"` to locate headers

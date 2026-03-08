@@ -136,6 +136,9 @@ struct OLIVEAIEDITOR_API FOlivePlanExecutionContext
     /** Count of issues auto-fixed by executor (Phase 1.5 + Phase 5.5) */
     int32 AutoFixCount = 0;
 
+    /** True if Phase 4 (data wiring) had any failures — forces rollback in AssembleResult */
+    bool bHasDataWireFailure = false;
+
     /** Reverse map: NodeId -> StepId (built from StepToNodeMap during Execute) */
     TMap<FString, FString> NodeIdToStepId;
 

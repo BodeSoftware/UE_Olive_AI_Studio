@@ -4622,6 +4622,9 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveNode(const TS
 		ResultData->SetStringField(TEXT("graph"), GraphName);
 		ResultData->SetStringField(TEXT("node_id"), NodeId);
 		ResultData->SetStringField(TEXT("message"), FString::Printf(TEXT("Successfully removed node '%s'"), *NodeId));
+		ResultData->SetStringField(TEXT("note"),
+			TEXT("Node indices from blueprint.read will have shifted. "
+				 "Re-read the graph before referencing other nodes by index."));
 		ResultData->SetArrayField(TEXT("broken_links"), BrokenLinks);
 		ResultData->SetNumberField(TEXT("broken_link_count"), static_cast<double>(BrokenLinks.Num()));
 

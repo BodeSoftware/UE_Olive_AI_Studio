@@ -518,7 +518,7 @@ protected:
 	bool bIsAutoContinuation = false;
 
 	/** Maximum automatic continuations before giving up and reporting to user */
-	static constexpr int32 MaxAutoContinues = 1;
+	static constexpr int32 MaxAutoContinues = 2;
 
 	/**
 	 * Asset paths from @-mentions in the chat UI, set before the initial autonomous run.

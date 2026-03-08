@@ -265,7 +265,7 @@ public:
 	 * @param OutMatchMethod Optional output: how the function was matched (for interface call detection)
 	 * @return The function if found, nullptr otherwise
 	 */
-	UFunction* FindFunction(const FString& FunctionName, const FString& ClassName = TEXT(""), UBlueprint* Blueprint = nullptr, EOliveFunctionMatchMethod* OutMatchMethod = nullptr);
+	UFunction* FindFunction(const FString& FunctionName, const FString& ClassName = TEXT(""), UBlueprint* Blueprint = nullptr, EOliveFunctionMatchMethod* OutMatchMethod = nullptr, bool bSkipAliasMap = false);
 
 	/**
 	 * Extended FindFunction that collects search history for error messages.
@@ -279,7 +279,8 @@ public:
 	FOliveFunctionSearchResult FindFunctionEx(
 		const FString& FunctionName,
 		const FString& ClassName = TEXT(""),
-		UBlueprint* Blueprint = nullptr);
+		UBlueprint* Blueprint = nullptr,
+		bool bSkipAliasMap = false);
 
 	/**
 	 * Get the last error message from a failed operation

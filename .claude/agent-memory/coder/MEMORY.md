@@ -56,87 +56,17 @@
 ## Completed Phases (see plans/ for details)
 - Phase 3: Error Recovery, Phase 4: Template System, Pipeline Reliability, Large-Graph Paging, Tool Resilience (T0)
 
-## Delegate Ops (call_delegate, call_dispatcher, bind_dispatcher)
-- `OlivePlanOps::CallDelegate = "call_delegate"` and `CallDispatcher = "call_dispatcher"` (alias) in BlueprintPlanIR.h
-- `OlivePlanOps::BindDispatcher = "bind_dispatcher"` in BlueprintPlanIR.h
-- `OliveNodeTypes::CallDelegate = "CallDelegate"` and `BindDelegate = "BindDelegate"` in OliveNodeFactory.h
-- `ResolveCallDelegateOp()`: validates target against BP's NewVariables with `PC_MCDelegate` category; handles both call_delegate and call_dispatcher ops
-- `ResolveBindDelegateOp()`: same validation as call_delegate, sets NodeType to BindDelegate
-- `CreateCallDelegateNode()`: finds `FMulticastDelegateProperty` on SkeletonGeneratedClass (fallback GeneratedClass), uses `UK2Node_CallDelegate` + `SetFromProperty(DelegateProp, true, OwnerClass)`
-- `CreateBindDelegateNode()`: same property lookup, uses `UK2Node_AddDelegate` instead of `UK2Node_CallDelegate`
-- Includes: `K2Node_CallDelegate.h`, `K2Node_AddDelegate.h` (from BlueprintGraph module)
-- Both ops: `bIsPure = false` (delegate ops have exec pins)
-- UK2Node_AddDelegate has a "Delegate" pin (friendly name "Event") for wiring to custom events
-- gun.json template: dispatcher steps use `call_delegate` instead of `call`; timer uses `SetTimerByFunctionName` instead of `K2_SetTimerDelegate`
+## Delegate/Event/Interface/Input Ops (see CLAUDE.md for full details)
+- Delegate ops: call_delegate, call_dispatcher, bind_dispatcher
+- Component bound events: UK2Node_ComponentBoundEvent via resolver auto-detection
+- Interface events: bIsInterfaceEvent flag, FunctionCanBePlacedAsEvent() filter
+- Enhanced Input Actions: IA_ prefix detection, UK2Node_EnhancedInputAction
+- Interface calls: EOliveFunctionMatchMethod::InterfaceSearch -> UK2Node_Message
 
-## Timeout & Plan Reliability Fixes (Partial - C1, B1-B3)
-- **C1**: Post-pipeline rollback now checks `status == "partial_success"` in ResultData before rolling back. Partial success (nodes created, some wiring failed) is preserved; only total failures trigger rollback.
-- **B1**: `ResolveStep()` remaps `op: "entry"` -> `op: "event"` early (alias handling). Event dispatch in function graphs checks if target matches function name / "entry" / empty and maps to `FunctionInput` instead of `ResolveEventOp`.
-- **B2**: `ExpandComponentRefs()` now builds `BlueprintVariableNames` set from `Blueprint->NewVariables`. Bare `@VarName` and dotted `@VarName.hint` refs matching BP variables synthesize `_synth_getvar_xxx` get_var steps. Priority: step ID > function param > SCS component > BP variable.
-- **B3**: `ExpandBranchConditions()` new static resolver pass, called after `ExpandPlanInputs` in `Resolve()`. Detects branch steps where Condition `@ref` points to a get_var of non-boolean variable. Synthesizes `Greater_IntInt` (int) or `Greater_DoubleDouble` (float/real) comparison step. UE 5.5 pin category for float/double is `"real"` (not "float"/"double").
-
-## Component Bound Events (UK2Node_ComponentBoundEvent)
-- `OliveNodeTypes::ComponentBoundEvent = "ComponentBoundEvent"` in OliveNodeFactory.h
-- `CreateComponentBoundEventNode()` on FOliveNodeFactory: finds SCS node by component_name, finds FMulticastDelegateProperty on ComponentClass, finds FObjectProperty on GeneratedClass, uses `InitializeComponentBoundEventParams(ComponentProp, DelegateProp)`
-- Required properties: `delegate_name` (e.g., "OnComponentBeginOverlap"), `component_name` (e.g., "CollisionComp")
-- Resolver: `ResolveEventOp` detects non-native event targets by scanning SCS component delegates; fuzzy match with/without "On" prefix
-- Executor: `FindExistingComponentBoundEventNode()` matches by DelegatePropertyName + ComponentPropertyName for reuse
-- Auto-chain works because Plan.Steps[].Op stays "event" (resolver only changes NodeType)
-- Plan syntax: `{"op":"event","target":"OnComponentBeginOverlap","properties":{"component_name":"CollisionComp"}}`
-- Fallback: if resolver can't find SCS match (e.g., no component_name hint, inherited components), passes through to NodeFactory's CreateEventNode which has its own SCS scan
-
-## Interface Event Support (UK2Node_Event with interface EventReference)
-- `FOliveResolvedStep.bIsInterfaceEvent` flag in OliveBlueprintPlanResolver.h, parallel to `bIsInterfaceCall`
-- Resolver: `ResolveEventOp` scans `BP->ImplementedInterfaces` after SCS delegate check, before pass-through
-- Uses `UEdGraphSchema_K2::FunctionCanBePlacedAsEvent()` to filter: only no-output interface functions match
-- For Blueprint Interfaces, functions live on `SkeletonGeneratedClass` (check `ClassGeneratedBy` for BPI vs native)
-- Stores `interface_class` (GetPathName) in Properties for factory fast-path
-- Factory: `CreateEventNode` has two paths: fast (resolver-tagged `interface_class` in Properties) and slow (direct `ImplementedInterfaces` scan for `blueprint.add_node` calls)
-- Node creation: `SetFromField<UFunction>(InterfaceFunc, false)` + `bOverrideFunction = true`
-- Duplicate detection: `FBlueprintEditorUtils::FindOverrideForFunction(Blueprint, InterfaceClass, EventName)`
-- Executor: `FindExistingEventNode` now also iterates `ImplementedInterfaces` after parent class check
-- Priority order: native events > SCS delegates > interface events > Enhanced Input Actions > error
-- Plan syntax: `{"op":"event","target":"Interact"}` (same as native events, auto-detected)
-
-## Enhanced Input Action Support (K2Node_EnhancedInputAction)
-- `OliveNodeTypes::EnhancedInputAction = "EnhancedInputAction"` added to OliveNodeFactory.h
-- `CreateEnhancedInputActionNode()` on FOliveNodeFactory: searches AssetRegistry for UInputAction by name, creates UK2Node_EnhancedInputAction
-- Property: `TObjectPtr<const UInputAction> InputAction` (set BEFORE AllocateDefaultPins)
-- Headers: `K2Node_EnhancedInputAction.h` (from InputBlueprintNodes module), `InputAction.h` (from EnhancedInput module)
-- Build.cs deps: `EnhancedInput`, `InputBlueprintNodes`; uplugin dep: `EnhancedInput` plugin
-- Four-path resolution in CreateEventNode: (1) native function override, (1b) interface event, (2) component delegate, (3) Enhanced Input Action (IA_ prefix)
-- Plan resolver: `ResolveEventOp` detects `IA_` prefix targets, sets NodeType to EnhancedInputAction + `input_action_name` property
-- Plan executor: `FindExistingEnhancedInputNode()` for reuse detection (matches by UInputAction asset name)
-- Asset search: AssetRegistry by class -> direct LoadObject with common paths (/Game/Input/Actions/, /Game/Input/, /Game/)
-- Duplicate detection: only one UK2Node_EnhancedInputAction per UInputAction per graph
-- Auto-chain in PhaseWireExec works because Plan.Steps[].Op is still "event" (resolver only changes NodeType, not Op)
-
-## Resolver Removal: FOliveFunctionResolver Bypassed (Completed)
-- `FOliveFunctionResolver` is now dead code (kept for one release cycle, not called)
-- `ResolveCallOp()` in OliveBlueprintPlanResolver.cpp calls `FOliveNodeFactory::Get().FindFunctionEx()` directly
-- `FindFunction()` is now PUBLIC on FOliveNodeFactory (was private)
-- `FindFunctionEx()` wraps FindFunction + collects SearchedLocations on failure for detailed error messages
-- `FOliveFunctionSearchResult` struct: Function, MatchMethod, MatchedClassName, SearchedLocations, BuildSearchedLocationsString()
-- `FindFunction()` enhanced search order: alias map -> specified class -> GeneratedClass -> FunctionGraphs -> parent class hierarchy -> SCS component classes -> implemented interfaces -> library classes -> universal BFL search (TObjectIterator) -> K2_ fuzzy match (Steps 1-5 classes only)
-- Each class tried with exact name first, then K2_ prefix variant (inline lambda `TryClassWithK2`)
-- `GetAliasMap()` static public method on FOliveNodeFactory (copied verbatim from OliveFunctionResolver)
-- No more "accepted as-is" fallback path -- unknown functions fail at resolution with FUNCTION_NOT_FOUND error
-- `ResolvedOwningClass`, `bIsPure`, `bIsLatent` still populated from `UFunction*` introspection
-
-## FN-4: Interface Message Call Support (Completed)
-- `EOliveFunctionMatchMethod` enum in OliveNodeFactory.h: None, ExactName, AliasMap, GeneratedClass, FunctionGraph, ParentClassSearch, ComponentClassSearch, InterfaceSearch, LibrarySearch, UniversalLibrarySearch, FuzzyK2Match
-- `FindFunction()` has optional `EOliveFunctionMatchMethod* OutMatchMethod` out-param
-- Step 4b in FindFunction: iterates `Blueprint->ImplementedInterfaces`, tries each InterfaceDesc.Interface
-- InterfaceSearch always reported as InterfaceSearch (even if alias was used, since node type depends on it)
-- `CreateCallFunctionNode()`: when MatchMethod==InterfaceSearch, creates `UK2Node_Message` instead of `UK2Node_CallFunction`
-- UK2Node_Message setup: `FunctionReference.SetFromField<UFunction>(Function, false)` (bIsConsideredSelfContext=false preserves interface as MemberParent)
-- `FOliveResolvedStep.bIsInterfaceCall` flag set by ResolveCallOp, propagated via `is_interface_call` property
-- Interface message calls forced `bIsPure = false` (UK2Node_Message::IsNodePure returns false)
-- Include: `K2Node_Message.h` in OliveNodeFactory.cpp
-
-## ExpandedPlan Fix (Round 2 Task 2)
-- `FOlivePlanResolveResult` now carries `ExpandedPlan` field -- the plan after all pre-processing
-- All post-resolve code MUST use `ResolveResult.ExpandedPlan` instead of the original `Plan` variable
+## Key Architecture Notes
+- `ExpandedPlan` field on FOlivePlanResolveResult -- post-resolve code MUST use it, not original Plan
+- FindFunction search: alias -> specified class -> GeneratedClass -> FunctionGraphs -> parent -> SCS -> interfaces -> libraries -> universal BFL -> K2_ fuzzy
+- FindFunctionEx wraps FindFunction with SearchedLocations for error messages
 
 ## Phase 2: Tool Alias Map (P2-1, Completed)
 - `FOliveToolAlias` struct + `GetToolAliases()` in OliveToolRegistry.cpp; `ResolveAlias()`/`IsToolAlias()` public
@@ -211,21 +141,27 @@
 - `TemplateClassName` field stores source template's `DisplayName` for self-call detection in CallFunction classification
 - `VariableExistsOnBlueprint()` checks NewVariables + FlattenedVariableNames + SCS components
 
-## Enriched Wiring Error Messages (Completed)
-- `OliveWiringDiagnostic.h` at `Blueprint/Public/Writer/`
-- Error codes: `DATA_WIRE_INCOMPATIBLE` (plan_json), `BP_CONNECT_PINS_INCOMPATIBLE` (connect_pins)
-- Both Category A (FixableMistake) in SelfCorrectionPolicy
+## Class API Helper + Error Recovery (Phases 1-2, error-recovery-design.md)
+- `OliveClassAPIHelper.h/cpp` at `Blueprint/Public/Writer/` and `Blueprint/Private/Writer/`
+- Static-only class (deleted constructor); no instances, no singleton
+- `GetCallableFunctions()`: TFieldIterator<UFunction> + FUNC_BlueprintCallable filter + 22 prefix exclusions
+- `GetVisibleProperties()`: TFieldIterator<FProperty> + CPF_BlueprintVisible filter, returns TPair<Name, TypeString>
+- `ScoreSimilarity()`: 3-criteria scoring (substring=80/70, prefix=up-to-40, CamelCase-word=up-to-30) -- extracted from OliveNodeFactory fuzzy match
+- `BuildScopedSuggestions()`: cross-match detection (property name contains search or vice versa) for "likely fix" output
+- `FormatCompactAPISummary()`: "### ClassName\nFunctions: ...\nProperties: ..." markdown block
+- Resolver integration: `ResolveCallOp()` tries TargetClass (via FOliveClassResolver::Resolve) then SCS scan (best-score>=30) before catalog fuzzy fallback
+- **FOliveNodeFactory::FindClass is PRIVATE** -- use `FOliveClassResolver::Resolve()` from outside the class
+- Self-correction: FUNCTION_NOT_FOUND now progressive (attempt 1=check scoped suggestions, 2=property/K2_, 3+=read components)
 
-## Agent Pipeline (Phase 8, Phases 2-7 Implemented)
+## Agent Pipeline (Phase 8 + Planner MCP)
 - `FOliveAgentPipeline` at `Public/Brain/OliveAgentPipeline.h` / `Private/Brain/OliveAgentPipeline.cpp`
 - NOT a singleton; stack-instantiate per run (like FOlivePlanExecutor)
-- Pipeline: Router -> Scout -> [Researcher if not Simple] -> Architect -> Validator; Reviewer runs separately post-Builder
-- `SendAgentCompletion()`: 3-tier fallback (agent model config -> main HTTP provider -> Claude CLI --print)
-- **Critical**: `FOliveUtilityModel::ProviderEnumToName()` is PRIVATE -- local `ProviderEnumToName()` helper in anonymous namespace
-- `BuildAssetStateSummary()` defined in second anonymous namespace block -- forward-declared in first block (C++ merges anonymous namespaces in same TU)
-- Tick-pump pattern: `FTSTicker::GetCoreTicker().Tick(0.01f)` + `FPlatformProcess::Sleep(0.01f)` loop
-- Required includes: `AssetRegistry/AssetRegistryModule.h`, `Components/ActorComponent.h`, `UObject/UObjectGlobals.h`
-- `FindFirstObject<UClass>(*Name, EFindFirstObjectOptions::NativeFirst)` for class resolution (same as OliveClassResolver.cpp)
-- Total pipeline timeout: 60s; per-agent timeouts: Router 10s, Scout 10s, Researcher 15s, Architect 30s, Reviewer 15s
-- Graceful degradation: Router fails -> default Moderate; Scout fails -> unranked context; Researcher fails -> skip; Architect fails -> no plan
-- Class alias table: ~40 common UE short names (Actor, Character, StaticMeshComponent, etc.) for Validator
+- **Two paths**: API (5 agents) and CLI (2 calls). `IsCLIOnlyMode()` detects at top of Execute()
+- **CLI path**: Scout (pure C++) -> RunPlannerWithTools (MCP, fallback RunPlanner) -> Validator (pure C++)
+- **RunPlannerWithTools**: spawns `claude --print --max-turns 15 --output-format stream-json`, MCP tool filter (3 read-only tools), tick-pump read loop with `FTSTicker::GetCoreTicker().Tick(0.01f)`, 180s timeout
+- Tool filter: `SetToolFilter()` with exact tool names as prefixes: `blueprint.get_template`, `blueprint.list_templates`, `blueprint.describe`
+- Sandbox: `Saved/OliveAI/PlannerSandbox/` with `.mcp.json` + `CLAUDE.md`
+- Prompt: compact template headers (not full overviews), tool usage instructions appended to system prompt
+- `ParseStreamJsonFinalText()`: parses stream-json lines, handles `assistant` messages + `content_block_delta` text, extracts `## Build Plan` header block
+- Fallback: if MCP server not running OR CLI not installed OR spawn fails -> single-shot `RunPlanner()`
+- `GetTemplateOverview()` reverted: ALL functions shown with full detail (no MaxDetailedFunctions cap)

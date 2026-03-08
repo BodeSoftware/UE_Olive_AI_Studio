@@ -37,6 +37,26 @@ FOliveToolResult FOliveWriteResult::ToToolResult() const
 	ToolResult.Messages = ValidationMessages;
 	ToolResult.ExecutionTimeMs = ExecutionTimeMs;
 
+	// Safety net: if failure has no messages but has ResultData with error info,
+	// synthesize a message so ToJson() produces a structured error block.
+	if (!bSuccess && ToolResult.Messages.Num() == 0 && ResultData.IsValid())
+	{
+		FString Code, Message, Suggestion;
+		ResultData->TryGetStringField(TEXT("error_code"), Code);
+		ResultData->TryGetStringField(TEXT("error_message"), Message);
+		ResultData->TryGetStringField(TEXT("suggestion"), Suggestion);
+
+		if (!Message.IsEmpty())
+		{
+			FOliveIRMessage SynthMsg;
+			SynthMsg.Severity = EOliveIRSeverity::Error;
+			SynthMsg.Code = Code.IsEmpty() ? TEXT("PIPELINE_ERROR") : Code;
+			SynthMsg.Message = Message;
+			SynthMsg.Suggestion = Suggestion;
+			ToolResult.Messages.Add(MoveTemp(SynthMsg));
+		}
+	}
+
 	return ToolResult;
 }
 

@@ -34,8 +34,8 @@ DEFINE_LOG_CATEGORY_STATIC(LogOliveCLIProvider, Log, All);
 
 namespace
 {
-	/** Flat idle timeout: kill the CLI process if no stdout for 600 seconds. */
-	constexpr double CLI_IDLE_TIMEOUT_SECONDS = 600.0;
+	/** Flat idle timeout: kill the CLI process if no stdout for 120 seconds. */
+	constexpr double CLI_IDLE_TIMEOUT_SECONDS = 120.0;
 
 	/** Determine tool prefixes needed for a given user message.
 	 *  Used in autonomous mode to filter tools/list to only relevant domains. */
@@ -457,9 +457,10 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 		return;
 	}
 
-	// Reset auto-continue counter on user-initiated messages.
+	// Capture auto-continue state before consuming the flag.
 	// bIsAutoContinuation is set by HandleResponseCompleteAutonomous before
 	// dispatching an auto-continue. All other entry paths leave it false.
+	const bool bWasAutoContinuation = bIsAutoContinuation;
 	if (bIsAutoContinuation)
 	{
 		bIsAutoContinuation = false; // Consume the flag
@@ -497,8 +498,11 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 	// Enrich continuation messages with context from the previous run.
 	// This must happen AFTER SetupAutonomousSandbox (which writes CLAUDE.md)
 	// but BEFORE LaunchCLIProcess (which delivers the message via stdin).
+	// bWasAutoContinuation is true when we're auto-continuing (timeout, zero-tool, reviewer) —
+	// those messages are already enriched by BuildContinuationPrompt() at the call site.
+	const bool bIsContinuation = bWasAutoContinuation || IsContinuationMessage(UserMessage);
 	FString EffectiveMessage = UserMessage;
-	if (LastRunContext.bValid && IsContinuationMessage(UserMessage))
+	if (!bWasAutoContinuation && LastRunContext.bValid && IsContinuationMessage(UserMessage))
 	{
 		EffectiveMessage = BuildContinuationPrompt(UserMessage);
 		UE_LOG(LogOliveCLIProvider, Log,
@@ -514,7 +518,7 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 	// Inject @-mentioned asset state into the initial prompt so the AI
 	// doesn't need to re-read assets it's already been pointed at.
 	// Must run on the game thread (BuildAssetStateSummary loads UObjects).
-	if (InitialContextAssetPaths.Num() > 0 && !IsContinuationMessage(UserMessage))
+	if (InitialContextAssetPaths.Num() > 0 && !bIsContinuation)
 	{
 		FString AssetState = BuildAssetStateSummary(InitialContextAssetPaths);
 		if (!AssetState.IsEmpty())
@@ -533,7 +537,7 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 	// Pre-populate related asset context: extract keywords from the user message
 	// and search the project index for potentially relevant existing assets.
 	// This gives the AI awareness of what already exists without needing a search tool call.
-	if (!IsContinuationMessage(UserMessage) && FOliveProjectIndex::Get().IsReady())
+	if (!bIsContinuation && FOliveProjectIndex::Get().IsReady())
 	{
 		TArray<FString> Keywords = ExtractKeywordsFromMessage(UserMessage);
 		if (Keywords.Num() > 0)
@@ -578,7 +582,7 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 	// discovery pass + decomposition directive.
 	// Only run for non-continuation messages with write intent -- read-only queries
 	// ("read BP_Gun", "what does this do") skip the pipeline to avoid wasting 5-30s of LLM calls.
-	if (!IsContinuationMessage(UserMessage) && MessageImpliesMutation(EffectiveMessage))
+	if (!bIsContinuation && MessageImpliesMutation(EffectiveMessage))
 	{
 		// Capture asset paths before they were consumed above by InitialContextAssetPaths.Empty().
 		// The pipeline needs the original @-mentioned assets for Scout/Researcher context.
@@ -617,14 +621,14 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 				TEXT("Agent pipeline failed -- injected fallback decomposition guidance"));
 		}
 	}
-	else if (!IsContinuationMessage(UserMessage))
+	else if (!bIsContinuation)
 	{
 		// Read-only query: reset cached pipeline result so no Reviewer runs later
 		CachedPipelineResult = FOliveAgentPipelineResult();
 	}
 
 	// Guardrail: for write-oriented tasks, require at least one tool call before final text.
-	if (!IsContinuationMessage(UserMessage) && MessageImpliesMutation(UserMessage))
+	if (!bIsContinuation && MessageImpliesMutation(UserMessage))
 	{
 		EffectiveMessage += TEXT("\n\n## Tool Execution Requirement\n");
 		EffectiveMessage += TEXT("Before any final explanation text, execute at least one MCP tool call that makes concrete progress.\n");
@@ -1473,6 +1477,7 @@ FString FOliveCLIProviderBase::BuildContinuationPrompt(const FString& UserMessag
 	{
 		Prompt += TEXT("**Do NOT re-read these assets** -- their current state is shown above.\n");
 		Prompt += TEXT("1. Implement the remaining empty functions (0-1 nodes = empty stubs) using `blueprint.apply_plan_json`.\n");
+		Prompt += TEXT("   Verify pin names before writing plan_json (use template references or blueprint.describe_node_type). Compile after each function's graph is complete.\n");
 		Prompt += TEXT("2. Wire event graph logic if needed.\n");
 		Prompt += TEXT("3. Compile each Blueprint and verify 0 errors.\n");
 	}

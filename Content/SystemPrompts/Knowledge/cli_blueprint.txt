@@ -100,6 +100,16 @@ templates for each Blueprint need in your plan (or function if doing a function-
   (e.g., BP_RangedComponent) and add it to the actor — don't copy the functions onto the
   actor directly. This replicates the same reusable, encapsulated design as the original.
 
+## Pin Name Verification
+
+BEFORE writing a plan_json call with `call` ops, verify the function's actual pin names:
+- If you have a template reference: use `blueprint.get_template(id, pattern="FuncName")` to see real pin names
+- If calling a function you added: the pin names match the parameter names from `blueprint.add_function`
+- If calling a UE engine function: use the Component API Reference (injected above) for signatures. If not listed, call `blueprint.describe_node_type` with the function name to see its pins.
+- NEVER guess pin names from memory. Common mistakes: "Speed" vs "LaunchVelocity", "Location" vs "NewLocation", "Hit from Direction" vs "HitFromDirection"
+
+If you're unsure about a pin name, it's faster to check than to fail, rollback, and retry.
+
 ## plan_json Scope
 - plan_json CREATES new nodes. It cannot reference existing nodes by ID or internal name.
 - If you need to wire FROM an existing node (e.g., a ComponentBoundEvent you placed with add_node), use granular connect_pins with the node_id from blueprint.read.
@@ -117,3 +127,7 @@ templates for each Blueprint need in your plan (or function if doing a function-
 - Component refs: `@ComponentName` auto-expands to get_var (dotless @refs). Do NOT use `@ComponentName.auto` — that looks for a step named "ComponentName".
 - Component classes: StaticMeshComponent, SphereComponent, BoxComponent, CapsuleComponent, ArrowComponent, ProjectileMovementComponent, SceneComponent, AudioComponent
 - If you're struggling with a complex pattern (timelines, animation montages, AI behavior, physics), search blueprint.list_templates(query="timeline") for working examples. Library templates have tagged functions — try different keywords to find relevant implementations.
+
+## Compile-Per-Function
+
+After completing each function's graph logic (regardless of how many plan_json calls it took), compile the Blueprint. Fix the first error before moving to the next function. This catches wiring issues early instead of accumulating errors across 5+ functions.

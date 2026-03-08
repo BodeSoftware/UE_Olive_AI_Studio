@@ -11,6 +11,7 @@
 
 #include "Plan/OliveBlueprintPlanResolver.h"
 #include "Writer/OliveNodeFactory.h"
+#include "Writer/OliveClassAPIHelper.h"
 #include "Catalog/OliveNodeCatalog.h"
 #include "OliveClassResolver.h"
 #include "Engine/Blueprint.h"
@@ -826,11 +827,19 @@ bool FOliveBlueprintPlanResolver::ExpandComponentRefs(
 				{
 					FString PinHint = RefBody.Mid(DotIndex + 1);
 
+					// Strip tilde prefix for parameter name resolution.
+					// The tilde is an executor-level sub-pin hint, not part of the param name.
+					FString ParamLookup = PinHint;
+					if (ParamLookup.StartsWith(TEXT("~")))
+					{
+						ParamLookup = ParamLookup.Mid(1);
+					}
+
 					// Resolve the parameter name to canonical casing from GraphContext
-					FString ParamTarget = PinHint;
+					FString ParamTarget = ParamLookup;
 					for (const FString& ParamName : GraphContext.InputParamNames)
 					{
-						if (ParamName.Equals(PinHint, ESearchCase::IgnoreCase))
+						if (ParamName.Equals(ParamLookup, ESearchCase::IgnoreCase))
 						{
 							ParamTarget = ParamName; // Use canonical casing
 							break;
@@ -1707,31 +1716,120 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 	// --- Function NOT found -- error with search history and suggestions ---
 	TArray<FString> Alternatives;
 
-	// Use catalog fuzzy match for "did you mean?" suggestions
-	FOliveNodeCatalog& Catalog = FOliveNodeCatalog::Get();
-	if (Catalog.IsInitialized())
-	{
-		TArray<FOliveNodeSuggestion> Suggestions = Catalog.FuzzyMatch(Step.Target, CATALOG_SEARCH_LIMIT);
-		for (const FOliveNodeSuggestion& Suggestion : Suggestions)
-		{
-			Alternatives.Add(Suggestion.DisplayName);
-		}
-	}
-
 	// Build detailed error message including search trail
 	FString ErrorMessage = FString::Printf(
 		TEXT("Function '%s' not found. Searched: %s."),
 		*Step.Target, *SearchResult.BuildSearchedLocationsString());
 
-	// Build actionable suggestion
-	FString Suggestion;
-	if (Alternatives.Num() > 0)
+	// Try to resolve a target class for class-scoped suggestions.
+	// Priority: explicit TargetClass > SCS component scan > catalog fuzzy fallback
+	UClass* SuggestionClass = nullptr;
+
+	// 1. Resolve from explicit TargetClass via the class resolver
+	if (!Step.TargetClass.IsEmpty())
 	{
-		Suggestion = FString::Printf(
-			TEXT("Did you mean: %s."),
-			*FString::Join(Alternatives, TEXT(", ")));
+		FOliveClassResolveResult ClassResolve = FOliveClassResolver::Resolve(Step.TargetClass);
+		if (ClassResolve.IsValid())
+		{
+			SuggestionClass = ClassResolve.Class;
+		}
 	}
 
+	// 2. If no explicit class, scan SCS components for a class whose API
+	//    has a plausible match for Step.Target (substring/word overlap)
+	if (!SuggestionClass && BP && BP->SimpleConstructionScript)
+	{
+		int32 BestScore = 0;
+		UClass* BestClass = nullptr;
+
+		TArray<USCS_Node*> AllSCSNodes = BP->SimpleConstructionScript->GetAllNodes();
+		for (USCS_Node* SCSNode : AllSCSNodes)
+		{
+			if (!SCSNode || !SCSNode->ComponentClass)
+			{
+				continue;
+			}
+
+			UClass* CompClass = SCSNode->ComponentClass;
+
+			// Quick check: does any function or property on this class
+			// score above threshold for the failed function name?
+			for (TFieldIterator<UFunction> FuncIt(CompClass, EFieldIteratorFlags::IncludeSuper); FuncIt; ++FuncIt)
+			{
+				const UFunction* Func = *FuncIt;
+				if (!Func || !Func->HasAnyFunctionFlags(FUNC_BlueprintCallable | FUNC_BlueprintPure))
+				{
+					continue;
+				}
+				const int32 Score = FOliveClassAPIHelper::ScoreSimilarity(Func->GetName(), Step.Target);
+				if (Score > BestScore)
+				{
+					BestScore = Score;
+					BestClass = CompClass;
+				}
+			}
+
+			// Also check properties (catches "SetSpeed" -> "MaxSpeed" on the component)
+			for (TFieldIterator<FProperty> PropIt(CompClass, EFieldIteratorFlags::IncludeSuper); PropIt; ++PropIt)
+			{
+				const FProperty* Prop = *PropIt;
+				if (!Prop || !Prop->HasAnyPropertyFlags(CPF_BlueprintVisible | CPF_BlueprintReadOnly))
+				{
+					continue;
+				}
+				const int32 Score = FOliveClassAPIHelper::ScoreSimilarity(Prop->GetName(), Step.Target);
+				if (Score > BestScore)
+				{
+					BestScore = Score;
+					BestClass = CompClass;
+				}
+			}
+		}
+
+		// Require a minimum threshold to avoid spurious matches
+		if (BestScore >= 30 && BestClass)
+		{
+			SuggestionClass = BestClass;
+		}
+	}
+
+	// Build actionable suggestion
+	FString Suggestion;
+
+	if (SuggestionClass)
+	{
+		// Class-scoped suggestions via FOliveClassAPIHelper
+		const FString ScopedSuggestions = FOliveClassAPIHelper::BuildScopedSuggestions(
+			SuggestionClass, Step.Target);
+
+		if (!ScopedSuggestions.IsEmpty())
+		{
+			Suggestion = ScopedSuggestions;
+		}
+	}
+
+	// Fallback to catalog fuzzy match if no class-scoped suggestions were produced
+	if (Suggestion.IsEmpty())
+	{
+		FOliveNodeCatalog& Catalog = FOliveNodeCatalog::Get();
+		if (Catalog.IsInitialized())
+		{
+			TArray<FOliveNodeSuggestion> CatalogSuggestions = Catalog.FuzzyMatch(Step.Target, CATALOG_SEARCH_LIMIT);
+			for (const FOliveNodeSuggestion& CatalogSuggestion : CatalogSuggestions)
+			{
+				Alternatives.Add(CatalogSuggestion.DisplayName);
+			}
+		}
+
+		if (Alternatives.Num() > 0)
+		{
+			Suggestion = FString::Printf(
+				TEXT("Did you mean: %s."),
+				*FString::Join(Alternatives, TEXT(", ")));
+		}
+	}
+
+	// Append target_class advice
 	if (!Step.TargetClass.IsEmpty())
 	{
 		Suggestion += Suggestion.IsEmpty() ? TEXT("") : TEXT(" ");
@@ -2043,19 +2141,29 @@ bool FOliveBlueprintPlanResolver::ResolveSetVarOp(
 			}
 			else
 			{
-				// Variable not found anywhere. Emit a warning (not error) because
-				// another step in the plan may create it, or the generated class
-				// may not be fully compiled yet. The node factory will still attempt
-				// creation via SetSelfMember which may succeed at compile time.
-				Warnings.Add(FString::Printf(
-					TEXT("Step '%s': Variable '%s' not found on Blueprint '%s'. "
-						 "If this is a typo, the node will fail at compile. "
-						 "Components use their variable name from the Components panel."),
-					*Step.StepId, *Step.Target, *BP->GetName()));
+				// Variable not found on this Blueprint, parents, or generated class.
+				TArray<FString> AvailableVars;
+				for (const FBPVariableDescription& Var : BP->NewVariables)
+				{
+					AvailableVars.Add(Var.VarName.ToString());
+				}
 
-				UE_LOG(LogOlivePlanResolver, Warning,
-					TEXT("Step '%s': Variable '%s' not found on Blueprint '%s' or parents or generated class"),
-					*Step.StepId, *Step.Target, *BP->GetName());
+				FString VarListStr = AvailableVars.Num() > 0
+					? FString::Join(AvailableVars, TEXT(", "))
+					: TEXT("(none)");
+
+				Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+					TEXT("VARIABLE_NOT_FOUND"),
+					Step.StepId,
+					FString::Printf(TEXT("/steps/%d/target"), Idx),
+					FString::Printf(
+						TEXT("Variable '%s' does not exist on Blueprint '%s'. "
+							 "Available variables: %s"),
+						*Step.Target, *BP->GetName(), *VarListStr),
+					TEXT("Check the variable name or add the variable first "
+						 "with blueprint.add_variable")));
+
+				return false;
 			}
 		}
 		else

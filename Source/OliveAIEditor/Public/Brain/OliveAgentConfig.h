@@ -53,6 +53,19 @@ struct OLIVEAIEDITOR_API FOliveRouterResult
 };
 
 /**
+ * Compact reference to a library template, for the Builder to fetch on demand.
+ * The Builder calls blueprint.get_template(TemplateId, pattern="FuncName") to read
+ * full node graph data only when it needs it.
+ */
+struct OLIVEAIEDITOR_API FOliveTemplateReference
+{
+	FString TemplateId;
+	FString DisplayName;
+	FString ParentClass;
+	TArray<FString> MatchedFunctions;
+};
+
+/**
  * Scout output: existing assets and templates relevant to the task.
  */
 struct OLIVEAIEDITOR_API FOliveScoutResult
@@ -76,13 +89,17 @@ struct OLIVEAIEDITOR_API FOliveScoutResult
 	FString DiscoveryBlock;   // Pre-formatted markdown from FormatDiscoveryForPrompt
 
 	/**
-	 * Implementation reference content auto-loaded from top library template matches.
-	 * Contains actual function graph data (nodes, connections, pin values) for
-	 * 1-2 key functions from the most relevant library templates.
-	 * Pure C++ operation (no LLM call). Typically 200-800 tokens.
-	 * Empty if no library templates matched or discovery was disabled.
+	 * Structural overviews of top library template matches.
+	 * Uses GetTemplateOverview() -- parent class, components, variables, function signatures.
+	 * ~300-500 chars per template. For Planner/Architect context.
 	 */
-	FString TemplateContent;
+	FString TemplateOverviews;
+
+	/**
+	 * Compact reference list for Builder -- template IDs + matched function names.
+	 * Builder fetches full node data on demand via blueprint.get_template().
+	 */
+	TArray<FOliveTemplateReference> TemplateReferences;
 
 	/** Whether the LLM call succeeded (for relevance ranking). */
 	bool bSuccess = false;
@@ -128,6 +145,9 @@ struct OLIVEAIEDITOR_API FOliveArchitectResult
 
 	/** Per-asset interface list: asset -> [InterfaceName] */
 	TMap<FString, TArray<FString>> Interfaces;
+
+	/** Compact API reference for components mentioned in the Build Plan. Injected into Builder prompt. */
+	FString ComponentAPIMap;
 
 	bool bSuccess = false;
 	double ElapsedSeconds = 0.0;

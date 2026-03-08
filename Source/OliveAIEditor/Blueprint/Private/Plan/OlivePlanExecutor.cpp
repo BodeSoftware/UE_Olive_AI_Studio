@@ -384,6 +384,14 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::Execute(
             TEXT("Phase 4 complete: %d data connections succeeded, %d failed"),
             DataConnectionsSucceeded, DataConnectionsFailed);
 
+        if (DataConnectionsFailed > 0)
+        {
+            Context.bHasDataWireFailure = true;
+            UE_LOG(LogOlivePlanExecutor, Warning,
+                TEXT("Phase 4: %d data wire(s) failed — marking for rollback"),
+                DataConnectionsFailed);
+        }
+
         // Phase 5: Set pin defaults (CONTINUE-ON-FAILURE)
         UE_LOG(LogOlivePlanExecutor, Log, TEXT("Phase 5: Set Pin Defaults"));
         PhaseSetDefaults(Plan, Context);
@@ -811,11 +819,22 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
         const int32 PosX = i * 300;
         const int32 PosY = 0;
 
+        // For call ops that the resolver already resolved (alias -> canonical name,
+        // target_class set), mark properties so FindFunction skips alias re-resolution.
+        // This prevents double-aliasing (e.g. resolver resolves "GetForwardVector" to
+        // KismetMathLibrary::GetForwardVector, then FindFunction re-aliases it back).
+        TMap<FString, FString> NodeProperties = Resolved.Properties;
+        if (NodeType == OliveNodeTypes::CallFunction ||
+            NodeType == OliveNodeTypes::CallDelegate)
+        {
+            NodeProperties.Add(TEXT("_resolved"), TEXT("true"));
+        }
+
         FOliveBlueprintWriteResult WriteResult = Writer.AddNode(
             Context.AssetPath,
             Context.GraphName,
             NodeType,
-            Resolved.Properties,
+            NodeProperties,
             PosX,
             PosY);
 
@@ -3695,6 +3714,14 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::AssembleResult(
     // Partial = nodes created, no connection failures, but some defaults failed (cosmetic)
     Result.bPartial = bAllNodesCreated && !bHasCriticalWiringErrors
         && (Context.FailedDefaultCount > 0);
+
+    // Data wire failures mean the graph is partially wired — force rollback
+    // so residual nodes don't corrupt subsequent plans
+    if (Context.bHasDataWireFailure)
+    {
+        Result.bSuccess = false;
+        Result.bPartial = false;
+    }
 
     // Serialize pin manifests for AI self-correction
     for (const auto& ManifestPair : Context.StepManifests)

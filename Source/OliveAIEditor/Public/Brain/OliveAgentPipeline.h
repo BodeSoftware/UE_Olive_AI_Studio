@@ -94,6 +94,90 @@ private:
 	FOliveValidatorResult RunValidator(const FOliveArchitectResult& ArchitectResult);
 
 	// ==========================================
+	// CLI-Optimized Pipeline (2-call path)
+	// ==========================================
+
+	/**
+	 * Detect whether all agent LLM calls would fall through to CLI --print.
+	 * Returns true when:
+	 * - Main provider is ClaudeCode or Codex
+	 * - No per-agent API model overrides are configured
+	 * This triggers the optimized 2-call path to minimize CLI cold-start overhead.
+	 */
+	bool IsCLIOnlyMode() const;
+
+	/**
+	 * CLI-optimized pipeline: pure-C++ Scout + single Planner LLM call + Validator.
+	 * Reduces 5 sequential CLI invocations to 1, saving ~16-20s of cold-start overhead.
+	 *
+	 * @param UserMessage         The user's original task description
+	 * @param ContextAssetPaths   @-mentioned asset paths from the chat context bar
+	 * @return Pipeline result with all sub-agent outputs
+	 */
+	FOliveAgentPipelineResult ExecuteCLIPath(
+		const FString& UserMessage,
+		const TArray<FString>& ContextAssetPaths);
+
+	/**
+	 * Combined Researcher+Architect in one LLM call (Planner).
+	 * Receives Scout discovery + inline Blueprint IR data and produces the Build Plan directly.
+	 * For CLI path only -- API path uses separate Researcher + Architect stages.
+	 *
+	 * @param UserMessage         The user's original task description
+	 * @param ScoutResult         Discovery and asset results from the pure-C++ Scout
+	 * @param ContextAssetPaths   @-mentioned asset paths for inline IR loading
+	 * @return Architect result with Build Plan
+	 */
+	FOliveArchitectResult RunPlanner(
+		const FString& UserMessage,
+		const FOliveScoutResult& ScoutResult,
+		const TArray<FString>& ContextAssetPaths);
+
+	/**
+	 * CLI-optimized pipeline: Planner with MCP tool access.
+	 * Launches claude --print with --max-turns 15 and a filtered tool set
+	 * (blueprint.get_template, blueprint.list_templates, blueprint.describe).
+	 * The Planner reads template data on demand instead of receiving it all upfront.
+	 *
+	 * Falls back to RunPlanner() (no tools) if:
+	 * - MCP server is not running
+	 * - Claude CLI is not installed
+	 * - Process spawn fails
+	 *
+	 * @param UserMessage         The user's original task description
+	 * @param ScoutResult         Discovery and asset results from the pure-C++ Scout
+	 * @param ContextAssetPaths   @-mentioned asset paths for inline IR loading
+	 * @return Architect result with Build Plan
+	 */
+	FOliveArchitectResult RunPlannerWithTools(
+		const FString& UserMessage,
+		const FOliveScoutResult& ScoutResult,
+		const TArray<FString>& ContextAssetPaths);
+
+	/**
+	 * Set up a minimal sandbox directory for the Planner's CLI process.
+	 * Creates {ProjectDir}/Saved/OliveAI/PlannerSandbox/ with:
+	 * - .mcp.json (MCP server connection via mcp-bridge.js)
+	 * - CLAUDE.md (minimal Planner-specific instructions)
+	 *
+	 * Reuses the same directory across runs (no cleanup needed -- files are overwritten).
+	 *
+	 * @return Absolute path to the sandbox directory, or empty string on failure
+	 */
+	static FString SetupPlannerSandbox();
+
+	/**
+	 * Extract the final text content from stream-json output.
+	 * Parses each line as JSON. Collects text from "assistant" type messages
+	 * (content[].type=="text"), ignoring tool_use, tool_result, and system events.
+	 * Falls back to treating the entire output as plain text if no JSON is found.
+	 *
+	 * @param StreamOutput  Raw stdout from the CLI process (newline-delimited JSON)
+	 * @return The extracted text response (Build Plan)
+	 */
+	static FString ParseStreamJsonFinalText(const FString& StreamOutput);
+
+	// ==========================================
 	// LLM Communication
 	// ==========================================
 
@@ -137,6 +221,9 @@ private:
 	/** Build the Reviewer's system prompt. */
 	static FString BuildReviewerSystemPrompt();
 
+	/** Build the Planner's system prompt (merged Researcher + Architect for CLI path). */
+	static FString BuildPlannerSystemPrompt();
+
 	// ==========================================
 	// Parse Helpers
 	// ==========================================
@@ -156,6 +243,17 @@ private:
 	static void ParseBuildPlan(
 		const FString& BuildPlan,
 		FOliveArchitectResult& OutResult);
+
+	/**
+	 * Build a compact API reference string for components mentioned in the Build Plan.
+	 * Resolves each unique component class name to a UClass, then formats callable
+	 * functions and visible properties via FOliveClassAPIHelper. Caps output at
+	 * ~3000 chars to keep the Builder prompt within token budget.
+	 *
+	 * @param ArchResult  The Architect result containing the Components map
+	 * @return Formatted markdown block, or empty string if no components resolved
+	 */
+	static FString BuildComponentAPIMap(const FOliveArchitectResult& ArchResult);
 
 	// ==========================================
 	// Validator Helpers (C++ engine checks)

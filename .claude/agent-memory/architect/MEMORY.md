@@ -53,6 +53,20 @@
 - **Build Plan schema**: Order, per-asset sections (Action, Parent Class, Components, Variables, Dispatchers, Interfaces, Functions, Events), Interactions.
 - **10-phase implementation order**: Foundation -> Router -> Scout -> Researcher -> Architect -> Validator -> CLIProviderBase -> ConversationManager -> Reviewer -> Polish.
 
+### Planner MCP Tools - Mar 2026
+- `plans/planner-mcp-design.md` -- Give Planner agent MCP tool access instead of single-shot `--print`
+- **Inline process** (NOT via LaunchCLIProcess): Spawn + blocking read loop on game thread, tick-pump enables MCP tool handling
+- **Key insight**: `FTSTicker::Tick()` in read loop processes MCP HTTP requests, enabling tool round-trips
+- **3 new methods**: `RunPlannerWithTools()`, `SetupPlannerSandbox()`, `ParseStreamJsonFinalText()`
+- **Sandbox**: `Saved/OliveAI/PlannerSandbox/` with `.mcp.json` + minimal `CLAUDE.md`
+- **CLI args**: `--print --max-turns 15 --output-format stream-json --verbose --dangerously-skip-permissions`
+- **Tool filter**: Uses existing `SetToolFilter()` with exact tool names as prefixes (unique enough)
+- **Allowed tools**: `blueprint.get_template`, `blueprint.list_templates`, `blueprint.describe`
+- **Timeout**: 180s hard limit (up from 120s single-shot)
+- **Fallback**: If MCP not running or process fails, falls back to existing `RunPlanner()` (single-shot)
+- **Prompt**: Compact template headers (~3-5K) instead of full overviews (~27-31K)
+- **No new files, no new settings**: All changes in OliveAgentPipeline.h/.cpp
+
 ### Pipeline Quality Fix - Mar 2026
 - `plans/pipeline-quality-fix-design.md` -- Fix Builder producing PrintString-only logic
 - **Root causes**: (1) Architect sees template summaries, not implementations; (2) Execution directive kills Builder research agency
@@ -70,6 +84,23 @@
 - `plans/library-clone-design.md` -- `blueprint.create_from_library` tool
 - **FOliveLibraryCloner** NOT a singleton (per-operation). 3 modes: structure, portable, full.
 - 6-phase per-graph pipeline: Classify -> Create -> WireExec -> WireData -> SetDefaults -> AutoLayout
+
+### Error Recovery - Mar 2026
+- `plans/error-recovery-design.md` -- Fix FUNCTION_NOT_FOUND wasting 3-4 turns on wrong-class fuzzy matches
+- **Fix 1**: Class-scoped function+property suggestions in `ResolveCallOp()` error path. Replaces catalog-wide fuzzy match.
+  - Property cross-match detects `SetSpeed` -> `MaxSpeed` and tells Builder to use `set_var` not `call`
+  - Falls back to catalog fuzzy match when no target class can be resolved
+- **Fix 2**: Progressive self-correction in `BuildToolErrorMessage()` for FUNCTION_NOT_FOUND
+  - Attempt 1: read class-scoped suggestions, check for property matches
+  - Attempt 2: call `blueprint.read` to inspect components
+  - Attempt 3+: escalate to `add_node`, `editor.run_python`, or skip
+- **Fix 3**: Aider-style component API map in `FormatForPromptInjection()` (Section 3.5)
+  - `BuildComponentAPIMap()` enumerates functions+properties per component class from Build Plan
+  - Capped at 3000 chars total, 15 functions + 10 properties per class
+  - Populated after `ParseBuildPlan()` in both API and CLI paths
+- **New files**: `OliveClassAPIHelper.h/.cpp` -- shared helper for class API enumeration (used by Fix 1 and Fix 3)
+- **Key filtering rules**: Skip DEPRECATED_, Internal_, PostEditChange, OnRep_ functions; only BlueprintVisible/ReadOnly properties
+- **4-phase implementation**: Shared helper -> Fix 1 (resolver) -> Fix 2 (self-correction) -> Fix 3 (pipeline)
 
 ## UE 5.5 API Quirks
 - `TWeakObjectPtr` does NOT have `IsNull()` -- use `.Get() != nullptr` or `IsValid()` instead

@@ -716,7 +716,18 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 	}
 	else if (ErrorCode == TEXT("FUNCTION_NOT_FOUND"))
 	{
-		Guidance = TEXT("The function was not found. Use blueprint.search_nodes to find the correct function name. Check for K2_ prefixes and class membership.");
+		if (AttemptNum <= 1)
+		{
+			Guidance = TEXT("Check the scoped suggestions in the error above. The correct function name is likely listed there. If a property match is shown, use set_var or get_var instead of call.");
+		}
+		else if (AttemptNum == 2)
+		{
+			Guidance = TEXT("The function name may be a property, not a callable function. Try using set_var (to write) or get_var (to read) with the property name as the target. Also check if the function has a K2_ prefix.");
+		}
+		else
+		{
+			Guidance = TEXT("Call blueprint.read with section='components' to see what components exist and their classes. Then call blueprint.read with section='graph' to inspect existing nodes and pins.");
+		}
 	}
 	else if (ErrorCode == TEXT("DUPLICATE_NATIVE_EVENT"))
 	{
