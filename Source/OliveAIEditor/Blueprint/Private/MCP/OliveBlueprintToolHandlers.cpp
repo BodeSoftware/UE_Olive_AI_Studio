@@ -2300,7 +2300,35 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCompile(const TShar
 	// Build result data
 	TSharedPtr<FJsonObject> ResultData = CompileResult.ToJson();
 
-	// Return success even if compilation had errors (the errors are in the result)
+	// Return failure if compilation had errors, so the Builder knows to fix them
+	if (!CompileResult.bSuccess)
+	{
+		// Build a human-readable error summary for the Builder
+		FString ErrorSummary = FString::Printf(
+			TEXT("Compilation FAILED with %d error(s)."),
+			CompileResult.Errors.Num());
+
+		// Include first 5 error messages for immediate visibility
+		const int32 MaxErrors = FMath::Min(CompileResult.Errors.Num(), 5);
+		for (int32 i = 0; i < MaxErrors; ++i)
+		{
+			ErrorSummary += TEXT("\n  - ") + CompileResult.Errors[i].Message;
+		}
+		if (CompileResult.Errors.Num() > MaxErrors)
+		{
+			ErrorSummary += FString::Printf(
+				TEXT("\n  ... and %d more error(s). See 'errors' array in result data."),
+				CompileResult.Errors.Num() - MaxErrors);
+		}
+
+		FOliveToolResult FailResult = FOliveToolResult::Error(
+			TEXT("COMPILE_FAILED"),
+			ErrorSummary,
+			TEXT("Fix the reported errors and compile again"));
+		FailResult.Data = ResultData;  // Full error details still available
+		return FailResult;
+	}
+
 	return FOliveToolResult::Success(ResultData);
 }
 
@@ -8275,12 +8303,24 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 
 				if (!PlanResult.bSuccess)
 				{
-					// Node creation failed entirely
+					// Remove stale step_to_node_map -- these IDs are invalid after rollback
+					ResultData->RemoveField(TEXT("step_to_node_map"));
+					ResultData->SetStringField(TEXT("rollback_warning"),
+						TEXT("All nodes were rolled back. Node IDs are INVALID. Call blueprint.read to get current IDs."));
+
+					// Node creation failed entirely -- transaction rolled back, all node IDs are invalid
+					FString ErrorMsg = FString::Printf(
+						TEXT("Plan execution failed: %d of %d nodes created. "
+							 "IMPORTANT: All nodes from this plan_json call have been ROLLED BACK and removed from the graph. "
+							 "Node IDs from step_to_node_map are NO LONGER VALID. "
+							 "Call blueprint.read on the target function/graph to get current node IDs before "
+							 "referencing any nodes."),
+						static_cast<int32>(PlanResult.StepToNodeMap.Num()),
+						CapturedPlan.Steps.Num());
+
 					FOliveWriteResult ErrorResult = FOliveWriteResult::ExecutionError(
 						TEXT("PLAN_EXECUTION_FAILED"),
-						FString::Printf(TEXT("Plan execution failed: %d of %d nodes created"),
-							static_cast<int32>(PlanResult.StepToNodeMap.Num()),
-							CapturedPlan.Steps.Num()),
+						ErrorMsg,
 						PlanResult.Errors.Num() > 0 ? PlanResult.Errors[0].Suggestion : TEXT(""));
 					ErrorResult.ResultData = ResultData;
 					return ErrorResult;

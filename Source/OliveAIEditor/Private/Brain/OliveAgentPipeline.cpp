@@ -29,6 +29,7 @@
 #include "Components/ActorComponent.h"
 #include "UObject/UObjectGlobals.h"
 #include "Writer/OliveClassAPIHelper.h"
+#include "Interfaces/IPluginManager.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogOliveAgentPipeline, Log, All);
 
@@ -41,6 +42,114 @@ namespace
 
 // Forward declaration -- defined later in file after all class methods
 FString BuildAssetStateSummary(const TArray<FString>& AssetPaths);
+
+/**
+ * Load a knowledge pack file from the plugin's Content/SystemPrompts/Knowledge/ directory.
+ * Returns empty string on failure (caller logs the warning).
+ */
+FString LoadKnowledgePack(const FString& Filename)
+{
+	// Resolve plugin content directory
+	TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("UE_Olive_AI_Studio"));
+	if (!Plugin.IsValid())
+	{
+		UE_LOG(LogOliveAgentPipeline, Warning,
+			TEXT("LoadKnowledgePack: Plugin 'UE_Olive_AI_Studio' not found"));
+		return FString();
+	}
+
+	const FString PluginContentDir = FPaths::Combine(
+		Plugin->GetBaseDir(),
+		TEXT("Content/SystemPrompts/Knowledge"));
+
+	const FString FilePath = FPaths::Combine(PluginContentDir, Filename);
+
+	FString Content;
+	if (!FFileHelper::LoadFileToString(Content, *FilePath))
+	{
+		UE_LOG(LogOliveAgentPipeline, Warning,
+			TEXT("Failed to load knowledge pack: %s"), *FilePath);
+		return FString();
+	}
+	return Content;
+}
+
+/**
+ * Load blueprint_design_patterns.txt but only sections 0-3.
+ * Truncates at the "## 4." header (section 4+ is execution-level detail, not planning).
+ */
+FString LoadDesignPatternsSections0To3()
+{
+	FString Full = LoadKnowledgePack(TEXT("blueprint_design_patterns.txt"));
+	if (Full.IsEmpty()) return Full;
+
+	// Find the "## 4." section header and truncate
+	int32 Section4Pos = Full.Find(TEXT("\n## 4."), ESearchCase::CaseSensitive);
+	if (Section4Pos != INDEX_NONE)
+	{
+		Full.LeftInline(Section4Pos);
+	}
+	return Full;
+}
+
+/**
+ * Build the knowledge injection block for the Planner (used by both RunPlanner and RunPlannerWithTools).
+ * Loads events_vs_functions.txt and blueprint_design_patterns.txt (sections 0-3) from disk.
+ * Falls back to a minimal inline knowledge block if files cannot be loaded.
+ * Always appends the compact plan_json ops reference.
+ */
+FString BuildPlannerKnowledgeBlock()
+{
+	FString Block;
+	Block.Reserve(12288);
+
+	FString EventsVsFunctions = LoadKnowledgePack(TEXT("events_vs_functions.txt"));
+	FString DesignPatterns = LoadDesignPatternsSections0To3();
+
+	if (!EventsVsFunctions.IsEmpty() || !DesignPatterns.IsEmpty())
+	{
+		Block += TEXT("\n## Blueprint Architecture Knowledge\n\n");
+
+		if (!EventsVsFunctions.IsEmpty())
+		{
+			// Strip the TAGS: header line if present (not useful for the Planner)
+			int32 TagsEnd = EventsVsFunctions.Find(TEXT("\n---\n"));
+			if (TagsEnd != INDEX_NONE)
+			{
+				EventsVsFunctions.RightChopInline(TagsEnd + 5);
+			}
+			Block += EventsVsFunctions;
+			Block += TEXT("\n");
+		}
+
+		if (!DesignPatterns.IsEmpty())
+		{
+			Block += DesignPatterns;
+			Block += TEXT("\n");
+		}
+	}
+	else
+	{
+		// Fallback: if files couldn't be loaded, keep minimal inline knowledge
+		Block += TEXT("\n## Blueprint Architecture Knowledge\n\n");
+		Block += TEXT("- USE A FUNCTION when: returns a value AND logic is synchronous\n");
+		Block += TEXT("- USE AN EVENT when: logic spans multiple frames OR no return value needed\n");
+		Block += TEXT("- Functions CANNOT contain Timeline, Delay, or latent actions\n");
+		Block += TEXT("- Interface: no outputs = implementable event, has outputs = synchronous function\n");
+	}
+
+	// Keep compact ops reference inline (not in the knowledge pack files)
+	Block += TEXT("\n### Plan JSON Ops Reference\n");
+	Block += TEXT("- Dispatchers: use `call_delegate` to fire, `bind_dispatcher` to bind, `call_dispatcher` to call\n");
+	Block += TEXT("- Overlap events: `{\"op\":\"event\",\"target\":\"OnComponentBeginOverlap\",\"properties\":{\"component_name\":\"CompName\"}}`\n");
+	Block += TEXT("- Interface calls: use `target_class` with the interface name\n");
+	Block += TEXT("- Enhanced Input: `{\"op\":\"event\",\"target\":\"IA_ActionName\"}`\n");
+	Block += TEXT("- Timeline nodes require EventGraph -- use Custom Events, not functions\n");
+	Block += TEXT("- plan_json creates NEW nodes only -- cannot reference existing nodes by ID\n");
+	Block += TEXT("- For binding to dispatchers, use granular add_node (K2Node_AssignDelegate), not plan_json\n\n");
+
+	return Block;
+}
 
 /** Convert provider enum to string name for FOliveProviderFactory::CreateProvider(). */
 FString ProviderEnumToName(EOliveAIProvider Provider)
@@ -339,9 +448,10 @@ FString FOliveAgentPipelineResult::FormatForPromptInjection() const
 	// Section 2.5: Template references for Builder (fetch full data on demand)
 	if (Scout.TemplateReferences.Num() > 0 && !bWantsSimpleLogic)
 	{
-		Output += TEXT("## Implementation Reference Templates\n\n");
-		Output += TEXT("Study these templates before writing graph logic. ");
-		Output += TEXT("Call `blueprint.get_template(template_id, pattern=\"FunctionName\")` to read each function's node patterns.\n\n");
+		Output += TEXT("## Reference Templates (fallback)\n\n");
+		Output += TEXT("The Build Plan above contains detailed function descriptions based on these templates. ");
+		Output += TEXT("Only call `blueprint.get_template(template_id, pattern=\"FunctionName\")` if a specific function fails ");
+		Output += TEXT("and you need to see the original node graph for troubleshooting.\n\n");
 
 		for (const FOliveTemplateReference& Ref : Scout.TemplateReferences)
 		{
@@ -352,7 +462,7 @@ FString FOliveAgentPipelineResult::FormatForPromptInjection() const
 			}
 			if (Ref.MatchedFunctions.Num() > 0)
 			{
-				Output += TEXT(": study ");
+				Output += TEXT(": functions ");
 				for (int32 i = 0; i < Ref.MatchedFunctions.Num(); i++)
 				{
 					if (i > 0) Output += TEXT(", ");
@@ -441,10 +551,10 @@ FString FOliveAgentPipelineResult::FormatForPromptInjection() const
 	else
 	{
 		Output += TEXT("4. For each function/event:\n");
-		Output += TEXT("   a. If reference templates are listed above, call `blueprint.get_template(template_id, pattern=\"FunctionName\")` ");
-		Output += TEXT("to study real node patterns and pin names. Use the Component API Reference for function signatures.\n");
-		Output += TEXT("   b. Write graph logic with apply_plan_json. Use `@step.auto` for pin wiring when unsure -- ");
-		Output += TEXT("the resolver handles standard pin patterns automatically. Do not simplify your design.\n");
+		Output += TEXT("   a. Write graph logic with apply_plan_json based on the function description in the Build Plan. ");
+		Output += TEXT("Use `@step.auto` for pin wiring. Do not simplify your design.\n");
+		Output += TEXT("   b. If plan_json fails, check the Reference Templates section -- call ");
+		Output += TEXT("`blueprint.get_template(template_id, pattern=\"FunctionName\")` for the specific failed function only.\n");
 		Output += TEXT("   c. Compile after each function. Fix the first error before moving on.\n");
 	}
 
@@ -1980,6 +2090,9 @@ FOliveArchitectResult FOliveAgentPipeline::RunPlanner(
 		PlannerUserPrompt += TEXT("\n");
 	}
 
+	// Inject comprehensive knowledge packs from disk (same knowledge the Builder gets)
+	PlannerUserPrompt += BuildPlannerKnowledgeBlock();
+
 	// Send to LLM (uses Architect role for model config -- same tier resolution)
 	FString SystemPrompt = BuildPlannerSystemPrompt();
 	FString Response;
@@ -2144,6 +2257,9 @@ FOliveArchitectResult FOliveAgentPipeline::RunPlannerWithTools(
 		}
 	}
 
+	// Inject comprehensive knowledge packs from disk (same knowledge the Builder gets)
+	PlannerUserPrompt += BuildPlannerKnowledgeBlock();
+
 	// --- Build system prompt ---
 	FString SystemPrompt = BuildPlannerSystemPrompt();
 
@@ -2152,7 +2268,8 @@ FOliveArchitectResult FOliveAgentPipeline::RunPlannerWithTools(
 	SystemPrompt += TEXT("You have access to these read-only MCP tools:\n");
 	SystemPrompt += TEXT("- `blueprint.get_template(template_id, pattern?)` -- Read a template's structure or a specific function's node graph\n");
 	SystemPrompt += TEXT("- `blueprint.list_templates(query?)` -- Search for templates by keyword\n");
-	SystemPrompt += TEXT("- `blueprint.describe(path)` -- Read an existing Blueprint's structure\n\n");
+	SystemPrompt += TEXT("- `blueprint.describe(path)` -- Read an existing Blueprint's structure\n");
+	SystemPrompt += TEXT("- `olive.get_recipe(query)` -- Get tested wiring patterns for interfaces, dispatchers, overlap events, timelines, and other common Blueprint patterns\n\n");
 
 	if (ScoutResult.TemplateReferences.Num() > 0)
 	{
@@ -2173,7 +2290,8 @@ FOliveArchitectResult FOliveAgentPipeline::RunPlannerWithTools(
 	const TSet<FString> PlannerToolPrefixes = {
 		TEXT("blueprint.get_template"),
 		TEXT("blueprint.list_templates"),
-		TEXT("blueprint.describe")
+		TEXT("blueprint.describe"),
+		TEXT("olive.get_recipe")
 	};
 	FOliveMCPServer::Get().SetToolFilter(PlannerToolPrefixes);
 
@@ -2737,7 +2855,10 @@ FString FOliveAgentPipeline::BuildPlannerSystemPrompt()
 		"- **Variables**: VarName (Type, default: value) -- purpose\n"
 		"- **Event Dispatchers**: Name(ParamType Param, ...) -- purpose\n"
 		"- **Interfaces**: UInterfaceName -- purpose\n"
-		"- **Functions**: Name(Params) -> ReturnType -- natural language description of logic\n"
+		"- **Functions**: Name(Params) -> ReturnType\n"
+		"  Node-level description: what components/variables are accessed, what functions are called\n"
+		"  (with target classes for component functions), wiring flow, and any gotchas.\n"
+		"  Reference template: template_id:FunctionName (if based on a template)\n"
 		"- **Events**: EventName [ComponentName if delegate] -- what happens\n"
 		"\n"
 		"### @ExistingBP\n"
@@ -2752,16 +2873,21 @@ FString FOliveAgentPipeline::BuildPlannerSystemPrompt()
 		"## Rules\n"
 		"- Order is mandatory: assets must be listed in dependency order\n"
 		"- Use UE class names (Actor, Character, SphereComponent are fine -- Validator normalizes)\n"
-		"- Function logic is natural language (the Builder translates to plan_json)\n"
 		"- For delegate events, specify which component (e.g., OnComponentBeginOverlap [BoxComp])\n"
 		"- Modify blocks (@prefix) only list CHANGES\n"
 		"- If a function needs latent ops (Delay, Timeline), note it must be a Custom Event\n"
-		"- Keep function descriptions to 1-2 sentences\n"
+		"- Function descriptions must include node-level detail.\n"
+		"  Example: \"Get ProjectileMovementComp via GetComponentByClass -> set InitialSpeed, "
+		"MaxSpeed via property access -> store Instigator ref as variable\"\n"
+		"  Include: component access patterns, function call targets, branch conditions, "
+		"variable get/set operations, and any by-ref pins that need wires.\n"
 		"- If Implementation Reference content is provided, study the function graph patterns "
-		"(node types, wiring flow, variable usage) and base your function descriptions on "
-		"those real patterns. Do not simplify to PrintString unless the user explicitly asks for stubs.\n"
+		"(node types, wiring flow, variable usage) and include the specific node patterns "
+		"in your function descriptions. The Builder executes directly from your descriptions.\n"
+		"- When a function is based on a template, add: Reference: template_id:FunctionName\n"
+		"  The Builder will only fetch the template if it has trouble executing the function.\n"
 		"- When describing function logic, reference specific patterns you observed "
-		"(e.g., \"line trace -> branch on hit -> apply damage\" not \"deal damage to target\")\n"
+		"(e.g., \"line trace -> branch on hit -> apply damage\")\n"
 		"\n"
 		"Output ONLY the Build Plan. No preamble, no explanation."
 	);

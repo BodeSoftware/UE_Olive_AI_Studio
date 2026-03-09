@@ -27,6 +27,88 @@
 DEFINE_LOG_CATEGORY(LogOliveGraphWriter);
 
 // ============================================================================
+// Local helpers
+// ============================================================================
+
+namespace
+{
+	/**
+	 * Build a compact one-line listing of available pins on a node for a given direction.
+	 * Format: "PinName (Type), PinName (Type), ..."
+	 * Skips hidden pins. Caps at 15 entries.
+	 */
+	static FString BuildAvailablePinsList(const UEdGraphNode* Node, EEdGraphPinDirection DirectionFilter)
+	{
+		if (!Node) return FString();
+
+		TArray<FString> PinEntries;
+		for (const UEdGraphPin* Pin : Node->Pins)
+		{
+			if (!Pin || Pin->bHidden) continue;
+			if (Pin->Direction != DirectionFilter) continue;
+
+			FString TypeStr;
+			const FName& Cat = Pin->PinType.PinCategory;
+			if      (Cat == UEdGraphSchema_K2::PC_Exec)       TypeStr = TEXT("Exec");
+			else if (Cat == UEdGraphSchema_K2::PC_Boolean)    TypeStr = TEXT("Bool");
+			else if (Cat == UEdGraphSchema_K2::PC_Int)        TypeStr = TEXT("Int");
+			else if (Cat == UEdGraphSchema_K2::PC_Int64)      TypeStr = TEXT("Int64");
+			else if (Cat == UEdGraphSchema_K2::PC_Real)       TypeStr = TEXT("Float");
+			else if (Cat == UEdGraphSchema_K2::PC_String)     TypeStr = TEXT("String");
+			else if (Cat == UEdGraphSchema_K2::PC_Name)       TypeStr = TEXT("Name");
+			else if (Cat == UEdGraphSchema_K2::PC_Text)       TypeStr = TEXT("Text");
+			else if (Cat == UEdGraphSchema_K2::PC_Struct)
+			{
+				UScriptStruct* S = Cast<UScriptStruct>(Pin->PinType.PinSubCategoryObject.Get());
+				TypeStr = S ? S->GetName() : TEXT("Struct");
+			}
+			else if (Cat == UEdGraphSchema_K2::PC_Object || Cat == UEdGraphSchema_K2::PC_Interface ||
+			         Cat == UEdGraphSchema_K2::PC_SoftObject || Cat == UEdGraphSchema_K2::PC_Class ||
+			         Cat == UEdGraphSchema_K2::PC_SoftClass)
+			{
+				UClass* C = Cast<UClass>(Pin->PinType.PinSubCategoryObject.Get());
+				TypeStr = C ? C->GetName() : TEXT("Object");
+			}
+			else if (Cat == UEdGraphSchema_K2::PC_Byte || Cat == UEdGraphSchema_K2::PC_Enum)
+			{
+				UEnum* E = Cast<UEnum>(Pin->PinType.PinSubCategoryObject.Get());
+				TypeStr = E ? E->GetName() : TEXT("Byte");
+			}
+			else if (Cat == UEdGraphSchema_K2::PC_Delegate || Cat == UEdGraphSchema_K2::PC_MCDelegate)
+			{
+				TypeStr = TEXT("Delegate");
+			}
+			else if (Cat == UEdGraphSchema_K2::PC_Wildcard)
+			{
+				TypeStr = TEXT("Wildcard");
+			}
+			else
+			{
+				TypeStr = Cat.ToString();
+			}
+
+			if      (Pin->PinType.IsArray()) TypeStr = TEXT("Array<") + TypeStr + TEXT(">");
+			else if (Pin->PinType.IsSet())   TypeStr = TEXT("Set<")   + TypeStr + TEXT(">");
+			else if (Pin->PinType.IsMap())   TypeStr = TEXT("Map<")   + TypeStr + TEXT(">");
+
+			FString Label = Pin->GetDisplayName().ToString();
+			if (Label.IsEmpty()) Label = Pin->GetName();
+
+			PinEntries.Add(FString::Printf(TEXT("%s (%s)"), *Label, *TypeStr));
+		}
+
+		if (PinEntries.Num() > 15)
+		{
+			int32 Remaining = PinEntries.Num() - 15;
+			PinEntries.SetNum(15);
+			PinEntries.Add(FString::Printf(TEXT("...+%d more"), Remaining));
+		}
+
+		return FString::Join(PinEntries, TEXT(", "));
+	}
+} // anonymous namespace
+
+// ============================================================================
 // FOliveGraphWriter Singleton
 // ============================================================================
 
@@ -496,8 +578,11 @@ FOliveBlueprintWriteResult FOliveGraphWriter::ConnectPins(
 	}
 	if (!SourcePin)
 	{
+		FString Available = BuildAvailablePinsList(SourceNode, EGPD_Output);
 		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Source pin '%s' not found on node '%s'"), *SourcePinName, *SourceNodeId),
+			FString::Printf(TEXT("Source pin '%s' not found on node '%s'. Available output pins: %s"),
+				*SourcePinName, *SourceNodeId,
+				Available.IsEmpty() ? TEXT("(none)") : *Available),
 			BlueprintPath);
 	}
 
@@ -530,8 +615,11 @@ FOliveBlueprintWriteResult FOliveGraphWriter::ConnectPins(
 	}
 	if (!TargetPin)
 	{
+		FString Available = BuildAvailablePinsList(TargetNode, EGPD_Input);
 		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Target pin '%s' not found on node '%s'"), *TargetPinName, *TargetNodeId),
+			FString::Printf(TEXT("Target pin '%s' not found on node '%s'. Available input pins: %s"),
+				*TargetPinName, *TargetNodeId,
+				Available.IsEmpty() ? TEXT("(none)") : *Available),
 			BlueprintPath);
 	}
 
@@ -607,8 +695,11 @@ FOliveBlueprintWriteResult FOliveGraphWriter::DisconnectPins(
 	UEdGraphPin* SourcePin = FindPin(SourceNode, SourcePinName);
 	if (!SourcePin)
 	{
+		FString Available = BuildAvailablePinsList(SourceNode, EGPD_Output);
 		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Source pin '%s' not found on node '%s'"), *SourcePinName, *SourceNodeId),
+			FString::Printf(TEXT("Source pin '%s' not found on node '%s'. Available output pins: %s"),
+				*SourcePinName, *SourceNodeId,
+				Available.IsEmpty() ? TEXT("(none)") : *Available),
 			BlueprintPath);
 	}
 
@@ -624,8 +715,11 @@ FOliveBlueprintWriteResult FOliveGraphWriter::DisconnectPins(
 	UEdGraphPin* TargetPin = FindPin(TargetNode, TargetPinName);
 	if (!TargetPin)
 	{
+		FString Available = BuildAvailablePinsList(TargetNode, EGPD_Input);
 		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Target pin '%s' not found on node '%s'"), *TargetPinName, *TargetNodeId),
+			FString::Printf(TEXT("Target pin '%s' not found on node '%s'. Available input pins: %s"),
+				*TargetPinName, *TargetNodeId,
+				Available.IsEmpty() ? TEXT("(none)") : *Available),
 			BlueprintPath);
 	}
 
@@ -692,8 +786,19 @@ FOliveBlueprintWriteResult FOliveGraphWriter::DisconnectAllFromPin(
 	UEdGraphPin* Pin = FindPin(Node, PinName);
 	if (!Pin)
 	{
+		FString OutPins = BuildAvailablePinsList(Node, EGPD_Output);
+		FString InPins  = BuildAvailablePinsList(Node, EGPD_Input);
+		FString All;
+		if (!OutPins.IsEmpty()) All += TEXT("Outputs: ") + OutPins;
+		if (!InPins.IsEmpty())
+		{
+			if (!All.IsEmpty()) All += TEXT(". ");
+			All += TEXT("Inputs: ") + InPins;
+		}
 		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Pin '%s' not found on node '%s'"), *PinName, *NodeId),
+			FString::Printf(TEXT("Pin '%s' not found on node '%s'. Available pins: %s"),
+				*PinName, *NodeId,
+				All.IsEmpty() ? TEXT("(none)") : *All),
 			BlueprintPath);
 	}
 
@@ -761,8 +866,11 @@ FOliveBlueprintWriteResult FOliveGraphWriter::SetPinDefault(
 	UEdGraphPin* Pin = FindPin(Node, PinName);
 	if (!Pin)
 	{
+		FString Available = BuildAvailablePinsList(Node, EGPD_Input);
 		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Pin '%s' not found on node '%s'"), *PinName, *NodeId),
+			FString::Printf(TEXT("Pin '%s' not found on node '%s'. Available input pins: %s"),
+				*PinName, *NodeId,
+				Available.IsEmpty() ? TEXT("(none)") : *Available),
 			BlueprintPath);
 	}
 

@@ -5,6 +5,10 @@ UE 5.5 installed at: `C:/Program Files/Epic Games/UE_5.5/`
 PCG plugin headers: `C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/PCG/Source/PCG/Public/`
 
 ## Key Research Reports
+- `plans/research/knowledge-injection-pre-vs-post-pipeline.md` — Pre/post pipeline knowledge gap analysis. Planner gets ~700 chars inline vs 29.5KB in old Builder AGENTS.md. Critical gaps: full events_vs_functions.txt (latent op classification) and blueprint_design_patterns.txt Section 0 (decomposition rules). Builder AGENTS.md unchanged — no regression there. 8 recommendations filed.
+- `plans/research/bow-arrow-session-log-analysis-2026-03-08g.md` — Run 08g: BOW CREATED + COMPILE FIX CONFIRMED. 55% plan_json (12/22). Builder: 0 get_template, 0 get_recipe. Planner: 10 get_template, 3 get_recipe. 13min 39s total (91.8s pipeline + 11.75min builder + 24.1s reviewer). 3 assets planned/4 touched (BP_ArrowProjectile deleted, BP_Arrow recreated). Reviewer SATISFIED. Knowledge injection +124% prompt (21,865 chars) solved 08e/08f BOW SCOPE MISS. Compile tool now correctly returns FAILED. Dominant failures: hallucinated ProjectileMovement setters (persistent), GetActorTransform broken alias (self-loop in alias map line 3087), CharacterMovement property setters not callable. 10 recommendations filed.
+- `plans/research/bow-arrow-session-log-analysis-2026-03-08f.md` — Run 08f: FALLBACK-ONLY TEMPLATE VALIDATED. 56% plan_json (10/18). Builder: 0 get_template, 0 get_recipe calls. Planner: 11 get_template, 3 get_recipe. 32min total (10min cold start + 117s pipeline + 19.5min builder + 31s reviewer). 2 assets planned/built. Reviewer SATISFIED. NockArrow gutted (6 consecutive compile fails). Dominant failure: InitializeArrow called without Target wire across NockArrow retries. Phase 0 validator caught it on attempt 6 only. compile tool bug: returns SUCCESS even when compiler FAILED. 10 recommendations filed.
+- `plans/research/bow-arrow-session-log-analysis-2026-03-08e.md` — Run 08e: SCOPE MISS. 88% tool success, 43% plan_json fail rate (10/23). ~20min total. No timeout, exit code 0. All 3 BPs compile SUCCESS. Reviewer SATISFIED. NO BP_Bow created — Planner interpreted "bow and arrow system" as component-based ranged system, no separate weapon actor. IA_Aim asset didn't exist → Builder fell back to custom events. Key failures: hallucinated ProjectileMovement setter functions (3 retries), _C suffix on add_component, K2Node_CallFunction property format. 8 recommendations filed.
 - `plans/research/bow-arrow-session-log-analysis-2026-03-08d.md` — Run 08d: QUALITY RECOVERED. 86% tool success, 57% plan_json (lower but all recovered), ~20min total. No gutted functions. All 3 BPs compile SUCCESS. Reviewer SATISFIED. Fix B triggered x2, worked. 1800s runtime used ~17.8min, no kill. Zero auto-continues. 10 recommendations filed.
 - `plans/research/bow-arrow-session-log-analysis-2026-03-08c.md` — Post-fix run analysis (2026-03-08c): REGRESSION. 77% tool success, 67% plan_json, ~36min total. Fix B (rollback) confirmed x2, Fix A unobservable. describe_node_type failed for SetFieldOfView+K2_AttachToComponent (catalog gaps) → StartAim gutted, NockArrow retried. 900s wall-clock kill mid-work. 8 recommendations filed.
 - `plans/research/bow-arrow-session-log-analysis-2026-03-08b.md` — Previous run: 88% tool success, 67% plan_json, ~19min total
@@ -16,6 +20,7 @@ PCG plugin headers: `C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/PCG/Sourc
 - `plans/research/competitor-deep-dive-2026-03.md` — DEEP dive: NeoStack AIK (full changelog, ACP/MCP dual transport, Profiles, 500+ checks), Aura 12.0 (Telos 2.0, Dragon Agent, pricing tiers, 43 tools), Ultimate Co-Pilot (Python MCP bridge, scene population), Ludus AI (broken BP repair, coverage gaps), plus full comparison matrix and adoption recommendations
 - `plans/research/multi-agent-architectures.md` — Roo Code boomerang/orchestrator, Aider architect/editor split, Claude Code subagents, Devin 2.0, token optimization patterns, reflection agent research
 - `plans/research/context-management-approaches.md` — Aider/Cursor/Roo/Windsurf/Copilot/Continue context strategies; tiered template overview proposal for Olive Planner
+- `plans/research/blueprint-gen-speed-quality-tradeoffs-2026-03.md` — Speed vs quality tradeoffs: NeoStack is a tool-server (no pipeline), Aura Telos is likely batch-IR single-shot via Python, open-source MCP servers are all per-node iterative. 10 architect recommendations including: batch IR beats per-node for speed, pin resolution is dominant failure mode across all tools, Roo Orchestrator pattern maps to Olive pipeline, parallel agents NOT worth it for coding tasks (15x cost, sequential BP steps).
 
 ## PCG API Key Facts (UE 5.5)
 - Module name for PCG plugin is `"PCG"` (add to Build.cs PrivateDependencyModuleNames)
@@ -190,6 +195,17 @@ PCG plugin headers: `C:/Program Files/Epic Games/UE_5.5/Engine/Plugins/PCG/Sourc
 - Root cause of orphaned exec pin after rollback: BeginPlay node was never Modify()-called before the failed plan wired it. K2Schema::TryCreateConnection calls MarkBlueprintAsModified but NOT Node->Modify(). OlivePinConnector calls Blueprint->Modify() but NOT individual node Modify().
 - Fix: In WireExecConnection, check `Pin->bOrphanedPin` before connecting. If true, call `OwningNode->ReconstructNode()` to clear it. Also call `BeginPlayNode->Modify()` before wiring exec in PhaseWireExec.
 - Fix for BuildWiringDiagnostic: add bOrphanedPin check before the generic else block → new EOliveWiringFailureReason::OrphanedPin.
+
+## NeoStack AIK Error Handling Philosophy (2026-03-08 research)
+- Full report: `plans/research/neostack-error-handling-philosophy-2026-03.md`
+- AIK's 500+ checks = crash-prevention guards (null/type/state), NOT semantic guidance. v0.5.0 added try/catch wrapper.
+- No documented "did you mean?" or alternative suggestion system. No pin enumeration on failure.
+- Error recovery is delegated entirely to the agent (Claude Code handles its own retries via chain-of-thought).
+- Front-loaded knowledge: Profile custom instructions (coarser than Olive's capability block). No runtime error-triggered injection.
+- No alias system, no recipe system, no library templates.
+- Best open-source: gimmeDG has 3-pass pin resolution + Levenshtein suggestions + BM25 RAG for Python errors.
+- MCP spec: use `isError:true` in tool result (not protocol-level errors) so LLM sees the message.
+- Best error message pattern: error type + specific failing value + observed state + numbered recovery steps with exact tool names.
 
 ## Template Context Budget (2026-03-07 research)
 - `GetTemplateOverview()` produces ~2,500-4,000 chars per template with 40 functions (3 templates = 27-31K chars)

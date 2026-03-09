@@ -13,6 +13,14 @@
 
 > Older completed design decisions archived to `completed-designs.md`.
 
+### Pipeline Fixes 08f - Mar 2026
+- `plans/pipeline-fixes-08f.md` -- 5 fixes for agent pipeline issues
+- **Compile tool bug**: `HandleBlueprintCompile` returned `Success()` even on `!CompileResult.bSuccess`. Fix: return `Error("COMPILE_FAILED", ...)` with inline error messages.
+- **Planner knowledge**: Load `events_vs_functions.txt` + `blueprint_design_patterns.txt` (sections 0-3) from disk via `LoadKnowledgePack()` helper. Replaces hardcoded 15-line inline block.
+- **Stale node IDs**: Append rollback warning to `PLAN_EXECUTION_FAILED` error message so Builder knows to re-read with `blueprint.read`.
+- **remove_function schema**: `force` param handler exists (line 4078) but schema didn't advertise it. Add `force` bool to `BlueprintRemoveFunction()`.
+- **Status messages**: Emit synthetic `OnChunk` during pipeline execution in `SendMessageAutonomous()` to break 117s silence.
+
 ## Error Code Convention
 - Use `SCREAMING_SNAKE_CASE` for error codes
 - See design docs for full list.
@@ -101,6 +109,26 @@
 - **New files**: `OliveClassAPIHelper.h/.cpp` -- shared helper for class API enumeration (used by Fix 1 and Fix 3)
 - **Key filtering rules**: Skip DEPRECATED_, Internal_, PostEditChange, OnRep_ functions; only BlueprintVisible/ReadOnly properties
 - **4-phase implementation**: Shared helper -> Fix 1 (resolver) -> Fix 2 (self-correction) -> Fix 3 (pipeline)
+
+### Planner Pin Enrichment - Mar 2026
+- `plans/planner-pin-enrichment-design.md` -- Fix ~55% plan_json success rate caused by hallucinated pin names
+- **Root cause**: Planner produces vague function descriptions ("call ApplyPointDamage to deal damage") without pin names. Builder guesses from LLM training memory.
+- **Option A (prompt)**: Add pin name instruction to `BuildPlannerSystemPrompt()` -- tell Planner to include exact pin names from template node graphs it reads
+- **Option E (C++ enrichment)**: New `BuildFunctionPinReference()` method on `FOliveAgentPipeline`. Extracts function names from Build Plan text via regex, resolves each to `UFunction*` via `FindFunctionEx()`, formats signatures with `TFieldIterator<FProperty>`, appends as Section 3.25 in `FormatForPromptInjection()`.
+- **Combined A+E**: Prompt teaches Planner to include pins from templates; C++ catches the rest via reflection. Covers ~95%+ of functions.
+- **Key detail**: `describe_node_type` is wrong tool -- it resolves K2Node classes, not function signatures. Returns generic CallFunction pins without function-specific parameters.
+- **Budget**: 2500 chars for pin reference section (~30 function signatures). Uses `FOliveClassAPIHelper::GetPropertyTypeString()` for types.
+- **by-ref detection**: `CPF_ReferenceParm` flag (not `CPF_OutParm` alone). These cause "must have input wired" compile errors.
+- **No new files**: Only modifies OliveAgentPipeline.h/.cpp
+- **Senior assignment**: ~200 lines new C++ in critical path
+
+### Error Messages 08g - Mar 2026
+- `plans/error-messages-08g-design.md` -- 3 targeted improvements to reduce plan_json first-failure-to-fix
+- **Change 1**: UPROPERTY detection in `FindFunctionEx()` -- after search trail, scan classes for matching property names. Strips Set/Get prefix, checks BlueprintVisible properties. Appends `PROPERTY MATCH:` to SearchedLocations.
+- **Change 2**: Pin listing in `connect_pins` -- `BuildAvailablePinsList()` helper lists name+type of available pins on failure. Applied to ConnectPins, DisconnectPins, DisconnectAllFromPin, SetPinDefault.
+- **Change 3**: `GetActorTransform` alias fix -- remove self-referential no-op at line 3087 and harmful redirect at line 2851. C++ function is `GetTransform`, not `GetActorTransform`.
+- **No new files**: Only modifies `OliveNodeFactory.cpp` and `OliveGraphWriter.cpp`.
+- **OliveNodeFactory.cpp needs**: `#include "Writer/OliveClassAPIHelper.h"` (not currently included).
 
 ## UE 5.5 API Quirks
 - `TWeakObjectPtr` does NOT have `IsNull()` -- use `.Get() != nullptr` or `IsValid()` instead

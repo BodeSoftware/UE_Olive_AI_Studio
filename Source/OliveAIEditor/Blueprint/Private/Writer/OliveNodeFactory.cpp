@@ -2820,6 +2820,101 @@ FOliveFunctionSearchResult FOliveNodeFactory::FindFunctionEx(
 		Result.SearchedLocations.Add(MoveTemp(SuggestionsLine));
 	}
 
+	// --- UPROPERTY cross-check ---
+	// When a function name looks like a property setter/getter (e.g., "SetSpeed",
+	// "GetMaxHealth"), check if the stripped name matches a BlueprintVisible property
+	// on any of the searched classes. This catches the common AI mistake of trying
+	// to call a C++ UPROPERTY as if it were a BlueprintCallable function.
+	if (Blueprint)
+	{
+		FString PropertyCandidate = ResolvedName;
+
+		// Strip common prefixes: "Set " / "Get " (with space) first,
+		// then "Set" / "Get" at camelCase boundary
+		if (PropertyCandidate.StartsWith(TEXT("Set ")) || PropertyCandidate.StartsWith(TEXT("Get ")))
+		{
+			PropertyCandidate = PropertyCandidate.Mid(4);
+		}
+		else if (PropertyCandidate.StartsWith(TEXT("Set")) && PropertyCandidate.Len() > 3 && FChar::IsUpper(PropertyCandidate[3]))
+		{
+			PropertyCandidate = PropertyCandidate.Mid(3);
+		}
+		else if (PropertyCandidate.StartsWith(TEXT("Get")) && PropertyCandidate.Len() > 3 && FChar::IsUpper(PropertyCandidate[3]))
+		{
+			PropertyCandidate = PropertyCandidate.Mid(3);
+		}
+
+		// Build candidate names: stripped form, original name, "b" + stripped (for booleans)
+		TArray<FString> Candidates = { PropertyCandidate, ResolvedName };
+		if (!PropertyCandidate.StartsWith(TEXT("b")))
+		{
+			Candidates.Add(TEXT("b") + PropertyCandidate);
+		}
+
+		// Gather classes to scan: GeneratedClass + parent chain + SCS components + specified class
+		TArray<UClass*> ClassesToScan;
+		if (Blueprint->GeneratedClass)
+		{
+			ClassesToScan.Add(Blueprint->GeneratedClass);
+		}
+		if (Blueprint->ParentClass)
+		{
+			UClass* Walk = Blueprint->ParentClass;
+			while (Walk && Walk != UObject::StaticClass())
+			{
+				ClassesToScan.AddUnique(Walk);
+				Walk = Walk->GetSuperClass();
+			}
+		}
+		if (Blueprint->SimpleConstructionScript)
+		{
+			for (USCS_Node* SCSNode : Blueprint->SimpleConstructionScript->GetAllNodes())
+			{
+				if (SCSNode && SCSNode->ComponentClass)
+				{
+					ClassesToScan.AddUnique(SCSNode->ComponentClass);
+				}
+			}
+		}
+		if (!ClassName.IsEmpty())
+		{
+			UClass* SpecifiedClass = FindClass(ClassName);
+			if (SpecifiedClass)
+			{
+				ClassesToScan.AddUnique(SpecifiedClass);
+			}
+		}
+
+		// Scan all classes for a matching BlueprintVisible property
+		for (UClass* ScanClass : ClassesToScan)
+		{
+			for (TFieldIterator<FProperty> PropIt(ScanClass, EFieldIteratorFlags::IncludeSuper); PropIt; ++PropIt)
+			{
+				const FProperty* Prop = *PropIt;
+				if (!Prop) continue;
+				if (!Prop->HasAnyPropertyFlags(CPF_BlueprintVisible | CPF_BlueprintReadOnly)) continue;
+
+				const FString PropName = Prop->GetName();
+				for (const FString& Cand : Candidates)
+				{
+					if (PropName.Equals(Cand, ESearchCase::IgnoreCase))
+					{
+						// DESIGN NOTE: GetPropertyTypeString is private on FOliveClassAPIHelper.
+						// Using FProperty::GetCPPType() instead, which provides readable output
+						// like "float", "int32", "FVector", "UStaticMeshComponent*", etc.
+						FString TypeStr = Prop->GetCPPType();
+						Result.SearchedLocations.Add(FString::Printf(
+							TEXT("PROPERTY MATCH: '%s' is a %s property on %s, not a callable function. "
+								 "Use set_var/get_var op instead of call."),
+							*PropName, *TypeStr, *ScanClass->GetName()));
+						goto PropertyScanDone;
+					}
+				}
+			}
+		}
+		PropertyScanDone:;
+	}
+
 	return Result;
 }
 
@@ -2848,7 +2943,6 @@ const TMap<FString, FString>& FOliveNodeFactory::GetAliasMap()
 		Map.Add(TEXT("SetLocationAndRotation"), TEXT("K2_SetActorLocationAndRotation"));
 		Map.Add(TEXT("GetScale"), TEXT("GetActorScale3D"));
 		Map.Add(TEXT("SetScale"), TEXT("SetActorScale3D"));
-		Map.Add(TEXT("GetTransform"), TEXT("GetActorTransform"));
 		Map.Add(TEXT("GetActorTransform"), TEXT("GetTransform"));
 		Map.Add(TEXT("SetTransform"), TEXT("K2_SetActorTransform"));
 
@@ -3084,7 +3178,6 @@ const TMap<FString, FString>& FOliveNodeFactory::GetAliasMap()
 		// ================================================================
 		// Commonly Attempted Names
 		// ================================================================
-		Map.Add(TEXT("GetActorTransform"), TEXT("GetActorTransform"));
 		Map.Add(TEXT("SetMaterial"), TEXT("SetMaterial"));
 		Map.Add(TEXT("SetCollisionProfileName"), TEXT("SetCollisionProfileName"));
 		Map.Add(TEXT("SetVisibility"), TEXT("SetVisibility"));

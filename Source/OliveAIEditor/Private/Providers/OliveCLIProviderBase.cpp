@@ -577,6 +577,19 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 		}
 	}
 
+	// Helper to emit a status message through the stream callback so the chat UI
+	// shows progress during the pipeline phase (which can take 30-120s).
+	auto EmitStatus = [this](const FString& StatusText)
+	{
+		FScopeLock Lock(&CallbackLock);
+		if (CurrentOnChunk.IsBound())
+		{
+			FOliveStreamChunk StatusChunk;
+			StatusChunk.Text = StatusText + TEXT("\n");
+			CurrentOnChunk.Execute(StatusChunk);
+		}
+	};
+
 	// Agent pipeline: runs Router -> Scout -> Researcher -> Architect -> Validator.
 	// Produces a Build Plan with validated class names that replaces the old
 	// discovery pass + decomposition directive.
@@ -584,6 +597,9 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 	// ("read BP_Gun", "what does this do") skip the pipeline to avoid wasting 5-30s of LLM calls.
 	if (!bIsContinuation && MessageImpliesMutation(EffectiveMessage))
 	{
+		// Emit pipeline start status so the chat UI is not silent during planning
+		EmitStatus(TEXT("*Analyzing task and searching project for relevant assets...*"));
+
 		// Capture asset paths before they were consumed above by InitialContextAssetPaths.Empty().
 		// The pipeline needs the original @-mentioned assets for Scout/Researcher context.
 		FOliveAgentPipeline Pipeline;
@@ -591,6 +607,8 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 
 		if (CachedPipelineResult.bValid)
 		{
+			EmitStatus(TEXT("*Build plan ready. Launching builder...*"));
+
 			FString PipelineBlock = CachedPipelineResult.FormatForPromptInjection();
 			if (!PipelineBlock.IsEmpty())
 			{
@@ -608,6 +626,8 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 		}
 		else
 		{
+			EmitStatus(TEXT("*Planning complete. Launching builder...*"));
+
 			// Pipeline failed (all LLM calls timed out or errored) -- inject minimal
 			// decomposition guidance so the Builder still has structure to work from.
 			EffectiveMessage += TEXT("\n\n## Build Guidance\n\n");

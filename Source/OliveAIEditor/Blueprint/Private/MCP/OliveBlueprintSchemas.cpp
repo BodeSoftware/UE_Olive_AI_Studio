@@ -781,6 +781,12 @@ namespace OliveBlueprintSchemas
 		Properties->SetObjectField(TEXT("name"),
 			StringProp(TEXT("Function name to remove")));
 
+		Properties->SetObjectField(TEXT("force"),
+			BoolProp(TEXT("Force removal even if the function has graph logic. "
+				"Default false. When false, removal is blocked if the function "
+				"has more than entry+return nodes. Use true when you intend "
+				"to recreate the function with different logic."), false));
+
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
 		Schema->SetStringField(TEXT("description"), TEXT("Remove a function from a Blueprint"));
 		Schema->SetObjectField(TEXT("properties"), Properties);
