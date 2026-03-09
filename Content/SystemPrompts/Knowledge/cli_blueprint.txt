@@ -45,6 +45,7 @@ event, custom_event, call, call_delegate, get_var, set_var, branch, sequence, ca
 - `@step.PinName` — smart name match
 - No `@` prefix = literal pin default: `"InString":"Hello"`
 - Component refs: `@ComponentName` auto-expands to get_var
+- `"Target": "@step.auto"` — call function ON a different actor (wires to hidden self pin)
 
 **Exec wires** (white wires — execution order):
 - `exec_after:"step_id"` — plain step_id, NO @ prefix. Chains this step after another.
@@ -125,6 +126,9 @@ Priority order:
 - After a plan_json failure, all nodes from that plan are rolled back — they do not exist. Do NOT use connect_pins or add_node with node IDs from a failed plan. Instead: fix the plan and retry apply_plan_json, or start fresh with granular tools using new add_node calls.
 - After applying plan_json to a complex function (5+ steps), read the function back with blueprint.read_function to verify the graph looks correct. Disconnected data wires don't always cause compile errors.
 - Component functions (SetVelocityInLocalSpace, SetSimulatePhysics, etc.) require target_class when the component is NOT on the current Blueprint's SCS. If you're calling a function on a spawned actor's component, you need a reference to that component first.
+- Calling functions on non-self actors: add `"Target": "@step.auto"` to inputs. Example — attach a spawned actor to the character's mesh:
+  `{"op":"call","target":"AttachToComponent","inputs":{"Target":"@spawn.auto","Parent":"@get_mesh.auto","SocketName":"hand_r"}}`
+  Without Target, the function runs on self (the current Blueprint's actor). With Target, it runs on the referenced actor.
 - Component refs: `@ComponentName` auto-expands to get_var (dotless @refs). Do NOT use `@ComponentName.auto` — that looks for a step named "ComponentName".
 - Component classes: StaticMeshComponent, SphereComponent, BoxComponent, CapsuleComponent, ArrowComponent, ProjectileMovementComponent, SceneComponent, AudioComponent
 - If you're struggling with a complex pattern (timelines, animation montages, AI behavior, physics), search blueprint.list_templates(query="timeline") for working examples. Library templates have tagged functions — try different keywords to find relevant implementations.

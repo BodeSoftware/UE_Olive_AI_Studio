@@ -660,6 +660,10 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
 
                 if (ExistingNode)
                 {
+                    // Register with FScopedTransaction so rollback restores
+                    // pin state (especially LinkedTo arrays) on this node.
+                    ExistingNode->Modify();
+
                     // Reuse existing event node.
                     // Generate a node ID using the node's GUID so GraphWriter
                     // cache lookups are not needed for wiring (we use direct
@@ -705,6 +709,8 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
 
                 if (ExistingNode)
                 {
+                    ExistingNode->Modify();
+
                     const FString ReuseNodeId = ExistingNode->NodeGuid.ToString();
 
                     FOlivePinManifest Manifest = FOlivePinManifest::Build(
@@ -745,6 +751,8 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
 
                 if (ExistingNode)
                 {
+                    ExistingNode->Modify();
+
                     const FString ReuseNodeId = ExistingNode->NodeGuid.ToString();
 
                     FOlivePinManifest Manifest = FOlivePinManifest::Build(
@@ -799,6 +807,8 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
                 CleanupCreatedNodes();
                 return false;
             }
+
+            EntryNode->Modify();
 
             const FString ReuseNodeId = EntryNode->NodeGuid.ToString();
             FOlivePinManifest Manifest = FOlivePinManifest::Build(
@@ -879,6 +889,8 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
                 CleanupCreatedNodes();
                 return false;
             }
+
+            ResultNode->Modify();
 
             const FString ReuseNodeId = ResultNode->NodeGuid.ToString();
             FOlivePinManifest Manifest = FOlivePinManifest::Build(
@@ -2531,6 +2543,15 @@ void FOlivePlanExecutor::PhaseWireData(
                 ResolvedPinKey = Step.Target;
             }
 
+            // "Target" is the AI-friendly name for the hidden "self" pin.
+            // When the AI explicitly provides Target=@some_step.auto, they want
+            // to wire to the node's self pin (which is hidden by default).
+            if (ResolvedPinKey.Equals(TEXT("Target"), ESearchCase::IgnoreCase)
+                || ResolvedPinKey.Equals(TEXT("self"), ESearchCase::IgnoreCase))
+            {
+                ResolvedPinKey = TEXT("self");
+            }
+
             FOliveSmartWireResult Result = WireDataConnection(
                 Step.StepId, ResolvedPinKey, PinValue, Context);
 
@@ -2809,6 +2830,95 @@ FOliveSmartWireResult FOlivePlanExecutor::WireDataConnection(
 
         Result.ErrorMessage = TEXT("Failed to wire @self reference — could not connect Self node output");
         return Result;
+    }
+
+    // 1c. Special case: wiring to a node's hidden "self" pin (explicit Target input).
+    //     When the AI writes "Target": "@spawn_step.auto", PhaseWireData remaps
+    //     "Target" to "self". We bypass FindPinSmart (which excludes hidden pins)
+    //     and directly find the self pin via UEdGraphSchema_K2::PN_Self.
+    //     Uses TryCreateConnection directly (like Phase 1.5) to handle BREAK_OTHERS
+    //     responses when Phase 1.5 already auto-wired a component to the self pin.
+    if (TargetPinHint.Equals(TEXT("self"), ESearchCase::IgnoreCase))
+    {
+        UEdGraphNode* TargetNode = Context.GetNodePtr(TargetStepId);
+        if (TargetNode)
+        {
+            UEdGraphPin* SelfPin = TargetNode->FindPin(UEdGraphSchema_K2::PN_Self);
+            if (SelfPin)
+            {
+                // Parse source ref and wire to the self pin directly
+                FString SourceStepId2, SourcePinHint2;
+                if (ParseDataRef(SourceRef, SourceStepId2, SourcePinHint2))
+                {
+                    const FOlivePinManifest* SrcManifest = Context.GetManifest(SourceStepId2);
+                    UEdGraphNode* SrcNode = Context.GetNodePtr(SourceStepId2);
+
+                    if (SrcManifest && SrcNode)
+                    {
+                        // Find source output pin ("auto" = first non-exec non-hidden output)
+                        UEdGraphPin* SrcOutputPin = nullptr;
+                        if (SourcePinHint2 == TEXT("auto"))
+                        {
+                            for (UEdGraphPin* Pin : SrcNode->Pins)
+                            {
+                                if (Pin && Pin->Direction == EGPD_Output
+                                    && Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec
+                                    && !Pin->bHidden)
+                                {
+                                    SrcOutputPin = Pin;
+                                    break;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            SrcOutputPin = SrcNode->FindPin(FName(*SourcePinHint2));
+                        }
+
+                        if (SrcOutputPin)
+                        {
+                            // Log if we're about to break an existing self pin connection
+                            if (SelfPin->LinkedTo.Num() > 0)
+                            {
+                                UE_LOG(LogOlivePlanExecutor, Warning,
+                                    TEXT("  Self pin on step '%s' already connected to %s — "
+                                         "breaking existing connection for explicit Target wire"),
+                                    *TargetStepId,
+                                    *SelfPin->LinkedTo[0]->GetOwningNode()->GetName());
+                            }
+
+                            // Use TryCreateConnection directly (same as Phase 1.5).
+                            // This handles BREAK_OTHERS responses by auto-breaking the existing
+                            // connection, which is correct when the AI explicitly specifies Target.
+                            const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
+                            bool bConnected = K2Schema->TryCreateConnection(SrcOutputPin, SelfPin);
+                            if (bConnected)
+                            {
+                                Result.bSuccess = true;
+                                Result.SourceMatchMethod = TEXT("explicit_target");
+                                Result.TargetMatchMethod = TEXT("self_pin_direct");
+                                Result.ResolvedSourcePin = SrcOutputPin->GetName();
+                                Result.ResolvedTargetPin = TEXT("self");
+                                UE_LOG(LogOlivePlanExecutor, Log,
+                                    TEXT("  Data wire OK: @%s.%s -> step '%s'.self (explicit Target)"),
+                                    *SourceStepId2, *SourcePinHint2, *TargetStepId);
+                                return Result;
+                            }
+                        }
+                    }
+                }
+
+                // If we found the self pin but couldn't wire, provide a clear error
+                Result.ErrorMessage = FString::Printf(
+                    TEXT("Found self pin on step '%s' but could not wire from '%s'. "
+                         "Ensure the source produces an actor/object reference."),
+                    *TargetStepId, *SourceRef);
+                return Result;
+            }
+        }
+
+        // No self pin found — fall through to normal resolution
+        // (might be a node without a self pin, e.g., a pure math node)
     }
 
     // 2. Get manifests

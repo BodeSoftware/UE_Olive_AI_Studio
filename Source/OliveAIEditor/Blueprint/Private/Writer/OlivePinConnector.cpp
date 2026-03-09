@@ -64,8 +64,30 @@ FOliveBlueprintWriteResult FOlivePinConnector::Connect(
 
 	const bool bNeedsConversion =
 		(Response.Response == CONNECT_RESPONSE_MAKE_WITH_CONVERSION_NODE);
+
+	// Detect BREAK_OTHERS responses (pin already has a connection that would be replaced)
+	const bool bBreakOthers =
+		(Response.Response == CONNECT_RESPONSE_BREAK_OTHERS_A
+		 || Response.Response == CONNECT_RESPONSE_BREAK_OTHERS_B
+		 || Response.Response == CONNECT_RESPONSE_BREAK_OTHERS_AB);
+
+	// Allow break-others for exec pins only (matches Blueprint editor drag-and-drop behavior).
+	// Exec pins are single-output by design, so replacing is always intentional.
+	// Do NOT auto-break for data pins — that could silently disconnect important wires.
+	const bool bExecAutoBreak = bBreakOthers
+		&& SourcePin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec
+		&& TargetPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec;
+
 	const bool bCanConnect =
-		Response.CanSafeConnect() || bNeedsConversion;
+		Response.CanSafeConnect() || bNeedsConversion || bExecAutoBreak;
+
+	if (bExecAutoBreak)
+	{
+		UE_LOG(LogOlivePinConnector, Log,
+			TEXT("Exec auto-break: breaking existing connection on %s.%s to make new connection to %s.%s"),
+			*SourcePin->GetOwningNode()->GetName(), *SourcePin->PinName.ToString(),
+			*TargetPin->GetOwningNode()->GetName(), *TargetPin->PinName.ToString());
+	}
 
 	if (!bCanConnect
 		&& SourcePin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec
@@ -802,6 +824,29 @@ FOliveWiringDiagnostic FOlivePinConnector::BuildWiringDiagnostic(
 				     "An explicit cast or interface is needed."),
 				SrcClass ? *SrcClass->GetName() : TEXT("(unknown)"),
 				TgtClass ? *TgtClass->GetName() : TEXT("(unknown)"));
+		}
+	}
+	// Already-connected pin (BREAK_OTHERS response or existing links on a single-connection pin)
+	else if (SourcePin->LinkedTo.Num() > 0 || TargetPin->LinkedTo.Num() > 0)
+	{
+		Diag.Reason = EOliveWiringFailureReason::AlreadyConnected;
+
+		if (SourcePin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+		{
+			Diag.WhyAutoFixFailed = FString::Printf(
+				TEXT("Exec output '%s' is already connected to '%s'. "
+					 "Disconnect first or use a different exec output pin (e.g., exec_outputs)."),
+				*SourcePin->PinName.ToString(),
+				SourcePin->LinkedTo.Num() > 0
+					? *SourcePin->LinkedTo[0]->GetOwningNode()->GetNodeTitle(ENodeTitleType::ListView).ToString()
+					: TEXT("unknown"));
+		}
+		else
+		{
+			Diag.WhyAutoFixFailed = FString::Printf(
+				TEXT("Pin '%s' already has %d connection(s). Disconnect existing wires first."),
+				(SourcePin->LinkedTo.Num() > 0) ? *SourcePin->PinName.ToString() : *TargetPin->PinName.ToString(),
+				FMath::Max(SourcePin->LinkedTo.Num(), TargetPin->LinkedTo.Num()));
 		}
 	}
 	// Generic incompatible (Exec->Data, Data->Exec, or truly unrelated types)

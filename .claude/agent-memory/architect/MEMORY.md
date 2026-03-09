@@ -102,6 +102,14 @@
 - **Risk**: LOW. UFunction* stable within single frame, same game thread, consumed immediately.
 - **4 tasks**: Add field (~15 lines) -> NodeFactory setter (~30 lines) -> Executor threading (~15 lines) -> UPROPERTY rewrite (~50 lines)
 
+### Run 09p Fixes - Mar 2026
+- `plans/run-09p-fixes-design.md` -- 3 fixes for plan executor rollback and wiring issues
+- **Fix 1 (P0)**: Reused nodes (events, FunctionEntry/Result) not `Modify()`'d in transaction. Stale pin connections survive rollback. Fix: call `Modify()` at each of 5 reuse sites in `PhaseCreateNodes()`.
+- **Fix 2 (P0)**: `CanSafeConnect()` rejects `CONNECT_RESPONSE_BREAK_OTHERS_A` (enum 2). For exec pins, this should auto-break (same as Blueprint editor drag-drop). Also `BuildWiringDiagnostic` falls through to `TypesIncompatible` instead of `AlreadyConnected`.
+- **Fix 3 Part A (P1)**: Support explicit `"Target": "@step.auto"` in plan_json inputs. Alias "Target"->"self", bypass FindPinSmart's hidden-pin filter, use `TryCreateConnection` directly for self pin.
+- **Fix 3 Part B**: DEFERRED. Auto-infer Target from typed references in resolver. Complex, marginal payoff with Part A available.
+- **Key insight**: `CONNECT_RESPONSE_BREAK_OTHERS_A` (enum 2) is NOT DISALLOW. `TryCreateConnection` handles it by breaking existing connections. Our `Connect()` was incorrectly gating on `CanSafeConnect()` which only allows MAKE and MAKE_WITH_PROMOTION.
+
 ### Error Messages 08g - Mar 2026
 - `plans/error-messages-08g-design.md` -- 3 targeted improvements to reduce plan_json first-failure-to-fix
 - **Change 1**: UPROPERTY detection in `FindFunctionEx()` -- after search trail, scan classes for matching property names. Strips Set/Get prefix, checks BlueprintVisible properties. Appends `PROPERTY MATCH:` to SearchedLocations.
