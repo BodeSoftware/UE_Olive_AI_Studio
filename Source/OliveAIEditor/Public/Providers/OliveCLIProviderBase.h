@@ -30,7 +30,6 @@
 #include "HAL/PlatformProcess.h"
 #include "HAL/Runnable.h"
 #include "Providers/OliveCLIToolCallParser.h"
-#include "Brain/OliveAgentConfig.h"
 
 /**
  * Reader thread for CLI process stdout.
@@ -489,13 +488,6 @@ protected:
 
 	/** Context from the most recent autonomous run for "continue" enrichment */
 	FAutonomousRunContext LastRunContext;
-
-	/** Cached pipeline result from the most recent run. Used by Reviewer on completion. */
-	FOliveAgentPipelineResult CachedPipelineResult;
-
-	/** Whether the current run is a Reviewer-triggered correction pass.
-	 *  Prevents infinite review -> correct -> review loop. */
-	bool bIsReviewerCorrectionPass = false;
 
 	/** Whether the last process termination was due to timeout (idle or runtime limit).
 	 *  Set on the background thread in LaunchCLIProcess, read on game thread in HandleResponseCompleteAutonomous. */

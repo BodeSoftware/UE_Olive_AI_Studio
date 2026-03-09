@@ -49,6 +49,71 @@
 DEFINE_LOG_CATEGORY(LogOlivePlanExecutor);
 
 // ============================================================================
+// EnsurePinNotOrphaned — Fix stale bOrphanedPin flags at point of use
+// ============================================================================
+
+/**
+ * Check if a pin has bOrphanedPin=true and, if so, reconstruct the owning
+ * node to clear orphaned flags, then re-find the pin by name.
+ *
+ * bOrphanedPin gets set by UE during node reconstruction (e.g., after
+ * transaction rollback) when a pin existed on the old node but doesn't
+ * match the reconstructed pin set.  Reused event nodes (BeginPlay, custom
+ * events, FunctionEntry) survive transaction rollback because they existed
+ * before the plan, but their pins can retain stale orphaned flags that
+ * cause CanCreateConnection to reject wiring with "TypesIncompatible".
+ *
+ * This helper fixes the problem at the exact point of use: when we're
+ * about to wire a pin, if it's orphaned, we reconstruct the node first.
+ *
+ * IMPORTANT: After ReconstructNode(), the old pin pointer is INVALID.
+ * The caller MUST use the returned pointer instead.
+ *
+ * @param Pin The pin to check (may be nullptr)
+ * @param PinName The FName of the pin (for re-finding after reconstruction)
+ * @return The same pin if not orphaned, or the replacement pin after reconstruction, or nullptr on failure
+ */
+static UEdGraphPin* EnsurePinNotOrphaned(UEdGraphPin* Pin, const FName& PinName)
+{
+    if (!Pin || !Pin->bOrphanedPin)
+    {
+        return Pin; // Not orphaned or null — nothing to do
+    }
+
+    UEdGraphNode* OwnerNode = Pin->GetOwningNode();
+    if (!OwnerNode)
+    {
+        return Pin; // Can't reconstruct without an owner
+    }
+
+    UE_LOG(LogOlivePlanExecutor, Warning,
+        TEXT("Pin '%s' on node '%s' has bOrphanedPin=true — reconstructing node to clear orphaned flags"),
+        *PinName.ToString(),
+        *OwnerNode->GetNodeTitle(ENodeTitleType::ListView).ToString());
+
+    // ReconstructNode rebuilds the pin array from scratch, clearing orphaned flags
+    OwnerNode->ReconstructNode();
+
+    // Re-find the pin — the old pointer is now invalid
+    UEdGraphPin* NewPin = OwnerNode->FindPin(PinName);
+    if (NewPin)
+    {
+        UE_LOG(LogOlivePlanExecutor, Log,
+            TEXT("  -> Reconstruction successful, pin '%s' re-found (bOrphanedPin=%s)"),
+            *PinName.ToString(),
+            NewPin->bOrphanedPin ? TEXT("true (STILL ORPHANED)") : TEXT("false"));
+    }
+    else
+    {
+        UE_LOG(LogOlivePlanExecutor, Error,
+            TEXT("  -> Reconstruction FAILED: pin '%s' no longer exists on node after ReconstructNode()"),
+            *PinName.ToString());
+    }
+
+    return NewPin;
+}
+
+// ============================================================================
 // ResolveSubPinSuffix — Static helper for SplitPin fallback
 // ============================================================================
 
@@ -457,10 +522,14 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::Execute(
 
     FOliveIRBlueprintPlanResult Result = AssembleResult(Plan, Context);
 
-    // Sanitize reused nodes on failure — clear stale bOrphanedPin flags.
-    // When a plan fails and the transaction rolls back, reused nodes (pre-existing
-    // events) retain pin state changes from the failed execution. Clearing
-    // bOrphanedPin prevents "TypesIncompatible" errors on subsequent retries.
+    // Defense-in-depth: clear bOrphanedPin on reused nodes inside the transaction.
+    // NOTE: This cleanup runs INSIDE the pipeline's FScopedTransaction, so if the
+    // transaction is cancelled (rollback), these changes are also rolled back --
+    // making this ineffective for the primary use case.  The REAL fix is in
+    // EnsurePinNotOrphaned(), which clears orphaned flags at the point of use
+    // in WireExecConnection/WireDataConnection.  We keep this as a fallback for
+    // cases where the transaction commits (partial success) but pins are still
+    // orphaned from a prior rollback.
     if (!Result.bSuccess && Context.ReusedStepIds.Num() > 0)
     {
         for (const FString& StepId : Context.ReusedStepIds)
@@ -872,8 +941,10 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
         // skip FindFunction entirely. This eliminates double-resolution and
         // double-aliasing (e.g. "GetForwardVector" re-aliased after resolver
         // already resolved it correctly).
-        if ((NodeType == OliveNodeTypes::CallFunction ||
-             NodeType == OliveNodeTypes::CallDelegate)
+        // Only for CallFunction — CallDelegate uses property-based resolution
+        // (FMulticastDelegateProperty), not FindFunction, so PreResolvedFunction
+        // would leak and pollute the next CreateNode call.
+        if (NodeType == OliveNodeTypes::CallFunction
             && Resolved.ResolvedFunction != nullptr)
         {
             FOliveNodeFactory::Get().SetPreResolvedFunction(Resolved.ResolvedFunction);
@@ -1337,10 +1408,14 @@ void FOlivePlanExecutor::PhaseWireExec(
                 bool bEntryWired = false;
                 if (EntryNode)
                 {
-                    UEdGraphPin* ThenPin = EntryNode->FindPin(UEdGraphSchema_K2::PN_Then);
+                    UEdGraphPin* ThenPin = EnsurePinNotOrphaned(
+                        EntryNode->FindPin(UEdGraphSchema_K2::PN_Then),
+                        UEdGraphSchema_K2::PN_Then);
                     UEdGraphNode* TargetNode = Context.GetNodePtr(Step.StepId);
                     UEdGraphPin* TargetExecPin = TargetNode
-                        ? TargetNode->FindPin(UEdGraphSchema_K2::PN_Execute)
+                        ? EnsurePinNotOrphaned(
+                              TargetNode->FindPin(UEdGraphSchema_K2::PN_Execute),
+                              UEdGraphSchema_K2::PN_Execute)
                         : nullptr;
 
                     if (ThenPin && TargetExecPin)
@@ -1510,7 +1585,9 @@ void FOlivePlanExecutor::PhaseWireExec(
     if (EntryNode)
     {
         // Break direct FunctionEntry → FunctionResult stub wire if present.
-        UEdGraphPin* EntryThenPin = EntryNode->FindPin(UEdGraphSchema_K2::PN_Then);
+        UEdGraphPin* EntryThenPin = EnsurePinNotOrphaned(
+            EntryNode->FindPin(UEdGraphSchema_K2::PN_Then),
+            UEdGraphSchema_K2::PN_Then);
         if (EntryThenPin)
         {
             for (int32 i = EntryThenPin->LinkedTo.Num() - 1; i >= 0; --i)
@@ -1576,14 +1653,17 @@ void FOlivePlanExecutor::PhaseWireExec(
                 *OrphanStep->StepId);
 
             // Wire EntryNode's "then" exec output -> OrphanStep's exec input
-            UEdGraphPin* EntryExecOut = EntryNode->FindPin(UEdGraphSchema_K2::PN_Then);
+            UEdGraphPin* EntryExecOut = EnsurePinNotOrphaned(
+                EntryNode->FindPin(UEdGraphSchema_K2::PN_Then),
+                UEdGraphSchema_K2::PN_Then);
             if (!EntryExecOut)
             {
                 // Fallback: search for any exec output pin on the entry node
                 for (UEdGraphPin* Pin : EntryNode->Pins)
                 {
                     if (Pin && Pin->Direction == EGPD_Output &&
-                        Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+                        Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec &&
+                        !Pin->bOrphanedPin)
                     {
                         EntryExecOut = Pin;
                         break;
@@ -1597,7 +1677,9 @@ void FOlivePlanExecutor::PhaseWireExec(
             UEdGraphPin* OrphanExecInPin = nullptr;
             if (OrphanNode && OrphanExecIn)
             {
-                OrphanExecInPin = OrphanNode->FindPin(FName(*OrphanExecIn->PinName));
+                const FName OrphanPinFName(*OrphanExecIn->PinName);
+                OrphanExecInPin = EnsurePinNotOrphaned(
+                    OrphanNode->FindPin(OrphanPinFName), OrphanPinFName);
             }
 
             if (EntryExecOut && OrphanExecInPin)
@@ -1697,14 +1779,17 @@ void FOlivePlanExecutor::PhaseWireExec(
             continue;
         }
 
-        UEdGraphPin* EventExecOutPin = EventNode->FindPin(FName(*EventExecOutEntry->PinName));
+        const FName EventExecOutFName(*EventExecOutEntry->PinName);
+        UEdGraphPin* EventExecOutPin = EnsurePinNotOrphaned(
+            EventNode->FindPin(EventExecOutFName), EventExecOutFName);
         if (!EventExecOutPin)
         {
             // Fallback: search for any exec output pin on the event node
             for (UEdGraphPin* Pin : EventNode->Pins)
             {
                 if (Pin && Pin->Direction == EGPD_Output &&
-                    Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+                    Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec &&
+                    !Pin->bOrphanedPin)
                 {
                     EventExecOutPin = Pin;
                     break;
@@ -1774,7 +1859,9 @@ void FOlivePlanExecutor::PhaseWireExec(
         UEdGraphPin* FollowerExecInPin = nullptr;
         if (FollowerNode && FollowerExecIn)
         {
-            FollowerExecInPin = FollowerNode->FindPin(FName(*FollowerExecIn->PinName));
+            const FName FollowerPinFName(*FollowerExecIn->PinName);
+            FollowerExecInPin = EnsurePinNotOrphaned(
+                FollowerNode->FindPin(FollowerPinFName), FollowerPinFName);
         }
 
         if (!FollowerExecInPin)
@@ -2167,14 +2254,17 @@ FOliveSmartWireResult FOlivePlanExecutor::WireExecConnection(
             const FOlivePinManifestEntry* TargetExecIn = TargetManifest->FindExecInput();
             if (TargetExecIn)
             {
-                UEdGraphPin* EntryExecOut = EntryNode->FindPin(UEdGraphSchema_K2::PN_Then);
+                UEdGraphPin* EntryExecOut = EnsurePinNotOrphaned(
+                    EntryNode->FindPin(UEdGraphSchema_K2::PN_Then),
+                    UEdGraphSchema_K2::PN_Then);
                 if (!EntryExecOut)
                 {
                     // Fallback: any exec output on the entry node
                     for (UEdGraphPin* Pin : EntryNode->Pins)
                     {
                         if (Pin && Pin->Direction == EGPD_Output &&
-                            Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+                            Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec &&
+                            !Pin->bOrphanedPin)
                         {
                             EntryExecOut = Pin;
                             break;
@@ -2183,8 +2273,10 @@ FOliveSmartWireResult FOlivePlanExecutor::WireExecConnection(
                 }
 
                 UEdGraphNode* TargetNode = Context.GetNodePtr(TargetStepId);
+                const FName TargetExecInFName(*TargetExecIn->PinName);
                 UEdGraphPin* TargetPin = TargetNode
-                    ? TargetNode->FindPin(FName(*TargetExecIn->PinName))
+                    ? EnsurePinNotOrphaned(
+                          TargetNode->FindPin(TargetExecInFName), TargetExecInFName)
                     : nullptr;
 
                 if (EntryExecOut && TargetPin)
@@ -2351,8 +2443,18 @@ FOliveSmartWireResult FOlivePlanExecutor::WireExecConnection(
         return Result;
     }
 
-    UEdGraphPin* SourcePin = SourceNode->FindPin(FName(*SourceExecOut->PinName));
-    UEdGraphPin* TargetPin = TargetNode->FindPin(FName(*TargetExecIn->PinName));
+    const FName SourcePinFName(*SourceExecOut->PinName);
+    const FName TargetPinFName(*TargetExecIn->PinName);
+
+    UEdGraphPin* SourcePin = SourceNode->FindPin(SourcePinFName);
+    UEdGraphPin* TargetPin = TargetNode->FindPin(TargetPinFName);
+
+    // Fix stale bOrphanedPin flags on reused event/entry nodes.
+    // After a previous plan's transaction rollback, UE may mark pins as
+    // orphaned during undo reconstruction. This causes CanCreateConnection
+    // to reject the wire with "TypesIncompatible".
+    SourcePin = EnsurePinNotOrphaned(SourcePin, SourcePinFName);
+    TargetPin = EnsurePinNotOrphaned(TargetPin, TargetPinFName);
 
     if (!SourcePin)
     {
@@ -2906,8 +3008,15 @@ FOliveSmartWireResult FOlivePlanExecutor::WireDataConnection(
         return Result;
     }
 
-    UEdGraphPin* RealSourcePin = SourceNode->FindPin(FName(*SourcePin->PinName));
-    UEdGraphPin* RealTargetPin = TargetNode->FindPin(FName(*TargetPin->PinName));
+    const FName SourcePinFName(*SourcePin->PinName);
+    const FName TargetPinFName(*TargetPin->PinName);
+
+    UEdGraphPin* RealSourcePin = SourceNode->FindPin(SourcePinFName);
+    UEdGraphPin* RealTargetPin = TargetNode->FindPin(TargetPinFName);
+
+    // Fix stale bOrphanedPin flags (see EnsurePinNotOrphaned doc comment)
+    RealSourcePin = EnsurePinNotOrphaned(RealSourcePin, SourcePinFName);
+    RealTargetPin = EnsurePinNotOrphaned(RealTargetPin, TargetPinFName);
 
     if (!RealSourcePin)
     {

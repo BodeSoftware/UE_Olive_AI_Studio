@@ -15,7 +15,6 @@
 #include "Chat/OliveRunManager.h"
 #include "OliveSnapshotManager.h"
 #include "Pipeline/OliveWritePipeline.h"
-#include "Brain/OliveAgentPipeline.h"
 #include "Misc/Guid.h"
 #include "Serialization/JsonSerializer.h"
 
@@ -468,19 +467,6 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 	bHasPendingCorrections = false;
 	CorrectionRepromptCount = 0;
 	ZeroToolRepromptCount = 0;
-	ModifiedAssetPaths.Reset();
-
-	// Run agent pipeline for non-trivial tasks (orchestrated providers).
-	// Pipeline result is cached for potential Reviewer pass on HandleComplete.
-	if (bTurnHasExplicitWriteIntent)
-	{
-		FOliveAgentPipeline Pipeline;
-		CachedPipelineResult = Pipeline.Execute(Message, ActiveContextPaths);
-	}
-	else
-	{
-		CachedPipelineResult = FOliveAgentPipelineResult(); // Reset
-	}
 
 	// Begin a Brain run
 	if (Brain.IsValid())
@@ -644,16 +630,6 @@ FOliveChatMessage FOliveConversationManager::BuildSystemMessage()
 	if (!HistoryContext.IsEmpty())
 	{
 		SystemMessage.Content += TEXT("\n\n## Recent Operations\n") + HistoryContext;
-	}
-
-	// Inject agent pipeline context if available
-	if (CachedPipelineResult.bValid)
-	{
-		FString PipelineContext = CachedPipelineResult.FormatForPromptInjection();
-		if (!PipelineContext.IsEmpty())
-		{
-			SystemMessage.Content += TEXT("\n\n") + PipelineContext;
-		}
 	}
 
 	return SystemMessage;
@@ -963,52 +939,6 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 				CorrectionRepromptCount);
 		}
 
-		// Reviewer pass for orchestrated providers.
-		// Uses actually-modified asset paths (tracked from tool call arguments)
-		// rather than ActiveContextPaths (user @-mentions) so the Reviewer checks
-		// what was actually built, not just what the user pointed at.
-		// Falls back to ActiveContextPaths if no tool calls recorded asset paths.
-		{
-			TArray<FString> ReviewAssets = ModifiedAssetPaths.Array();
-			if (ReviewAssets.Num() == 0)
-			{
-				ReviewAssets = ActiveContextPaths;
-			}
-
-			const UOliveAISettings* ReviewSettings = UOliveAISettings::Get();
-			if (ReviewSettings && ReviewSettings->bEnablePostBuildReview
-				&& CachedPipelineResult.bValid
-				&& CachedPipelineResult.Architect.bSuccess
-				&& !bIsReviewerCorrectionPass
-				&& ReviewAssets.Num() > 0)
-			{
-				FOliveAgentPipeline ReviewPipeline;
-				FOliveReviewerResult Review = ReviewPipeline.RunReviewer(
-					CachedPipelineResult, ReviewAssets);
-
-				if (Review.bSuccess && !Review.bPlanSatisfied && !Review.CorrectionDirective.IsEmpty())
-				{
-					bIsReviewerCorrectionPass = true;
-
-					FOliveChatMessage CorrectionMsg;
-					CorrectionMsg.Role = EOliveChatRole::User;
-					CorrectionMsg.Content = TEXT("## Review Findings\n\n")
-						+ Review.CorrectionDirective
-						+ TEXT("\n\nComplete these remaining items.");
-					CorrectionMsg.Timestamp = FDateTime::UtcNow();
-					AddMessage(CorrectionMsg);
-
-					UE_LOG(LogOliveAI, Log,
-						TEXT("Reviewer: %d missing, %d deviations. Triggering correction pass."),
-						Review.MissingItems.Num(), Review.Deviations.Num());
-
-					SendToProvider();
-					return; // Re-enter agentic loop for one correction pass
-				}
-			}
-		}
-		bIsReviewerCorrectionPass = false;
-
 		// Complete run if active
 		if (bRunModeActive && FOliveRunManager::Get().HasActiveRun())
 		{
@@ -1277,21 +1207,6 @@ void FOliveConversationManager::ExecuteToolCall(const FOliveStreamChunk& ToolCal
 			Writer->Close();
 		}
 		UE_LOG(LogOliveAI, Warning, TEXT("Tool '%s' FAILED with args: %s"), *ToolCall.ToolName, *ArgsStr);
-	}
-
-	// Track modified asset paths for the Reviewer.
-	// Extract asset path from tool arguments on successful write operations.
-	if (Result.bSuccess && ToolCall.ToolArguments.IsValid())
-	{
-		FString ToolAssetPath;
-		if (ToolCall.ToolArguments->TryGetStringField(TEXT("path"), ToolAssetPath)
-			|| ToolCall.ToolArguments->TryGetStringField(TEXT("asset_path"), ToolAssetPath))
-		{
-			if (!ToolAssetPath.IsEmpty())
-			{
-				ModifiedAssetPaths.Add(ToolAssetPath);
-			}
-		}
 	}
 
 	// Record in operation history

@@ -13,12 +13,21 @@
 - Asset resolver: `Source/OliveAIEditor/Public/Services/OliveAssetResolver.h`
 - Class resolver: `Source/OliveAIEditor/Blueprint/Public/OliveClassResolver.h` / `Private/OliveClassResolver.cpp`
 
+## bOrphanedPin Fix (Point-of-Use Pattern)
+- `EnsurePinNotOrphaned()` static helper in OlivePlanExecutor.cpp: checks `bOrphanedPin`, calls `ReconstructNode()`, re-finds pin by FName
+- Applied at all pin access points: WireExecConnection, WireDataConnection, auto-chain paths (entry alias, event-to-follower, stub-wire break)
+- Previous attempts (executor post-failure cleanup + handler post-transaction cleanup) were ineffective: executor cleanup runs inside FScopedTransaction and gets rolled back; handler cleanup condition was reachable but pins may not have bOrphanedPin at that point (depends on UE undo system behavior)
+- After `ReconstructNode()`, old pin pointer is INVALID -- must re-find by name
+- Fallback loops for exec pins should also check `!Pin->bOrphanedPin`
+
 ## Resolver-Executor Contract (Single Resolution Authority)
 - `FOliveResolvedStep.ResolvedFunction` carries `UFunction*` from resolver to executor
-- `FOliveNodeFactory::SetPreResolvedFunction()` consumed at top of `CreateNodeByClass` (guard pattern: save locally, reset member)
-- Plan path no longer calls FindFunction in NodeFactory; `_resolved` flag kept for `add_node` backward compat
+- **Critical**: `PreResolvedFunction` consumed in `CreateCallFunctionNode()` (curated path), NOT `CreateNodeByClass` (universal fallback). `CreateNode()` dispatches to curated creators for all OliveNodeTypes, only falls through to `CreateNodeByClass` for raw UK2Node class names.
+- `ValidateNodeType()` skips redundant FindFunction when `PreResolvedFunction != nullptr`
+- Executor only sets PreResolvedFunction for `CallFunction` (not `CallDelegate` — delegates use property-based resolution, leaking the pointer would pollute next call)
 - UPROPERTY auto-rewrite: resolver detects `PROPERTY MATCH:` in SearchedLocations, rewrites call→set_var/get_var
 - OliveNodeTypes constants: `SetVariable`/`GetVariable` (NOT `VariableSet`/`VariableGet`)
+- **Transaction rollback pitfall**: bOrphanedPin cleanup inside Execute() gets rolled back by Transaction->Cancel(). Post-rollback cleanup must happen AFTER pipeline returns (in tool handler, not executor).
 
 ## Patterns
 - Tool handler pattern: validate params -> resolve asset path -> load Blueprint -> execute -> serialize result
@@ -160,15 +169,12 @@
 - **FOliveNodeFactory::FindClass is PRIVATE** -- use `FOliveClassResolver::Resolve()` from outside the class
 - Self-correction: FUNCTION_NOT_FOUND now progressive (attempt 1=check scoped suggestions, 2=property/K2_, 3+=read components)
 
-## Agent Pipeline (Phase 8 + Planner MCP)
-- `FOliveAgentPipeline` at `Public/Brain/OliveAgentPipeline.h` / `Private/Brain/OliveAgentPipeline.cpp`
-- NOT a singleton; stack-instantiate per run (like FOlivePlanExecutor)
-- **Two paths**: API (5 agents) and CLI (2 calls). `IsCLIOnlyMode()` detects at top of Execute()
-- **CLI path**: Scout (pure C++) -> RunPlannerWithTools (MCP, fallback RunPlanner) -> Validator (pure C++)
-- **RunPlannerWithTools**: spawns `claude --print --max-turns 15 --output-format stream-json`, MCP tool filter (3 read-only tools), tick-pump read loop with `FTSTicker::GetCoreTicker().Tick(0.01f)`, 180s timeout
-- Tool filter: `SetToolFilter()` with exact tool names as prefixes: `blueprint.get_template`, `blueprint.list_templates`, `blueprint.describe`
-- Sandbox: `Saved/OliveAI/PlannerSandbox/` with `.mcp.json` + `CLAUDE.md`
-- Prompt: compact template headers (not full overviews), tool usage instructions appended to system prompt
-- `ParseStreamJsonFinalText()`: parses stream-json lines, handles `assistant` messages + `content_block_delta` text, extracts `## Build Plan` header block
-- Fallback: if MCP server not running OR CLI not installed OR spawn fails -> single-shot `RunPlanner()`
-- `GetTemplateOverview()` reverted: ALL functions shown with full detail (no MaxDetailedFunctions cap)
+## Agent Pipeline (REMOVED - Single-Agent Revert 2026-03-09)
+- `OliveAgentPipeline.h`, `OliveAgentPipeline.cpp`, `OliveAgentConfig.h` DELETED
+- Multi-agent pipeline replaced with single-agent flow: discovery pass + decomposition directive
+- Discovery: `FOliveUtilityModel::RunDiscoveryPass()` called directly from `SendMessageAutonomous()`
+- Decomposition: structured prompt injected for write-intent messages (asset listing, research tools, build steps)
+- Reviewer: removed entirely; agent self-corrects via compile errors
+- Settings: `bEnablePostBuildReview`, `bCustomizeAgentModels`, per-agent models all removed
+- Settings kept: `bEnableTemplateDiscoveryPass`, `bEnableLLMKeywordExpansion`
+- AGENTS.md sandbox now includes Planning/Research/Building/Self-Correction sections

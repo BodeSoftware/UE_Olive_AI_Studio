@@ -28,7 +28,6 @@
 #include "EdGraph/EdGraph.h"
 #include "Index/OliveProjectIndex.h"
 #include "Services/OliveUtilityModel.h"
-#include "Brain/OliveAgentPipeline.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogOliveCLIProvider, Log, All);
 
@@ -395,6 +394,40 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 	AgentContext += TEXT("- Batch independent tool calls (add_variable, add_component) in a single response when possible.\n");
 	AgentContext += TEXT("- After creating from a template (blueprint.create with template_id), check the result for the list of created functions. Write plan_json for EACH function -- they are empty stubs. Do NOT call blueprint.read or read_function after template creation.\n\n");
 
+	AgentContext += TEXT("## Planning\n\n");
+	AgentContext += TEXT("For multi-asset tasks, plan before building. Ask:\n");
+	AgentContext += TEXT("- \"Does this thing exist in the world with its own transform?\" -> separate Blueprint\n");
+	AgentContext += TEXT("- \"Is it a value on an existing actor?\" -> variable\n");
+	AgentContext += TEXT("- \"Is it a capability attached to many actors?\" -> component\n\n");
+	AgentContext += TEXT("Common decomposition: weapons, projectiles, doors, keys, vehicles = always separate actors.\n");
+	AgentContext += TEXT("After listing your assets, identify how they communicate (interfaces, dispatchers, casts,\n");
+	AgentContext += TEXT("overlap events). See Blueprint Design Patterns for details.\n\n");
+
+	AgentContext += TEXT("## Research\n\n");
+	AgentContext += TEXT("Research tools help you verify assumptions before writing graph logic:\n");
+	AgentContext += TEXT("- `blueprint.list_templates(query=\"...\")` -- search library/factory templates for patterns\n");
+	AgentContext += TEXT("- `blueprint.get_template(id, pattern=\"FuncName\")` -- read specific function implementations\n");
+	AgentContext += TEXT("- `blueprint.describe_function(class, function)` -- verify exact pin names\n");
+	AgentContext += TEXT("- `blueprint.describe_node_type(type)` -- check K2Node properties and pins\n");
+	AgentContext += TEXT("- `project.search(query)` -- find existing assets by name\n");
+	AgentContext += TEXT("- `olive.get_recipe(query)` -- tested wiring patterns for common tasks\n\n");
+	AgentContext += TEXT("Research when you are unsure. Skip research when you are confident in your UE5 knowledge.\n\n");
+
+	AgentContext += TEXT("## Building\n\n");
+	AgentContext += TEXT("Three approaches -- use whichever fits, mix freely:\n");
+	AgentContext += TEXT("1. plan_json -- batch declarative, best for standard logic (3+ nodes)\n");
+	AgentContext += TEXT("2. Granular tools (add_node, connect_pins) -- any UK2Node, best for edge cases\n");
+	AgentContext += TEXT("3. editor.run_python -- full UE editor API, best for anything tools can't express\n\n");
+	AgentContext += TEXT("Build one asset at a time: structure -> function signatures -> compile structure ->\n");
+	AgentContext += TEXT("graph logic -> compile to 0 errors -> next asset.\n\n");
+
+	AgentContext += TEXT("## Self-Correction\n");
+	AgentContext += TEXT("- Fix the FIRST compile error before moving on\n");
+	AgentContext += TEXT("- After a plan_json failure, all nodes from that plan are rolled back.\n");
+	AgentContext += TEXT("  Do NOT reference node IDs from a failed plan.\n");
+	AgentContext += TEXT("- If one approach fails twice, try a different tool or technique\n");
+	AgentContext += TEXT("- If something genuinely cannot be done, tell the user what and why\n\n");
+
 	if (!BlueprintKnowledge.IsEmpty())
 	{
 		AgentContext += TEXT("---\n\n");
@@ -510,11 +543,6 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 			LastRunContext.ModifiedAssetPaths.Num());
 	}
 
-	// Save a copy of @-mentioned asset paths before consumption below.
-	// The agent pipeline needs these for Scout/Researcher context, and the
-	// original array is emptied after prompt injection.
-	TArray<FString> PipelineContextAssets = InitialContextAssetPaths;
-
 	// Inject @-mentioned asset state into the initial prompt so the AI
 	// doesn't need to re-read assets it's already been pointed at.
 	// Must run on the game thread (BuildAssetStateSummary loads UObjects).
@@ -578,7 +606,7 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 	}
 
 	// Helper to emit a status message through the stream callback so the chat UI
-	// shows progress during the pipeline phase (which can take 30-120s).
+	// shows progress during the discovery phase.
 	auto EmitStatus = [this](const FString& StatusText)
 	{
 		FScopeLock Lock(&CallbackLock);
@@ -590,61 +618,49 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 		}
 	};
 
-	// Agent pipeline: runs Router -> Scout -> Researcher -> Architect -> Validator.
-	// Produces a Build Plan with validated class names that replaces the old
-	// discovery pass + decomposition directive.
-	// Only run for non-continuation messages with write intent -- read-only queries
-	// ("read BP_Gun", "what does this do") skip the pipeline to avoid wasting 5-30s of LLM calls.
-	if (!bIsContinuation && MessageImpliesMutation(EffectiveMessage))
+	// Template discovery pass -- pre-search library/factory/community templates
+	// using utility model for smart keyword generation.
+	if (!bIsContinuation)
 	{
-		// Emit pipeline start status so the chat UI is not silent during planning
-		EmitStatus(TEXT("*Analyzing task and searching project for relevant assets...*"));
-
-		// Capture asset paths before they were consumed above by InitialContextAssetPaths.Empty().
-		// The pipeline needs the original @-mentioned assets for Scout/Researcher context.
-		FOliveAgentPipeline Pipeline;
-		CachedPipelineResult = Pipeline.Execute(EffectiveMessage, PipelineContextAssets);
-
-		if (CachedPipelineResult.bValid)
+		const UOliveAISettings* DiscoverySettings = UOliveAISettings::Get();
+		if (DiscoverySettings && DiscoverySettings->bEnableTemplateDiscoveryPass)
 		{
-			EmitStatus(TEXT("*Build plan ready. Launching builder...*"));
+			EmitStatus(TEXT("*Searching for relevant templates and assets...*"));
 
-			FString PipelineBlock = CachedPipelineResult.FormatForPromptInjection();
-			if (!PipelineBlock.IsEmpty())
+			const FString& DiscoveryInput =
+				(LastRunContext.bValid && !LastRunContext.OriginalMessage.IsEmpty())
+				? LastRunContext.OriginalMessage
+				: UserMessage;
+			FOliveDiscoveryResult Discovery = FOliveUtilityModel::RunDiscoveryPass(DiscoveryInput);
+			FString DiscoveryBlock = FOliveUtilityModel::FormatDiscoveryForPrompt(Discovery);
+
+			if (!DiscoveryBlock.IsEmpty())
 			{
 				EffectiveMessage += TEXT("\n\n");
-				EffectiveMessage += PipelineBlock;
+				EffectiveMessage += DiscoveryBlock;
 
 				UE_LOG(LogOliveCLIProvider, Log,
-					TEXT("Agent pipeline: %s complexity, %d assets planned, %.1fs total"),
-					CachedPipelineResult.Router.Complexity == EOliveTaskComplexity::Simple ? TEXT("Simple") :
-					CachedPipelineResult.Router.Complexity == EOliveTaskComplexity::Moderate ? TEXT("Moderate") :
-					TEXT("Complex"),
-					CachedPipelineResult.Architect.AssetOrder.Num(),
-					CachedPipelineResult.TotalElapsedSeconds);
+					TEXT("Discovery pass: %d results in %.1fs (LLM=%s, queries: %s)"),
+					Discovery.Entries.Num(),
+					Discovery.ElapsedSeconds,
+					Discovery.bUsedLLM ? TEXT("yes") : TEXT("no"),
+					*FString::Join(Discovery.SearchQueries, TEXT("; ")));
 			}
 		}
-		else
-		{
-			EmitStatus(TEXT("*Planning complete. Launching builder...*"));
-
-			// Pipeline failed (all LLM calls timed out or errored) -- inject minimal
-			// decomposition guidance so the Builder still has structure to work from.
-			EffectiveMessage += TEXT("\n\n## Build Guidance\n\n");
-			EffectiveMessage += TEXT("Break the task into individual Blueprint assets. For each:\n");
-			EffectiveMessage += TEXT("1. Create the asset with appropriate parent class\n");
-			EffectiveMessage += TEXT("2. Add components, variables, and interfaces\n");
-			EffectiveMessage += TEXT("3. Write graph logic with apply_plan_json\n");
-			EffectiveMessage += TEXT("4. Compile to 0 errors before moving to the next asset\n");
-
-			UE_LOG(LogOliveCLIProvider, Warning,
-				TEXT("Agent pipeline failed -- injected fallback decomposition guidance"));
-		}
 	}
-	else if (!bIsContinuation)
+
+	// Structured decomposition directive.
+	if (!bIsContinuation && MessageImpliesMutation(UserMessage))
 	{
-		// Read-only query: reset cached pipeline result so no Reviewer runs later
-		CachedPipelineResult = FOliveAgentPipelineResult();
+		EmitStatus(TEXT("*Launching builder...*"));
+
+		EffectiveMessage += TEXT("\n\n## Task Approach\n\n");
+		EffectiveMessage += TEXT("Think through what Blueprints you need:\n");
+		EffectiveMessage += TEXT("- Separate actor for anything with its own transform (weapons, projectiles, etc.)\n");
+		EffectiveMessage += TEXT("- Component for reusable capabilities\n");
+		EffectiveMessage += TEXT("- Variable for simple values on existing actors\n\n");
+		EffectiveMessage += TEXT("Then build each one fully: structure -> graph logic -> compile to 0 errors -> next.\n");
+		EffectiveMessage += TEXT("Use blueprint.describe_function to verify pin names when unsure.\n");
 	}
 
 	// Guardrail: for write-oriented tasks, require at least one tool call before final text.
@@ -1217,89 +1233,6 @@ void FOliveCLIProviderBase::HandleResponseCompleteAutonomous(int32 ReturnCode)
 		CurrentOnError.ExecuteIfBound(FString::Printf(TEXT("%s process exited with code %d"), *GetCLIName(), ReturnCode));
 		return;
 	}
-
-	// Reviewer pass: compare Builder output against the Build Plan.
-	// Only runs if:
-	//   0. Post-build review is enabled in settings
-	//   1. The pipeline produced a valid Build Plan
-	//   2. The Builder modified at least one asset
-	//   3. This is not already a correction pass (prevent infinite loop)
-	//
-	// IMPORTANT: The Reviewer makes a blocking LLM call (tick-pump). This method
-	// runs under CallbackLock (called from LaunchCLIProcess's OnProcessExit).
-	// We must release the lock before running the Reviewer to avoid blocking
-	// other game thread dispatches. Defer to a new game thread task.
-	const UOliveAISettings* ReviewSettings = UOliveAISettings::Get();
-	const bool bShouldReview = ReviewSettings && ReviewSettings->bEnablePostBuildReview
-		&& CachedPipelineResult.bValid
-		&& CachedPipelineResult.Architect.bSuccess
-		&& LastRunContext.ModifiedAssetPaths.Num() > 0
-		&& !bIsReviewerCorrectionPass;
-
-	if (bShouldReview)
-	{
-		// Save state needed for review, then release the lock by returning.
-		// The Reviewer runs in a deferred game thread task outside the lock scope.
-		FOliveAgentPipelineResult SavedPipelineResult = CachedPipelineResult;
-		TArray<FString> SavedModifiedAssets = LastRunContext.ModifiedAssetPaths;
-		FOnOliveStreamChunk SavedOnChunk = CurrentOnChunk;
-		FOnOliveComplete SavedOnComplete = CurrentOnComplete;
-		FOnOliveError SavedOnError = CurrentOnError;
-		FString SavedAccumulatedResponse = AccumulatedResponse;
-		TSharedPtr<FThreadSafeBool> Guard = AliveGuard;
-
-		// Mark busy=false to release the current request, but the deferred task
-		// may re-enter SendMessageAutonomous for a correction pass.
-		bIsBusy = false;
-
-		AsyncTask(ENamedThreads::GameThread, [this, Guard,
-			SavedPipelineResult, SavedModifiedAssets,
-			SavedOnChunk, SavedOnComplete, SavedOnError, SavedAccumulatedResponse]()
-		{
-			if (!*Guard) return;
-
-			FOliveAgentPipeline Pipeline;
-			FOliveReviewerResult Review = Pipeline.RunReviewer(
-				SavedPipelineResult, SavedModifiedAssets);
-
-			if (Review.bSuccess && !Review.bPlanSatisfied && !Review.CorrectionDirective.IsEmpty())
-			{
-				UE_LOG(LogOliveCLIProvider, Log,
-					TEXT("Reviewer found %d missing items, %d deviations. Triggering correction pass."),
-					Review.MissingItems.Num(), Review.Deviations.Num());
-
-				// Trigger one correction pass by feeding findings back to the Builder.
-				bIsReviewerCorrectionPass = true;
-				bIsAutoContinuation = true;
-
-				FString CorrectionMessage = TEXT("## Review Findings\n\n");
-				CorrectionMessage += Review.CorrectionDirective;
-				CorrectionMessage += TEXT("\n\nComplete these remaining items now.");
-
-				SendMessageAutonomous(
-					CorrectionMessage,
-					SavedOnChunk,
-					SavedOnComplete,
-					SavedOnError);
-			}
-			else
-			{
-				// Reviewer passed or failed to run -- signal normal completion.
-				bIsReviewerCorrectionPass = false;
-
-				FOliveProviderUsage Usage;
-				Usage.Model = CurrentConfig.ModelId.IsEmpty()
-					? FString::Printf(TEXT("%s-cli"), *GetCLIName().ToLower())
-					: CurrentConfig.ModelId;
-				Usage.FinishReason = TEXT("stop");
-				SavedOnComplete.ExecuteIfBound(SavedAccumulatedResponse, Usage);
-			}
-		});
-		return; // Lock released on return; Reviewer runs in deferred task
-	}
-
-	// Reset reviewer flag for next run
-	bIsReviewerCorrectionPass = false;
 
 	FOliveProviderUsage Usage;
 	Usage.Model = CurrentConfig.ModelId.IsEmpty() ? FString::Printf(TEXT("%s-cli"), *GetCLIName().ToLower()) : CurrentConfig.ModelId;

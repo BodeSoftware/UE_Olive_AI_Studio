@@ -11,7 +11,6 @@
 #include "Brain/OlivePromptDistiller.h"
 #include "Brain/OliveRetryPolicy.h"
 #include "Brain/OliveSelfCorrectionPolicy.h"
-#include "Brain/OliveAgentConfig.h"
 // DEPRECATED: Tool pack filtering removed in AI Freedom update.
 // #include "Brain/OliveToolPackManager.h"
 
@@ -456,18 +455,6 @@ private:
 
 	/** Retry policy configuration */
 	FOliveRetryPolicy RetryPolicy;
-
-	/** Cached agent pipeline result for the current turn */
-	FOliveAgentPipelineResult CachedPipelineResult;
-
-	/** Asset paths actually modified by tool calls during the current turn.
-	 *  Populated in ExecuteToolCall from tool arguments (path/asset_path).
-	 *  Used by the Reviewer instead of ActiveContextPaths so the Reviewer
-	 *  checks what was actually modified, not just what the user @-mentioned. */
-	TSet<FString> ModifiedAssetPaths;
-
-	/** Whether we are in a Reviewer-triggered correction pass */
-	bool bIsReviewerCorrectionPass = false;
 
 	// ==========================================
 	// Token Management

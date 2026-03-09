@@ -1,7 +1,6 @@
 // Copyright Bode Software. All Rights Reserved.
 
 #include "Settings/OliveAISettings.h"
-#include "Brain/OliveAgentConfig.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 
@@ -336,115 +335,6 @@ void UOliveAISettings::SetSafetyPreset(EOliveSafetyPreset NewPreset)
 	SafetyPreset = NewPreset;
 	SaveConfig();
 	OnSafetyPresetChanged.Broadcast(NewPreset);
-}
-
-FOliveAgentModelConfig UOliveAISettings::GetAgentModelConfig(EOliveAgentRole Role) const
-{
-	FOliveAgentModelConfig Config;
-
-	// Determine provider + model for this role
-	EOliveAIProvider TargetProvider;
-	FString TargetModel;
-
-	if (!bCustomizeAgentModels)
-	{
-		// Use main provider + model for all agents (NOT utility model)
-		TargetProvider = Provider;
-		TargetModel = SelectedModel;
-	}
-	else
-	{
-		// Per-agent config
-		switch (Role)
-		{
-		case EOliveAgentRole::Router:
-			TargetProvider = RouterProvider;
-			TargetModel = RouterModel;
-			break;
-		case EOliveAgentRole::Scout:
-			TargetProvider = ScoutProvider;
-			TargetModel = ScoutModel;
-			break;
-		case EOliveAgentRole::Researcher:
-			TargetProvider = ResearcherProvider;
-			TargetModel = ResearcherModel;
-			break;
-		case EOliveAgentRole::Architect:
-			TargetProvider = ArchitectProvider;
-			TargetModel = ArchitectModel;
-			break;
-		case EOliveAgentRole::Reviewer:
-			TargetProvider = ReviewerProvider;
-			TargetModel = ReviewerModel;
-			break;
-		default:
-			TargetProvider = Provider;
-			TargetModel = SelectedModel;
-			break;
-		}
-	}
-
-	// CLI providers cannot do HTTP completions. Try utility model first.
-	if (TargetProvider == EOliveAIProvider::ClaudeCode
-		|| TargetProvider == EOliveAIProvider::Codex)
-	{
-		// Attempt to use the utility model provider instead (fast, cheap, HTTP-capable)
-		const EOliveAIProvider UtilProvider = UtilityModelProvider;
-
-		// Only use utility model if it's NOT itself a CLI provider and has a valid config
-		if (UtilProvider != EOliveAIProvider::ClaudeCode
-			&& UtilProvider != EOliveAIProvider::Codex
-			&& !UtilityModelId.IsEmpty())
-		{
-			FString UtilApiKey = UtilityModelApiKey;
-			if (UtilApiKey.IsEmpty())
-			{
-				UtilApiKey = GetApiKeyForProvider(UtilProvider);
-			}
-
-			const bool bUtilNeedsKey = UtilProvider != EOliveAIProvider::Ollama
-									&& UtilProvider != EOliveAIProvider::OpenAICompatible;
-
-			if (!bUtilNeedsKey || !UtilApiKey.IsEmpty())
-			{
-				Config.Provider = UtilProvider;
-				Config.ModelId = UtilityModelId;
-				Config.ApiKey = UtilApiKey;
-				Config.BaseUrl = GetBaseUrlForProvider(UtilProvider);
-				Config.bIsValid = true;
-				Config.bIsCLIFallback = false;
-				return Config;
-			}
-		}
-
-		// No utility model available -- fall through to CLI --print
-		Config.bIsCLIFallback = true;
-		return Config;
-	}
-
-	Config.Provider = TargetProvider;
-	Config.ModelId = TargetModel;
-
-	// Resolve API key: per-provider field (main provider key) -> utility model key -> empty
-	Config.ApiKey = GetApiKeyForProvider(TargetProvider);
-	if (Config.ApiKey.IsEmpty())
-	{
-		Config.ApiKey = UtilityModelApiKey; // Fallback for custom agent models using utility key
-	}
-
-	// Resolve base URL
-	Config.BaseUrl = GetBaseUrlForProvider(TargetProvider);
-
-	const bool bNeedsKey = TargetProvider != EOliveAIProvider::Ollama
-						&& TargetProvider != EOliveAIProvider::OpenAICompatible;
-	Config.bIsValid = !TargetModel.IsEmpty() && (!bNeedsKey || !Config.ApiKey.IsEmpty());
-
-	if (!Config.bIsValid)
-	{
-		Config.bIsCLIFallback = true; // Will fall through to CLI --print
-	}
-
-	return Config;
 }
 
 #undef LOCTEXT_NAMESPACE

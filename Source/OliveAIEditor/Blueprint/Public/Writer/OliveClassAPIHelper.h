@@ -9,7 +9,7 @@
  *
  * Used by:
  * - OliveBlueprintPlanResolver (class-scoped FUNCTION_NOT_FOUND suggestions)
- * - OliveAgentPipeline (component API map injection into Builder prompt)
+ * - Prompt assembler / future context injection
  *
  * All methods are static. No state, no singleton.
  */

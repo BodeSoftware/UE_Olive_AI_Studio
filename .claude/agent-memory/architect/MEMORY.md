@@ -7,7 +7,7 @@
 - **FOliveWriteResult factory methods**: Use `::ExecutionError()`, `::Success()`, `::ValidationError()`, `::ConfirmationNeeded()` -- do not construct manually.
 - **FOliveToolResult vs FOliveWriteResult**: Tool handlers return `FOliveToolResult`; pipeline returns `FOliveWriteResult` which converts via `.ToToolResult()`.
 - **Singleton pattern**: All service classes (NodeCatalog, NodeFactory, GraphWriter, WritePipeline, BlueprintReader) are singletons via `static Foo& Get()`.
-- **Tick-pump blocking pattern**: `FTSTicker::GetCoreTicker().Tick(0.01f)` + `FPlatformProcess::Sleep(0.01f)` for synchronous LLM calls (FOliveUtilityModel, FOliveAgentPipeline).
+- **Tick-pump blocking pattern**: `FTSTicker::GetCoreTicker().Tick(0.01f)` + `FPlatformProcess::Sleep(0.01f)` for synchronous LLM calls (FOliveUtilityModel).
 
 ## Architecture Decisions
 
@@ -40,49 +40,19 @@
 - Plan executor: `Source/OliveAIEditor/Blueprint/Public/Plan/OlivePlanExecutor.h`
 - Template system: `Source/OliveAIEditor/Blueprint/Public/Template/OliveTemplateSystem.h`
 - Utility model: `Source/OliveAIEditor/Public/Services/OliveUtilityModel.h`
-- Agent pipeline: `Source/OliveAIEditor/Public/Brain/OliveAgentPipeline.h` (NEW)
-- Agent config: `Source/OliveAIEditor/Public/Brain/OliveAgentConfig.h` (NEW)
+- Agent pipeline: DELETED (was `Source/OliveAIEditor/Public/Brain/OliveAgentPipeline.h`)
+- Agent config: DELETED (was `Source/OliveAIEditor/Public/Brain/OliveAgentConfig.h`)
 
-### Agent Pipeline - Mar 2026
-- `plans/agent-pipeline-design.md` -- Always-on pipeline replacing discovery pass + decomposition directive
-- **Pipeline**: Router -> Scout -> [Researcher if not Simple] -> Architect -> Validator (C++) -> Builder -> Reviewer
-- **NOT a singleton**: Instantiate per run (like FOlivePlanExecutor, FOliveLibraryCloner).
-- **3 new files**: `OliveAgentConfig.h`, `OliveAgentPipeline.h`, `OliveAgentPipeline.cpp`
-- **Settings**: `bCustomizeAgentModels` checkbox. When false, all agents use utility model provider/model. When true, per-agent provider+model selectors appear (EditCondition/EditConditionHides).
-- **`GetAgentModelConfig(EOliveAgentRole)`**: Returns `FOliveAgentModelConfig` with provider/model/apikey/baseurl. Falls through to CLI `--print` if no API key.
-- **`SendAgentCompletion()`**: Per-role model resolution + tick-pump blocking LLM call. Reuses same pattern as `FOliveUtilityModel::TrySendCompletion()`.
-- **Per-agent params**: Router (T=0.0, 64 tok, 10s), Scout (T=0.0, 256 tok, 10s), Researcher (T=0.2, 512 tok, 15s), Architect (T=0.2, 2048 tok, 30s), Reviewer (T=0.0, 512 tok, 15s).
-- **Router defaults to Moderate on failure** (safe middle ground).
-- **Validator is C++ only** (no LLM): `TryResolveClass()`, `TryResolveComponentClass()`, `IsValidInterface()` via FindFirstObjectSafe + alias map.
-- **`FormatForPromptInjection()`**: Produces markdown with Task Analysis, Reference Templates, Build Plan, Validator Warnings, Existing Assets, Execution directive.
-- **Replaces**: CLIProviderBase lines 570-621 (discovery pass + decomposition directive).
-- **Reviewer**: Runs after Builder completes. One correction pass max (`bIsReviewerCorrectionPass` flag).
-- **Integration**: Autonomous path (CLIProviderBase.cpp), Orchestrated path (ConversationManager.cpp: SendUserMessage + BuildSystemMessage + HandleComplete).
-- **Build Plan schema**: Order, per-asset sections (Action, Parent Class, Components, Variables, Dispatchers, Interfaces, Functions, Events), Interactions.
-- **10-phase implementation order**: Foundation -> Router -> Scout -> Researcher -> Architect -> Validator -> CLIProviderBase -> ConversationManager -> Reviewer -> Polish.
-
-### Planner MCP Tools - Mar 2026
-- `plans/planner-mcp-design.md` -- Give Planner agent MCP tool access instead of single-shot `--print`
-- **Inline process** (NOT via LaunchCLIProcess): Spawn + blocking read loop on game thread, tick-pump enables MCP tool handling
-- **Key insight**: `FTSTicker::Tick()` in read loop processes MCP HTTP requests, enabling tool round-trips
-- **3 new methods**: `RunPlannerWithTools()`, `SetupPlannerSandbox()`, `ParseStreamJsonFinalText()`
-- **Sandbox**: `Saved/OliveAI/PlannerSandbox/` with `.mcp.json` + minimal `CLAUDE.md`
-- **CLI args**: `--print --max-turns 15 --output-format stream-json --verbose --dangerously-skip-permissions`
-- **Tool filter**: Uses existing `SetToolFilter()` with exact tool names as prefixes (unique enough)
-- **Allowed tools**: `blueprint.get_template`, `blueprint.list_templates`, `blueprint.describe`
-- **Timeout**: 180s hard limit (up from 120s single-shot)
-- **Fallback**: If MCP not running or process fails, falls back to existing `RunPlanner()` (single-shot)
-- **Prompt**: Compact template headers (~3-5K) instead of full overviews (~27-31K)
-- **No new files, no new settings**: All changes in OliveAgentPipeline.h/.cpp
-
-### Pipeline Quality Fix - Mar 2026
-- `plans/pipeline-quality-fix-design.md` -- Fix Builder producing PrintString-only logic
-- **Root causes**: (1) Architect sees template summaries, not implementations; (2) Execution directive kills Builder research agency
-- **Scout enhancement**: After `RunDiscoveryPass()`, auto-load top 2 library templates' matched functions via `GetFunctionContent()` (pure C++, no LLM). Stored in new `FOliveScoutResult::TemplateContent` field.
-- **Architect enhancement**: Receives `TemplateContent` + 2 new rules to base function descriptions on observed patterns.
-- **Execution directive**: Conditional -- if `bWantsSimpleLogic` (detects "stub", "placeholder", etc.), allows PrintString. Otherwise explicitly encourages `get_template` research before writing `plan_json`.
-- **GetAgentModelConfig speed fix**: CLI providers probe utility model (HTTP) before falling through to `claude --print`. Saves 10-20s for CLI-only users.
-- **No new files**: Only modifies OliveAgentConfig.h, OliveAgentPipeline.cpp, OliveAISettings.cpp.
+### Agent Pipeline - DELETED Mar 2026
+- `plans/single-agent-revert-design.md` -- Reverted multi-agent pipeline back to single-agent flow
+- **Reason**: 60-180s overhead for 5-7 LLM sub-agent calls; pipeline timeouts caused sparse fallbacks; complexity not justified by quality gains
+- **Reverted to**: Discovery pass (`FOliveUtilityModel::RunDiscoveryPass`) + decomposition directive + single autonomous agent
+- **Kept**: All tool-layer improvements (resolver-executor contract, Phase 0 validation, describe_function, UPROPERTY auto-rewrite, stale pin cleanup)
+- **Dropped**: FOliveAgentPipeline, FOliveAgentConfig, per-agent model settings, Reviewer, Build Plan, FormatForPromptInjection, Section 3.25 pin reference, Component API map
+- **Files DELETED (Option B)**: OliveAgentPipeline.h/.cpp, OliveAgentConfig.h -- clean delete, all transitive deps removed
+- **6 dependent files cleaned**: CLIProviderBase.h/.cpp, ConversationManager.h/.cpp, OliveAISettings.h/.cpp
+- **System prompt**: AGENTS.md updated with Planning/Research/Building/Self-Correction sections
+- **Original design**: `plans/agent-pipeline-design.md` (historical reference)
 
 ### Codex CLI Provider - Mar 2026
 - `plans/codex-cli-provider-design.md` -- FOliveCodexProvider subclass of CLIProviderBase
@@ -110,17 +80,9 @@
 - **Key filtering rules**: Skip DEPRECATED_, Internal_, PostEditChange, OnRep_ functions; only BlueprintVisible/ReadOnly properties
 - **4-phase implementation**: Shared helper -> Fix 1 (resolver) -> Fix 2 (self-correction) -> Fix 3 (pipeline)
 
-### Planner Pin Enrichment - Mar 2026
-- `plans/planner-pin-enrichment-design.md` -- Fix ~55% plan_json success rate caused by hallucinated pin names
-- **Root cause**: Planner produces vague function descriptions ("call ApplyPointDamage to deal damage") without pin names. Builder guesses from LLM training memory.
-- **Option A (prompt)**: Add pin name instruction to `BuildPlannerSystemPrompt()` -- tell Planner to include exact pin names from template node graphs it reads
-- **Option E (C++ enrichment)**: New `BuildFunctionPinReference()` method on `FOliveAgentPipeline`. Extracts function names from Build Plan text via regex, resolves each to `UFunction*` via `FindFunctionEx()`, formats signatures with `TFieldIterator<FProperty>`, appends as Section 3.25 in `FormatForPromptInjection()`.
-- **Combined A+E**: Prompt teaches Planner to include pins from templates; C++ catches the rest via reflection. Covers ~95%+ of functions.
-- **Key detail**: `describe_node_type` is wrong tool -- it resolves K2Node classes, not function signatures. Returns generic CallFunction pins without function-specific parameters.
-- **Budget**: 2500 chars for pin reference section (~30 function signatures). Uses `FOliveClassAPIHelper::GetPropertyTypeString()` for types.
-- **by-ref detection**: `CPF_ReferenceParm` flag (not `CPF_OutParm` alone). These cause "must have input wired" compile errors.
-- **No new files**: Only modifies OliveAgentPipeline.h/.cpp
-- **Senior assignment**: ~200 lines new C++ in critical path
+### Planner Pin Enrichment - DEPRECATED Mar 2026
+- Superseded by single-agent revert. Agent uses `blueprint.describe_function` on demand instead of pre-computed Section 3.25.
+- Key insight preserved: `describe_node_type` resolves K2Node classes, NOT function signatures. Use `describe_function` for pin names.
 
 ### Plan Executor Fixes 09j - Mar 2026
 - `plans/plan-executor-fixes-09j-design.md` -- 4 bugs, 59% -> 80% plan_json regression

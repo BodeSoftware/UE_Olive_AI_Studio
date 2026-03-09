@@ -67,6 +67,21 @@ FOliveBlueprintWriteResult FOlivePinConnector::Connect(
 	const bool bCanConnect =
 		Response.CanSafeConnect() || bNeedsConversion;
 
+	if (!bCanConnect
+		&& SourcePin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec
+		&& TargetPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+	{
+		UE_LOG(LogOlivePinConnector, Warning,
+			TEXT("EXEC WIRE REJECTED: %s.%s -> %s.%s | Response: %d '%s' | "
+				 "Src(orphan=%d hidden=%d links=%d dir=%d) "
+				 "Tgt(orphan=%d hidden=%d links=%d dir=%d)"),
+			*SourcePin->GetOwningNode()->GetName(), *SourcePin->PinName.ToString(),
+			*TargetPin->GetOwningNode()->GetName(), *TargetPin->PinName.ToString(),
+			(int)Response.Response, *Response.Message.ToString(),
+			SourcePin->bOrphanedPin, SourcePin->bHidden, SourcePin->LinkedTo.Num(), (int)SourcePin->Direction,
+			TargetPin->bOrphanedPin, TargetPin->bHidden, TargetPin->LinkedTo.Num(), (int)TargetPin->Direction);
+	}
+
 	if (!bCanConnect)
 	{
 		// Build structured diagnostic for type-incompatible connections

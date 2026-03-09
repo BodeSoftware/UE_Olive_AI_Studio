@@ -8826,6 +8826,47 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
 	FOliveWriteResult PipelineResult = Pipeline.Execute(Request, Executor);
 
+	// ------------------------------------------------------------------
+	// 11b. Post-transaction orphaned pin cleanup on failure (secondary defense)
+	// ------------------------------------------------------------------
+	// The PRIMARY fix for orphaned pins is EnsurePinNotOrphaned() in
+	// OlivePlanExecutor.cpp, which clears bOrphanedPin at the point of use
+	// (WireExecConnection, WireDataConnection, auto-chain paths).
+	//
+	// This block is a SECONDARY defense: after the pipeline cancels the
+	// transaction (rollback), reused event nodes may still have stale
+	// bOrphanedPin flags.  We clear them here so subsequent plan_json
+	// calls start with clean pins.
+	if (!PipelineResult.bSuccess && bIsV2Plan)
+	{
+		UEdGraph* CleanupGraph = FindGraphByName(Blueprint, GraphTarget);
+		if (CleanupGraph)
+		{
+			for (UEdGraphNode* Node : CleanupGraph->Nodes)
+			{
+				if (!Node) continue;
+				// Only clean event-like nodes (the ones that get reused across plan retries)
+				if (!Node->IsA<UK2Node_Event>()
+					&& !Node->IsA<UK2Node_FunctionEntry>()
+					&& !Node->IsA<UK2Node_FunctionResult>())
+				{
+					continue;
+				}
+				for (UEdGraphPin* Pin : Node->Pins)
+				{
+					if (Pin && Pin->bOrphanedPin)
+					{
+						Pin->bOrphanedPin = false;
+						UE_LOG(LogOliveBPTools, Log,
+							TEXT("Post-rollback cleanup: cleared bOrphanedPin on '%s' pin '%s'"),
+							*Node->GetNodeTitle(ENodeTitleType::ListView).ToString(),
+							*Pin->PinName.ToString());
+					}
+				}
+			}
+		}
+	}
+
 	// Convert to tool result and inject data from executor result
 	FOliveToolResult ToolResult = PipelineResult.ToToolResult();
 

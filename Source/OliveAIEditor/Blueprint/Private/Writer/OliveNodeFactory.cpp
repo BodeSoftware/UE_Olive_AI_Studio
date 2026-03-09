@@ -205,8 +205,10 @@ bool FOliveNodeFactory::ValidateNodeType(const FString& NodeType, const TMap<FSt
 		return false;
 	}
 
-	// Step 2: For CallFunction, validate that function_name resolves
-	if (NodeType == OliveNodeTypes::CallFunction)
+	// Step 2: For CallFunction, validate that function_name resolves.
+	// Skip validation when PreResolvedFunction is set -- the resolver already verified
+	// the function exists, so calling FindFunction here would be redundant double-resolution.
+	if (NodeType == OliveNodeTypes::CallFunction && !PreResolvedFunction)
 	{
 		const FString* FunctionNamePtr = Properties.Find(TEXT("function_name"));
 		if (!FunctionNamePtr || FunctionNamePtr->IsEmpty())
@@ -285,9 +287,37 @@ UK2Node* FOliveNodeFactory::CreateCallFunctionNode(
 		bForceInterfaceCall = InterfaceFlag->Equals(TEXT("true"), ESearchCase::IgnoreCase);
 	}
 
-	// Find the function (pass Blueprint to search GeneratedClass for Blueprint-defined functions)
+	// Consume pre-resolved function pointer if the resolver already found the UFunction*.
+	// This eliminates double-resolution and double-aliasing (e.g., "GetForwardVector"
+	// re-aliased after the resolver already resolved it correctly).
+	UFunction* PreResolvedFunc = PreResolvedFunction;
+	PreResolvedFunction = nullptr;
+
 	EOliveFunctionMatchMethod MatchMethod = EOliveFunctionMatchMethod::None;
-	UFunction* Function = FindFunction(*FunctionNamePtr, TargetClassName, Blueprint, &MatchMethod);
+	UFunction* Function = nullptr;
+
+	if (PreResolvedFunc)
+	{
+		// Resolver already resolved this function -- use directly, skip FindFunction entirely
+		Function = PreResolvedFunc;
+
+		// Determine match method from properties (resolver sets is_interface_call)
+		if (bForceInterfaceCall)
+		{
+			MatchMethod = EOliveFunctionMatchMethod::InterfaceSearch;
+		}
+
+		UE_LOG(LogOliveNodeFactory, Log,
+			TEXT("CreateCallFunctionNode: Used pre-resolved function '%s::%s'"),
+			*PreResolvedFunc->GetOwnerClass()->GetName(),
+			*PreResolvedFunc->GetName());
+	}
+	else
+	{
+		// Fallback: resolve via FindFunction (for non-plan callers like add_node tool)
+		Function = FindFunction(*FunctionNamePtr, TargetClassName, Blueprint, &MatchMethod);
+	}
+
 	if (!Function)
 	{
 		LastError = FString::Printf(TEXT("Function '%s' not found"), **FunctionNamePtr);
