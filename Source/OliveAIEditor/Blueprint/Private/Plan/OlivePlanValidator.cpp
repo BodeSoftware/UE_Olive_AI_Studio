@@ -2,6 +2,7 @@
 
 #include "Plan/OlivePlanValidator.h"
 #include "Plan/OliveBlueprintPlanResolver.h"
+#include "Writer/OliveNodeFactory.h"
 #include "Engine/Blueprint.h"
 #include "Components/ActorComponent.h"
 #include "Engine/SimpleConstructionScript.h"
@@ -41,6 +42,7 @@ FOlivePlanValidationResult FOlivePlanValidator::Validate(
 	CheckComponentFunctionTargets(Context, Result);
 	CheckExecWiringConflicts(Context, Result);
 	CheckLatentInFunctionGraph(Context, ResolvedSteps, GraphContext, Result);
+	CheckVariableExists(Context, Result);
 
 	if (Result.Errors.Num() > 0)
 	{
@@ -402,5 +404,171 @@ void FOlivePlanValidator::CheckLatentInFunctionGraph(
 		UE_LOG(LogOlivePlanValidator, Warning,
 			TEXT("Phase 0: LATENT_IN_FUNCTION -- step '%s' uses '%s' in function graph '%s'"),
 			*StepId, *LatentName, *GraphContext.GraphName);
+	}
+}
+
+// ============================================================================
+// Check 4: Variable Existence Guard
+// ============================================================================
+
+namespace
+{
+	/** Duplicated from OliveBlueprintPlanResolver.cpp anonymous namespace.
+	 *  Checks NewVariables and SCS component variable names. */
+	bool ValidatorBlueprintHasVariable(const UBlueprint* Blueprint, const FString& VariableName)
+	{
+		if (!Blueprint)
+		{
+			return false;
+		}
+
+		for (const FBPVariableDescription& Var : Blueprint->NewVariables)
+		{
+			if (Var.VarName.ToString() == VariableName)
+			{
+				return true;
+			}
+		}
+
+		if (Blueprint->SimpleConstructionScript)
+		{
+			TArray<USCS_Node*> AllNodes = Blueprint->SimpleConstructionScript->GetAllNodes();
+			for (USCS_Node* Node : AllNodes)
+			{
+				if (Node && Node->GetVariableName().ToString() == VariableName)
+				{
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+}
+
+void FOlivePlanValidator::CheckVariableExists(
+	const FOlivePlanValidationContext& Context,
+	FOlivePlanValidationResult& Result)
+{
+	for (int32 i = 0; i < Context.ResolvedSteps.Num(); ++i)
+	{
+		const FOliveResolvedStep& Resolved = Context.ResolvedSteps[i];
+
+		// Only check get_var and set_var ops
+		const int32* PlanIndexPtr = Context.StepIdToIndex.Find(Resolved.StepId);
+		if (!PlanIndexPtr || !Context.Plan.Steps.IsValidIndex(*PlanIndexPtr))
+		{
+			continue;
+		}
+
+		const FOliveIRBlueprintPlanStep& PlanStep = Context.Plan.Steps[*PlanIndexPtr];
+		if (PlanStep.Op != OlivePlanOps::GetVar && PlanStep.Op != OlivePlanOps::SetVar)
+		{
+			continue;
+		}
+
+		// Skip function parameter steps (FunctionInput/FunctionOutput)
+		if (Resolved.NodeType == OliveNodeTypes::FunctionInput ||
+			Resolved.NodeType == OliveNodeTypes::FunctionOutput)
+		{
+			continue;
+		}
+
+		// Extract variable name from resolved properties
+		const FString* VarNamePtr = Resolved.Properties.Find(TEXT("variable_name"));
+		if (!VarNamePtr || VarNamePtr->IsEmpty())
+		{
+			continue; // Missing variable name is caught by the resolver
+		}
+		const FString& VariableName = *VarNamePtr;
+
+		// Check on this Blueprint
+		if (ValidatorBlueprintHasVariable(Context.Blueprint, VariableName))
+		{
+			continue; // Found directly
+		}
+
+		// Check parent Blueprint chain
+		UBlueprint* ParentBP = Context.Blueprint->ParentClass
+			? Cast<UBlueprint>(Context.Blueprint->ParentClass->ClassGeneratedBy)
+			: nullptr;
+		bool bFoundInParent = false;
+		while (ParentBP)
+		{
+			if (ValidatorBlueprintHasVariable(ParentBP, VariableName))
+			{
+				bFoundInParent = true;
+				break;
+			}
+			ParentBP = ParentBP->ParentClass
+				? Cast<UBlueprint>(ParentBP->ParentClass->ClassGeneratedBy)
+				: nullptr;
+		}
+
+		if (bFoundInParent)
+		{
+			continue; // Inherited variable -- valid
+		}
+
+		// Check native C++ properties on the generated class
+		if (Context.Blueprint->GeneratedClass)
+		{
+			FProperty* Prop = Context.Blueprint->GeneratedClass->FindPropertyByName(FName(*VariableName));
+			if (Prop)
+			{
+				continue; // Native property -- valid
+			}
+		}
+
+		// Variable not found anywhere -- build error with available variable list
+		TArray<FString> AvailableVars;
+		for (const FBPVariableDescription& Var : Context.Blueprint->NewVariables)
+		{
+			AvailableVars.Add(Var.VarName.ToString());
+		}
+		if (Context.Blueprint->SimpleConstructionScript)
+		{
+			for (USCS_Node* SCSNode : Context.Blueprint->SimpleConstructionScript->GetAllNodes())
+			{
+				if (SCSNode)
+				{
+					AvailableVars.Add(SCSNode->GetVariableName().ToString());
+				}
+			}
+		}
+		AvailableVars.Sort();
+
+		// Truncate to first 10 for readability
+		FString AvailableList;
+		const int32 MaxDisplay = FMath::Min(AvailableVars.Num(), 10);
+		for (int32 j = 0; j < MaxDisplay; ++j)
+		{
+			if (!AvailableList.IsEmpty())
+			{
+				AvailableList += TEXT(", ");
+			}
+			AvailableList += AvailableVars[j];
+		}
+		if (AvailableVars.Num() > 10)
+		{
+			AvailableList += FString::Printf(TEXT(" (+%d more)"), AvailableVars.Num() - 10);
+		}
+
+		Result.Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+			TEXT("VARIABLE_NOT_FOUND"),
+			Resolved.StepId,
+			FString::Printf(TEXT("/steps/%d/target"), *PlanIndexPtr),
+			FString::Printf(
+				TEXT("Variable '%s' not found on Blueprint '%s' or its parent classes. "
+					 "get_var/set_var requires an existing variable. Components use their SCS variable name."),
+				*VariableName, *Context.Blueprint->GetName()),
+			FString::Printf(
+				TEXT("Add the variable first with blueprint.add_variable, or check the variable name. "
+					 "Available variables: [%s]"),
+				*AvailableList)));
+
+		UE_LOG(LogOlivePlanValidator, Warning,
+			TEXT("Phase 0: VARIABLE_NOT_FOUND -- step '%s' references '%s' on '%s'"),
+			*Resolved.StepId, *VariableName, *Context.Blueprint->GetName());
 	}
 }

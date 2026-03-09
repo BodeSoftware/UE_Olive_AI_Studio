@@ -519,7 +519,18 @@ void FOliveBlueprintToolHandlers::RegisterReaderTools()
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.describe_node_type"));
 
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered %d reader tools"), 3);
+	// blueprint.describe_function
+	Registry.RegisterTool(
+		TEXT("blueprint.describe_function"),
+		TEXT("Look up a UFunction by name and return its exact pin signature, or fuzzy suggestions on failure"),
+		OliveBlueprintSchemas::BlueprintDescribeFunction(),
+		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleDescribeFunction),
+		{TEXT("blueprint"), TEXT("read"), TEXT("discovery")},
+		TEXT("blueprint")
+	);
+	RegisteredToolNames.Add(TEXT("blueprint.describe_function"));
+
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered %d reader tools"), 4);
 }
 
 // ============================================================================
@@ -1770,6 +1781,278 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleDescribeNodeType(const TShar
 		*TypeName, *NodeClass->GetName());
 
 	return FOliveToolResult::Success(ResultData);
+}
+
+// ---------------------------------------------------------------------------
+// HandleDescribeFunction — look up a UFunction and return its pin signature
+// ---------------------------------------------------------------------------
+
+namespace
+{
+	/**
+	 * Convert EOliveFunctionMatchMethod to a human-readable string for the tool response.
+	 * @param Method The match method enum value
+	 * @return String representation (e.g., "alias_map", "parent_class")
+	 */
+	FString MatchMethodToString(EOliveFunctionMatchMethod Method)
+	{
+		switch (Method)
+		{
+		case EOliveFunctionMatchMethod::ExactName:              return TEXT("exact_name");
+		case EOliveFunctionMatchMethod::AliasMap:               return TEXT("alias_map");
+		case EOliveFunctionMatchMethod::GeneratedClass:         return TEXT("generated_class");
+		case EOliveFunctionMatchMethod::FunctionGraph:          return TEXT("function_graph");
+		case EOliveFunctionMatchMethod::ParentClassSearch:      return TEXT("parent_class");
+		case EOliveFunctionMatchMethod::ComponentClassSearch:   return TEXT("component_class");
+		case EOliveFunctionMatchMethod::InterfaceSearch:        return TEXT("interface");
+		case EOliveFunctionMatchMethod::LibrarySearch:          return TEXT("library");
+		case EOliveFunctionMatchMethod::UniversalLibrarySearch: return TEXT("universal_library");
+		case EOliveFunctionMatchMethod::FuzzyK2Match:           return TEXT("fuzzy_k2");
+		default:                                                return TEXT("unknown");
+		}
+	}
+}
+
+FOliveToolResult FOliveBlueprintToolHandlers::HandleDescribeFunction(const TSharedPtr<FJsonObject>& Params)
+{
+	// 1. Validate params — function_name required
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a valid parameters object with 'function_name' field")
+		);
+	}
+
+	FString FunctionName;
+	if (!Params->TryGetStringField(TEXT("function_name"), FunctionName) || FunctionName.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'function_name' is missing or empty"),
+			TEXT("Provide a function name like 'SetActorLocation', 'ApplyDamage', or 'GetVelocity'")
+		);
+	}
+
+	// 2. Optional: target_class, path (for Blueprint context)
+	FString TargetClass;
+	Params->TryGetStringField(TEXT("target_class"), TargetClass);
+
+	FString AssetPath;
+	Params->TryGetStringField(TEXT("path"), AssetPath);
+
+	// 3. Load Blueprint if path provided (for context-aware search)
+	UBlueprint* Blueprint = nullptr;
+	if (!AssetPath.IsEmpty())
+	{
+		FOliveAssetResolveInfo ResolveInfo = FOliveAssetResolver::Get().ResolveByPath(AssetPath);
+		if (ResolveInfo.IsSuccess())
+		{
+			Blueprint = LoadObject<UBlueprint>(nullptr, *ResolveInfo.ResolvedPath);
+		}
+		// If load fails, proceed without Blueprint context — FindFunctionEx handles null gracefully
+	}
+
+	// 4. Call FindFunctionEx
+	FOliveFunctionSearchResult SearchResult =
+		FOliveNodeFactory::Get().FindFunctionEx(FunctionName, TargetClass, Blueprint);
+
+	// 5a. SUCCESS PATH — format signature
+	if (SearchResult.IsValid())
+	{
+		UFunction* Func = SearchResult.Function;
+		TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
+
+		ResultData->SetStringField(TEXT("function_name"), Func->GetName());
+		ResultData->SetStringField(TEXT("owning_class"), SearchResult.MatchedClassName);
+		ResultData->SetStringField(TEXT("match_method"), MatchMethodToString(SearchResult.MatchMethod));
+
+		// Note alias resolution if the resolved name differs from the input
+		if (!FunctionName.Equals(Func->GetName(), ESearchCase::IgnoreCase))
+		{
+			ResultData->SetStringField(TEXT("resolved_from"), FunctionName);
+		}
+
+		// Iterate UFunction parameters via TFieldIterator<FProperty>
+		TArray<TSharedPtr<FJsonValue>> ParamsArray;
+		FProperty* ReturnProp = nullptr;
+
+		// Also build a compact one-line signature string
+		FString Sig = Func->GetName() + TEXT("(");
+		bool bFirstSig = true;
+
+		for (TFieldIterator<FProperty> It(Func); It; ++It)
+		{
+			FProperty* Param = *It;
+
+			if (Param->HasAnyPropertyFlags(CPF_ReturnParm))
+			{
+				ReturnProp = Param;
+				continue;
+			}
+			if (!Param->HasAnyPropertyFlags(CPF_Parm))
+			{
+				continue;
+			}
+
+			// Skip hidden WorldContextObject pin (invisible in Blueprint graphs)
+			if (Param->GetName() == TEXT("WorldContextObject"))
+			{
+				continue;
+			}
+
+			// Build structured parameter entry
+			TSharedPtr<FJsonObject> ParamObj = MakeShareable(new FJsonObject());
+			ParamObj->SetStringField(TEXT("name"), Param->GetName());
+			ParamObj->SetStringField(TEXT("type"), Param->GetCPPType());
+
+			const bool bIsOutParam = Param->HasAnyPropertyFlags(CPF_OutParm);
+			const bool bIsByRef = Param->HasAllPropertyFlags(CPF_OutParm | CPF_ReferenceParm);
+
+			if (bIsByRef)
+			{
+				ParamObj->SetStringField(TEXT("direction"), TEXT("in_out"));
+				ParamObj->SetBoolField(TEXT("by_ref"), true);
+			}
+			else if (bIsOutParam)
+			{
+				ParamObj->SetStringField(TEXT("direction"), TEXT("out"));
+			}
+			else
+			{
+				ParamObj->SetStringField(TEXT("direction"), TEXT("in"));
+			}
+
+			ParamsArray.Add(MakeShareable(new FJsonValueObject(ParamObj)));
+
+			// Append to one-line signature
+			if (!bFirstSig)
+			{
+				Sig += TEXT(", ");
+			}
+			bFirstSig = false;
+			Sig += Param->GetName() + TEXT(": ") + Param->GetCPPType();
+			if (bIsByRef)
+			{
+				Sig += TEXT(" [by-ref]");
+			}
+		}
+
+		Sig += TEXT(")");
+
+		ResultData->SetArrayField(TEXT("parameters"), ParamsArray);
+
+		if (ReturnProp)
+		{
+			ResultData->SetStringField(TEXT("return_type"), ReturnProp->GetCPPType());
+			Sig += TEXT(" -> ") + ReturnProp->GetCPPType();
+		}
+
+		const bool bIsPure = Func->HasAnyFunctionFlags(FUNC_BlueprintPure);
+		const bool bIsLatent = Func->HasMetaData(FBlueprintMetadata::MD_Latent);
+
+		ResultData->SetBoolField(TEXT("is_pure"), bIsPure);
+		ResultData->SetBoolField(TEXT("is_latent"), bIsLatent);
+
+		if (bIsPure)
+		{
+			Sig += TEXT(" [pure]");
+		}
+		if (bIsLatent)
+		{
+			Sig += TEXT(" [latent]");
+		}
+
+		ResultData->SetStringField(TEXT("signature"), Sig);
+
+		// Note for interface functions — requires UK2Node_Message
+		if (SearchResult.MatchMethod == EOliveFunctionMatchMethod::InterfaceSearch)
+		{
+			ResultData->SetStringField(TEXT("note"),
+				TEXT("This is an interface function. In plan_json, use target_class with the interface name to create a UK2Node_Message."));
+		}
+
+		UE_LOG(LogOliveBPTools, Verbose, TEXT("HandleDescribeFunction: Found '%s' -> '%s' on %s via %s"),
+			*FunctionName, *Func->GetName(), *SearchResult.MatchedClassName,
+			*MatchMethodToString(SearchResult.MatchMethod));
+
+		return FOliveToolResult::Success(ResultData);
+	}
+
+	// 5b. FAILURE PATH — fuzzy suggestions + UPROPERTY detection + search trail
+	TSharedPtr<FJsonObject> ErrorData = MakeShareable(new FJsonObject());
+	ErrorData->SetStringField(TEXT("searched_function"), FunctionName);
+
+	// Separate PROPERTY MATCH entries from regular search trail
+	TArray<TSharedPtr<FJsonValue>> TrailArray;
+	TArray<FString> PropertyMatches;
+
+	for (const FString& Location : SearchResult.SearchedLocations)
+	{
+		if (Location.StartsWith(TEXT("PROPERTY MATCH:")))
+		{
+			PropertyMatches.Add(Location);
+		}
+		else
+		{
+			TrailArray.Add(MakeShareable(new FJsonValueString(Location)));
+		}
+	}
+	ErrorData->SetArrayField(TEXT("search_trail"), TrailArray);
+
+	// Fuzzy suggestions from the last FindFunction call
+	const TArray<FString>& FuzzySuggestions = FOliveNodeFactory::Get().GetLastFuzzySuggestions();
+	if (FuzzySuggestions.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> SuggestArray;
+		for (const FString& S : FuzzySuggestions)
+		{
+			SuggestArray.Add(MakeShareable(new FJsonValueString(S)));
+		}
+		ErrorData->SetArrayField(TEXT("suggestions"), SuggestArray);
+	}
+
+	// Surface UPROPERTY matches prominently
+	if (PropertyMatches.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> PropArray;
+		for (const FString& PM : PropertyMatches)
+		{
+			PropArray.Add(MakeShareable(new FJsonValueString(PM)));
+		}
+		ErrorData->SetArrayField(TEXT("property_matches"), PropArray);
+	}
+
+	// Build actionable suggestion text
+	FString Suggestion = TEXT("Check the search trail and suggestions. ");
+	if (PropertyMatches.Num() > 0)
+	{
+		Suggestion += TEXT("The name matches a UPROPERTY — use get_var/set_var instead of call.");
+	}
+	else if (FuzzySuggestions.Num() > 0)
+	{
+		// Show up to 5 suggestions in the hint
+		TArray<FString> TopSuggestions;
+		const int32 MaxSuggestions = FMath::Min(FuzzySuggestions.Num(), 5);
+		for (int32 i = 0; i < MaxSuggestions; ++i)
+		{
+			TopSuggestions.Add(FuzzySuggestions[i]);
+		}
+		Suggestion += TEXT("Did you mean: ") + FString::Join(TopSuggestions, TEXT(", ")) + TEXT("?");
+	}
+
+	UE_LOG(LogOliveBPTools, Verbose, TEXT("HandleDescribeFunction: Function '%s' not found. Trail: %s"),
+		*FunctionName, *SearchResult.BuildSearchedLocationsString());
+
+	FOliveToolResult Result = FOliveToolResult::Error(
+		TEXT("FUNCTION_NOT_FOUND"),
+		FString::Printf(TEXT("Function '%s' not found"), *FunctionName),
+		Suggestion
+	);
+	// Attach structured error data for programmatic consumption
+	Result.Data = ErrorData;
+	return Result;
 }
 
 // ============================================================================

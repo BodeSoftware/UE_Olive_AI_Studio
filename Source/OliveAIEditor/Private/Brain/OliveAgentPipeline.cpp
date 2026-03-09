@@ -29,6 +29,8 @@
 #include "Components/ActorComponent.h"
 #include "UObject/UObjectGlobals.h"
 #include "Writer/OliveClassAPIHelper.h"
+#include "Writer/OliveNodeFactory.h"
+#include "Internationalization/Regex.h"
 #include "Interfaces/IPluginManager.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogOliveAgentPipeline, Log, All);
@@ -502,6 +504,19 @@ FString FOliveAgentPipelineResult::FormatForPromptInjection() const
 			Output += TEXT("Use the corrected class/component names from suggestions.\n");
 		}
 		Output += TEXT("\n");
+	}
+
+	// Section 3.25: Function Pin Reference (C++ resolved)
+	// FindFunctionEx handles nullptr Blueprint gracefully -- it still searches
+	// alias maps, libraries, and the universal BFL scan.
+	{
+		FString PinRef = FOliveAgentPipeline::BuildFunctionPinReference(*this, nullptr);
+		if (!PinRef.IsEmpty())
+		{
+			Output += TEXT("\n");
+			Output += PinRef;
+			Output += TEXT("\n");
+		}
 	}
 
 	// Section 3.5: Component API Reference (Aider-style repo map)
@@ -2876,11 +2891,17 @@ FString FOliveAgentPipeline::BuildPlannerSystemPrompt()
 		"- For delegate events, specify which component (e.g., OnComponentBeginOverlap [BoxComp])\n"
 		"- Modify blocks (@prefix) only list CHANGES\n"
 		"- If a function needs latent ops (Delay, Timeline), note it must be a Custom Event\n"
-		"- Function descriptions must include node-level detail.\n"
-		"  Example: \"Get ProjectileMovementComp via GetComponentByClass -> set InitialSpeed, "
-		"MaxSpeed via property access -> store Instigator ref as variable\"\n"
-		"  Include: component access patterns, function call targets, branch conditions, "
-		"variable get/set operations, and any by-ref pins that need wires.\n"
+		"- Function descriptions must include node-level detail WITH EXACT PIN NAMES.\n"
+		"  For each call op, list the input pins you will wire: FunctionName(PinName: Type, ...)\n"
+		"  Example: \"Call ApplyPointDamage(DamagedActor: Actor, BaseDamage: Float, "
+		"HitFromDirection: Vector, HitResult: HitResult, DamageTypeClass: Class, "
+		"DamageCauser: Actor) -> branch on result\"\n"
+		"  Example: \"Get ProjectileMovementComp via get_var -> set InitialSpeed, MaxSpeed "
+		"via set_var (these are properties, NOT callable functions)\"\n"
+		"  Include: exact pin names from template node graphs, component access patterns, "
+		"call targets, branch conditions, and which names are properties (set_var) vs "
+		"functions (call).\n"
+		"  If you read a template function graph, copy the pin names exactly as they appear.\n"
 		"- If Implementation Reference content is provided, study the function graph patterns "
 		"(node types, wiring flow, variable usage) and include the specific node patterns "
 		"in your function descriptions. The Builder executes directly from your descriptions.\n"
@@ -3372,6 +3393,278 @@ void FOliveAgentPipeline::ParseBuildPlan(
 			CurrentListSection = EListSection::None;
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// BuildFunctionPinReference -- C++ resolved pin names for Builder prompt
+// ---------------------------------------------------------------------------
+
+FString FOliveAgentPipeline::BuildFunctionPinReference(
+	const FOliveAgentPipelineResult& PipelineResult,
+	UBlueprint* ContextBlueprint)
+{
+	const FString& BuildPlan = PipelineResult.Architect.BuildPlan;
+	if (BuildPlan.IsEmpty())
+	{
+		return FString();
+	}
+
+	// Budget cap: maximum chars for the entire section
+	static constexpr int32 PIN_REF_BUDGET = 2500;
+
+	// -----------------------------------------------------------------------
+	// Step 1: Extract function names from Build Plan text via regex
+	// -----------------------------------------------------------------------
+
+	// Count occurrences of each name for prioritization
+	TMap<FString, int32> NameCounts;
+
+	auto ExtractMatches = [&NameCounts, &BuildPlan](const FString& PatternStr)
+	{
+		FRegexPattern Pattern(PatternStr);
+		FRegexMatcher Matcher(Pattern, BuildPlan);
+		while (Matcher.FindNext())
+		{
+			FString Match = Matcher.GetCaptureGroup(1);
+			if (!Match.IsEmpty())
+			{
+				int32& Count = NameCounts.FindOrAdd(Match);
+				Count++;
+			}
+		}
+	};
+
+	// Pattern 1: "call FunctionName" (case-insensitive via the regex)
+	ExtractMatches(TEXT("\\bcall\\s+([A-Z][A-Za-z0-9_]+)"));
+
+	// Pattern 2: PascalCase identifier before opening paren
+	ExtractMatches(TEXT("\\b([A-Z][A-Za-z0-9_]+)\\s*\\("));
+
+	// Pattern 3: after chain operators ->, via, using
+	ExtractMatches(TEXT("(?:->|via|using)\\s+([A-Z][A-Za-z0-9_]+)"));
+
+	if (NameCounts.Num() == 0)
+	{
+		return FString();
+	}
+
+	// -----------------------------------------------------------------------
+	// Step 2: Filter out plan_json ops, type names, and structural keywords
+	// -----------------------------------------------------------------------
+
+	static const TSet<FString> ExcludeNames = {
+		TEXT("Call"), TEXT("Get"), TEXT("Set"), TEXT("Branch"), TEXT("Sequence"),
+		TEXT("Cast"), TEXT("Event"), TEXT("Custom"), TEXT("Delay"), TEXT("Print"),
+		TEXT("Spawn"), TEXT("Make"), TEXT("Break"), TEXT("Return"), TEXT("Comment"),
+		TEXT("Float"), TEXT("Int"), TEXT("Bool"), TEXT("String"), TEXT("Vector"),
+		TEXT("Rotator"), TEXT("Transform"), TEXT("Actor"), TEXT("Component"),
+		TEXT("Object"), TEXT("Class"), TEXT("Struct"), TEXT("Array"), TEXT("Map"),
+		TEXT("Reference"), TEXT("Template"), TEXT("None"), TEXT("True"), TEXT("False"),
+		TEXT("Default"), TEXT("Action"), TEXT("Parent"), TEXT("Functions"),
+		TEXT("Variables"), TEXT("Components"), TEXT("Events"), TEXT("Interfaces"),
+		TEXT("Dispatchers"), TEXT("Interactions"), TEXT("Order"), TEXT("Create"),
+		TEXT("Modify"), TEXT("Blueprint"), TEXT("Graph"), TEXT("Node"), TEXT("Pin"),
+		TEXT("Input"), TEXT("Output"), TEXT("Wire"), TEXT("Connect"), TEXT("Name"),
+		TEXT("Type"), TEXT("Value"), TEXT("Index"), TEXT("Result"), TEXT("Target"),
+		TEXT("Source"), TEXT("Enum"), TEXT("Byte"),
+	};
+
+	// Remove excluded names
+	for (auto It = NameCounts.CreateIterator(); It; ++It)
+	{
+		if (ExcludeNames.Contains(It->Key))
+		{
+			It.RemoveCurrent();
+		}
+	}
+
+	if (NameCounts.Num() == 0)
+	{
+		return FString();
+	}
+
+	// -----------------------------------------------------------------------
+	// Step 3: Sort by frequency (most-mentioned first for budget prioritization)
+	// -----------------------------------------------------------------------
+
+	TArray<TPair<FString, int32>> SortedNames;
+	SortedNames.Reserve(NameCounts.Num());
+	for (const auto& Pair : NameCounts)
+	{
+		SortedNames.Emplace(Pair.Key, Pair.Value);
+	}
+	SortedNames.Sort([](const TPair<FString, int32>& A, const TPair<FString, int32>& B)
+	{
+		return A.Value > B.Value;
+	});
+
+	// -----------------------------------------------------------------------
+	// Step 4: Resolve each name via FindFunctionEx and format signatures
+	// -----------------------------------------------------------------------
+
+	TArray<FString> ResolvedLines;
+	TSet<FString> AlreadyResolved; // Deduplicate by resolved function name
+
+	for (const auto& Entry : SortedNames)
+	{
+		const FString& FuncName = Entry.Key;
+
+		FOliveFunctionSearchResult SearchResult =
+			FOliveNodeFactory::Get().FindFunctionEx(FuncName, TEXT(""), ContextBlueprint);
+
+		if (SearchResult.IsValid())
+		{
+			UFunction* Func = SearchResult.Function;
+			FString ActualName = Func->GetName();
+
+			// Skip if we already have this function (e.g., alias resolved to same UFunction)
+			if (AlreadyResolved.Contains(ActualName))
+			{
+				continue;
+			}
+			AlreadyResolved.Add(ActualName);
+
+			// Format signature: FunctionName(Param: Type, ...) -> ReturnType [pure]
+			FString Sig = ActualName + TEXT("(");
+			bool bFirst = true;
+			FProperty* ReturnProp = nullptr;
+
+			for (TFieldIterator<FProperty> It(Func); It; ++It)
+			{
+				FProperty* Param = *It;
+				if (Param->HasAnyPropertyFlags(CPF_ReturnParm))
+				{
+					ReturnProp = Param;
+					continue;
+				}
+				if (!Param->HasAnyPropertyFlags(CPF_Parm))
+				{
+					continue;
+				}
+
+				// Skip hidden "self" / WorldContextObject pins
+				if (Param->GetName() == TEXT("WorldContextObject"))
+				{
+					continue;
+				}
+
+				if (!bFirst)
+				{
+					Sig += TEXT(", ");
+				}
+				bFirst = false;
+
+				Sig += Param->GetName();
+				Sig += TEXT(": ");
+				Sig += Param->GetCPPType();
+
+				if (Param->HasAllPropertyFlags(CPF_OutParm | CPF_ReferenceParm))
+				{
+					Sig += TEXT(" [by-ref]");
+				}
+			}
+
+			Sig += TEXT(")");
+
+			if (ReturnProp)
+			{
+				Sig += TEXT(" -> ");
+				Sig += ReturnProp->GetCPPType();
+			}
+
+			if (Func->HasAnyFunctionFlags(FUNC_BlueprintPure))
+			{
+				Sig += TEXT(" [pure]");
+			}
+
+			// If function was found on a specific class, note it
+			if (!SearchResult.MatchedClassName.IsEmpty())
+			{
+				Sig += TEXT(" on ") + SearchResult.MatchedClassName;
+			}
+
+			ResolvedLines.Add(TEXT("- ") + Sig);
+		}
+		else
+		{
+			// Path B: Check for PROPERTY MATCH in SearchedLocations
+			for (const FString& Location : SearchResult.SearchedLocations)
+			{
+				if (Location.StartsWith(TEXT("PROPERTY MATCH:")))
+				{
+					// Parse: "PROPERTY MATCH: 'PropName' is a TypeStr property on ClassName, not a callable function..."
+					// Extract the property name, type, and format as a property line
+					FString PropName;
+					FString TypeStr;
+
+					// Simple parse: find content between first pair of single quotes
+					int32 FirstQuote = Location.Find(TEXT("'"));
+					if (FirstQuote != INDEX_NONE)
+					{
+						int32 SecondQuote = Location.Find(TEXT("'"), ESearchCase::IgnoreCase, ESearchDir::FromStart, FirstQuote + 1);
+						if (SecondQuote != INDEX_NONE)
+						{
+							PropName = Location.Mid(FirstQuote + 1, SecondQuote - FirstQuote - 1);
+						}
+					}
+
+					// Find type: "is a <type> property"
+					int32 IsAIdx = Location.Find(TEXT("is a "));
+					int32 PropIdx = Location.Find(TEXT(" property"));
+					if (IsAIdx != INDEX_NONE && PropIdx != INDEX_NONE && PropIdx > IsAIdx)
+					{
+						TypeStr = Location.Mid(IsAIdx + 5, PropIdx - (IsAIdx + 5));
+					}
+
+					if (!PropName.IsEmpty() && !TypeStr.IsEmpty())
+					{
+						if (AlreadyResolved.Contains(PropName))
+						{
+							break;
+						}
+						AlreadyResolved.Add(PropName);
+
+						FString Line = TEXT("- ") + PropName + TEXT(": PROPERTY (") + TypeStr + TEXT(") -- use set_var, not call");
+						ResolvedLines.Add(Line);
+					}
+
+					break; // Only use the first PROPERTY MATCH per name
+				}
+			}
+		}
+	}
+
+	if (ResolvedLines.Num() == 0)
+	{
+		return FString();
+	}
+
+	// -----------------------------------------------------------------------
+	// Step 5: Assemble output with budget cap
+	// -----------------------------------------------------------------------
+
+	FString Header = TEXT("## Function Pin Reference\n");
+	Header += TEXT("These are exact UE pin names and property types. Use these in plan_json -- do not guess.\n\n");
+
+	FString Body;
+	int32 TotalLen = Header.Len();
+	int32 IncludedCount = 0;
+
+	for (const FString& Line : ResolvedLines)
+	{
+		int32 LineLen = Line.Len() + 1; // +1 for newline
+		if (TotalLen + LineLen > PIN_REF_BUDGET && IncludedCount > 0)
+		{
+			Body += FString::Printf(TEXT("- ... and %d more functions (truncated for budget)\n"),
+				ResolvedLines.Num() - IncludedCount);
+			break;
+		}
+		Body += Line + TEXT("\n");
+		TotalLen += LineLen;
+		IncludedCount++;
+	}
+
+	return Header + Body;
 }
 
 // ---------------------------------------------------------------------------

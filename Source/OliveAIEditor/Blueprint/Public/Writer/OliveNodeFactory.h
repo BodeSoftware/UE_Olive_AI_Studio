@@ -265,7 +265,7 @@ public:
 	 * @param OutMatchMethod Optional output: how the function was matched (for interface call detection)
 	 * @return The function if found, nullptr otherwise
 	 */
-	UFunction* FindFunction(const FString& FunctionName, const FString& ClassName = TEXT(""), UBlueprint* Blueprint = nullptr, EOliveFunctionMatchMethod* OutMatchMethod = nullptr, bool bSkipAliasMap = false);
+	UFunction* FindFunction(const FString& FunctionName, const FString& ClassName = TEXT(""), UBlueprint* Blueprint = nullptr, EOliveFunctionMatchMethod* OutMatchMethod = nullptr, bool bSkipAliasMap = false); // DEPRECATED: bSkipAliasMap — plan path now uses SetPreResolvedFunction instead
 
 	/**
 	 * Extended FindFunction that collects search history for error messages.
@@ -276,6 +276,7 @@ public:
 	 * @param Blueprint Optional Blueprint for class hierarchy, SCS, FunctionGraphs, interfaces, and GeneratedClass search
 	 * @return FOliveFunctionSearchResult with Function, MatchMethod, MatchedClassName, and SearchedLocations
 	 */
+	// DEPRECATED: bSkipAliasMap — plan path now uses SetPreResolvedFunction instead
 	FOliveFunctionSearchResult FindFunctionEx(
 		const FString& FunctionName,
 		const FString& ClassName = TEXT(""),
@@ -283,10 +284,25 @@ public:
 		bool bSkipAliasMap = false);
 
 	/**
+	 * Provide a pre-resolved UFunction* for the next CreateNodeByClass call.
+	 * When set, CreateNodeByClass will use this instead of calling FindFunction.
+	 * Consumed (reset to nullptr) after use. Game-thread only.
+	 * @param InFunction The resolved UFunction pointer (from resolver)
+	 */
+	void SetPreResolvedFunction(UFunction* InFunction);
+
+	/**
 	 * Get the last error message from a failed operation
 	 * @return Error message string
 	 */
 	FString GetLastError() const { return LastError; }
+
+	/**
+	 * Get fuzzy suggestions from the most recent failed FindFunction call.
+	 * Each entry is "FunctionName (ClassName)". Populated on failure, cleared on success.
+	 * @return Array of suggestion strings
+	 */
+	const TArray<FString>& GetLastFuzzySuggestions() const { return LastFuzzySuggestions; }
 
 private:
 	FOliveNodeFactory();
@@ -636,6 +652,13 @@ private:
 
 	/** Map of node type names to required property descriptions */
 	TMap<FString, TMap<FString, FString>> RequiredPropertiesMap;
+
+	/**
+	 * Pre-resolved UFunction* for the next CreateNodeByClass call.
+	 * Set via SetPreResolvedFunction(), consumed (reset to nullptr) at the
+	 * top of CreateNodeByClass. Game-thread only — no synchronization needed.
+	 */
+	UFunction* PreResolvedFunction = nullptr;
 
 	/** Last error message */
 	FString LastError;

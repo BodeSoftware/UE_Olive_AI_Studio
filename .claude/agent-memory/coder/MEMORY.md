@@ -13,6 +13,13 @@
 - Asset resolver: `Source/OliveAIEditor/Public/Services/OliveAssetResolver.h`
 - Class resolver: `Source/OliveAIEditor/Blueprint/Public/OliveClassResolver.h` / `Private/OliveClassResolver.cpp`
 
+## Resolver-Executor Contract (Single Resolution Authority)
+- `FOliveResolvedStep.ResolvedFunction` carries `UFunction*` from resolver to executor
+- `FOliveNodeFactory::SetPreResolvedFunction()` consumed at top of `CreateNodeByClass` (guard pattern: save locally, reset member)
+- Plan path no longer calls FindFunction in NodeFactory; `_resolved` flag kept for `add_node` backward compat
+- UPROPERTY auto-rewrite: resolver detects `PROPERTY MATCH:` in SearchedLocations, rewrites call→set_var/get_var
+- OliveNodeTypes constants: `SetVariable`/`GetVariable` (NOT `VariableSet`/`VariableGet`)
+
 ## Patterns
 - Tool handler pattern: validate params -> resolve asset path -> load Blueprint -> execute -> serialize result
 - Anonymous namespace helpers in OliveBlueprintToolHandlers.cpp for shared logic (e.g., `ExecuteWithOptionalConfirmation`, `HandleGraphReadWithPaging`)

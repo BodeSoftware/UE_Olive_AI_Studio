@@ -81,6 +81,11 @@ FOliveNodeFactory::FOliveNodeFactory()
 	InitializeNodeCreators();
 }
 
+void FOliveNodeFactory::SetPreResolvedFunction(UFunction* InFunction)
+{
+	PreResolvedFunction = InFunction;
+}
+
 // ============================================================================
 // Node Creation
 // ============================================================================
@@ -798,24 +803,39 @@ UK2Node* FOliveNodeFactory::CreateMakeStructNode(
 	UEdGraph* Graph,
 	const TMap<FString, FString>& Properties)
 {
+	UE_LOG(LogOliveNodeFactory, Log,
+		TEXT("CreateMakeStructNode: entry, %d properties"), Properties.Num());
+
 	const FString* StructTypePtr = Properties.Find(TEXT("struct_type"));
 	if (!StructTypePtr || StructTypePtr->IsEmpty())
 	{
 		LastError = TEXT("MakeStruct node requires 'struct_type' property");
+		UE_LOG(LogOliveNodeFactory, Error, TEXT("CreateMakeStructNode: %s"), *LastError);
 		return nullptr;
 	}
+
+	UE_LOG(LogOliveNodeFactory, Log,
+		TEXT("CreateMakeStructNode: struct_type='%s'"), **StructTypePtr);
 
 	UScriptStruct* Struct = FindStruct(*StructTypePtr);
 	if (!Struct)
 	{
 		LastError = FString::Printf(TEXT("Struct type '%s' not found"), **StructTypePtr);
+		UE_LOG(LogOliveNodeFactory, Error, TEXT("CreateMakeStructNode: %s"), *LastError);
 		return nullptr;
 	}
+
+	UE_LOG(LogOliveNodeFactory, Log,
+		TEXT("CreateMakeStructNode: resolved struct '%s' -> %s"),
+		**StructTypePtr, *Struct->GetName());
 
 	UK2Node_MakeStruct* MakeNode = NewObject<UK2Node_MakeStruct>(Graph);
 	MakeNode->StructType = Struct;
 	MakeNode->AllocateDefaultPins();
 	Graph->AddNode(MakeNode, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+
+	UE_LOG(LogOliveNodeFactory, Log,
+		TEXT("CreateMakeStructNode: created with %d pins"), MakeNode->Pins.Num());
 
 	return MakeNode;
 }
@@ -825,24 +845,39 @@ UK2Node* FOliveNodeFactory::CreateBreakStructNode(
 	UEdGraph* Graph,
 	const TMap<FString, FString>& Properties)
 {
+	UE_LOG(LogOliveNodeFactory, Log,
+		TEXT("CreateBreakStructNode: entry, %d properties"), Properties.Num());
+
 	const FString* StructTypePtr = Properties.Find(TEXT("struct_type"));
 	if (!StructTypePtr || StructTypePtr->IsEmpty())
 	{
 		LastError = TEXT("BreakStruct node requires 'struct_type' property");
+		UE_LOG(LogOliveNodeFactory, Error, TEXT("CreateBreakStructNode: %s"), *LastError);
 		return nullptr;
 	}
+
+	UE_LOG(LogOliveNodeFactory, Log,
+		TEXT("CreateBreakStructNode: struct_type='%s'"), **StructTypePtr);
 
 	UScriptStruct* Struct = FindStruct(*StructTypePtr);
 	if (!Struct)
 	{
 		LastError = FString::Printf(TEXT("Struct type '%s' not found"), **StructTypePtr);
+		UE_LOG(LogOliveNodeFactory, Error, TEXT("CreateBreakStructNode: %s"), *LastError);
 		return nullptr;
 	}
+
+	UE_LOG(LogOliveNodeFactory, Log,
+		TEXT("CreateBreakStructNode: resolved struct '%s' -> %s"),
+		**StructTypePtr, *Struct->GetName());
 
 	UK2Node_BreakStruct* BreakNode = NewObject<UK2Node_BreakStruct>(Graph);
 	BreakNode->StructType = Struct;
 	BreakNode->AllocateDefaultPins();
 	Graph->AddNode(BreakNode, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+
+	UE_LOG(LogOliveNodeFactory, Log,
+		TEXT("CreateBreakStructNode: created with %d pins"), BreakNode->Pins.Num());
 
 	return BreakNode;
 }
@@ -1741,6 +1776,12 @@ UEdGraphNode* FOliveNodeFactory::CreateNodeByClass(
 {
 	LastError.Empty();
 
+	// Guard: save and immediately reset PreResolvedFunction.
+	// This ensures the pointer is consumed exactly once even if CreateNodeByClass
+	// exits early (error path) or the node is not a CallFunction.
+	UFunction* PreResolvedFunc = PreResolvedFunction;
+	PreResolvedFunction = nullptr;
+
 	// Validate inputs
 	if (!Blueprint || !Graph)
 	{
@@ -1817,48 +1858,71 @@ UEdGraphNode* FOliveNodeFactory::CreateNodeByClass(
 
 		if (!FuncName.IsEmpty())
 		{
-			// Skip alias map re-resolution when properties were already resolved
-			// by the plan resolver (marked with "_resolved" flag). This prevents
-			// double-aliasing where e.g. "GetForwardVector" gets re-aliased to
-			// the wrong function after the resolver already resolved it correctly.
-			const bool bSkipAlias = Properties.Contains(TEXT("_resolved"));
-
-			// Try resolving the function via FindFunctionEx (searches alias map,
-			// Blueprint hierarchy, SCS components, interfaces, library classes)
-			FOliveFunctionSearchResult SearchResult = FindFunctionEx(FuncName, FuncClassName, Blueprint, bSkipAlias);
-
-			// If class was specified but search failed, retry without class for broader search
-			if (!SearchResult.IsValid() && !FuncClassName.IsEmpty())
+			if (PreResolvedFunc)
 			{
-				UE_LOG(LogOliveNodeFactory, Log,
-					TEXT("CreateNodeByClass: Function '%s' not found on class '%s', "
-						 "retrying broad search"),
-					*FuncName, *FuncClassName);
-				SearchResult = FindFunctionEx(FuncName, TEXT(""), Blueprint, bSkipAlias);
-			}
-
-			if (SearchResult.IsValid())
-			{
+				// Resolver already resolved this function -- use directly, skip FindFunction entirely
 				UK2Node_CallFunction* CallFuncNode = CastChecked<UK2Node_CallFunction>(NewNode);
-				CallFuncNode->SetFromFunction(SearchResult.Function);
+				CallFuncNode->SetFromFunction(PreResolvedFunc);
 
 				UE_LOG(LogOliveNodeFactory, Log,
-					TEXT("CreateNodeByClass: Set FunctionReference for '%s' via '%s' "
-						 "(match method: %d, class: %s)"),
-					*FuncName,
-					*SearchResult.Function->GetName(),
-					static_cast<int32>(SearchResult.MatchMethod),
-					*SearchResult.MatchedClassName);
+					TEXT("CreateNodeByClass: Used pre-resolved function '%s::%s'"),
+					*PreResolvedFunc->GetOwnerClass()->GetName(),
+					*PreResolvedFunc->GetName());
 			}
 			else
 			{
-				UE_LOG(LogOliveNodeFactory, Warning,
-					TEXT("CreateNodeByClass: Could not resolve function '%s' "
-						 "(class hint: '%s') for UK2Node_CallFunction. "
-						 "Searched: %s. Node will likely have 0 pins."),
-					*FuncName,
-					*FuncClassName,
-					*SearchResult.BuildSearchedLocationsString());
+				// Fallback: resolve via FindFunctionEx (for non-plan callers like add_node tool)
+				if (Properties.Contains(TEXT("_resolved")))
+				{
+					UE_LOG(LogOliveNodeFactory, Warning,
+						TEXT("CreateNodeByClass: Plan step reached FindFunction fallback for '%s' "
+							 "-- resolver should have provided UFunction*"),
+						*FuncName);
+				}
+
+				// Skip alias map re-resolution when properties were already resolved
+				// by the plan resolver (marked with "_resolved" flag). This prevents
+				// double-aliasing where e.g. "GetForwardVector" gets re-aliased to
+				// the wrong function after the resolver already resolved it correctly.
+				const bool bSkipAlias = Properties.Contains(TEXT("_resolved"));
+
+				// Try resolving the function via FindFunctionEx (searches alias map,
+				// Blueprint hierarchy, SCS components, interfaces, library classes)
+				FOliveFunctionSearchResult SearchResult = FindFunctionEx(FuncName, FuncClassName, Blueprint, bSkipAlias);
+
+				// If class was specified but search failed, retry without class for broader search
+				if (!SearchResult.IsValid() && !FuncClassName.IsEmpty())
+				{
+					UE_LOG(LogOliveNodeFactory, Log,
+						TEXT("CreateNodeByClass: Function '%s' not found on class '%s', "
+							 "retrying broad search"),
+						*FuncName, *FuncClassName);
+					SearchResult = FindFunctionEx(FuncName, TEXT(""), Blueprint, bSkipAlias);
+				}
+
+				if (SearchResult.IsValid())
+				{
+					UK2Node_CallFunction* CallFuncNode = CastChecked<UK2Node_CallFunction>(NewNode);
+					CallFuncNode->SetFromFunction(SearchResult.Function);
+
+					UE_LOG(LogOliveNodeFactory, Log,
+						TEXT("CreateNodeByClass: Set FunctionReference for '%s' via '%s' "
+							 "(match method: %d, class: %s)"),
+						*FuncName,
+						*SearchResult.Function->GetName(),
+						static_cast<int32>(SearchResult.MatchMethod),
+						*SearchResult.MatchedClassName);
+				}
+				else
+				{
+					UE_LOG(LogOliveNodeFactory, Warning,
+						TEXT("CreateNodeByClass: Could not resolve function '%s' "
+							 "(class hint: '%s') for UK2Node_CallFunction. "
+							 "Searched: %s. Node will likely have 0 pins."),
+						*FuncName,
+						*FuncClassName,
+						*SearchResult.BuildSearchedLocationsString());
+				}
 			}
 		}
 		else
@@ -1904,6 +1968,56 @@ UEdGraphNode* FOliveNodeFactory::CreateNodeByClass(
 					 "The node will have no VariableReference and likely 0 pins. "
 					 "Pass 'variable_name' (or 'VariableName'/'MemberName'/'name') "
 					 "in properties."),
+				*NodeClass->GetName());
+		}
+	}
+
+	// --- StructType support for UK2Node_MakeStruct / UK2Node_BreakStruct ---
+	// SetNodePropertiesViaReflection cannot set StructType (a UScriptStruct* pointer)
+	// from a string property. We must resolve the struct name and set StructType
+	// BEFORE AllocateDefaultPins, which reads StructType to determine which pins to create.
+	if (NewNode->IsA<UK2Node_MakeStruct>() || NewNode->IsA<UK2Node_BreakStruct>())
+	{
+		FString StructTypeName;
+		const FString* StructTypePtr = Properties.Find(TEXT("struct_type"));
+		if (!StructTypePtr) StructTypePtr = Properties.Find(TEXT("StructType"));
+		if (StructTypePtr && !StructTypePtr->IsEmpty())
+		{
+			StructTypeName = *StructTypePtr;
+		}
+
+		if (!StructTypeName.IsEmpty())
+		{
+			UScriptStruct* Struct = FindStruct(StructTypeName);
+			if (Struct)
+			{
+				if (UK2Node_MakeStruct* MakeNode = Cast<UK2Node_MakeStruct>(NewNode))
+				{
+					MakeNode->StructType = Struct;
+				}
+				else if (UK2Node_BreakStruct* BreakNode = Cast<UK2Node_BreakStruct>(NewNode))
+				{
+					BreakNode->StructType = Struct;
+				}
+
+				UE_LOG(LogOliveNodeFactory, Log,
+					TEXT("CreateNodeByClass: Set StructType='%s' on %s (defense-in-depth)"),
+					*Struct->GetName(), *NodeClass->GetName());
+			}
+			else
+			{
+				UE_LOG(LogOliveNodeFactory, Warning,
+					TEXT("CreateNodeByClass: Could not resolve struct '%s' for %s. "
+						 "Node will have minimal pins."),
+					*StructTypeName, *NodeClass->GetName());
+			}
+		}
+		else
+		{
+			UE_LOG(LogOliveNodeFactory, Warning,
+				TEXT("CreateNodeByClass: %s created without struct_type property. "
+					 "Node will have minimal pins. "
+					 "Pass 'struct_type' in properties."),
 				*NodeClass->GetName());
 		}
 	}

@@ -54,6 +54,8 @@ struct OLIVEAIEDITOR_API FOlivePlanValidationResult
  * Current checks:
  *   - Component function target guard (COMPONENT_FUNCTION_ON_ACTOR)
  *   - Exec wiring conflict detection (EXEC_WIRING_CONFLICT)
+ *   - Latent-in-function-graph guard (LATENT_IN_FUNCTION)
+ *   - Variable existence guard (VARIABLE_NOT_FOUND)
  *
  * Extensible: add new checks as private static methods and call from Validate().
  *
@@ -120,5 +122,14 @@ private:
 		const FOlivePlanValidationContext& Context,
 		const TArray<FOliveResolvedStep>& ResolvedSteps,
 		const FOliveGraphContext& GraphContext,
+		FOlivePlanValidationResult& Result);
+
+	/**
+	 * Check 4: Variable existence guard.
+	 * Rejects get_var/set_var steps that reference variables not found on the
+	 * Blueprint, its parent chain, SCS components, or native generated class.
+	 */
+	static void CheckVariableExists(
+		const FOlivePlanValidationContext& Context,
 		FOlivePlanValidationResult& Result);
 };

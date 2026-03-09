@@ -394,6 +394,33 @@ namespace OliveBlueprintSchemas
 		return Schema;
 	}
 
+	TSharedPtr<FJsonObject> BlueprintDescribeFunction()
+	{
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		TSharedPtr<FJsonObject> Props = MakeProperties();
+
+		Props->SetObjectField(TEXT("function_name"), StringProp(
+			TEXT("Function name to look up (e.g., 'SetActorLocation', 'ApplyDamage', 'GetVelocity'). "
+				 "Accepts aliases (e.g., 'SetTimer' resolves to 'K2_SetTimer').")));
+
+		Props->SetObjectField(TEXT("target_class"), StringProp(
+			TEXT("Optional class to search first (e.g., 'CharacterMovementComponent', 'ACharacter'). "
+				 "If omitted, searches alias map, common libraries, and all UBlueprintFunctionLibrary subclasses.")));
+
+		Props->SetObjectField(TEXT("path"), StringProp(
+			TEXT("Optional Blueprint asset path for context-aware search. "
+				 "Enables searching the Blueprint's own functions, parent hierarchy, SCS components, and interfaces.")));
+
+		Schema->SetStringField(TEXT("description"),
+			TEXT("Look up a UFunction by name and return its exact signature: parameter names, types, "
+				 "by-ref flags, return type, pure/latent markers, and owning class. "
+				 "On failure, returns fuzzy suggestions and UPROPERTY detection. "
+				 "Use this BEFORE writing plan_json to verify function names and pin names."));
+		Schema->SetObjectField(TEXT("properties"), Props);
+		AddRequired(Schema, {TEXT("function_name")});
+		return Schema;
+	}
+
 	// ============================================================================
 	// Asset Writer Tool Schemas
 	// ============================================================================

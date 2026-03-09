@@ -83,6 +83,9 @@ private:
 	/** Describe a Blueprint node type: its pins, properties, and behavior */
 	FOliveToolResult HandleDescribeNodeType(const TSharedPtr<FJsonObject>& Params);
 
+	/** Look up a UFunction by name and return its exact pin signature, or fuzzy suggestions on failure */
+	FOliveToolResult HandleDescribeFunction(const TSharedPtr<FJsonObject>& Params);
+
 	/** Section-specific reader helpers (called by HandleBlueprintRead based on section param) */
 	FOliveToolResult HandleReadSectionAll(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleReadSectionGraph(const TSharedPtr<FJsonObject>& Params);

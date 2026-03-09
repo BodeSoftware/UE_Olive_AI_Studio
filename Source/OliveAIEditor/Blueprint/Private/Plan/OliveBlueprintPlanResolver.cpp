@@ -812,6 +812,26 @@ bool FOliveBlueprintPlanResolver::ExpandComponentRefs(
 				// (RC3: @ParamName.PinHint where ParamName is a function input)
 				FString RefStepId = RefBody.Left(DotIndex);
 
+				// Handle @self.X -- Target auto-wires to self by default, so dotted
+				// self-refs like @self.ReturnValue are also redundant. Strip them.
+				if (RefStepId.Equals(TEXT("self"), ESearchCase::IgnoreCase))
+				{
+					RewrittenInputs.Add(PinName, FString()); // empty = mark for removal
+					bExpanded = true;
+
+					FOliveResolverNote Note;
+					Note.Field = FString::Printf(TEXT("step '%s' inputs.%s"), *Step.StepId, *PinName);
+					Note.OriginalValue = Value;
+					Note.ResolvedValue = TEXT("(removed)");
+					Note.Reason = TEXT("@self is redundant -- Target pins auto-wire to self by default. Stripped.");
+					OutNotes.Add(MoveTemp(Note));
+
+					UE_LOG(LogOlivePlanResolver, Verbose,
+						TEXT("ExpandComponentRefs: Stripped redundant @self reference from step '%s' input '%s'"),
+						*Step.StepId, *PinName);
+					continue;
+				}
+
 				// If it's already a valid step ID, skip
 				if (ExistingStepIds.Contains(RefStepId))
 				{
@@ -1002,7 +1022,28 @@ bool FOliveBlueprintPlanResolver::ExpandComponentRefs(
 			}
 			else
 			{
-				// No dot -- this is a bare @ComponentName (e.g., "@InteractionSphere")
+				// No dot -- this is a bare @ComponentName, @VarName, or @self
+
+				// Handle @self -- Target auto-wires to self by default, so this is a no-op.
+				// Strip it from the inputs to prevent ParseDataRef from choking on it.
+				if (RefBody.Equals(TEXT("self"), ESearchCase::IgnoreCase))
+				{
+					RewrittenInputs.Add(PinName, FString()); // empty = mark for removal
+					bExpanded = true;
+
+					FOliveResolverNote Note;
+					Note.Field = FString::Printf(TEXT("step '%s' inputs.%s"), *Step.StepId, *PinName);
+					Note.OriginalValue = Value;
+					Note.ResolvedValue = TEXT("(removed)");
+					Note.Reason = TEXT("@self is redundant -- Target pins auto-wire to self by default. Stripped.");
+					OutNotes.Add(MoveTemp(Note));
+
+					UE_LOG(LogOlivePlanResolver, Verbose,
+						TEXT("ExpandComponentRefs: Stripped redundant @self reference from step '%s' input '%s'"),
+						*Step.StepId, *PinName);
+					continue;
+				}
+
 				// Check if it matches an SCS component
 				if (SCSComponentNames.Contains(RefBody))
 				{
@@ -1110,7 +1151,14 @@ bool FOliveBlueprintPlanResolver::ExpandComponentRefs(
 		// Apply rewrites
 		for (const auto& Rewrite : RewrittenInputs)
 		{
-			Step.Inputs[Rewrite.Key] = Rewrite.Value;
+			if (Rewrite.Value.IsEmpty())
+			{
+				Step.Inputs.Remove(Rewrite.Key); // @self removal -- strip entirely
+			}
+			else
+			{
+				Step.Inputs[Rewrite.Key] = Rewrite.Value;
+			}
 		}
 	}
 
@@ -1419,6 +1467,7 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 			Out.Properties.Add(TEXT("target_class"), ResolvedClassName);
 		}
 		Out.ResolvedOwningClass = OwningClass;
+		Out.ResolvedFunction = Function;
 		Out.bIsPure = Function->HasAnyFunctionFlags(FUNC_BlueprintPure);
 		Out.bIsLatent = Function->HasMetaData(TEXT("Latent"));
 
@@ -1540,6 +1589,7 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 						Out.Properties.Add(TEXT("function_name"), FallbackFuncName);
 						Out.Properties.Add(TEXT("target_class"), FallbackClassName);
 						Out.ResolvedOwningClass = FallbackClass;
+						Out.ResolvedFunction = FallbackFunction;
 						Out.bIsPure = FallbackFunction->HasAnyFunctionFlags(FUNC_BlueprintPure);
 						Out.bIsLatent = FallbackFunction->HasMetaData(TEXT("Latent"));
 
@@ -1675,6 +1725,7 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 					Out.Properties.Add(TEXT("target_class"), ResolvedClassName);
 				}
 				Out.ResolvedOwningClass = OwningClass;
+				Out.ResolvedFunction = Function;
 				Out.bIsPure = Function->HasAnyFunctionFlags(FUNC_BlueprintPure);
 				Out.bIsLatent = Function->HasMetaData(TEXT("Latent"));
 
@@ -1709,6 +1760,47 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 					*Step.Target, *ResolvedFunctionName, *ResolvedClassName, **CastClassName, *RefStepId);
 
 				return true;
+			}
+		}
+	}
+
+	// --- UPROPERTY auto-rewrite ---
+	// When FindFunctionEx fails but detects a matching UPROPERTY, the AI
+	// intended to set/get a property, not call a function. Rewrite the op.
+	for (const FString& Location : SearchResult.SearchedLocations)
+	{
+		if (Location.StartsWith(TEXT("PROPERTY MATCH:")))
+		{
+			// Extract property name from the PROPERTY MATCH message.
+			// Format: "PROPERTY MATCH: 'PropName' is a Type property on ClassName..."
+			// Parse the name between single quotes.
+			int32 FirstQuote = Location.Find(TEXT("'"));
+			int32 SecondQuote = Location.Find(TEXT("'"), ESearchCase::CaseSensitive, ESearchDir::FromStart, FirstQuote + 1);
+			if (FirstQuote != INDEX_NONE && SecondQuote != INDEX_NONE)
+			{
+				FString PropertyName = Location.Mid(FirstQuote + 1, SecondQuote - FirstQuote - 1);
+
+				// Determine set vs get based on Step.Target prefix and presence of Inputs
+				bool bIsSet = Step.Target.StartsWith(TEXT("Set"), ESearchCase::IgnoreCase)
+				           || Step.Inputs.Num() > 0;
+
+				Out.NodeType = bIsSet ? OliveNodeTypes::SetVariable : OliveNodeTypes::GetVariable;
+				Out.Properties.Add(TEXT("variable_name"), PropertyName);
+				Out.bIsPure = !bIsSet;
+
+				Out.ResolverNotes.Add(FOliveResolverNote{
+					TEXT("op"),
+					OlivePlanOps::Call,
+					bIsSet ? OlivePlanOps::SetVar : OlivePlanOps::GetVar,
+					FString::Printf(TEXT("'%s' is a property, not a function. Rewritten from 'call' to '%s'."),
+						*Step.Target, bIsSet ? *OlivePlanOps::SetVar : *OlivePlanOps::GetVar)
+				});
+
+				Warnings.Add(FString::Printf(
+					TEXT("Step '%s': '%s' auto-rewritten from call to %s (UPROPERTY detected)"),
+					*Step.StepId, *Step.Target, bIsSet ? TEXT("set_var") : TEXT("get_var")));
+
+				return true; // Step is now resolved
 			}
 		}
 	}

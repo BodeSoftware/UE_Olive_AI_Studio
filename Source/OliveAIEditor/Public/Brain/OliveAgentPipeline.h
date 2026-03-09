@@ -56,6 +56,23 @@ public:
 		const FOliveAgentPipelineResult& PipelineResult,
 		const TArray<FString>& ModifiedAssets);
 
+	/**
+	 * Post-process the Build Plan text to produce a compact "Function Pin Reference"
+	 * section. Extracts function names via regex, resolves each to UFunction* via
+	 * FindFunctionEx, and formats exact parameter signatures. Also detects UPROPERTY
+	 * matches from FindFunctionEx's SearchedLocations for property-vs-function guidance.
+	 *
+	 * Injected as Section 3.25 in FormatForPromptInjection(), between Build Plan
+	 * and Component API Map.
+	 *
+	 * @param PipelineResult  The full pipeline result (provides Build Plan text and ParentClasses)
+	 * @param ContextBlueprint  Optional Blueprint for class-specific function resolution (may be nullptr)
+	 * @return Formatted markdown block, or empty string if no functions resolved
+	 */
+	static FString BuildFunctionPinReference(
+		const FOliveAgentPipelineResult& PipelineResult,
+		UBlueprint* ContextBlueprint);
+
 private:
 	// ==========================================
 	// Pipeline Stages

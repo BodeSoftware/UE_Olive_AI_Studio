@@ -126,6 +126,16 @@ struct OLIVEAIEDITOR_API FOliveResolvedStep
 	UClass* ResolvedOwningClass = nullptr;
 
 	/**
+	 * The resolved UFunction* for 'call' ops.
+	 * Set by ResolveCallOp when FindFunctionEx succeeds.
+	 * When non-null, the executor passes this directly to
+	 * UK2Node_CallFunction::SetFromFunction() and skips FindFunction entirely.
+	 * Lifetime: stable within a single plan execution (same frame, same UClass).
+	 * nullptr for non-call ops or when resolution failed (should not reach executor).
+	 */
+	UFunction* ResolvedFunction = nullptr;
+
+	/**
 	 * Whether this call step resolved to an interface function.
 	 * When true, the executor should create a UK2Node_Message (interface
 	 * message call) instead of a regular UK2Node_CallFunction.

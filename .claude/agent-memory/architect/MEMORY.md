@@ -122,6 +122,24 @@
 - **No new files**: Only modifies OliveAgentPipeline.h/.cpp
 - **Senior assignment**: ~200 lines new C++ in critical path
 
+### Plan Executor Fixes 09j - Mar 2026
+- `plans/plan-executor-fixes-09j-design.md` -- 4 bugs, 59% -> 80% plan_json regression
+- **Bug #1 (GetForwardVector)**: ALREADY FIXED in e14162e. `_resolved` flag + `bSkipAlias` prevents double-aliasing.
+- **Bug #2 (stale exec pin)**: After failed plan_json, reused node pins retain `bOrphanedPin=true`. Fix: iterate `Context.ReusedStepIds` on failure, clear `bOrphanedPin` on all pins. Junior task, ~15 lines in `Execute()`.
+- **Bug #3 (break_struct)**: (a) Add BreakStruct/MakeStruct handling to `CreateNodeByClass()` defense-in-depth. (b) Strip `~` prefix from pin hints in `ParseDataRef()`. Senior + Junior.
+- **Bug #4 (VARIABLE_NOT_FOUND)**: New Phase 0 check. `get_var`/`set_var` steps must reference existing variables. Duplicate `BlueprintHasVariable()` into validator. Skip FunctionInput/FunctionOutput nodes. Junior, ~60 lines.
+- **Key insight**: `_resolved` property on node Properties tells NodeFactory to skip alias map. Pattern: resolver resolves -> marks `_resolved` -> executor passes through -> factory skips alias step 0.
+
+### Resolver-Executor Contract - Mar 2026
+- `plans/resolver-executor-contract-design.md` -- Resolver becomes single resolution authority for `call` ops
+- **Core change**: `FOliveResolvedStep.ResolvedFunction` (UFunction*) carries resolved function from resolver to executor
+- **NodeFactory**: `SetPreResolvedFunction(UFunction*)` -- consumed-once setter, executor calls before `AddNode`. When set, `CreateNodeByClass` skips `FindFunction` entirely.
+- **UPROPERTY auto-rewrite**: Resolver detects `PROPERTY MATCH:` in SearchedLocations on failure, rewrites `call` -> `set_var`/`get_var` with resolver note
+- **Audit result**: Executor's `FindFunction` uses ZERO graph-derived context -- same inputs (function_name, target_class, Blueprint*) the resolver already resolved. No legitimate reason for re-resolution.
+- **`_resolved` flag**: Becomes dead code (kept for backward compat with `add_node` tool path). Superseded by `SetPreResolvedFunction`.
+- **Risk**: LOW. UFunction* stable within single frame, same game thread, consumed immediately.
+- **4 tasks**: Add field (~15 lines) -> NodeFactory setter (~30 lines) -> Executor threading (~15 lines) -> UPROPERTY rewrite (~50 lines)
+
 ### Error Messages 08g - Mar 2026
 - `plans/error-messages-08g-design.md` -- 3 targeted improvements to reduce plan_json first-failure-to-fix
 - **Change 1**: UPROPERTY detection in `FindFunctionEx()` -- after search trail, scan classes for matching property names. Strips Set/Get prefix, checks BlueprintVisible properties. Appends `PROPERTY MATCH:` to SearchedLocations.

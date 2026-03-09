@@ -322,7 +322,30 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::Execute(
         UE_LOG(LogOlivePlanExecutor, Log,
             TEXT("Plan execution failed after %.1f ms"), ElapsedMs);
 
-        return AssembleResult(Plan, Context);
+        FOliveIRBlueprintPlanResult EarlyResult = AssembleResult(Plan, Context);
+
+        // Sanitize reused nodes on early failure (same as end-of-Execute path)
+        if (!EarlyResult.bSuccess && Context.ReusedStepIds.Num() > 0)
+        {
+            for (const FString& StepId : Context.ReusedStepIds)
+            {
+                UEdGraphNode* Node = Context.GetNodePtr(StepId);
+                if (!Node) continue;
+
+                for (UEdGraphPin* Pin : Node->Pins)
+                {
+                    if (Pin && Pin->bOrphanedPin)
+                    {
+                        Pin->bOrphanedPin = false;
+                        UE_LOG(LogOlivePlanExecutor, Log,
+                            TEXT("Post-failure cleanup: cleared bOrphanedPin on '%s' pin '%s'"),
+                            *StepId, *Pin->PinName.ToString());
+                    }
+                }
+            }
+        }
+
+        return EarlyResult;
     }
 
     UE_LOG(LogOlivePlanExecutor, Log,
@@ -432,7 +455,33 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::Execute(
         Context.SuccessfulDefaultCount, Context.FailedDefaultCount,
         Context.Warnings.Num());
 
-    return AssembleResult(Plan, Context);
+    FOliveIRBlueprintPlanResult Result = AssembleResult(Plan, Context);
+
+    // Sanitize reused nodes on failure — clear stale bOrphanedPin flags.
+    // When a plan fails and the transaction rolls back, reused nodes (pre-existing
+    // events) retain pin state changes from the failed execution. Clearing
+    // bOrphanedPin prevents "TypesIncompatible" errors on subsequent retries.
+    if (!Result.bSuccess && Context.ReusedStepIds.Num() > 0)
+    {
+        for (const FString& StepId : Context.ReusedStepIds)
+        {
+            UEdGraphNode* Node = Context.GetNodePtr(StepId);
+            if (!Node) continue;
+
+            for (UEdGraphPin* Pin : Node->Pins)
+            {
+                if (Pin && Pin->bOrphanedPin)
+                {
+                    Pin->bOrphanedPin = false;
+                    UE_LOG(LogOlivePlanExecutor, Log,
+                        TEXT("Post-failure cleanup: cleared bOrphanedPin on '%s' pin '%s'"),
+                        *StepId, *Pin->PinName.ToString());
+                }
+            }
+        }
+    }
+
+    return Result;
 }
 
 // ============================================================================
@@ -819,22 +868,22 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
         const int32 PosX = i * 300;
         const int32 PosY = 0;
 
-        // For call ops that the resolver already resolved (alias -> canonical name,
-        // target_class set), mark properties so FindFunction skips alias re-resolution.
-        // This prevents double-aliasing (e.g. resolver resolves "GetForwardVector" to
-        // KismetMathLibrary::GetForwardVector, then FindFunction re-aliases it back).
-        TMap<FString, FString> NodeProperties = Resolved.Properties;
-        if (NodeType == OliveNodeTypes::CallFunction ||
-            NodeType == OliveNodeTypes::CallDelegate)
+        // Pass resolved function pointer directly to NodeFactory so it can
+        // skip FindFunction entirely. This eliminates double-resolution and
+        // double-aliasing (e.g. "GetForwardVector" re-aliased after resolver
+        // already resolved it correctly).
+        if ((NodeType == OliveNodeTypes::CallFunction ||
+             NodeType == OliveNodeTypes::CallDelegate)
+            && Resolved.ResolvedFunction != nullptr)
         {
-            NodeProperties.Add(TEXT("_resolved"), TEXT("true"));
+            FOliveNodeFactory::Get().SetPreResolvedFunction(Resolved.ResolvedFunction);
         }
 
         FOliveBlueprintWriteResult WriteResult = Writer.AddNode(
             Context.AssetPath,
             Context.GraphName,
             NodeType,
-            NodeProperties,
+            Resolved.Properties,
             PosX,
             PosY);
 
@@ -3190,6 +3239,13 @@ bool FOlivePlanExecutor::ParseDataRef(
 
     OutStepId = Body.Left(DotIndex);
     OutPinHint = Body.Mid(DotIndex + 1);
+
+    // Strip leading '~' from pin hint — Olive convention for struct break outputs
+    // (e.g., "@break_hit.~HitActor") but UE pin names don't include the tilde.
+    if (OutPinHint.StartsWith(TEXT("~")))
+    {
+        OutPinHint = OutPinHint.Mid(1);
+    }
 
     return !OutStepId.IsEmpty() && !OutPinHint.IsEmpty();
 }

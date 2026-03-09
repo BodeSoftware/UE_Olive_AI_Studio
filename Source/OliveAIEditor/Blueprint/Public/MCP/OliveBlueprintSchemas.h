@@ -83,6 +83,13 @@ namespace OliveBlueprintSchemas
 	 */
 	TSharedPtr<FJsonObject> BlueprintDescribeNodeType();
 
+	/**
+	 * Schema for blueprint.describe_function tool.
+	 * Look up a UFunction by name and return its exact pin signature.
+	 * Params: {function_name: string, target_class?: string, path?: string}
+	 */
+	TSharedPtr<FJsonObject> BlueprintDescribeFunction();
+
 	// ============================================================================
 	// Asset Writer Tool Schemas
 	// ============================================================================
