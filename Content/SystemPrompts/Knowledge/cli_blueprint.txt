@@ -139,3 +139,18 @@ For pin wiring, use `@step.auto` — the resolver handles ~80% of connections au
 ## Compile-Per-Function
 
 After completing each function's graph logic (regardless of how many plan_json calls it took), compile the Blueprint. Fix the first error before moving to the next function. This catches wiring issues early instead of accumulating errors across 5+ functions.
+
+## Common Mistakes
+
+WRONG: connect_pins node_1.Pressed → node_2.execute (where node_2 is a CustomEvent)
+RIGHT: connect_pins node_1.Pressed → node_3.execute (wire to your first logic node, not the event)
+WHY: CustomEvent and Event nodes are exec sources — they have exec output pins but NO exec input pin. Wire FROM them, not TO them.
+
+WRONG: "inputs": {"Location": "@get_tf.~Location"} (where get_tf is a call node returning Transform)
+RIGHT: Add a break_struct step: {"op":"break_struct","target":"Transform","inputs":{"Value":"@get_tf.auto"}}
+       Then reference: {"inputs": {"Location": "@break_tf.~Location"}}
+WHY: Tilde (~) disambiguates among a node's output pins. It does not decompose struct return values. Use break_struct to extract struct members.
+
+WRONG: "exec_after": "@step_id"
+RIGHT: "exec_after": "step_id"
+WHY: Exec wires use plain step_id with no prefix. The @ prefix is for data wire references only.

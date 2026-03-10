@@ -377,6 +377,48 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::Execute(
     // Pre-Phase 1: Clean up orphaned node chains from previous plan_json attempts
     CleanupStaleEventChains(Graph, Plan);
 
+    // Pre-Phase 1: Clean up nodes from previous plan_json calls to the same entry points.
+    // When the agent retries plan_json after a compile error, each successful call commits
+    // nodes that persist. This removes those duplicates before creating new ones.
+    {
+        FOliveGraphWriter& GraphWriter = FOliveGraphWriter::Get();
+        TSet<FString> EntryKeys;
+
+        for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
+        {
+            if (Step.Op == OlivePlanOps::Event || Step.Op == OlivePlanOps::CustomEvent)
+            {
+                FString EntryName = Step.Target;
+                const FString* CompName = Step.Properties.Find(TEXT("component_name"));
+                if (CompName && !CompName->IsEmpty())
+                {
+                    EntryName += TEXT("_") + *CompName;
+                }
+                FString Key = AssetPath + TEXT("::") + GraphName + TEXT("::") + EntryName;
+                EntryKeys.Add(Key);
+            }
+        }
+
+        // Function graph fallback: if no explicit event ops, use graph name as entry point
+        if (EntryKeys.Num() == 0)
+        {
+            FString Key = AssetPath + TEXT("::") + GraphName + TEXT("::") + GraphName;
+            EntryKeys.Add(Key);
+        }
+
+        int32 TotalCleaned = 0;
+        for (const FString& Key : EntryKeys)
+        {
+            TotalCleaned += GraphWriter.CleanupPreviousPlanNodes(Key, Graph);
+        }
+
+        if (TotalCleaned > 0)
+        {
+            UE_LOG(LogOlivePlanExecutor, Log,
+                TEXT("Pre-Phase 1: Cleaned up %d nodes from previous plan_json calls"), TotalCleaned);
+        }
+    }
+
     // Phase 1: Create all nodes + build pin manifests (FAIL-FAST)
     UE_LOG(LogOlivePlanExecutor, Log, TEXT("Phase 1: Create Nodes"));
     const bool bNodesCreated = PhaseCreateNodes(Plan, ResolvedSteps, Context);
@@ -419,6 +461,52 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::Execute(
 
     UE_LOG(LogOlivePlanExecutor, Log,
         TEXT("Phase 1 complete: %d nodes created"), Context.CreatedNodeCount);
+
+    // Post-Phase 1: Record created nodes for future duplicate cleanup.
+    // On the next plan_json call to the same entry point, these nodes will be removed
+    // before creating new ones, preventing duplicates from retry loops.
+    {
+        FOliveGraphWriter& GraphWriter = FOliveGraphWriter::Get();
+
+        // Collect UObject FNames of created nodes (excluding reused event/entry/result nodes)
+        TArray<FName> CreatedNodeNames;
+        for (const auto& Pair : Context.StepToNodePtr)
+        {
+            if (Context.ReusedStepIds.Contains(Pair.Key))
+            {
+                continue;
+            }
+            if (Pair.Value)
+            {
+                CreatedNodeNames.Add(Pair.Value->GetFName());
+            }
+        }
+
+        // Build entry keys and record
+        bool bHasEventOps = false;
+        for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
+        {
+            if (Step.Op == OlivePlanOps::Event || Step.Op == OlivePlanOps::CustomEvent)
+            {
+                bHasEventOps = true;
+                FString EntryName = Step.Target;
+                const FString* CompName = Step.Properties.Find(TEXT("component_name"));
+                if (CompName && !CompName->IsEmpty())
+                {
+                    EntryName += TEXT("_") + *CompName;
+                }
+                FString Key = AssetPath + TEXT("::") + GraphName + TEXT("::") + EntryName;
+                GraphWriter.RecordPlanNodes(Key, CreatedNodeNames);
+            }
+        }
+
+        // Function graph fallback
+        if (!bHasEventOps)
+        {
+            FString Key = AssetPath + TEXT("::") + GraphName + TEXT("::") + GraphName;
+            GraphWriter.RecordPlanNodes(Key, CreatedNodeNames);
+        }
+    }
 
     // Initialize reverse map and plan pointer for Phase 5.5
     for (const auto& Pair : Context.StepToNodeMap)

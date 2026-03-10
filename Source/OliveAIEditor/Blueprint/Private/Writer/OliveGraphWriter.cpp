@@ -578,10 +578,40 @@ FOliveBlueprintWriteResult FOliveGraphWriter::ConnectPins(
 	}
 	if (!SourcePin)
 	{
+		FString NodeClassName = SourceNode->GetClass()->GetName();
+		NodeClassName.RemoveFromStart(TEXT("K2Node_"));
+
+		// Detect exec-source nodes: the agent tried to find an exec pin on a source-only node
+		bool bIsExecRequest = (SourcePinName.Equals(TEXT("execute"), ESearchCase::IgnoreCase)
+			|| SourcePinName.Equals(TEXT("exec"), ESearchCase::IgnoreCase)
+			|| SourcePinName.Equals(TEXT("then"), ESearchCase::IgnoreCase));
+		bool bHasNoExecInput = true;
+		bool bHasExecOutput = false;
+		for (UEdGraphPin* Pin : SourceNode->Pins)
+		{
+			if (Pin && !Pin->bHidden && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+			{
+				if (Pin->Direction == EGPD_Input) bHasNoExecInput = false;
+				if (Pin->Direction == EGPD_Output) bHasExecOutput = true;
+			}
+		}
+
+		if (bIsExecRequest && bHasNoExecInput && bHasExecOutput)
+		{
+			FString OutputPins = BuildAvailablePinsList(SourceNode, EGPD_Output);
+			return FOliveBlueprintWriteResult::Error(
+				FString::Printf(TEXT("Source pin '%s' not found on node '%s' (%s). "
+					"This node is an exec source — it has exec output pins but no exec input. "
+					"Wire FROM %s.then, not TO it. Available output pins: %s"),
+					*SourcePinName, *SourceNodeId, *NodeClassName, *SourceNodeId,
+					OutputPins.IsEmpty() ? TEXT("(none)") : *OutputPins),
+				BlueprintPath);
+		}
+
 		FString Available = BuildAvailablePinsList(SourceNode, EGPD_Output);
 		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Source pin '%s' not found on node '%s'. Available output pins: %s"),
-				*SourcePinName, *SourceNodeId,
+			FString::Printf(TEXT("Source pin '%s' not found on node '%s' (%s). Available output pins: %s"),
+				*SourcePinName, *SourceNodeId, *NodeClassName,
 				Available.IsEmpty() ? TEXT("(none)") : *Available),
 			BlueprintPath);
 	}
@@ -615,10 +645,40 @@ FOliveBlueprintWriteResult FOliveGraphWriter::ConnectPins(
 	}
 	if (!TargetPin)
 	{
+		FString NodeClassName = TargetNode->GetClass()->GetName();
+		NodeClassName.RemoveFromStart(TEXT("K2Node_"));
+
+		// Detect exec-source nodes: the agent tried to wire TO an exec input that doesn't exist
+		bool bIsExecRequest = (TargetPinName.Equals(TEXT("execute"), ESearchCase::IgnoreCase)
+			|| TargetPinName.Equals(TEXT("exec"), ESearchCase::IgnoreCase)
+			|| TargetPinName.Equals(TEXT("then"), ESearchCase::IgnoreCase));
+		bool bHasNoExecInput = true;
+		bool bHasExecOutput = false;
+		for (UEdGraphPin* Pin : TargetNode->Pins)
+		{
+			if (Pin && !Pin->bHidden && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+			{
+				if (Pin->Direction == EGPD_Input) bHasNoExecInput = false;
+				if (Pin->Direction == EGPD_Output) bHasExecOutput = true;
+			}
+		}
+
+		if (bIsExecRequest && bHasNoExecInput && bHasExecOutput)
+		{
+			FString OutputPins = BuildAvailablePinsList(TargetNode, EGPD_Output);
+			return FOliveBlueprintWriteResult::Error(
+				FString::Printf(TEXT("Target pin '%s' not found on node '%s' (%s). "
+					"This node is an exec source — it has exec output pins but no exec input. "
+					"Wire FROM %s.then, not TO it. Available output pins: %s"),
+					*TargetPinName, *TargetNodeId, *NodeClassName, *TargetNodeId,
+					OutputPins.IsEmpty() ? TEXT("(none)") : *OutputPins),
+				BlueprintPath);
+		}
+
 		FString Available = BuildAvailablePinsList(TargetNode, EGPD_Input);
 		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Target pin '%s' not found on node '%s'. Available input pins: %s"),
-				*TargetPinName, *TargetNodeId,
+			FString::Printf(TEXT("Target pin '%s' not found on node '%s' (%s). Available input pins: %s"),
+				*TargetPinName, *TargetNodeId, *NodeClassName,
 				Available.IsEmpty() ? TEXT("(none)") : *Available),
 			BlueprintPath);
 	}
@@ -695,10 +755,12 @@ FOliveBlueprintWriteResult FOliveGraphWriter::DisconnectPins(
 	UEdGraphPin* SourcePin = FindPin(SourceNode, SourcePinName);
 	if (!SourcePin)
 	{
+		FString NodeClassName = SourceNode->GetClass()->GetName();
+		NodeClassName.RemoveFromStart(TEXT("K2Node_"));
 		FString Available = BuildAvailablePinsList(SourceNode, EGPD_Output);
 		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Source pin '%s' not found on node '%s'. Available output pins: %s"),
-				*SourcePinName, *SourceNodeId,
+			FString::Printf(TEXT("Source pin '%s' not found on node '%s' (%s). Available output pins: %s"),
+				*SourcePinName, *SourceNodeId, *NodeClassName,
 				Available.IsEmpty() ? TEXT("(none)") : *Available),
 			BlueprintPath);
 	}
@@ -715,10 +777,12 @@ FOliveBlueprintWriteResult FOliveGraphWriter::DisconnectPins(
 	UEdGraphPin* TargetPin = FindPin(TargetNode, TargetPinName);
 	if (!TargetPin)
 	{
+		FString NodeClassName = TargetNode->GetClass()->GetName();
+		NodeClassName.RemoveFromStart(TEXT("K2Node_"));
 		FString Available = BuildAvailablePinsList(TargetNode, EGPD_Input);
 		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Target pin '%s' not found on node '%s'. Available input pins: %s"),
-				*TargetPinName, *TargetNodeId,
+			FString::Printf(TEXT("Target pin '%s' not found on node '%s' (%s). Available input pins: %s"),
+				*TargetPinName, *TargetNodeId, *NodeClassName,
 				Available.IsEmpty() ? TEXT("(none)") : *Available),
 			BlueprintPath);
 	}
@@ -1398,4 +1462,100 @@ TMap<FString, FString> FOliveGraphWriter::ConvertIRNodeProperties(const FOliveIR
 	}
 
 	return Properties;
+}
+
+// ============================================================================
+// Plan Node Tracking (for duplicate cleanup on retry)
+// ============================================================================
+
+void FOliveGraphWriter::RecordPlanNodes(const FString& EntryKey, const TArray<FName>& CreatedNodeNames)
+{
+	FScopeLock Lock(&CacheLock);
+	PreviousPlanNodesByEntry.Add(EntryKey, CreatedNodeNames);
+	UE_LOG(LogOliveGraphWriter, Log, TEXT("RecordPlanNodes: stored %d nodes for entry '%s'"),
+		CreatedNodeNames.Num(), *EntryKey);
+}
+
+int32 FOliveGraphWriter::CleanupPreviousPlanNodes(const FString& EntryKey, UEdGraph* Graph)
+{
+	TArray<FName> PreviousNodes;
+	{
+		FScopeLock Lock(&CacheLock);
+		TArray<FName>* Found = PreviousPlanNodesByEntry.Find(EntryKey);
+		if (!Found || Found->Num() == 0 || !Graph)
+		{
+			return 0;
+		}
+		// Copy out so we can release the lock before mutating the graph
+		PreviousNodes = *Found;
+	}
+
+	// Build set for O(1) lookup
+	TSet<FName> NodesToRemove;
+	NodesToRemove.Reserve(PreviousNodes.Num());
+	for (const FName& Name : PreviousNodes)
+	{
+		NodesToRemove.Add(Name);
+	}
+
+	TArray<UEdGraphNode*> NodesToDelete;
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		if (Node && NodesToRemove.Contains(Node->GetFName()))
+		{
+			NodesToDelete.Add(Node);
+		}
+	}
+
+	int32 RemovedCount = 0;
+	if (NodesToDelete.Num() > 0)
+	{
+		Graph->Modify();
+		for (UEdGraphNode* Node : NodesToDelete)
+		{
+			UE_LOG(LogOliveGraphWriter, Log,
+				TEXT("CleanupPreviousPlanNodes: removing node '%s' (%s) from entry '%s'"),
+				*Node->GetName(), *Node->GetClass()->GetName(), *EntryKey);
+			Node->BreakAllNodeLinks();
+			Graph->RemoveNode(Node);
+			RemovedCount++;
+		}
+	}
+
+	// Clear the entry after cleanup
+	{
+		FScopeLock Lock(&CacheLock);
+		PreviousPlanNodesByEntry.Remove(EntryKey);
+	}
+
+	UE_LOG(LogOliveGraphWriter, Log,
+		TEXT("CleanupPreviousPlanNodes: removed %d/%d tracked nodes for entry '%s'"),
+		RemovedCount, PreviousNodes.Num(), *EntryKey);
+
+	return RemovedCount;
+}
+
+void FOliveGraphWriter::ClearPlanNodesForBlueprint(const FString& BlueprintPath)
+{
+	FScopeLock Lock(&CacheLock);
+
+	TArray<FString> KeysToRemove;
+	const FString Prefix = BlueprintPath + TEXT("::");
+	for (const auto& Pair : PreviousPlanNodesByEntry)
+	{
+		if (Pair.Key.StartsWith(Prefix))
+		{
+			KeysToRemove.Add(Pair.Key);
+		}
+	}
+	for (const FString& Key : KeysToRemove)
+	{
+		PreviousPlanNodesByEntry.Remove(Key);
+	}
+	if (KeysToRemove.Num() > 0)
+	{
+		UE_LOG(LogOliveGraphWriter, Log,
+			TEXT("ClearPlanNodesForBlueprint: cleared %d entry keys for '%s'"),
+			KeysToRemove.Num(), *BlueprintPath);
+	}
 }
