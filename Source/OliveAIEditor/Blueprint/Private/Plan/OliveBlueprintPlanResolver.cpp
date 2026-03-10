@@ -1270,8 +1270,33 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 		bResult = ResolveSimpleOp(Step, OliveNodeTypes::SpawnActor, OutResolved);
 		if (bResult)
 		{
-			OutResolved.Properties.Add(TEXT("actor_class"), Step.Target);
-			UE_LOG(LogOlivePlanResolver, Log, TEXT("    ResolveSpawnActorOp: actor_class='%s' resolved successfully"), *Step.Target);
+			if (Step.Target.StartsWith(TEXT("@")))
+			{
+				// Dynamic class reference -- the class will be wired via Phase 4 data wiring.
+				// Use AActor as placeholder so CreateSpawnActorNode can create a valid node.
+				// Store the step reference so Phase 4 can wire the Class pin.
+				OutResolved.Properties.Add(TEXT("actor_class"), TEXT("Actor"));
+				OutResolved.Properties.Add(TEXT("dynamic_class_ref"), Step.Target);
+
+				OutResolved.ResolverNotes.Add(FOliveResolverNote{
+					TEXT("target"),
+					Step.Target,
+					TEXT("Actor (dynamic)"),
+					FString::Printf(TEXT("spawn_actor target '%s' is a step reference. "
+						"Using AActor as placeholder; Class pin will be wired in Phase 4."),
+						*Step.Target)
+				});
+
+				UE_LOG(LogOlivePlanResolver, Log,
+					TEXT("    ResolveSpawnActorOp: target '%s' is a step reference — using AActor placeholder, Phase 4 will wire Class pin"),
+					*Step.Target);
+			}
+			else
+			{
+				OutResolved.Properties.Add(TEXT("actor_class"), Step.Target);
+				UE_LOG(LogOlivePlanResolver, Log,
+					TEXT("    ResolveSpawnActorOp: actor_class='%s' resolved successfully"), *Step.Target);
+			}
 		}
 	}
 	else if (Op == OlivePlanOps::Cast)
@@ -1742,10 +1767,20 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 	// --- Function NOT found -- error with search history and suggestions ---
 	TArray<FString> Alternatives;
 
-	// Build detailed error message including search trail
-	FString ErrorMessage = FString::Printf(
-		TEXT("Function '%s' not found. Searched: %s."),
-		*Step.Target, *SearchResult.BuildSearchedLocationsString());
+	// Short, scannable message -- suggestions go in the Suggestion field
+	FString ErrorMessage;
+	if (!Step.TargetClass.IsEmpty())
+	{
+		ErrorMessage = FString::Printf(
+			TEXT("Function '%s' not found on class '%s'."),
+			*Step.Target, *Step.TargetClass);
+	}
+	else
+	{
+		ErrorMessage = FString::Printf(
+			TEXT("Function '%s' not found on any searched class."),
+			*Step.Target);
+	}
 
 	// Try to resolve a target class for class-scoped suggestions.
 	// Priority: explicit TargetClass > SCS component scan > catalog fuzzy fallback
@@ -1819,7 +1854,7 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 		}
 	}
 
-	// Build actionable suggestion
+	// Build actionable suggestion -- alternatives come FIRST
 	FString Suggestion;
 
 	if (SuggestionClass)
@@ -1830,11 +1865,12 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 
 		if (!ScopedSuggestions.IsEmpty())
 		{
-			Suggestion = ScopedSuggestions;
+			Suggestion = FString::Printf(TEXT("On class '%s': %s"),
+				*SuggestionClass->GetName(), *ScopedSuggestions);
 		}
 	}
 
-	// Fallback to catalog fuzzy match if no class-scoped suggestions were produced
+	// Fallback to catalog fuzzy match if no class-scoped suggestions
 	if (Suggestion.IsEmpty())
 	{
 		FOliveNodeCatalog& Catalog = FOliveNodeCatalog::Get();
@@ -1850,25 +1886,54 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 		if (Alternatives.Num() > 0)
 		{
 			Suggestion = FString::Printf(
-				TEXT("Did you mean: %s."),
+				TEXT("Suggested alternatives: %s."),
 				*FString::Join(Alternatives, TEXT(", ")));
 		}
 	}
 
-	// Append target_class advice
+	// Append verification advice
+	Suggestion += Suggestion.IsEmpty() ? TEXT("") : TEXT(" ");
+	Suggestion += TEXT("Verify with blueprint.describe_function(function_name, target_class) before retrying.");
+
+	// Check if the failed target is a UPROPERTY (Set/Get prefix stripped)
+	if (SuggestionClass)
+	{
+		for (TFieldIterator<FProperty> PropIt(SuggestionClass, EFieldIteratorFlags::IncludeSuper); PropIt; ++PropIt)
+		{
+			const FProperty* Prop = *PropIt;
+			if (!Prop || !Prop->HasAnyPropertyFlags(CPF_BlueprintVisible | CPF_BlueprintReadOnly))
+			{
+				continue;
+			}
+			// Check if the failed target is a plausible Set/Get attempt on this property
+			FString CleanTarget = Step.Target;
+			CleanTarget.RemoveFromStart(TEXT("Set"), ESearchCase::IgnoreCase);
+			CleanTarget.RemoveFromStart(TEXT("Get"), ESearchCase::IgnoreCase);
+			if (CleanTarget.Equals(Prop->GetName(), ESearchCase::IgnoreCase))
+			{
+				Suggestion += FString::Printf(
+					TEXT(" NOTE: '%s' is a UPROPERTY on %s, not a function. Use op: set_var or op: get_var with target: '%s'."),
+					*Prop->GetName(), *SuggestionClass->GetName(), *Prop->GetName());
+				break;
+			}
+		}
+	}
+
+	// Target class advice (condensed)
 	if (!Step.TargetClass.IsEmpty())
 	{
-		Suggestion += Suggestion.IsEmpty() ? TEXT("") : TEXT(" ");
 		Suggestion += FString::Printf(
-			TEXT("Check if '%s' is the correct target_class, or omit it to search all scopes."),
+			TEXT(" Check if '%s' is the correct target_class, or omit it to search all scopes."),
 			*Step.TargetClass);
 	}
 	else
 	{
-		Suggestion += Suggestion.IsEmpty() ? TEXT("") : TEXT(" ");
-		Suggestion += TEXT("Specify target_class to narrow the search, or use blueprint.search_nodes to find available functions.");
-		Suggestion += TEXT(" If this function belongs to a component on a different Blueprint, apply the plan to that Blueprint instead.");
+		Suggestion += TEXT(" Specify target_class to narrow the search.");
 	}
+
+	// Append search trail as debug context (after a clear delimiter)
+	Suggestion += FString::Printf(TEXT(" --- Search trail: %s"),
+		*SearchResult.BuildSearchedLocationsString());
 
 	FOliveIRBlueprintPlanError Error = FOliveIRBlueprintPlanError::MakeStepError(
 		TEXT("FUNCTION_NOT_FOUND"),

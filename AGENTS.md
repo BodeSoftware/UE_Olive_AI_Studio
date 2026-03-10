@@ -253,12 +253,17 @@ Intent-level graph editing system where the AI describes "what" it wants (e.g., 
 
 **Plan Pipeline (resolver → validator → executor):**
 1. `FOliveBlueprintPlanResolver::Resolve()` — alias resolution, SCS component variable recognition (`BlueprintHasVariable` checks both `NewVariables` and SCS nodes — components ARE variables), pure-node collapse, `ExpandPlanInputs()` for auto-synthesis, `ExpandMissingComponentTargets()` for auto-injecting get_var steps when Target is unambiguous. Auto-reroutes: `call` op auto-detects event dispatchers in `NewVariables` and reroutes to `call_delegate`; `event` op auto-detects component delegate events via SCS inspection (creates `UK2Node_ComponentBoundEvent`).
-2. `FOlivePlanValidator::Validate()` — Phase 0 structural checks: `COMPONENT_FUNCTION_ON_ACTOR` (unwired Target on Actor BP) and `EXEC_WIRING_CONFLICT` (exec_after targeting a step with exec_outputs)
-3. `FOlivePlanExecutor::Execute()` — 7 phases: CreateNodes → AutoWireComponents (Phase 1.5) → WireExec → WireData → SetDefaults → PreCompileValidation (Phase 5.5) → AutoLayout. `FOlivePlanExecutionContext` carries `AutoFixCount`, `PreCompileIssues`, `NodeIdToStepId`.
+2. `FOlivePlanValidator::Validate()` — Phase 0 structural checks (5 checks): `COMPONENT_FUNCTION_ON_ACTOR` (unwired Target on Actor BP), `EXEC_WIRING_CONFLICT` (exec_after targeting a step with exec_outputs), `LATENT_IN_FUNCTION` (Delay etc. in function graph), `VARIABLE_NOT_FOUND` (get_var/set_var on nonexistent variable), `EXEC_SOURCE_IS_RETURN` (exec_after targeting FunctionOutput — return nodes have no exec output pin)
+3. `FOlivePlanExecutor::Execute()` — Pre-execution cleanup (`CleanupStaleEventChains` removes orphaned node chains from events the current plan targets) → 7 phases: CreateNodes → AutoWireComponents (Phase 1.5) → WireExec → WireData → SetDefaults → PreCompileValidation (Phase 5.5) → AutoLayout. `FOlivePlanExecutionContext` carries `AutoFixCount`, `PreCompileIssues`, `NodeIdToStepId`, `DynamicClassRefs`.
 
 **Key executor behaviors:**
 - **`return` op** resolves to `OliveNodeTypes::FunctionOutput` — reuses the existing `UK2Node_FunctionResult` node, wiring both exec and data pins to it
 - **FunctionResult auto-chain** — in function graphs, PhaseWireExec automatically wires the last exec node to `UK2Node_FunctionResult`'s exec input (if no explicit return op provides one)
+- **Target/self pin wiring** — `"Target": "@step.auto"` in inputs wires the hidden self pin on `K2Node_CallFunction`, enabling calls on non-self actors (e.g., `AttachToComponent` on a spawned actor)
+- **Dynamic SpawnActor class** — `@step.auto` as spawn_actor target defers class pin wiring to Phase 4 (uses AActor placeholder during Phase 1)
+- **Stale event chain cleanup** — `CleanupStaleEventChains()` runs before Phase 1, BFS-walks exec chains from events the current plan targets, removes isolated orphaned chains from previous plan_json attempts (preserves event nodes for reuse)
+- **Exec auto-break** — `FOlivePinConnector::Connect()` auto-breaks existing exec connections when wiring new ones (mirrors Blueprint editor behavior), preventing `CONNECT_RESPONSE_BREAK_OTHERS` rejections
+- **Modify() on reused nodes** — reused event/function entry/result nodes call `Modify()` to capture pin state for proper undo/rollback
 - **Phase 5.5 scoping** — orphan detection only checks nodes in `Context.NodeIdToStepId`, so nodes from previous plan_json calls are not flagged
 
 ### FindFunction Search Order
@@ -370,6 +375,23 @@ Unreal's startup popup ("rebuild from source") is generic. Treat it as a symptom
 - `K2Node::AllocateDefaultPins()` on many subclasses calls `FindBlueprintForNodeChecked()` — nodes on transient graphs MUST have a `UBlueprint` outer, not `GetTransientPackage()`. Use a scratch Blueprint as the graph's outer.
 - `UK2Node_ComponentBoundEvent::InitializeComponentBoundEventParams()` takes `(FObjectProperty*, FMulticastDelegateProperty*)` — find both via class reflection
 - Always confirm current symbols in UE 5.5 source for Blueprint/editor APIs
+
+---
+
+### Feature Implementation Workflow
+
+1. **Research** (if needed) → `researcher` subagent
+2. **Design** → `architect` subagent → produces `plans/{module}-design.md` → **wait for user approval**
+3. **Implement** → `coder` subagent (follows architect's design)
+4. **Debug** (if needed) → `coder` subagent with explicit "fix only, no refactoring" instruction
+5. **Review** (optional) → `architect` subagent
+
+### Rules
+
+- **Never skip the architect for new modules.**
+- **One explorer at a time. NEVER spawn multiple.** Give it ALL questions in one invocation.
+- The coder follows the architect's design. Gaps get `// DESIGN NOTE` comments, not ad-hoc decisions.
+- Design documents and architectural decisions go in `plans/` (e.g., `plans/{module}-design.md`).
 
 ---
 

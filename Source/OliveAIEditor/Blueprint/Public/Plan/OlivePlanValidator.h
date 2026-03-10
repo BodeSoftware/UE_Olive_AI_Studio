@@ -56,6 +56,7 @@ struct OLIVEAIEDITOR_API FOlivePlanValidationResult
  *   - Exec wiring conflict detection (EXEC_WIRING_CONFLICT)
  *   - Latent-in-function-graph guard (LATENT_IN_FUNCTION)
  *   - Variable existence guard (VARIABLE_NOT_FOUND)
+ *   - Exec source is return guard (EXEC_SOURCE_IS_RETURN)
  *
  * Extensible: add new checks as private static methods and call from Validate().
  *
@@ -130,6 +131,16 @@ private:
 	 * Blueprint, its parent chain, SCS components, or native generated class.
 	 */
 	static void CheckVariableExists(
+		const FOlivePlanValidationContext& Context,
+		FOlivePlanValidationResult& Result);
+
+	/**
+	 * Check 5: Reject exec_after targeting FunctionOutput steps.
+	 * FunctionResult (return) nodes have an exec input but NO exec output pin,
+	 * so nothing can chain after them. exec_outputs targeting a return step is
+	 * valid (wiring INTO the return node's exec input).
+	 */
+	static void CheckExecSourceIsReturn(
 		const FOlivePlanValidationContext& Context,
 		FOlivePlanValidationResult& Result);
 };

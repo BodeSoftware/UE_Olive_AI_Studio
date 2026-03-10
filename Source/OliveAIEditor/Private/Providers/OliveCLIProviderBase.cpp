@@ -407,7 +407,7 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 	AgentContext += TEXT("Research tools help you verify assumptions before writing graph logic:\n");
 	AgentContext += TEXT("- `blueprint.list_templates(query=\"...\")` -- search library/factory templates for patterns\n");
 	AgentContext += TEXT("- `blueprint.get_template(id, pattern=\"FuncName\")` -- read specific function implementations\n");
-	AgentContext += TEXT("- `blueprint.describe_function(class, function)` -- verify exact pin names\n");
+	AgentContext += TEXT("- `blueprint.describe_function(function_name, target_class)` -- verify function exists and get pin signatures\n");
 	AgentContext += TEXT("- `blueprint.describe_node_type(type)` -- check K2Node properties and pins\n");
 	AgentContext += TEXT("- `project.search(query)` -- find existing assets by name\n");
 	AgentContext += TEXT("- `olive.get_recipe(query)` -- tested wiring patterns for common tasks\n\n");
@@ -660,7 +660,7 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 		EffectiveMessage += TEXT("- Component for reusable capabilities\n");
 		EffectiveMessage += TEXT("- Variable for simple values on existing actors\n\n");
 		EffectiveMessage += TEXT("Then build each one fully: structure -> graph logic -> compile to 0 errors -> next.\n");
-		EffectiveMessage += TEXT("Use blueprint.describe_function to verify pin names when unsure.\n");
+		EffectiveMessage += TEXT("If unsure whether a UE function exists (e.g., component-specific functions), verify with blueprint.describe_function before writing plan_json.\n");
 	}
 
 	// Guardrail: for write-oriented tasks, require at least one tool call before final text.

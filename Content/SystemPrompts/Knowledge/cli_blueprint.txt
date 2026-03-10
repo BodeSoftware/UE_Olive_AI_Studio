@@ -101,16 +101,15 @@ templates for each Blueprint need in your plan (or function if doing a function-
   (e.g., BP_RangedComponent) and add it to the actor — don't copy the functions onto the
   actor directly. This replicates the same reusable, encapsulated design as the original.
 
-## Pin Name Verification
+## Function Verification
 
-Verify pin names when possible — check template references first, then Component API Reference, then describe_node_type. If none of these have the answer, trust your UE5 knowledge and use `@step.auto` for pin wiring — the resolver handles standard pin patterns automatically. Don't simplify your design because you couldn't verify a pin name.
+Before using unfamiliar functions in plan_json (especially component-specific ones like SetVelocityInLocalSpace, SetSimulatePhysics, etc.), verify they exist:
 
-Priority order:
 1. Template references (`blueprint.get_template` with pattern) — highest quality, full node graphs
-2. blueprint.describe_function(class, function) -- exact function signatures
-3. Functions you added yourself — pin names match the parameter names from `blueprint.add_function`
-4. `@step.auto` — automatic type-based pin matching, works for ~80% of connections
-5. Your UE5 knowledge — you know Unreal. If you know a pin name, use it.
+2. `blueprint.describe_function(function_name, target_class)` — confirms function exists, returns exact pin names
+3. Your UE5 knowledge — you know Unreal. Common functions (SetActorLocation, GetActorTransform, etc.) don't need verification.
+
+For pin wiring, use `@step.auto` — the resolver handles ~80% of connections automatically. Functions you created with `blueprint.add_function` use the parameter names you specified.
 
 ## plan_json Scope
 - plan_json CREATES new nodes. It cannot reference existing nodes by ID or internal name.

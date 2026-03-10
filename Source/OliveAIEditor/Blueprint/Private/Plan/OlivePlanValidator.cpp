@@ -43,6 +43,7 @@ FOlivePlanValidationResult FOlivePlanValidator::Validate(
 	CheckExecWiringConflicts(Context, Result);
 	CheckLatentInFunctionGraph(Context, ResolvedSteps, GraphContext, Result);
 	CheckVariableExists(Context, Result);
+	CheckExecSourceIsReturn(Context, Result);
 
 	if (Result.Errors.Num() > 0)
 	{
@@ -570,5 +571,66 @@ void FOlivePlanValidator::CheckVariableExists(
 		UE_LOG(LogOlivePlanValidator, Warning,
 			TEXT("Phase 0: VARIABLE_NOT_FOUND -- step '%s' references '%s' on '%s'"),
 			*Resolved.StepId, *VariableName, *Context.Blueprint->GetName());
+	}
+}
+
+// ============================================================================
+// Check 5: Exec Source Is Return Guard
+// ============================================================================
+
+void FOlivePlanValidator::CheckExecSourceIsReturn(
+	const FOlivePlanValidationContext& Context,
+	FOlivePlanValidationResult& Result)
+{
+	// Build set of steps that resolve to FunctionOutput (terminal nodes with no exec output)
+	TSet<FString> FunctionOutputSteps;
+	for (int32 i = 0; i < Context.ResolvedSteps.Num(); ++i)
+	{
+		if (Context.ResolvedSteps[i].NodeType == OliveNodeTypes::FunctionOutput)
+		{
+			FunctionOutputSteps.Add(Context.ResolvedSteps[i].StepId);
+		}
+	}
+
+	if (FunctionOutputSteps.Num() == 0)
+	{
+		return;
+	}
+
+	// Check every step's exec_after for references to FunctionOutput steps.
+	// NOTE: exec_outputs targeting a FunctionOutput step is valid — that wires
+	// INTO the return node's exec input. Only exec_after is invalid, because it
+	// tries to chain FROM the return node's (nonexistent) exec output.
+	for (int32 i = 0; i < Context.Plan.Steps.Num(); ++i)
+	{
+		const FOliveIRBlueprintPlanStep& Step = Context.Plan.Steps[i];
+
+		if (Step.ExecAfter.IsEmpty())
+		{
+			continue;
+		}
+
+		if (!FunctionOutputSteps.Contains(Step.ExecAfter))
+		{
+			continue;
+		}
+
+		Result.Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+			TEXT("EXEC_SOURCE_IS_RETURN"),
+			Step.StepId,
+			FString::Printf(TEXT("/steps/%d/exec_after"), i),
+			FString::Printf(
+				TEXT("Step '%s' has exec_after:'%s', but '%s' resolves to a FunctionResult node "
+					 "(return/output parameter). FunctionResult is a terminal node — it has an "
+					 "exec input but NO exec output pin. Nothing can chain after it."),
+				*Step.StepId, *Step.ExecAfter, *Step.ExecAfter),
+			FString::Printf(
+				TEXT("Wire exec_after to the step BEFORE '%s' in the exec chain, not to the return step itself. "
+					 "The return step should be the LAST step in the chain."),
+				*Step.ExecAfter)));
+
+		UE_LOG(LogOlivePlanValidator, Warning,
+			TEXT("Phase 0: EXEC_SOURCE_IS_RETURN -- step '%s' exec_after targets FunctionOutput step '%s'"),
+			*Step.StepId, *Step.ExecAfter);
 	}
 }

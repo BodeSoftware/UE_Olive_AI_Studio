@@ -110,6 +110,13 @@
 - **Fix 3 Part B**: DEFERRED. Auto-infer Target from typed references in resolver. Complex, marginal payoff with Part A available.
 - **Key insight**: `CONNECT_RESPONSE_BREAK_OTHERS_A` (enum 2) is NOT DISALLOW. `TryCreateConnection` handles it by breaking existing connections. Our `Connect()` was incorrectly gating on `CanSafeConnect()` which only allows MAKE and MAKE_WITH_PROMOTION.
 
+### Run 09r Fixes - Mar 2026
+- `plans/run-09r-fixes-design.md` -- 3 fixes from run 09r analysis
+- **Fix 1 (P0, Junior)**: Restructure FUNCTION_NOT_FOUND error format. Short message, alternatives FIRST in suggestion, search trail pushed to end with `--- Search trail:` delimiter. Add UPROPERTY note when SuggestionClass has matching property. ~40 lines in `OliveBlueprintPlanResolver.cpp`.
+- **Fix 2 (P1, Junior)**: Reframe `describe_function` from "pin verification" to "function verification" in cli_blueprint.txt + OliveCLIProviderBase.cpp (lines 410, 663). ~15 lines.
+- **Fix 3 (P0, Senior)**: SpawnActor step-reference support. When `spawn_actor` target starts with `@`, resolver uses AActor placeholder + stores `dynamic_class_ref`. Phase 4 wires Class pin from referenced step, clears placeholder default, calls ReconstructNode. ~50 lines across resolver + executor.
+- **Key insight**: `CreateSpawnActorNode` calls `FindClass(actor_class)` at Phase 1 -- `@step.auto` is NOT a class path. Resolver must intercept and defer to Phase 4 data wiring.
+
 ### Error Messages 08g - Mar 2026
 - `plans/error-messages-08g-design.md` -- 3 targeted improvements to reduce plan_json first-failure-to-fix
 - **Change 1**: UPROPERTY detection in `FindFunctionEx()` -- after search trail, scan classes for matching property names. Strips Set/Get prefix, checks BlueprintVisible properties. Appends `PROPERTY MATCH:` to SearchedLocations.

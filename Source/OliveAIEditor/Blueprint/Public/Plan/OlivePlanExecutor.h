@@ -139,6 +139,11 @@ struct OLIVEAIEDITOR_API FOlivePlanExecutionContext
     /** True if Phase 4 (data wiring) had any failures — forces rollback in AssembleResult */
     bool bHasDataWireFailure = false;
 
+    /** StepId -> @ref string for spawn_actor steps with dynamic class references.
+     *  Populated during Phase 1 from resolved step properties ("dynamic_class_ref").
+     *  Consumed by Phase 4 to wire the Class pin on SpawnActor nodes. */
+    TMap<FString, FString> DynamicClassRefs;
+
     /** Reverse map: NodeId -> StepId (built from StepToNodeMap during Execute) */
     TMap<FString, FString> NodeIdToStepId;
 
@@ -239,6 +244,31 @@ public:
         const FString& GraphName);
 
 private:
+    // ====================================================================
+    // Pre-Execution Cleanup
+    // ====================================================================
+
+    /**
+     * Pre-execution cleanup: remove orphaned node chains from events the current plan targets.
+     *
+     * When plan_json fails and the agent retries on the same graph, nodes from previous
+     * successful plans accumulate as unconnected chains hanging off event nodes. This pass
+     * finds those chains and removes them before creating new nodes.
+     *
+     * Algorithm:
+     * 1. For each event/custom_event step in the plan, find the existing event node in the graph
+     * 2. BFS forward from the event node through exec output pins (follow LinkedTo)
+     * 3. Collect all reachable nodes (capped at 200)
+     * 4. Check isolation: if any collected node connects to a node NOT in the set, skip cleanup
+     * 5. If isolated: remove all collected nodes EXCEPT the event node itself
+     *
+     * Safety: never deletes event nodes, caps chain traversal, only removes fully isolated chains.
+     *
+     * @param Graph  The target graph to clean up
+     * @param Plan   The plan being executed (used to identify target events)
+     */
+    void CleanupStaleEventChains(UEdGraph* Graph, const FOliveIRBlueprintPlan& Plan);
+
     // ====================================================================
     // Phase Methods
     // ====================================================================

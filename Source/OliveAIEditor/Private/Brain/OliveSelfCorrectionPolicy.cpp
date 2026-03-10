@@ -718,15 +718,34 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 	{
 		if (AttemptNum <= 1)
 		{
-			Guidance = TEXT("Check the scoped suggestions in the error above. The correct function name is likely listed there. If a property match is shown, use set_var or get_var instead of call.");
+			// Extract "Did you mean:" alternatives from error message and emphasize them
+			if (ErrorMessage.Contains(TEXT("Did you mean:")))
+			{
+				Guidance = TEXT("The error lists suggested function names after 'Did you mean:'. "
+					"USE one of those names exactly — do NOT guess a different name. "
+					"If a property match is shown, use set_var or get_var instead of call.");
+			}
+			else
+			{
+				Guidance = TEXT("This function does not exist in UE's Blueprint API. "
+					"Do NOT retry with the same name or a variation. "
+					"Call blueprint.describe_function with the name you intended to verify it exists, "
+					"or use set_var/get_var if you meant to access a property.");
+			}
 		}
 		else if (AttemptNum == 2)
 		{
-			Guidance = TEXT("The function name may be a property, not a callable function. Try using set_var (to write) or get_var (to read) with the property name as the target. Also check if the function has a K2_ prefix.");
+			Guidance = TEXT("You already failed to find this function. STOP guessing names. "
+				"Call blueprint.describe_function(function_name, target_class) to verify "
+				"the actual UE function name before retrying. "
+				"If describe_function also fails, the function does not exist — "
+				"use set_var/get_var for properties, or find an alternative approach.");
 		}
 		else
 		{
-			Guidance = TEXT("Call blueprint.read with section='components' to see what components exist and their classes. Then call blueprint.read with section='graph' to inspect existing nodes and pins.");
+			Guidance = TEXT("This function does not exist after multiple attempts. "
+				"Do NOT retry. Choose a fundamentally different approach: "
+				"set_var/get_var for properties, a different function, or editor.run_python.");
 		}
 	}
 	else if (ErrorCode == TEXT("DUPLICATE_NATIVE_EVENT"))

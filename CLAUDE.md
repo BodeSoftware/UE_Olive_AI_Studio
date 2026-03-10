@@ -253,12 +253,17 @@ Intent-level graph editing system where the AI describes "what" it wants (e.g., 
 
 **Plan Pipeline (resolver → validator → executor):**
 1. `FOliveBlueprintPlanResolver::Resolve()` — alias resolution, SCS component variable recognition (`BlueprintHasVariable` checks both `NewVariables` and SCS nodes — components ARE variables), pure-node collapse, `ExpandPlanInputs()` for auto-synthesis, `ExpandMissingComponentTargets()` for auto-injecting get_var steps when Target is unambiguous. Auto-reroutes: `call` op auto-detects event dispatchers in `NewVariables` and reroutes to `call_delegate`; `event` op auto-detects component delegate events via SCS inspection (creates `UK2Node_ComponentBoundEvent`).
-2. `FOlivePlanValidator::Validate()` — Phase 0 structural checks: `COMPONENT_FUNCTION_ON_ACTOR` (unwired Target on Actor BP) and `EXEC_WIRING_CONFLICT` (exec_after targeting a step with exec_outputs)
-3. `FOlivePlanExecutor::Execute()` — 7 phases: CreateNodes → AutoWireComponents (Phase 1.5) → WireExec → WireData → SetDefaults → PreCompileValidation (Phase 5.5) → AutoLayout. `FOlivePlanExecutionContext` carries `AutoFixCount`, `PreCompileIssues`, `NodeIdToStepId`.
+2. `FOlivePlanValidator::Validate()` — Phase 0 structural checks (5 checks): `COMPONENT_FUNCTION_ON_ACTOR` (unwired Target on Actor BP), `EXEC_WIRING_CONFLICT` (exec_after targeting a step with exec_outputs), `LATENT_IN_FUNCTION` (Delay etc. in function graph), `VARIABLE_NOT_FOUND` (get_var/set_var on nonexistent variable), `EXEC_SOURCE_IS_RETURN` (exec_after targeting FunctionOutput — return nodes have no exec output pin)
+3. `FOlivePlanExecutor::Execute()` — Pre-execution cleanup (`CleanupStaleEventChains` removes orphaned node chains from events the current plan targets) → 7 phases: CreateNodes → AutoWireComponents (Phase 1.5) → WireExec → WireData → SetDefaults → PreCompileValidation (Phase 5.5) → AutoLayout. `FOlivePlanExecutionContext` carries `AutoFixCount`, `PreCompileIssues`, `NodeIdToStepId`, `DynamicClassRefs`.
 
 **Key executor behaviors:**
 - **`return` op** resolves to `OliveNodeTypes::FunctionOutput` — reuses the existing `UK2Node_FunctionResult` node, wiring both exec and data pins to it
 - **FunctionResult auto-chain** — in function graphs, PhaseWireExec automatically wires the last exec node to `UK2Node_FunctionResult`'s exec input (if no explicit return op provides one)
+- **Target/self pin wiring** — `"Target": "@step.auto"` in inputs wires the hidden self pin on `K2Node_CallFunction`, enabling calls on non-self actors (e.g., `AttachToComponent` on a spawned actor)
+- **Dynamic SpawnActor class** — `@step.auto` as spawn_actor target defers class pin wiring to Phase 4 (uses AActor placeholder during Phase 1)
+- **Stale event chain cleanup** — `CleanupStaleEventChains()` runs before Phase 1, BFS-walks exec chains from events the current plan targets, removes isolated orphaned chains from previous plan_json attempts (preserves event nodes for reuse)
+- **Exec auto-break** — `FOlivePinConnector::Connect()` auto-breaks existing exec connections when wiring new ones (mirrors Blueprint editor behavior), preventing `CONNECT_RESPONSE_BREAK_OTHERS` rejections
+- **Modify() on reused nodes** — reused event/function entry/result nodes call `Modify()` to capture pin state for proper undo/rollback
 - **Phase 5.5 scoping** — orphan detection only checks nodes in `Context.NodeIdToStepId`, so nodes from previous plan_json calls are not flagged
 
 ### FindFunction Search Order
@@ -380,10 +385,12 @@ This project uses specialized subagents. USE THEM — do not try to do everythin
 | Situation | Agent |
 |-----------|-------|
 | "Where is X defined?" / file lookups | `explorer` (fast, cheap) |
-| UE API research, protocol specs | `researcher` |
+| UE API research, protocol specs, research logs, search the web, do web research | `researcher` |
 | New module or feature design | `architect` (design before code, always) |
-| Writing .h / .cpp files, Slate widgets | `coder` (opus) or `coder_sonnet` (lighter tasks) |
-| Tagging extracted Blueprint JSON files | `tagger` (Sonnet, parallel-spawnable) |
+| Writing .h / .cpp files, Slate widgets | `coder` (Opus, senior) or `coder_junior` (lighter tasks) |
+| AI prompt design, system prompt wording | `creative_lead` |
+| Coordinating multi-step work across agents | `orchestrator` |
+| Tagging extracted Blueprint JSON files | `tagger` (Haiku, parallel-spawnable) |
 
 ### Feature Implementation Workflow
 

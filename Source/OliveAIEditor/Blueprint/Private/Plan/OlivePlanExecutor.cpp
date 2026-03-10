@@ -36,6 +36,7 @@
 #include "K2Node_VariableGet.h"
 #include "K2Node_Self.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_SpawnActorFromClass.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
@@ -372,6 +373,9 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::Execute(
             Context.ResolvedFunctionNames.Add(*VN);
         }
     }
+
+    // Pre-Phase 1: Clean up orphaned node chains from previous plan_json attempts
+    CleanupStaleEventChains(Graph, Plan);
 
     // Phase 1: Create all nodes + build pin manifests (FAIL-FAST)
     UE_LOG(LogOlivePlanExecutor, Log, TEXT("Phase 1: Create Nodes"));
@@ -1026,6 +1030,13 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
         Context.StepToNodePtr.Add(StepId, NodePtr);
         Context.CreatedNodeCount++;
 
+        // Stash dynamic class references for Phase 4 wiring (spawn_actor with @ref target)
+        const FString* DynClassRef = Resolved.Properties.Find(TEXT("dynamic_class_ref"));
+        if (DynClassRef && !DynClassRef->IsEmpty())
+        {
+            Context.DynamicClassRefs.Add(StepId, *DynClassRef);
+        }
+
         UE_LOG(LogOlivePlanExecutor, Log,
             TEXT("  -> Created step '%s' -> node '%s': %d pins (%s)"),
             *StepId, *NodeId,
@@ -1034,6 +1045,222 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
     }
 
     return true;
+}
+
+// ============================================================================
+// CleanupStaleEventChains — Remove orphaned chains from previous plan_json
+// ============================================================================
+
+void FOlivePlanExecutor::CleanupStaleEventChains(UEdGraph* Graph, const FOliveIRBlueprintPlan& Plan)
+{
+    if (!Graph)
+    {
+        return;
+    }
+
+    // Gather event nodes targeted by this plan
+    TArray<TPair<UEdGraphNode*, FString>> EventNodesToClean; // Node, EventName (for logging)
+
+    UBlueprint* Blueprint = Cast<UBlueprint>(Graph->GetOuter());
+    if (!Blueprint)
+    {
+        // Try one level deeper (some graphs are nested under function objects)
+        Blueprint = Graph->GetTypedOuter<UBlueprint>();
+    }
+
+    for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
+    {
+        UEdGraphNode* EventNode = nullptr;
+        FString EventDesc;
+
+        if (Step.Op == OlivePlanOps::Event)
+        {
+            EventNode = FindExistingEventNode(Graph, Blueprint, Step.Target, /*bIsCustomEvent=*/false);
+            EventDesc = Step.Target;
+        }
+        else if (Step.Op == OlivePlanOps::CustomEvent)
+        {
+            EventNode = FindExistingEventNode(Graph, Blueprint, Step.Target, /*bIsCustomEvent=*/true);
+            EventDesc = FString::Printf(TEXT("CustomEvent:%s"), *Step.Target);
+        }
+
+        if (EventNode)
+        {
+            EventNodesToClean.Add(TPair<UEdGraphNode*, FString>(EventNode, EventDesc));
+        }
+    }
+
+    if (EventNodesToClean.Num() == 0)
+    {
+        return;
+    }
+
+    UE_LOG(LogOlivePlanExecutor, Log,
+        TEXT("CleanupStaleEventChains: checking %d event(s) for orphaned chains"),
+        EventNodesToClean.Num());
+
+    static constexpr int32 MaxChainNodes = 200;
+    int32 TotalRemoved = 0;
+
+    for (const auto& Pair : EventNodesToClean)
+    {
+        UEdGraphNode* EventNode = Pair.Key;
+        const FString& EventDesc = Pair.Value;
+
+        // BFS forward from event node through exec output pins
+        TSet<UEdGraphNode*> ChainNodes;
+        TArray<UEdGraphNode*> Queue;
+
+        // Seed: follow exec outputs from the event node
+        for (UEdGraphPin* Pin : EventNode->Pins)
+        {
+            if (!Pin || Pin->Direction != EGPD_Output)
+            {
+                continue;
+            }
+
+            // Only follow exec pins for the initial BFS traversal
+            if (Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+            {
+                continue;
+            }
+
+            for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+            {
+                if (LinkedPin && LinkedPin->GetOwningNode())
+                {
+                    UEdGraphNode* LinkedNode = LinkedPin->GetOwningNode();
+                    if (LinkedNode != EventNode && !ChainNodes.Contains(LinkedNode))
+                    {
+                        ChainNodes.Add(LinkedNode);
+                        Queue.Add(LinkedNode);
+                    }
+                }
+            }
+        }
+
+        // BFS: follow exec outputs from each discovered node
+        int32 QueueIdx = 0;
+        while (QueueIdx < Queue.Num() && ChainNodes.Num() < MaxChainNodes)
+        {
+            UEdGraphNode* Current = Queue[QueueIdx++];
+
+            for (UEdGraphPin* Pin : Current->Pins)
+            {
+                if (!Pin || Pin->Direction != EGPD_Output)
+                {
+                    continue;
+                }
+
+                if (Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+                {
+                    continue;
+                }
+
+                for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+                {
+                    if (LinkedPin && LinkedPin->GetOwningNode())
+                    {
+                        UEdGraphNode* LinkedNode = LinkedPin->GetOwningNode();
+                        if (LinkedNode != EventNode && !ChainNodes.Contains(LinkedNode))
+                        {
+                            ChainNodes.Add(LinkedNode);
+                            Queue.Add(LinkedNode);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (ChainNodes.Num() == 0)
+        {
+            continue; // No chain hanging off this event — nothing to clean
+        }
+
+        if (ChainNodes.Num() >= MaxChainNodes)
+        {
+            UE_LOG(LogOlivePlanExecutor, Warning,
+                TEXT("CleanupStaleEventChains: chain from '%s' hit %d node cap — skipping cleanup to be safe"),
+                *EventDesc, MaxChainNodes);
+            continue;
+        }
+
+        // Isolation check: every pin on every chain node must connect only to
+        // other chain nodes or the event node itself. If any external connection
+        // exists, the chain is NOT isolated and should not be removed.
+        bool bIsIsolated = true;
+        for (UEdGraphNode* ChainNode : ChainNodes)
+        {
+            if (!bIsIsolated)
+            {
+                break;
+            }
+
+            for (UEdGraphPin* Pin : ChainNode->Pins)
+            {
+                if (!Pin)
+                {
+                    continue;
+                }
+
+                for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+                {
+                    if (!LinkedPin || !LinkedPin->GetOwningNode())
+                    {
+                        continue;
+                    }
+
+                    UEdGraphNode* LinkedNode = LinkedPin->GetOwningNode();
+                    if (LinkedNode != EventNode && !ChainNodes.Contains(LinkedNode))
+                    {
+                        // External connection found — chain is not isolated
+                        bIsIsolated = false;
+                        UE_LOG(LogOlivePlanExecutor, Log,
+                            TEXT("CleanupStaleEventChains: chain from '%s' has external connection via '%s' pin '%s' -> '%s' — keeping chain"),
+                            *EventDesc,
+                            *ChainNode->GetNodeTitle(ENodeTitleType::ListView).ToString(),
+                            *Pin->PinName.ToString(),
+                            *LinkedNode->GetNodeTitle(ENodeTitleType::ListView).ToString());
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!bIsIsolated)
+        {
+            continue;
+        }
+
+        // Chain is isolated — remove all chain nodes (NOT the event node)
+        Graph->Modify();
+
+        int32 RemovedCount = 0;
+        for (UEdGraphNode* ChainNode : ChainNodes)
+        {
+            UE_LOG(LogOlivePlanExecutor, Log,
+                TEXT("CleanupStaleEventChains: removing stale node '%s' from '%s' chain"),
+                *ChainNode->GetNodeTitle(ENodeTitleType::ListView).ToString(),
+                *EventDesc);
+
+            ChainNode->BreakAllNodeLinks();
+            Graph->RemoveNode(ChainNode);
+            RemovedCount++;
+        }
+
+        UE_LOG(LogOlivePlanExecutor, Log,
+            TEXT("CleanupStaleEventChains: removed %d stale nodes from '%s' chain"),
+            RemovedCount, *EventDesc);
+
+        TotalRemoved += RemovedCount;
+    }
+
+    if (TotalRemoved > 0)
+    {
+        UE_LOG(LogOlivePlanExecutor, Log,
+            TEXT("CleanupStaleEventChains: total removed %d stale nodes across %d event chains"),
+            TotalRemoved, EventNodesToClean.Num());
+    }
 }
 
 // ============================================================================
@@ -2588,6 +2815,69 @@ void FOlivePlanExecutor::PhaseWireData(
                     Result.ErrorMessage,
                     SuggestionText));
             }
+        }
+    }
+
+    // ----------------------------------------------------------------
+    // Dynamic class pin wiring for spawn_actor steps.
+    //
+    // When the resolver detected a step-reference target (e.g., "@get_class.auto"),
+    // it stored the reference in DynamicClassRefs during Phase 1.
+    // Wire it now to the SpawnActor node's Class pin.
+    // ----------------------------------------------------------------
+    for (const auto& DynPair : Context.DynamicClassRefs)
+    {
+        const FString& StepId = DynPair.Key;
+        const FString& DynRef = DynPair.Value;
+
+        UEdGraphNode* SpawnNode = Context.GetNodePtr(StepId);
+        if (!SpawnNode)
+        {
+            continue;
+        }
+
+        UK2Node_SpawnActorFromClass* TypedSpawn = Cast<UK2Node_SpawnActorFromClass>(SpawnNode);
+        UEdGraphPin* ClassPin = TypedSpawn ? TypedSpawn->GetClassPin() : nullptr;
+
+        if (!ClassPin)
+        {
+            Context.FailedConnectionCount++;
+            Context.WiringErrors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+                TEXT("DYNAMIC_CLASS_WIRE_FAILED"),
+                StepId,
+                TEXT("/steps/target"),
+                TEXT("Could not find Class pin on SpawnActor node."),
+                TEXT("Ensure the node is a SpawnActorFromClass node.")));
+            continue;
+        }
+
+        // Clear the placeholder default so the wired value takes precedence
+        ClassPin->DefaultObject = nullptr;
+
+        // Wire from the referenced step's output
+        FOliveSmartWireResult WireResult = WireDataConnection(
+            StepId, ClassPin->GetName(), DynRef, Context);
+
+        if (WireResult.bSuccess)
+        {
+            Context.SuccessfulConnectionCount++;
+            UE_LOG(LogOlivePlanExecutor, Log,
+                TEXT("  Dynamic class wire OK: %s -> step '%s'.Class"),
+                *DynRef, *StepId);
+
+            // ReconstructNode to update output pin types based on wired class
+            TypedSpawn->ReconstructNode();
+        }
+        else
+        {
+            Context.FailedConnectionCount++;
+            Context.WiringErrors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+                TEXT("DYNAMIC_CLASS_WIRE_FAILED"),
+                StepId,
+                TEXT("/steps/target"),
+                FString::Printf(TEXT("Could not wire dynamic class reference '%s' to SpawnActor Class pin: %s"),
+                    *DynRef, *WireResult.ErrorMessage),
+                TEXT("Ensure the source step produces a TSubclassOf<AActor> output.")));
         }
     }
 
