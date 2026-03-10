@@ -23,6 +23,7 @@
 // Utility includes
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Editor.h"
+#include "OliveClassResolver.h"
 
 DEFINE_LOG_CATEGORY(LogOliveGraphWriter);
 
@@ -961,6 +962,23 @@ FOliveBlueprintWriteResult FOliveGraphWriter::SetPinDefault(
 
 	Blueprint->Modify();
 	Node->Modify();
+
+	// Class, SoftClass, and Interface pins need DefaultObject (UClass*), not DefaultValue (string)
+	if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Class
+		|| Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_SoftClass
+		|| Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Interface)
+	{
+		FOliveClassResolveResult ResolveResult = FOliveClassResolver::Resolve(DefaultValue);
+		if (ResolveResult.IsValid())
+		{
+			Pin->DefaultObject = ResolveResult.Class;
+			FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+			UE_LOG(LogOliveGraphWriter, Log, TEXT("Set class/interface default '%s' on pin '%s' via ClassResolver (resolved to %s)"),
+				*DefaultValue, *PinRef, *ResolveResult.Class->GetName());
+			return FOliveBlueprintWriteResult::Success(BlueprintPath);
+		}
+		// Fall through to TrySetDefaultValue as last resort
+	}
 
 	// Get the schema to properly set the default value
 	const UEdGraphSchema* Schema = Graph->GetSchema();

@@ -42,6 +42,7 @@
 #include "Engine/SCS_Node.h"
 #include "Components/ActorComponent.h"
 #include "Services/OliveBatchExecutionScope.h"
+#include "OliveClassResolver.h"
 
 // JSON
 #include "Dom/JsonObject.h"
@@ -3946,34 +3947,24 @@ void FOlivePlanExecutor::PhaseSetDefaults(
                 continue;
             }
 
-            // For class pins (TSubclassOf<>), resolve the name to a UClass*
-            // and set DefaultObject. TrySetDefaultValue doesn't handle short
-            // class names on PC_Class pins.
+            // For class/interface pins (TSubclassOf<>, TSoftClassPtr<>, TScriptInterface<>),
+            // resolve the name to a UClass* and set DefaultObject. TrySetDefaultValue
+            // doesn't handle short class names on these pin types.
             if (RealPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Class
-                || RealPin->PinType.PinCategory == UEdGraphSchema_K2::PC_SoftClass)
+                || RealPin->PinType.PinCategory == UEdGraphSchema_K2::PC_SoftClass
+                || RealPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Interface)
             {
-                UClass* FoundClass = Cast<UClass>(StaticFindFirstObject(
-                    UClass::StaticClass(), *PinValue,
-                    EFindFirstObjectOptions::NativeFirst,
-                    ELogVerbosity::NoLogging, TEXT("OlivePlanExecutor")));
-                // Also try with U prefix (e.g., "SkeletalMeshComponent" -> "USkeletalMeshComponent")
-                if (!FoundClass)
+                FOliveClassResolveResult ResolveResult = FOliveClassResolver::Resolve(PinValue);
+                if (ResolveResult.IsValid())
                 {
-                    FoundClass = Cast<UClass>(StaticFindFirstObject(
-                        UClass::StaticClass(), *(TEXT("U") + PinValue),
-                        EFindFirstObjectOptions::NativeFirst,
-                        ELogVerbosity::NoLogging, TEXT("OlivePlanExecutor")));
-                }
-                if (FoundClass)
-                {
-                    RealPin->DefaultObject = FoundClass;
+                    RealPin->DefaultObject = ResolveResult.Class;
                     UE_LOG(LogOlivePlanExecutor, Verbose,
                         TEXT("Set class default: %s.%s = %s (resolved UClass*)"),
-                        *Step.StepId, *PinEntry->PinName, *FoundClass->GetName());
+                        *Step.StepId, *PinEntry->PinName, *ResolveResult.Class->GetName());
                 }
                 else
                 {
-                    // Fallback: try with Schema in case it's a full path
+                    // Fallback: try Schema
                     const UEdGraphSchema* Schema = Context.Graph->GetSchema();
                     if (Schema)
                     {
