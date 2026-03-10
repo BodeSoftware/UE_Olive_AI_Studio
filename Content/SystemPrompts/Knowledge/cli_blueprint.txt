@@ -37,6 +37,9 @@ MULTI-ASSET: First, list ALL Blueprints the system needs (see System Decompositi
 ## Ops
 event, custom_event, call, call_delegate, get_var, set_var, branch, sequence, cast, for_loop, for_each_loop, while_loop, do_once, flip_flop, gate, delay, is_valid, print_string, spawn_actor, make_struct, break_struct, return, comment
 
+NOTE: Events and custom_events are exec ENTRY POINTS — they output exec but have NO exec input pin.
+You cannot wire exec flow INTO them. To trigger a custom event from another event, use a CallFunction node for the custom event.
+
 ## Wires — Two Separate Systems
 
 **Data wires** (colored wires — values between nodes):
@@ -50,6 +53,7 @@ event, custom_event, call, call_delegate, get_var, set_var, branch, sequence, ca
 **Exec wires** (white wires — execution order):
 - `exec_after:"step_id"` — plain step_id, NO @ prefix. Chains this step after another.
 - `exec_outputs:{"True":"step_a","False":"step_b"}` — on Branch/Cast, names which step each output goes to.
+- Events/custom_events are exec SOURCES only — wire FROM them, never TO them. They have no "execute" input pin.
 - `exec_after` and `exec_outputs` are MUTUALLY EXCLUSIVE on the source step.
 
 WRONG: `exec_after:"@branch.True"` — exec wires do NOT use @ syntax.

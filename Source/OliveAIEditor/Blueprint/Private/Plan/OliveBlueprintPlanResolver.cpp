@@ -28,6 +28,8 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/KismetStringLibrary.h"
 #include "Kismet/GameplayStatics.h"
+#include "UObject/UnrealType.h"
+#include "Components/ActorComponent.h"
 
 DEFINE_LOG_CATEGORY(LogOlivePlanResolver);
 
@@ -74,6 +76,76 @@ namespace
 		}
 
 		return false;
+	}
+
+	/**
+	 * Collect ALL component variable names visible to a Blueprint, including:
+	 *  1. Direct SCS components on this Blueprint
+	 *  2. SCS components from parent Blueprints in the inheritance chain
+	 *  3. Native C++ component properties from the GeneratedClass hierarchy
+	 *
+	 * This is needed because ExpandComponentRefs must recognize inherited
+	 * components (e.g., "Mesh" from ACharacter) not just direct SCS nodes.
+	 *
+	 * @param Blueprint The Blueprint to collect component names for
+	 * @return Set of all component variable names (case-sensitive)
+	 */
+	TSet<FString> CollectAllComponentNames(const UBlueprint* Blueprint)
+	{
+		TSet<FString> Result;
+		if (!Blueprint)
+		{
+			return Result;
+		}
+
+		// 1. Direct SCS components
+		if (Blueprint->SimpleConstructionScript)
+		{
+			TArray<USCS_Node*> AllNodes = Blueprint->SimpleConstructionScript->GetAllNodes();
+			for (USCS_Node* Node : AllNodes)
+			{
+				if (Node)
+				{
+					Result.Add(Node->GetVariableName().ToString());
+				}
+			}
+		}
+
+		// 2. Parent Blueprint chain — walk ClassGeneratedBy to find parent BPs with SCS
+		UClass* ParentClass = Blueprint->ParentClass;
+		while (ParentClass)
+		{
+			UBlueprint* ParentBP = Cast<UBlueprint>(ParentClass->ClassGeneratedBy);
+			if (ParentBP && ParentBP->SimpleConstructionScript)
+			{
+				TArray<USCS_Node*> ParentNodes = ParentBP->SimpleConstructionScript->GetAllNodes();
+				for (USCS_Node* Node : ParentNodes)
+				{
+					if (Node)
+					{
+						Result.Add(Node->GetVariableName().ToString());
+					}
+				}
+			}
+			ParentClass = ParentClass->GetSuperClass();
+		}
+
+		// 3. Native C++ component properties from the GeneratedClass hierarchy
+		// These are components defined in C++ constructors (e.g., Mesh on ACharacter)
+		if (Blueprint->GeneratedClass)
+		{
+			for (TFieldIterator<FObjectProperty> It(Blueprint->GeneratedClass, EFieldIteratorFlags::IncludeSuper); It; ++It)
+			{
+				FObjectProperty* ObjProp = *It;
+				if (ObjProp && ObjProp->PropertyClass &&
+					ObjProp->PropertyClass->IsChildOf(UActorComponent::StaticClass()))
+				{
+					Result.Add(ObjProp->GetName());
+				}
+			}
+		}
+
+		return Result;
 	}
 
 	/**
@@ -670,19 +742,8 @@ bool FOliveBlueprintPlanResolver::ExpandComponentRefs(
 		ExistingStepIds.Add(Step.StepId);
 	}
 
-	// Build set of SCS component variable names for fast lookup
-	TSet<FString> SCSComponentNames;
-	if (Blueprint->SimpleConstructionScript)
-	{
-		TArray<USCS_Node*> AllNodes = Blueprint->SimpleConstructionScript->GetAllNodes();
-		for (USCS_Node* Node : AllNodes)
-		{
-			if (Node)
-			{
-				SCSComponentNames.Add(Node->GetVariableName().ToString());
-			}
-		}
-	}
+	// Build set of ALL component variable names (direct SCS + parent BPs + native C++)
+	TSet<FString> SCSComponentNames = CollectAllComponentNames(Blueprint);
 
 	// Build set of Blueprint variable names (NewVariables, not SCS)
 	// This catches bare @refs like @MuzzlePoint where the variable was added
