@@ -419,14 +419,10 @@ FOlivePlanResolveResult FOliveBlueprintPlanResolver::Resolve(
 			: TEXT(""));
 
 	// ------------------------------------------------------------------
-	// Pre-scan: build typed step map for cross-step function resolution.
-	// Maps step_id -> class_name for steps whose output carries a known type.
-	// When a "call" step references one of these steps via @ref in inputs,
-	// the function is searched on the mapped class as a fallback.
-	//
-	// Sources:
-	//   1. Cast steps — output type is the cast target class
-	//   2. get_var steps — output type is the variable's object class (if object-typed)
+	// Pre-scan: build cast target map for cross-step function resolution.
+	// When a "call" step references a cast step's output (via @ref in inputs),
+	// the call target function should be searched on the cast target class,
+	// not just the editing Blueprint's class hierarchy.
 	// ------------------------------------------------------------------
 	TMap<FString, FString> CastTargetMap;
 	for (const FOliveIRBlueprintPlanStep& PreScanStep : MutablePlan.Steps)
@@ -440,30 +436,6 @@ FOlivePlanResolveResult FOliveBlueprintPlanResolver::Resolve(
 			if (!CastTarget.IsEmpty())
 			{
 				CastTargetMap.Add(PreScanStep.StepId, CastTarget);
-			}
-		}
-		else if (PreScanStep.Op == OlivePlanOps::GetVar && Blueprint)
-		{
-			// get_var steps whose variable is object-typed — infer target class
-			// from the variable's type. This enables auto-inference when the AI
-			// writes e.g. get_var BowRef → call Fire with @get_bow.auto as Target,
-			// without needing explicit target_class on the call step.
-			for (const FBPVariableDescription& Var : Blueprint->NewVariables)
-			{
-				if (Var.VarName.ToString() == PreScanStep.Target)
-				{
-					if (Var.VarType.PinCategory == UEdGraphSchema_K2::PC_Object
-						|| Var.VarType.PinCategory == UEdGraphSchema_K2::PC_Interface)
-					{
-						UObject* SubCatObj = Var.VarType.PinSubCategoryObject.Get();
-						UClass* VarClass = Cast<UClass>(SubCatObj);
-						if (VarClass)
-						{
-							CastTargetMap.Add(PreScanStep.StepId, VarClass->GetName());
-						}
-					}
-					break;
-				}
 			}
 		}
 	}
@@ -1708,12 +1680,11 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 		}
 	}
 
-	// --- Function NOT found -- check if an input references a typed step ---
-	// When the AI writes a plan like: cast to BP_Gun -> call Interact, or
-	// get_var BowRef -> call Fire, the function exists on the referenced
-	// type's class, not on the editing Blueprint. We scan the step's inputs
-	// for @refs that point to typed steps (casts, object-typed get_var) and
-	// search their class for the function.
+	// --- Function NOT found -- check if an input references a cast step ---
+	// When the AI writes a plan like: cast to BP_Gun -> call Interact with
+	// self from cast output, the function "Interact" exists on BP_Gun (via
+	// its interface), not on the editing Blueprint. We scan the step's inputs
+	// for @refs that point to cast steps and search the cast target class.
 	if (CastTargetMap.Num() > 0)
 	{
 		for (const auto& InputPair : Step.Inputs)
@@ -1738,24 +1709,24 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 				RefStepId = RefBody;
 			}
 
-			// Check if the referenced step has a known output type (cast or typed get_var)
+			// Check if the referenced step is a cast op
 			const FString* CastClassName = CastTargetMap.Find(RefStepId);
 			if (!CastClassName || CastClassName->IsEmpty())
 			{
 				continue;
 			}
 
-			// Resolve the class name to a UClass*
+			// Resolve the cast target class name to a UClass*
 			FOliveClassResolveResult ClassResolve = FOliveClassResolver::Resolve(*CastClassName);
 			if (!ClassResolve.IsValid())
 			{
 				UE_LOG(LogOlivePlanResolver, Warning,
-					TEXT("    ResolveCallOp: typed step class '%s' (from step '%s') could not be resolved -- skipping fallback"),
+					TEXT("    ResolveCallOp: cast target class '%s' (from step '%s') could not be resolved -- skipping cast-target fallback"),
 					**CastClassName, *RefStepId);
 				continue;
 			}
 
-			// Search the inferred class for the function
+			// Search the cast target class for the function
 			FOliveFunctionSearchResult CastSearchResult =
 				FOliveNodeFactory::Get().FindFunctionEx(
 					Step.Target, ClassResolve.Class->GetName(), nullptr);
