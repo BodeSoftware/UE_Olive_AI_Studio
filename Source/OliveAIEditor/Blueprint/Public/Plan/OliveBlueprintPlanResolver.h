@@ -478,5 +478,6 @@ private:
 		UBlueprint* BP,
 		int32 Idx,
 		FOliveResolvedStep& Out,
-		TArray<FOliveIRBlueprintPlanError>& Errors);
+		TArray<FOliveIRBlueprintPlanError>& Errors,
+		const TMap<FString, FString>& CastTargetMap);
 };

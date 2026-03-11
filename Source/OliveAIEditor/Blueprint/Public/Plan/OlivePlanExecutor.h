@@ -297,6 +297,18 @@ private:
         const TArray<FOliveResolvedStep>& ResolvedSteps,
         FOlivePlanExecutionContext& Context);
 
+    /**
+     * Phase 1.25: Pre-create dispatcher signature pins on custom_event nodes.
+     *
+     * When a plan contains bind_dispatcher + custom_event pairs, the custom_event
+     * node needs the dispatcher's parameter pins BEFORE Phase 4 data wiring.
+     * Normally these pins only appear after the delegate auto-wire triggers
+     * ReconstructNode. This phase pre-creates them using SetDelegateSignature.
+     */
+    void PhasePreCreateDispatcherPins(
+        const FOliveIRBlueprintPlan& Plan,
+        FOlivePlanExecutionContext& Context);
+
     /** Phase 3: Wire exec connections. CONTINUE-ON-FAILURE. */
     void PhaseWireExec(
         const FOliveIRBlueprintPlan& Plan,

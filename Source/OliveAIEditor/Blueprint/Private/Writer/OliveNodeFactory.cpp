@@ -223,6 +223,14 @@ bool FOliveNodeFactory::ValidateNodeType(const FString& NodeType, const TMap<FSt
 		{
 			TargetClassName = *TargetClassPtr;
 		}
+		else if (const FString* FuncClassPtr = Properties.Find(TEXT("function_class")))
+		{
+			TargetClassName = *FuncClassPtr;
+		}
+		else if (const FString* FuncClassPtr2 = Properties.Find(TEXT("FunctionClass")))
+		{
+			TargetClassName = *FuncClassPtr2;
+		}
 
 		// Use the factory's own FindFunction to check resolution.
 		// Blueprint may be nullptr for pre-pipeline checks (before asset load),
@@ -1228,36 +1236,79 @@ UK2Node* FOliveNodeFactory::CreateBindDelegateNode(
 
 	const FName DelegateFName(**DelegateNamePtr);
 
-	// Search for the FMulticastDelegateProperty on the Blueprint's generated class.
-	// SkeletonGeneratedClass is preferred (it may be more up-to-date if the Blueprint
-	// has not been fully compiled yet), with fallback to GeneratedClass.
+	// Check for cross-Blueprint resolution (set by resolver when Target input
+	// references an object variable of another Blueprint class).
+	const bool bCrossBlueprint = Properties.Contains(TEXT("cross_blueprint"));
+	const FString* TargetClassStr = Properties.Find(TEXT("target_class"));
+
 	FMulticastDelegateProperty* DelegateProp = nullptr;
 	UClass* OwnerClass = nullptr;
 
-	// Try SkeletonGeneratedClass first
-	if (Blueprint->SkeletonGeneratedClass)
+	// --- Cross-Blueprint path: resolve delegate on the target class ---
+	if (bCrossBlueprint && TargetClassStr && !TargetClassStr->IsEmpty())
 	{
-		for (TFieldIterator<FMulticastDelegateProperty> It(Blueprint->SkeletonGeneratedClass); It; ++It)
+		FOliveClassResolveResult ClassResolve = FOliveClassResolver::Resolve(*TargetClassStr);
+		if (ClassResolve.IsValid())
 		{
-			if (It->GetFName() == DelegateFName)
+			for (TFieldIterator<FMulticastDelegateProperty> It(ClassResolve.Class); It; ++It)
 			{
-				DelegateProp = *It;
-				OwnerClass = Blueprint->SkeletonGeneratedClass;
-				break;
+				if (It->GetFName() == DelegateFName)
+				{
+					DelegateProp = *It;
+					OwnerClass = ClassResolve.Class;
+					UE_LOG(LogOliveNodeFactory, Log,
+						TEXT("CreateBindDelegateNode: Found delegate '%s' on cross-Blueprint class '%s'"),
+						**DelegateNamePtr, *OwnerClass->GetName());
+					break;
+				}
 			}
+
+			if (!DelegateProp)
+			{
+				LastError = FString::Printf(
+					TEXT("Event dispatcher '%s' not found on cross-Blueprint target class '%s'."),
+					**DelegateNamePtr, *ClassResolve.Class->GetName());
+				return nullptr;
+			}
+		}
+		else
+		{
+			LastError = FString::Printf(
+				TEXT("Could not resolve cross-Blueprint target class '%s' for delegate '%s'."),
+				**TargetClassStr, **DelegateNamePtr);
+			return nullptr;
 		}
 	}
 
-	// Fallback to GeneratedClass
-	if (!DelegateProp && Blueprint->GeneratedClass)
+	// --- Self-Blueprint path (fallback): search Blueprint's generated class ---
+	if (!DelegateProp)
 	{
-		for (TFieldIterator<FMulticastDelegateProperty> It(Blueprint->GeneratedClass); It; ++It)
+		// SkeletonGeneratedClass is preferred (it may be more up-to-date if the Blueprint
+		// has not been fully compiled yet), with fallback to GeneratedClass.
+		if (Blueprint->SkeletonGeneratedClass)
 		{
-			if (It->GetFName() == DelegateFName)
+			for (TFieldIterator<FMulticastDelegateProperty> It(Blueprint->SkeletonGeneratedClass); It; ++It)
 			{
-				DelegateProp = *It;
-				OwnerClass = Blueprint->GeneratedClass;
-				break;
+				if (It->GetFName() == DelegateFName)
+				{
+					DelegateProp = *It;
+					OwnerClass = Blueprint->SkeletonGeneratedClass;
+					break;
+				}
+			}
+		}
+
+		// Fallback to GeneratedClass
+		if (!DelegateProp && Blueprint->GeneratedClass)
+		{
+			for (TFieldIterator<FMulticastDelegateProperty> It(Blueprint->GeneratedClass); It; ++It)
+			{
+				if (It->GetFName() == DelegateFName)
+				{
+					DelegateProp = *It;
+					OwnerClass = Blueprint->GeneratedClass;
+					break;
+				}
 			}
 		}
 	}
@@ -1297,12 +1348,15 @@ UK2Node* FOliveNodeFactory::CreateBindDelegateNode(
 	}
 
 	UE_LOG(LogOliveNodeFactory, Log,
-		TEXT("CreateBindDelegateNode: Found delegate '%s' on class '%s'"),
-		**DelegateNamePtr, *OwnerClass->GetName());
+		TEXT("CreateBindDelegateNode: Found delegate '%s' on class '%s' (cross_blueprint=%s)"),
+		**DelegateNamePtr, *OwnerClass->GetName(),
+		bCrossBlueprint ? TEXT("true") : TEXT("false"));
 
-	// Create the AddDelegate (bind event) node
+	// Create the AddDelegate (bind event) node.
+	// When bSelfContext=false (cross-Blueprint), UE exposes the Target pin on the node,
+	// which Phase 4 data wiring connects via the Target input from the plan.
 	UK2Node_AddDelegate* BindDelegateNode = NewObject<UK2Node_AddDelegate>(Graph);
-	BindDelegateNode->SetFromProperty(DelegateProp, /*bSelfContext=*/true, OwnerClass);
+	BindDelegateNode->SetFromProperty(DelegateProp, /*bSelfContext=*/!bCrossBlueprint, OwnerClass);
 	BindDelegateNode->AllocateDefaultPins();
 	Graph->AddNode(BindDelegateNode, /*bFromUI=*/false, /*bSelectNewNode=*/false);
 

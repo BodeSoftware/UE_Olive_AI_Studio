@@ -459,6 +459,38 @@ FOlivePlanResolveResult FOliveBlueprintPlanResolver::Resolve(
 		}
 	}
 
+	// Also scan get_var steps for object-typed variables (cross-Blueprint dispatch binding).
+	// This lets the resolver infer "step X outputs an object of class Y" for bind_dispatcher
+	// Target resolution and cross-step call resolution.
+	if (Blueprint)
+	{
+		for (const FOliveIRBlueprintPlanStep& PreScanStep : MutablePlan.Steps)
+		{
+			if (PreScanStep.Op == OlivePlanOps::GetVar && !PreScanStep.Target.IsEmpty())
+			{
+				// Don't overwrite entries from cast ops (unlikely but guard)
+				if (CastTargetMap.Contains(PreScanStep.StepId))
+				{
+					continue;
+				}
+
+				for (const FBPVariableDescription& Var : Blueprint->NewVariables)
+				{
+					if (Var.VarName.ToString() == PreScanStep.Target
+						&& Var.VarType.PinCategory == UEdGraphSchema_K2::PC_Object)
+					{
+						UObject* SubCatObj = Var.VarType.PinSubCategoryObject.Get();
+						if (UClass* VarClass = Cast<UClass>(SubCatObj))
+						{
+							CastTargetMap.Add(PreScanStep.StepId, VarClass->GetName());
+						}
+						break;
+					}
+				}
+			}
+		}
+	}
+
 	if (CastTargetMap.Num() > 0)
 	{
 		UE_LOG(LogOlivePlanResolver, Log,
@@ -1421,7 +1453,7 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 	}
 	else if (Op == OlivePlanOps::BindDispatcher)
 	{
-		bResult = ResolveBindDelegateOp(Step, Blueprint, StepIndex, OutResolved, OutErrors);
+		bResult = ResolveBindDelegateOp(Step, Blueprint, StepIndex, OutResolved, OutErrors, CastTargetMap);
 	}
 	else
 	{
@@ -3008,7 +3040,8 @@ bool FOliveBlueprintPlanResolver::ResolveBindDelegateOp(
 	UBlueprint* BP,
 	int32 Idx,
 	FOliveResolvedStep& Out,
-	TArray<FOliveIRBlueprintPlanError>& Errors)
+	TArray<FOliveIRBlueprintPlanError>& Errors,
+	const TMap<FString, FString>& CastTargetMap)
 {
 	Out.NodeType = OliveNodeTypes::BindDelegate;
 
@@ -3025,6 +3058,71 @@ bool FOliveBlueprintPlanResolver::ResolveBindDelegateOp(
 		return false;
 	}
 
+	// --- Cross-Blueprint resolution via Target input ---
+	// When the step has a Target input referencing another step (e.g., "@get_ref.auto"),
+	// look up that step in CastTargetMap to determine the target class, then search
+	// that class for the dispatcher property. This enables binding to dispatchers
+	// on other Blueprints via object reference variables.
+	const FString* TargetInput = Step.Inputs.Find(TEXT("Target"));
+	if (TargetInput && TargetInput->StartsWith(TEXT("@")))
+	{
+		// Parse step ID from @ref (strip pin hint after the dot)
+		FString RefStepId = TargetInput->Mid(1);
+		int32 DotIdx;
+		if (RefStepId.FindChar(TEXT('.'), DotIdx))
+		{
+			RefStepId = RefStepId.Left(DotIdx);
+		}
+
+		const FString* ClassName = CastTargetMap.Find(RefStepId);
+		if (ClassName)
+		{
+			UE_LOG(LogOlivePlanResolver, Log,
+				TEXT("    ResolveBindDelegateOp: cross-Blueprint path — Target references step '%s' (class '%s')"),
+				*RefStepId, **ClassName);
+
+			FOliveClassResolveResult ClassResolve = FOliveClassResolver::Resolve(*ClassName);
+			if (ClassResolve.IsValid())
+			{
+				for (TFieldIterator<FMulticastDelegateProperty> It(ClassResolve.Class); It; ++It)
+				{
+					if (It->GetFName() == FName(*Step.Target))
+					{
+						Out.Properties.Add(TEXT("delegate_name"), Step.Target);
+						Out.Properties.Add(TEXT("target_class"), ClassResolve.Class->GetName());
+						Out.Properties.Add(TEXT("cross_blueprint"), TEXT("true"));
+						Out.bIsPure = false;
+
+						Out.ResolverNotes.Add(FOliveResolverNote{
+							TEXT("bind_dispatcher"),
+							Step.Target,
+							FString::Printf(TEXT("%s on %s (cross-Blueprint)"), *Step.Target, *ClassResolve.Class->GetName()),
+							FString::Printf(TEXT("Dispatcher '%s' found on target class '%s' via object reference variable. "
+								"bSelfContext=false exposes Target pin for cross-Blueprint wiring."),
+								*Step.Target, *ClassResolve.Class->GetName())
+						});
+
+						UE_LOG(LogOlivePlanResolver, Log,
+							TEXT("    ResolveBindDelegateOp: '%s' resolved as cross-Blueprint on class '%s'"),
+							*Step.Target, *ClassResolve.Class->GetName());
+						return true;
+					}
+				}
+
+				UE_LOG(LogOlivePlanResolver, Warning,
+					TEXT("    ResolveBindDelegateOp: dispatcher '%s' not found on target class '%s' — falling through to self-search"),
+					*Step.Target, *ClassResolve.Class->GetName());
+			}
+			else
+			{
+				UE_LOG(LogOlivePlanResolver, Warning,
+					TEXT("    ResolveBindDelegateOp: could not resolve class '%s' from CastTargetMap — falling through to self-search"),
+					**ClassName);
+			}
+		}
+	}
+
+	// --- Self-Blueprint search (existing behavior) ---
 	// Validate that the Blueprint has a multicast delegate variable with this name.
 	// Event dispatchers are stored in NewVariables with PinCategory == PC_MCDelegate.
 	bool bFoundDispatcher = false;
@@ -3080,7 +3178,7 @@ bool FOliveBlueprintPlanResolver::ResolveBindDelegateOp(
 	Out.bIsPure = false; // Bind delegate has exec pins
 
 	UE_LOG(LogOlivePlanResolver, Log,
-		TEXT("    ResolveBindDelegateOp: '%s' resolved successfully"),
+		TEXT("    ResolveBindDelegateOp: '%s' resolved successfully (self-Blueprint)"),
 		*Step.Target);
 
 	return true;

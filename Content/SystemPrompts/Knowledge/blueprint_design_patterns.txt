@@ -37,6 +37,24 @@ After listing assets, identify how they communicate:
 ONE known type → Direct cast (simplest)
 TWO+ types share a behavior → Blueprint Interface (no casting)
 Notify others about state changes → Event Dispatcher
+Gameplay → UI updates → Prefer Event Dispatcher (decouples gameplay from presentation)
+
+### UI / Widget Updates
+For gameplay → UI communication, prefer event dispatchers over direct widget function calls.
+Dispatchers decouple the gameplay actor from the widget class, allow multiple listeners, and
+handle widget lifecycle gracefully (widget binds when ready, unbinds when destroyed).
+
+Dispatcher pattern (preferred — decoupled):
+  1. Character declares OnInventoryChanged dispatcher (params: ItemList string, Count int)
+  2. Character calls call_delegate after modifying inventory
+  3. Widget binds to OnInventoryChanged in Construct via bind_dispatcher + Target = character ref
+  4. Widget's custom_event handler calls SetText on its TextBlock widgets
+
+Direct call pattern (simpler but tightly coupled):
+  Character → Cast to Widget → call Widget.UpdateDisplay(...)
+  Tradeoffs: Character depends on Widget class. Widget can't be swapped or reused independently.
+  Multiple widgets can't listen. Use only when the widget is guaranteed to exist and only one
+  consumer needs the data.
 
 ### Prefer Better Patterns
 - ForEachLoop + Cast to find actors is usually wrong → overlap events give you the actor directly
@@ -146,6 +164,7 @@ KEY RULES for interface calls:
 ## 2. Event Dispatchers — Complete Workflow
 
 Use when one actor notifies others about state changes (health changed, item picked up, door opened).
+Preferred pattern for gameplay → UI communication (health bars, inventory HUDs, score displays).
 Publisher doesn't know or care who listens.
 
 ### Step A: Create the Dispatcher
@@ -159,34 +178,42 @@ Publisher doesn't know or care who listens.
   }
 
 ### Step B: Broadcast the Dispatcher (in plan_json)
-Use op: "call_delegate" with target = dispatcher name:
+Use op: "call_delegate" with target = dispatcher name. call_delegate and call_dispatcher
+are interchangeable aliases — both work.
 
   {"step_id":"notify","op":"call_delegate","target":"OnHealthChanged",
    "inputs":{"NewHealth":"@clamp.auto","MaxHealth":"@get_max.auto"},
    "exec_after":"set_hp"}
 
-IMPORTANT: The op is "call_delegate", NOT "call_dispatcher" or "bind_dispatcher".
-Those are NOT implemented in the resolver and will cause "Unknown operation" errors.
+### Step C: Bind + Handle (in plan_json)
+Use op: "bind_dispatcher" with a custom_event as the handler. The bind node's delegate
+pin auto-wires to the nearest compatible custom_event in the same plan.
 
-### Step C: Bind to the Dispatcher (from another Blueprint)
-Binding is NOT supported in plan_json. Use GRANULAR TOOLS:
+Cross-Blueprint example — WBP_HealthBar listens to BP_HealthComponent:
+  (Requires an object variable "OwnerComponent" typed to BP_HealthComponent on the listener)
 
-  blueprint.add_node → {
-    "path": "/Game/BP_HealthUI",
-    "graph": "EventGraph",
-    "type": "K2Node_AssignDelegate",
-    "properties": {"delegate_name": "OnHealthChanged"}
-  }
+  {"schema_version":"2.0","steps":[
+    {"step_id":"evt","op":"event","target":"ReceiveConstruct"},
+    {"step_id":"get_ref","op":"get_var","target":"OwnerComponent"},
+    {"step_id":"bind","op":"bind_dispatcher","target":"OnHealthChanged",
+     "inputs":{"Target":"@get_ref.auto"},"exec_after":"evt"},
+    {"step_id":"handler","op":"custom_event","target":"HandleHealthChanged"},
+    {"step_id":"update","op":"call","target":"SetPercent",
+     "inputs":{"InPercent":"@handler.~NewHealth"},"exec_after":"handler"}
+  ]}
 
-  Then wire with connect_pins to link the delegate output to your handler logic.
+Same-Blueprint binding (omit Target — self-context is implied):
+  {"step_id":"bind","op":"bind_dispatcher","target":"OnMyEvent","exec_after":"evt"},
+  {"step_id":"handler","op":"custom_event","target":"HandleMyEvent"}
 
-  Alternative for component-owned dispatchers:
-  blueprint.add_node → {
-    "path": "/Game/BP_Player",
-    "graph": "EventGraph",
-    "type": "K2Node_ComponentBoundEvent",
-    "properties": {"component_name": "HealthComp", "delegate_name": "OnHealthChanged"}
-  }
+KEY RULES:
+  - Bind in Construct or BeginPlay, NOT Tick
+  - Handler MUST be custom_event (not function) — dispatchers are delegate-based
+  - Handler parameter names must match dispatcher parameter names
+  - For cross-Blueprint: Target input = reference to the object that owns the dispatcher
+  - For same-Blueprint: omit Target (self-context)
+  - Do NOT confuse with component delegates (OnComponentBeginOverlap etc.) — those use
+    op:"event" with component_name property, not bind_dispatcher
 
 ---
 

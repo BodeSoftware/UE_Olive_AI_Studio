@@ -36,6 +36,7 @@
 #include "K2Node_VariableGet.h"
 #include "K2Node_Self.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_AddDelegate.h"
 #include "K2Node_SpawnActorFromClass.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Engine/SimpleConstructionScript.h"
@@ -531,6 +532,12 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::Execute(
         UE_LOG(LogOlivePlanExecutor, Log,
             TEXT("Phase 1.5 complete: no auto-wiring needed"));
     }
+
+    // Phase 1.25: Pre-create dispatcher signature pins on custom_event nodes.
+    // Must run after Phase 1 (both custom_event and bind_dispatcher nodes exist)
+    // and before Phase 4 (data wiring needs the signature pins).
+    UE_LOG(LogOlivePlanExecutor, Log, TEXT("Phase 1.25: Pre-Create Dispatcher Pins"));
+    PhasePreCreateDispatcherPins(Plan, Context);
 
     // Capture Phase 1.5 fix count for Phase 5.5 delta logging
     const int32 Phase15Fixes = Context.AutoFixCount;
@@ -1692,6 +1699,139 @@ void FOlivePlanExecutor::PhaseAutoWireComponentTargets(
             // Remove the orphan getter node
             Context.Graph->RemoveNode(GetNode);
         }
+    }
+}
+
+// ============================================================================
+// Phase 1.25: Pre-Create Dispatcher Signature Pins (CONTINUE-ON-FAILURE)
+// ============================================================================
+
+void FOlivePlanExecutor::PhasePreCreateDispatcherPins(
+    const FOliveIRBlueprintPlan& Plan,
+    FOlivePlanExecutionContext& Context)
+{
+    // Track which custom_event steps have already received a delegate signature
+    // to avoid double-processing when multiple bind_dispatchers exist.
+    TSet<FString> SignatureSetStepIds;
+
+    for (const FOliveIRBlueprintPlanStep& BindStep : Plan.Steps)
+    {
+        if (BindStep.Op != OlivePlanOps::BindDispatcher)
+        {
+            continue;
+        }
+
+        // Get the UK2Node_AddDelegate created in Phase 1.
+        // GetDelegateSignature() on this node returns the UFunction* that
+        // describes the delegate's parameter list — works for both self
+        // and cross-blueprint because the node was created with the correct
+        // delegate property.
+        UEdGraphNode* BindNode = Context.GetNodePtr(BindStep.StepId);
+        UK2Node_AddDelegate* AddDelegateNode = Cast<UK2Node_AddDelegate>(BindNode);
+        if (!AddDelegateNode)
+        {
+            UE_LOG(LogOlivePlanExecutor, Warning,
+                TEXT("Phase 1.25: bind_dispatcher step '%s' — node not found or not UK2Node_AddDelegate"),
+                *BindStep.StepId);
+            continue;
+        }
+
+        UFunction* DelegateSig = AddDelegateNode->GetDelegateSignature();
+        if (!DelegateSig)
+        {
+            UE_LOG(LogOlivePlanExecutor, Warning,
+                TEXT("Phase 1.25: bind_dispatcher step '%s' — GetDelegateSignature() returned nullptr, "
+                     "cannot pre-create signature pins on custom_event"),
+                *BindStep.StepId);
+            continue;
+        }
+
+        // Dispatcher name for name-match priority
+        const FString& DispatcherName = BindStep.Target;
+
+        // Two-pass matching: same logic as the Phase 4 delegate auto-wire post-pass.
+        // Pass 1: prefer a custom_event whose Target contains the dispatcher name.
+        // Pass 2: fall back to first unwired custom_event not already signature-set.
+        UK2Node_CustomEvent* BestEventNode = nullptr;
+        FString BestStepId;
+
+        for (const FOliveIRBlueprintPlanStep& CandStep : Plan.Steps)
+        {
+            if (CandStep.Op != OlivePlanOps::CustomEvent)
+            {
+                continue;
+            }
+
+            // Skip custom_events that already received a signature from a previous bind_dispatcher
+            if (SignatureSetStepIds.Contains(CandStep.StepId))
+            {
+                continue;
+            }
+
+            UEdGraphNode* EventNode = Context.GetNodePtr(CandStep.StepId);
+            if (!EventNode)
+            {
+                continue;
+            }
+
+            UK2Node_CustomEvent* CustomEventNode = Cast<UK2Node_CustomEvent>(EventNode);
+            if (!CustomEventNode)
+            {
+                continue;
+            }
+
+            // Name-match priority: custom_event target contains dispatcher name
+            if (!DispatcherName.IsEmpty()
+                && CandStep.Target.Contains(DispatcherName, ESearchCase::IgnoreCase))
+            {
+                BestEventNode = CustomEventNode;
+                BestStepId = CandStep.StepId;
+                break; // Strong name match — use immediately
+            }
+
+            // Fall back to first candidate
+            if (!BestEventNode)
+            {
+                BestEventNode = CustomEventNode;
+                BestStepId = CandStep.StepId;
+            }
+        }
+
+        if (!BestEventNode)
+        {
+            UE_LOG(LogOlivePlanExecutor, Warning,
+                TEXT("Phase 1.25: bind_dispatcher '%s' — no matching custom_event found in plan"),
+                *BindStep.StepId);
+            continue;
+        }
+
+        // Pre-create signature pins on the custom_event node.
+        // SetDelegateSignature populates UserDefinedPins from the delegate's
+        // parameter function. ReconstructNode materializes them as real pins.
+        BestEventNode->SetDelegateSignature(DelegateSig);
+        BestEventNode->ReconstructNode();
+
+        SignatureSetStepIds.Add(BestStepId);
+
+        // Rebuild the pin manifest for this custom_event step.
+        // The manifest was built in Phase 1 with only default pins (exec, then,
+        // OutputDelegate). After ReconstructNode, the node has new output pins
+        // matching the delegate signature. Phase 4 data wiring needs these.
+        const FOlivePinManifest* ExistingManifest = Context.StepManifests.Find(BestStepId);
+        const FString NodeType = ExistingManifest ? ExistingManifest->NodeType : TEXT("CustomEvent");
+        const FString* NodeIdPtr = Context.StepToNodeMap.Find(BestStepId);
+        const FString NodeId = NodeIdPtr ? *NodeIdPtr : TEXT("");
+
+        FOlivePinManifest NewManifest = FOlivePinManifest::Build(
+            BestEventNode, BestStepId, NodeId, NodeType);
+
+        Context.StepManifests.Add(BestStepId, MoveTemp(NewManifest));
+
+        UE_LOG(LogOlivePlanExecutor, Log,
+            TEXT("Phase 1.25: Pre-created delegate signature pins on custom_event '%s' "
+                 "for bind_dispatcher '%s' (delegate: %s, pin count: %d)"),
+            *BestStepId, *BindStep.StepId, *DelegateSig->GetName(),
+            BestEventNode->Pins.Num());
     }
 }
 
@@ -3152,6 +3292,111 @@ void FOlivePlanExecutor::PhaseWireData(
                         WalkDepth);
                 }
             }
+        }
+    }
+
+    // ----------------------------------------------------------------
+    // Auto-wire bind_dispatcher Delegate pin to custom_event OutputDelegate.
+    //
+    // When a bind_dispatcher node has an unwired PC_Delegate input pin,
+    // search the plan for a custom_event node with an unwired OutputDelegate
+    // output pin and connect them. This is the canonical UE pattern used
+    // by FEdGraphSchemaAction_K2AssignDelegate.
+    //
+    // Two-pass matching: first prefer a custom_event whose FunctionName
+    // contains the dispatcher name (e.g., "HandleHealthChanged" matches
+    // "OnHealthChanged"), then fall back to any unwired custom_event.
+    // ----------------------------------------------------------------
+    for (const FOliveIRBlueprintPlanStep& BindStep : Plan.Steps)
+    {
+        if (BindStep.Op != OlivePlanOps::BindDispatcher)
+        {
+            continue;
+        }
+
+        UEdGraphNode* BindNode = Context.GetNodePtr(BindStep.StepId);
+        UK2Node_AddDelegate* AddDelegateNode = Cast<UK2Node_AddDelegate>(BindNode);
+        if (!AddDelegateNode)
+        {
+            continue;
+        }
+
+        UEdGraphPin* DelegateInputPin = AddDelegateNode->GetDelegatePin();
+        if (!DelegateInputPin || DelegateInputPin->LinkedTo.Num() > 0)
+        {
+            continue; // Already wired (explicitly by AI or previous pass)
+        }
+
+        // Dispatcher name for name-match priority
+        const FString& DispatcherName = BindStep.Target;
+
+        UEdGraphNode* BestEventNode = nullptr;
+        UEdGraphPin* BestDelegateOutputPin = nullptr;
+        FString BestStepId;
+
+        for (const FOliveIRBlueprintPlanStep& CandStep : Plan.Steps)
+        {
+            if (CandStep.Op != OlivePlanOps::CustomEvent)
+            {
+                continue;
+            }
+
+            UEdGraphNode* EventNode = Context.GetNodePtr(CandStep.StepId);
+            if (!EventNode)
+            {
+                continue;
+            }
+
+            UEdGraphPin* DelegateOutputPin = EventNode->FindPin(
+                UK2Node_CustomEvent::DelegateOutputName, EGPD_Output);
+            if (!DelegateOutputPin || DelegateOutputPin->LinkedTo.Num() > 0)
+            {
+                continue; // Already wired to another bind_dispatcher
+            }
+
+            // Name-match priority: custom_event target contains dispatcher name
+            if (!DispatcherName.IsEmpty()
+                && CandStep.Target.Contains(DispatcherName, ESearchCase::IgnoreCase))
+            {
+                BestEventNode = EventNode;
+                BestDelegateOutputPin = DelegateOutputPin;
+                BestStepId = CandStep.StepId;
+                break; // Strong name match — use immediately
+            }
+
+            // Fall back to first unwired candidate
+            if (!BestEventNode)
+            {
+                BestEventNode = EventNode;
+                BestDelegateOutputPin = DelegateOutputPin;
+                BestStepId = CandStep.StepId;
+            }
+        }
+
+        if (BestDelegateOutputPin)
+        {
+            const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
+            if (K2Schema->TryCreateConnection(BestDelegateOutputPin, DelegateInputPin))
+            {
+                Context.SuccessfulConnectionCount++;
+                Context.AutoFixCount++;
+                UE_LOG(LogOlivePlanExecutor, Log,
+                    TEXT("Phase 4: Auto-wired delegate: custom_event '%s' OutputDelegate -> "
+                         "bind_dispatcher '%s' Delegate"),
+                    *BestStepId, *BindStep.StepId);
+            }
+            else
+            {
+                UE_LOG(LogOlivePlanExecutor, Warning,
+                    TEXT("Phase 4: Failed to auto-wire delegate: custom_event '%s' -> bind_dispatcher '%s'"),
+                    *BestStepId, *BindStep.StepId);
+            }
+        }
+        else
+        {
+            UE_LOG(LogOlivePlanExecutor, Warning,
+                TEXT("Phase 4: bind_dispatcher '%s' has unwired Delegate pin but no matching custom_event found in plan"),
+                *BindStep.StepId);
         }
     }
 }
