@@ -991,6 +991,13 @@ UK2Node* FOliveNodeFactory::CreateIsValidNode(
 	UEdGraph* Graph,
 	const TMap<FString, FString>& Properties)
 {
+	// Check if branching (exec) version is requested
+	const FString* BranchingPtr = Properties.Find(TEXT("branching"));
+	if (BranchingPtr && *BranchingPtr == TEXT("true"))
+	{
+		return CreateMacroInstanceNode(Blueprint, Graph, TEXT("IsValid"));
+	}
+
 	// IsValid is from KismetSystemLibrary
 	UFunction* IsValidFunc = FindFunction(TEXT("IsValid"), TEXT("KismetSystemLibrary"));
 	if (!IsValidFunc)
@@ -2594,6 +2601,45 @@ UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FS
 		}
 	}
 
+	// --- Step 8: Float/Double substitution (UE5 renames) ---
+	// UE5 renamed many Float functions to Double. When a name containing
+	// "Float" isn't found, try with "Double" substituted (and vice versa).
+	{
+		FString Variant;
+		if (ResolvedName.Contains(TEXT("Float")))
+		{
+			Variant = ResolvedName.Replace(TEXT("Float"), TEXT("Double"));
+		}
+		else if (ResolvedName.Contains(TEXT("Double")))
+		{
+			Variant = ResolvedName.Replace(TEXT("Double"), TEXT("Float"));
+		}
+
+		if (!Variant.IsEmpty() && Variant != ResolvedName)
+		{
+			for (UClass* SearchClass : AllSearchedClasses)
+			{
+				if (!SearchClass)
+				{
+					continue;
+				}
+
+				UFunction* Func = SearchClass->FindFunctionByName(FName(*Variant));
+				if (Func && Func->HasAnyFunctionFlags(FUNC_BlueprintCallable))
+				{
+					UE_LOG(LogOliveNodeFactory, Log,
+						TEXT("FindFunction('%s'): Float/Double substitution -> '%s' on '%s'"),
+						*FunctionName, *Variant, *SearchClass->GetName());
+					if (OutMatchMethod)
+					{
+						*OutMatchMethod = EOliveFunctionMatchMethod::FloatDoubleSubstitution;
+					}
+					return Func;
+				}
+			}
+		}
+	}
+
 	// --- Fuzzy suggestion collection ---
 	// Scan all functions on the searched classes and score by similarity to
 	// ResolvedName. We collect the top 5 closest matches to include in the
@@ -3145,7 +3191,7 @@ const TMap<FString, FString>& FOliveNodeFactory::GetAliasMap()
 		Map.Add(TEXT("LogMessage"), TEXT("PrintString"));
 		Map.Add(TEXT("ToString"), TEXT("Conv_IntToString"));
 		Map.Add(TEXT("IntToString"), TEXT("Conv_IntToString"));
-		Map.Add(TEXT("FloatToString"), TEXT("Conv_FloatToString"));
+		Map.Add(TEXT("FloatToString"), TEXT("Conv_DoubleToString"));
 		Map.Add(TEXT("BoolToString"), TEXT("Conv_BoolToString"));
 		Map.Add(TEXT("Format"), TEXT("Format"));
 		Map.Add(TEXT("Concatenate"), TEXT("Concat_StrStr"));

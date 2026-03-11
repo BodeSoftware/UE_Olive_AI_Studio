@@ -64,7 +64,7 @@ FOliveBlueprintWriteResult FOliveWidgetWriter::AddWidget(
 	if (!WidgetClassObj)
 	{
 		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Widget class '%s' not found. Use class names like 'Button', 'TextBlock', 'Image', etc."), *WidgetClass),
+			FString::Printf(TEXT("Widget class '%s' not found. Use UMG class names like 'ProgressBar', 'TextBlock', 'Image', 'Overlay', 'CanvasPanel', etc."), *WidgetClass),
 			AssetPath);
 	}
 
@@ -450,6 +450,23 @@ UClass* FOliveWidgetWriter::FindWidgetClass(const FString& ClassName)
 		return const_cast<UClass*>(*CommonClass);
 	}
 
+	// Fallback: try StaticLoadClass with UMG module path
+	// This covers ALL UMG widgets (ProgressBar, Overlay, ScrollBox, etc.) without enumeration
+	FString UMGPath = FString::Printf(TEXT("/Script/UMG.%s"), *ClassNameWithoutU);
+	FoundClass = StaticLoadClass(UWidget::StaticClass(), nullptr, *UMGPath);
+	if (FoundClass)
+	{
+		return FoundClass;
+	}
+
+	// Also try CommonUI module path
+	FString CommonUIPath = FString::Printf(TEXT("/Script/CommonUI.%s"), *ClassNameWithoutU);
+	FoundClass = StaticLoadClass(UWidget::StaticClass(), nullptr, *CommonUIPath);
+	if (FoundClass)
+	{
+		return FoundClass;
+	}
+
 	return nullptr;
 }
 
@@ -575,19 +592,45 @@ bool FOliveWidgetWriter::CreatePropertyBinding(
 		return false;
 	}
 
-	// PHASE2_DEFERRED: Full property binding requires FWidgetBlueprintEditorUtils::CreateWidgetPropertyBinding
-	// or similar UMG editor utilities. The function and property were validated but the actual binding
-	// delegate connection is deferred to Phase 2.
+	// UMG bindings require the widget to be a variable in the Widget Blueprint
+	if (!Widget->bIsVariable)
+	{
+		OutError = FString::Printf(
+			TEXT("Widget '%s' must be marked as a variable (bIsVariable=true) for property binding. "
+			     "Use widget.set_property to set bIsVariable first."),
+			*Widget->GetName());
+		return false;
+	}
 
-	UE_LOG(LogOliveWidgetWriter, Warning,
-		TEXT("[PHASE2_DEFERRED] Property binding for '%s' on widget validated but not fully wired. "
-		     "Full binding support requires UMG editor integration (Phase 2)."),
-		*PropertyName);
+	// Create the editor binding entry that the Widget Blueprint compiler
+	// will transform into a runtime delegate binding during compilation
+	FDelegateEditorBinding Binding;
+	Binding.ObjectName = Widget->GetName();
+	Binding.PropertyName = *PropertyName;
+	Binding.FunctionName = *FunctionName;
+	Binding.Kind = EBindingKind::Function;
 
-	OutError = FString::Printf(
-		TEXT("[PHASE2_DEFERRED] Property binding validated but not fully wired. "
-		     "Function '%s' and property '%s' exist but the delegate connection requires Phase 2 UMG integration. "
-		     "Please create the binding manually in the Widget Blueprint editor."),
-		*FunctionName, *PropertyName);
+	// Resolve function GUID for rename resilience — the compiler uses this
+	// to survive function renames between compiles
+	UFunction* Func = WidgetBlueprint->SkeletonGeneratedClass
+		? WidgetBlueprint->SkeletonGeneratedClass->FindFunctionByName(*FunctionName)
+		: nullptr;
+	if (!Func)
+	{
+		Func = WidgetBlueprint->GeneratedClass
+			? WidgetBlueprint->GeneratedClass->FindFunctionByName(*FunctionName)
+			: nullptr;
+	}
+	if (Func)
+	{
+		UBlueprint::GetGuidFromClassByFieldName<UFunction>(
+			Func->GetOwnerClass(), Func->GetFName(), Binding.MemberGuid);
+	}
+
+	// Remove any existing binding for the same object+property pair
+	// (operator== on FDelegateEditorBinding matches on ObjectName+PropertyName only)
+	WidgetBlueprint->Bindings.Remove(Binding);
+	WidgetBlueprint->Bindings.Add(Binding);
+
 	return true;
 }

@@ -7,6 +7,9 @@
 #include "Components/ActorComponent.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
+#include "WidgetBlueprint.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/Widget.h"
 
 DEFINE_LOG_CATEGORY(LogOlivePlanValidator);
 
@@ -415,7 +418,7 @@ void FOlivePlanValidator::CheckLatentInFunctionGraph(
 namespace
 {
 	/** Duplicated from OliveBlueprintPlanResolver.cpp anonymous namespace.
-	 *  Checks NewVariables and SCS component variable names. */
+	 *  Checks NewVariables, SCS component variable names, and WidgetTree variables. */
 	bool ValidatorBlueprintHasVariable(const UBlueprint* Blueprint, const FString& VariableName)
 	{
 		if (!Blueprint)
@@ -437,6 +440,21 @@ namespace
 			for (USCS_Node* Node : AllNodes)
 			{
 				if (Node && Node->GetVariableName().ToString() == VariableName)
+				{
+					return true;
+				}
+			}
+		}
+
+		// Check WidgetTree variables (UMG Widget Blueprints)
+		const UWidgetBlueprint* WidgetBP = Cast<UWidgetBlueprint>(Blueprint);
+		if (WidgetBP && WidgetBP->WidgetTree)
+		{
+			TArray<UWidget*> AllWidgets;
+			WidgetBP->WidgetTree->GetAllWidgets(AllWidgets);
+			for (const UWidget* Widget : AllWidgets)
+			{
+				if (Widget && Widget->bIsVariable && Widget->GetName() == VariableName)
 				{
 					return true;
 				}
@@ -521,6 +539,29 @@ void FOlivePlanValidator::CheckVariableExists(
 			}
 		}
 
+		// Check WidgetTree variables (UMG Widget Blueprints)
+		{
+			bool bFoundInWidgetTree = false;
+			const UWidgetBlueprint* WBP = Cast<UWidgetBlueprint>(Context.Blueprint);
+			if (WBP && WBP->WidgetTree)
+			{
+				TArray<UWidget*> AllWidgets;
+				WBP->WidgetTree->GetAllWidgets(AllWidgets);
+				for (const UWidget* Widget : AllWidgets)
+				{
+					if (Widget && Widget->bIsVariable && Widget->GetName() == VariableName)
+					{
+						bFoundInWidgetTree = true;
+						break;
+					}
+				}
+			}
+			if (bFoundInWidgetTree)
+			{
+				continue; // WidgetTree variable -- valid
+			}
+		}
+
 		// Variable not found anywhere -- build error with available variable list
 		TArray<FString> AvailableVars;
 		for (const FBPVariableDescription& Var : Context.Blueprint->NewVariables)
@@ -534,6 +575,22 @@ void FOlivePlanValidator::CheckVariableExists(
 				if (SCSNode)
 				{
 					AvailableVars.Add(SCSNode->GetVariableName().ToString());
+				}
+			}
+		}
+		// Add WidgetTree variables (UMG Widget Blueprints)
+		{
+			const UWidgetBlueprint* AvailWBP = Cast<UWidgetBlueprint>(Context.Blueprint);
+			if (AvailWBP && AvailWBP->WidgetTree)
+			{
+				TArray<UWidget*> AllWidgets;
+				AvailWBP->WidgetTree->GetAllWidgets(AllWidgets);
+				for (const UWidget* Widget : AllWidgets)
+				{
+					if (Widget && Widget->bIsVariable)
+					{
+						AvailableVars.Add(Widget->GetName());
+					}
 				}
 			}
 		}

@@ -30,6 +30,9 @@
 #include "Kismet/GameplayStatics.h"
 #include "UObject/UnrealType.h"
 #include "Components/ActorComponent.h"
+#include "WidgetBlueprint.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/Widget.h"
 
 DEFINE_LOG_CATEGORY(LogOlivePlanResolver);
 
@@ -69,6 +72,22 @@ namespace
 			for (USCS_Node* Node : AllNodes)
 			{
 				if (Node && Node->GetVariableName().ToString() == VariableName)
+				{
+					return true;
+				}
+			}
+		}
+
+		// Check WidgetTree variables (UMG Widget Blueprints)
+		// Widgets with bIsVariable=true are accessible as variables
+		const UWidgetBlueprint* WidgetBP = Cast<UWidgetBlueprint>(Blueprint);
+		if (WidgetBP && WidgetBP->WidgetTree)
+		{
+			TArray<UWidget*> AllWidgets;
+			WidgetBP->WidgetTree->GetAllWidgets(AllWidgets);
+			for (const UWidget* Widget : AllWidgets)
+			{
+				if (Widget && Widget->bIsVariable && Widget->GetName() == VariableName)
 				{
 					return true;
 				}
@@ -1429,8 +1448,14 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 			OutResolved.bIsPure = (Op == OlivePlanOps::GetVar
 				|| Op == OlivePlanOps::MakeStruct
 				|| Op == OlivePlanOps::BreakStruct
-				|| Op == OlivePlanOps::IsValid
+				|| (Op == OlivePlanOps::IsValid && Step.ExecOutputs.Num() == 0)
 				|| Op == OlivePlanOps::Comment);
+		}
+
+		// is_valid with exec_outputs: use the exec macro version
+		if (Op == OlivePlanOps::IsValid && Step.ExecOutputs.Num() > 0)
+		{
+			OutResolved.Properties.Add(TEXT("branching"), TEXT("true"));
 		}
 	}
 
@@ -2298,6 +2323,21 @@ bool FOliveBlueprintPlanResolver::ResolveSetVarOp(
 				for (const FBPVariableDescription& Var : BP->NewVariables)
 				{
 					AvailableVars.Add(Var.VarName.ToString());
+				}
+
+				// Add WidgetTree variables (UMG Widget Blueprints)
+				const UWidgetBlueprint* SetVarWidgetBP = Cast<UWidgetBlueprint>(BP);
+				if (SetVarWidgetBP && SetVarWidgetBP->WidgetTree)
+				{
+					TArray<UWidget*> AllWidgets;
+					SetVarWidgetBP->WidgetTree->GetAllWidgets(AllWidgets);
+					for (const UWidget* Widget : AllWidgets)
+					{
+						if (Widget && Widget->bIsVariable)
+						{
+							AvailableVars.Add(Widget->GetName());
+						}
+					}
 				}
 
 				FString VarListStr = AvailableVars.Num() > 0
@@ -3446,6 +3486,35 @@ bool FOliveBlueprintPlanResolver::CollapseExecThroughPureSteps(
 			UE_LOG(LogOlivePlanResolver, Log,
 				TEXT("CollapseExec: cleared exec wiring on pure step '%s' (%s)"),
 				*Step.StepId, *OrigDesc);
+
+			// Before clearing, reroute exec_outputs targets to predecessor
+			if (Step.ExecOutputs.Num() > 0)
+			{
+				TSet<FString> BackVisited;
+				const FString Predecessor = ResolveBackward(Step.StepId, BackVisited);
+
+				if (!Predecessor.IsEmpty())
+				{
+					for (const auto& ExecOut : Step.ExecOutputs)
+					{
+						const FString& TargetId = ExecOut.Value;
+						if (!IsPure(TargetId))
+						{
+							int32* TargetIdx = StepIndexMap.Find(TargetId);
+							if (TargetIdx && Plan.Steps[*TargetIdx].ExecAfter.IsEmpty())
+							{
+								Plan.Steps[*TargetIdx].ExecAfter = Predecessor;
+								bAnyCollapsed = true;
+
+								UE_LOG(LogOlivePlanResolver, Log,
+									TEXT("CollapseExec: rerouted orphaned target '%s' "
+										 "(was in pure step '%s' exec_outputs) -> exec_after '%s'"),
+									*TargetId, *Step.StepId, *Predecessor);
+							}
+						}
+					}
+				}
+			}
 
 			Step.ExecAfter.Empty();
 			Step.ExecOutputs.Empty();

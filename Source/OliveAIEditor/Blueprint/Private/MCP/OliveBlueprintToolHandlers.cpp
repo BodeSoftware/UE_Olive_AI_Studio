@@ -2140,18 +2140,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 		return TemplateResult;
 	}
 
-	// Extract parent_class (required when not using a template)
-	FString ParentClass;
-	if (!Params->TryGetStringField(TEXT("parent_class"), ParentClass) || ParentClass.IsEmpty())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'parent_class' is missing or empty. Either provide parent_class for a blank Blueprint, or provide template_id to create from a template."),
-			TEXT("Provide the parent class name (e.g., 'Actor', 'Character', '/Game/BP_Base') or use template_id")
-		);
-	}
-
-	// Extract type (optional, defaults to Normal)
+	// Extract type first (needed for parent_class defaults)
 	FString TypeString = TEXT("Normal");
 	Params->TryGetStringField(TEXT("type"), TypeString);
 
@@ -2188,6 +2177,30 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 			"The 'type' field is the Blueprint subtype (Normal, Interface, FunctionLibrary), "
 			"not the parent class. Use 'parent_class' for Actor/Pawn/Character."), *TypeString);
 		BlueprintType = EOliveBlueprintType::Normal;
+	}
+
+	// Extract parent_class — auto-default for types that imply a specific parent
+	FString ParentClass;
+	Params->TryGetStringField(TEXT("parent_class"), ParentClass);
+
+	if (ParentClass.IsEmpty())
+	{
+		if (BlueprintType == EOliveBlueprintType::WidgetBlueprint)
+		{
+			ParentClass = TEXT("UserWidget");
+		}
+		else if (BlueprintType == EOliveBlueprintType::AnimationBlueprint)
+		{
+			ParentClass = TEXT("AnimInstance");
+		}
+		else
+		{
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_MISSING_PARAM"),
+				TEXT("Required parameter 'parent_class' is missing or empty. Either provide parent_class for a blank Blueprint, or provide template_id to create from a template."),
+				TEXT("Provide the parent class name (e.g., 'Actor', 'Character', '/Game/BP_Base') or use template_id")
+			);
+		}
 	}
 
 	// Build write request for pipeline
@@ -6906,7 +6919,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleWidgetBindProperty(const TSh
 		FText::FromString(FunctionName));
 	Request.OperationCategory = TEXT("widget");
 	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
-	Request.bAutoCompile = false;
+	Request.bAutoCompile = true;
 
 	// Define executor
 	FOliveWriteExecutor Executor;

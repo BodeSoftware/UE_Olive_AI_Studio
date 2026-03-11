@@ -2392,8 +2392,34 @@ void FOlivePlanExecutor::PhaseWireExec(
                 }
                 else
                 {
-                    UE_LOG(LogOlivePlanExecutor, Verbose,
-                        TEXT("Auto-chain: no last-exec-node candidate found for FunctionResult wiring -- skipping"));
+                    // No impure node found in the chain — all intermediate steps
+                    // are pure (getters, math, etc.).  Wire FunctionEntry directly
+                    // to FunctionResult so the function has a valid exec path.
+                    UEdGraphPin* EntryExecOut = EntryNode->FindPin(UEdGraphSchema_K2::PN_Then);
+                    if (EntryExecOut && EntryExecOut->LinkedTo.Num() == 0)
+                    {
+                        FOlivePinConnector& DirectConnector = FOlivePinConnector::Get();
+                        FOliveBlueprintWriteResult DirectResult = DirectConnector.Connect(
+                            EntryExecOut, ResultExecIn, false);
+
+                        if (DirectResult.bSuccess)
+                        {
+                            Context.SuccessfulConnectionCount++;
+                            Context.AutoFixCount++;
+                            UE_LOG(LogOlivePlanExecutor, Log,
+                                TEXT("Phase 3: All-pure function — wired FunctionEntry directly to FunctionResult"));
+                        }
+                        else
+                        {
+                            UE_LOG(LogOlivePlanExecutor, Warning,
+                                TEXT("Phase 3: Failed to wire FunctionEntry -> FunctionResult in all-pure function"));
+                        }
+                    }
+                    else
+                    {
+                        UE_LOG(LogOlivePlanExecutor, Verbose,
+                            TEXT("Auto-chain: no last-exec-node candidate found for FunctionResult wiring -- skipping"));
+                    }
                 }
             }
             else if (ResultExecIn)
@@ -2719,6 +2745,24 @@ FOliveSmartWireResult FOlivePlanExecutor::WireExecConnection(
             {
                 if (ExecOut->PinName.Equals(SourcePinHint, ESearchCase::IgnoreCase) ||
                     ExecOut->DisplayName.Equals(SourcePinHint, ESearchCase::IgnoreCase))
+                {
+                    SourceExecOut = ExecOut;
+                    break;
+                }
+            }
+        }
+
+        // Try space-stripped case-insensitive match (e.g., "IsValid" -> "Is Valid")
+        if (!SourceExecOut)
+        {
+            FString StrippedHint = SourcePinHint.Replace(TEXT(" "), TEXT(""));
+            for (const FOlivePinManifestEntry* ExecOut : AllExecOuts)
+            {
+                FString StrippedPinName = ExecOut->PinName.Replace(TEXT(" "), TEXT(""));
+                FString StrippedDisplayName = ExecOut->DisplayName.Replace(TEXT(" "), TEXT(""));
+
+                if (StrippedPinName.Equals(StrippedHint, ESearchCase::IgnoreCase) ||
+                    StrippedDisplayName.Equals(StrippedHint, ESearchCase::IgnoreCase))
                 {
                     SourceExecOut = ExecOut;
                     break;
@@ -3359,11 +3403,39 @@ FOliveSmartWireResult FOlivePlanExecutor::WireDataConnection(
 
     if (SourcePinHint == TEXT("auto"))
     {
-        // TYPE-BASED AUTO-MATCH
-        SourcePin = FindTypeCompatibleOutput(
-            *SourceManifest, TargetPin->IRTypeCategory, TargetPin->PinSubCategory,
-            TargetPin->PinName);
-        SourceMatchMethod = TEXT("type_auto");
+        // NAME-BASED MATCH FOR SYNTHETIC FUNCTION PARAMETER STEPS
+        // Synthetic steps like _synth_param_max encode the parameter name in
+        // their StepId. When the FunctionEntry node has multiple output pins
+        // of the same type (e.g., Current:float, Max:float), type-based
+        // matching picks the first one, mis-wiring all same-typed params.
+        // Extract the parameter name and match by name first.
+        static const FString SynthParamPrefix = TEXT("_synth_param_");
+        if (SourceStepId.StartsWith(SynthParamPrefix))
+        {
+            FString ParamName = SourceStepId.Mid(SynthParamPrefix.Len());
+            TArray<const FOlivePinManifestEntry*> DataOutputs = SourceManifest->GetDataPins(/*bInput=*/false);
+            for (const FOlivePinManifestEntry* Pin : DataOutputs)
+            {
+                if (Pin->PinName.Equals(ParamName, ESearchCase::IgnoreCase))
+                {
+                    SourcePin = Pin;
+                    SourceMatchMethod = TEXT("synth_param_name");
+                    UE_LOG(LogOlivePlanExecutor, Log,
+                        TEXT("  Synthetic param name match: step '%s' -> pin '%s'"),
+                        *SourceStepId, *Pin->PinName);
+                    break;
+                }
+            }
+        }
+
+        // TYPE-BASED AUTO-MATCH (fallback if name match didn't find anything)
+        if (!SourcePin)
+        {
+            SourcePin = FindTypeCompatibleOutput(
+                *SourceManifest, TargetPin->IRTypeCategory, TargetPin->PinSubCategory,
+                TargetPin->PinName);
+            SourceMatchMethod = TEXT("type_auto");
+        }
 
         // Schema-based fallback: when manifest-level matching fails,
         // use real UEdGraphPin objects + ArePinTypesCompatible for

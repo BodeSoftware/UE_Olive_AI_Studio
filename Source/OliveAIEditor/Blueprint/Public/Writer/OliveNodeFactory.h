@@ -43,6 +43,8 @@ enum class EOliveFunctionMatchMethod : uint8
 	UniversalLibrarySearch,
 	/** Found via K2_ prefix fuzzy matching across previously searched classes */
 	FuzzyK2Match,
+	/** Found by substituting Float<->Double in the function name (UE5 renames) */
+	FloatDoubleSubstitution,
 };
 
 /**

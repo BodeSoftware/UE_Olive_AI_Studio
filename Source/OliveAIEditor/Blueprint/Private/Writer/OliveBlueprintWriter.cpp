@@ -24,6 +24,8 @@
 #include "UObject/SavePackage.h"
 #include "UObject/UObjectGlobals.h"
 #include "Editor.h"
+#include "WidgetBlueprint.h"
+#include "Animation/AnimBlueprint.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -234,14 +236,28 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::CreateBlueprint(
 	// Get the UE Blueprint type
 	EBlueprintType UEBPType = GetUEBlueprintType(Type);
 
+	// Select Blueprint class and generated class based on type
+	UClass* BlueprintClass = UBlueprint::StaticClass();
+	UClass* GeneratedClassType = UBlueprintGeneratedClass::StaticClass();
+
+	if (Type == EOliveBlueprintType::WidgetBlueprint)
+	{
+		BlueprintClass = UWidgetBlueprint::StaticClass();
+	}
+	else if (Type == EOliveBlueprintType::AnimationBlueprint)
+	{
+		BlueprintClass = UAnimBlueprint::StaticClass();
+		GeneratedClassType = UAnimBlueprintGeneratedClass::StaticClass();
+	}
+
 	// Create the Blueprint
 	UBlueprint* NewBlueprint = FKismetEditorUtilities::CreateBlueprint(
 		ParentUClass,
 		Package,
 		*AssetName,
 		UEBPType,
-		UBlueprint::StaticClass(),
-		UBlueprintGeneratedClass::StaticClass()
+		BlueprintClass,
+		GeneratedClassType
 	);
 
 	if (!NewBlueprint)
@@ -820,6 +836,20 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::AddVariable(
 			FString::Printf(TEXT("Variable '%s' already exists in Blueprint '%s'"), *Variable.Name, *AssetPath));
 	}
 
+	// Check parent class chain for inherited properties with same name
+	if (Blueprint->ParentClass)
+	{
+		FProperty* InheritedProp = Blueprint->ParentClass->FindPropertyByName(FName(*Variable.Name));
+		if (InheritedProp)
+		{
+			UClass* OwningClass = InheritedProp->GetOwnerClass();
+			return FOliveBlueprintWriteResult::Error(
+				FString::Printf(TEXT("Variable '%s' already exists on parent class '%s'. "
+					"Use get_var/set_var to access it instead of creating a duplicate."),
+					*Variable.Name, OwningClass ? *OwningClass->GetName() : TEXT("Unknown")));
+		}
+	}
+
 	// Run deterministic correction rules before type conversion.
 	FOliveIRVariable CorrectedVariable = Variable;
 	FOliveVariableCorrectionDecision Correction = ApplyVariableCorrectionRules(CorrectedVariable);
@@ -1103,6 +1133,38 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::AddFunction(
 		{
 			return FOliveBlueprintWriteResult::Error(
 				FString::Printf(TEXT("Function '%s' already exists in Blueprint '%s'"), *Signature.Name, *AssetPath));
+		}
+	}
+
+	// Check parent class chain for inherited functions with same name
+	if (Blueprint->ParentClass)
+	{
+		UFunction* InheritedFunc = Blueprint->ParentClass->FindFunctionByName(FName(*Signature.Name));
+		if (InheritedFunc)
+		{
+			UClass* OwningClass = InheritedFunc->GetOwnerClass();
+			return FOliveBlueprintWriteResult::Error(
+				FString::Printf(TEXT("Function '%s' already exists on parent class '%s'. "
+					"To override it, use blueprint.override_function. "
+					"To create a new function, choose a different name."),
+					*Signature.Name, OwningClass ? *OwningClass->GetName() : TEXT("Unknown")));
+		}
+	}
+
+	// Check implemented interfaces for functions with same name
+	for (const FBPInterfaceDescription& InterfaceDesc : Blueprint->ImplementedInterfaces)
+	{
+		if (InterfaceDesc.Interface)
+		{
+			UFunction* InterfaceFunc = InterfaceDesc.Interface->FindFunctionByName(FName(*Signature.Name));
+			if (InterfaceFunc)
+			{
+				return FOliveBlueprintWriteResult::Error(
+					FString::Printf(TEXT("Function '%s' is declared in interface '%s'. "
+						"Use blueprint.override_function to implement it, "
+						"or choose a different name for a new function."),
+						*Signature.Name, *InterfaceDesc.Interface->GetName()));
+			}
 		}
 	}
 
@@ -2245,6 +2307,9 @@ EBlueprintType FOliveBlueprintWriter::GetUEBlueprintType(EOliveBlueprintType BPT
 		return BPTYPE_FunctionLibrary;
 	case EOliveBlueprintType::MacroLibrary:
 		return BPTYPE_MacroLibrary;
+	case EOliveBlueprintType::WidgetBlueprint:
+	case EOliveBlueprintType::AnimationBlueprint:
+		return BPTYPE_Normal;
 	default:
 		return BPTYPE_Normal;
 	}
