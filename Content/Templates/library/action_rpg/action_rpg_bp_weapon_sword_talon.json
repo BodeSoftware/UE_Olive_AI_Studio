@@ -1,0 +1,410 @@
+{
+  "template_id": "action_rpg_bp_weapon_sword_talon",
+  "display_name": "BP_Weapon_Sword_Talon",
+  "tags": "sword talon defaults",
+  "catalog_description": "BP_Weapon_Sword_Talon: WeaponActor-based (child of WeaponActor) blueprint with 1 function.",
+  "inherited_tags": "weapon actor attack delay time attacking enable event tag rpg item slot skeletal mesh capsule",
+  "source_project": "action_rpg",
+  "depends_on": "action_rpg_weapon_actor",
+  "schema_version": "1.0",
+  "name": "BP_Weapon_Sword_Talon",
+  "path": "/Game/Blueprints/Weapon/BP_Weapon_Sword_Talon.BP_Weapon_Sword_Talon",
+  "type": "Normal",
+  "parent_class": {
+    "name": "WeaponActor_C",
+    "source": "blueprint",
+    "path": "/Game/Blueprints/Weapon/WeaponActor.WeaponActor"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "AttackDelayTime",
+      "type": {
+        "category": "float"
+      },
+      "category": "Weapon Defaults",
+      "defined_in": "WeaponActor",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "IsAttacking",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Weapon Defaults",
+      "defined_in": "WeaponActor",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "EnableAttackDelay",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Weapon Defaults",
+      "defined_in": "WeaponActor",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AttackDelayCount",
+      "type": {
+        "category": "int"
+      },
+      "category": "Weapon Defaults",
+      "defined_in": "WeaponActor",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AttackEventTag",
+      "type": {
+        "category": "struct",
+        "struct_name": "GameplayTag"
+      },
+      "category": "Weapon Defaults",
+      "defined_in": "WeaponActor",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "RPGWeaponItem",
+      "type": {
+        "category": "object",
+        "class": "RPGWeaponItem"
+      },
+      "category": "Default",
+      "defined_in": "WeaponActor",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Slot",
+      "type": {
+        "category": "struct",
+        "struct_name": "RPGItemSlot"
+      },
+      "category": "Default",
+      "defined_in": "WeaponActor",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 5,
+        "connection_count": 6,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "ReceiveBeginPlay",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "ReceiveBeginPlay",
+            "owning_class": "SKEL_WeaponActor_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "Event",
+            "function": "ReceiveActorBeginOverlap",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "OtherActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_3.OtherActor"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "ReceiveActorBeginOverlap",
+            "owning_class": "SKEL_WeaponActor_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "OtherActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "Event",
+            "function": "ReceiveTick",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "DeltaSeconds",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "ReceiveBeginPlay",
+            "type": "Event",
+            "tags": "receive begin play"
+          },
+          {
+            "name": "ReceiveActorBeginOverlap",
+            "type": "Event",
+            "tags": "receive actor begin overlap"
+          },
+          {
+            "name": "ReceiveTick",
+            "type": "Event",
+            "tags": "receive tick"
+          }
+        ],
+        "tags": "receive begin play actor overlap tick"
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 2,
+        "connection_count": 2,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "UserConstructionScript",
+            "owning_class": "SKEL_WeaponActor_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

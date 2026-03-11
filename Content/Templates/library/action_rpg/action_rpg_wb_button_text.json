@@ -1,0 +1,432 @@
+{
+  "template_id": "action_rpg_wb_button_text",
+  "display_name": "WB_ButtonText",
+  "tags": "wb button widget delay after click clicked bg color event description label flow",
+  "catalog_description": "WB_ButtonText: UserWidget-based blueprint with no functions. Handles flow.",
+  "source_project": "action_rpg",
+  "depends_on": null,
+  "schema_version": "1.0",
+  "name": "WB_ButtonText",
+  "path": "/Game/Blueprints/WidgetBP/WB_ButtonText.WB_ButtonText",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "UserWidget",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": true,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "ButtonText",
+      "type": {
+        "category": "text"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DelayAfterClick",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "OnClicked",
+      "type": {
+        "category": "multicastdelegate"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ButtonBGColor",
+      "type": {
+        "category": "struct",
+        "struct_name": "LinearColor"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ClickEventDescription",
+      "type": {
+        "category": "string"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 12,
+        "connection_count": 16,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "PreConstruct",
+            "owning_class": "UserWidget",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              },
+              {
+                "name": "IsDesignTime",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableGet",
+            "variable": "ButtonTextLabel",
+            "pins_out": [
+              {
+                "name": "ButtonTextLabel",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_2.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "SetText",
+            "owning_class": "TextBlock",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                }
+              },
+              {
+                "name": "InText",
+                "type": {
+                  "category": "text"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "VariableGet",
+            "variable": "ButtonText",
+            "pins_out": [
+              {
+                "name": "ButtonText",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_2.InText"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "K2Node_CallDelegate",
+            "title": "Call On Clicked",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_ButtonText_C"
+                }
+              },
+              {
+                "name": "EventDescription",
+                "type": {
+                  "category": "string"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "Button1",
+            "pins_out": [
+              {
+                "name": "Button1",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                },
+                "connections": [
+                  "node_6.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "SetBackgroundColor",
+            "owning_class": "Button",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Button"
+                }
+              },
+              {
+                "name": "InBackgroundColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "VariableGet",
+            "variable": "ButtonBGColor",
+            "pins_out": [
+              {
+                "name": "ButtonBGColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "connections": [
+                  "node_6.InBackgroundColor"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "ClickEventDescription",
+            "pins_out": [
+              {
+                "name": "ClickEventDescription",
+                "type": {
+                  "category": "string"
+                },
+                "connections": [
+                  "node_4.EventDescription"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "Event",
+            "function": "BndEvt__Button1_K2Node_ComponentBoundEvent_0_OnButtonReleasedEvent__DelegateSignature",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              }
+            ]
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "PreConstruct",
+            "type": "Event",
+            "tags": "pre construct"
+          },
+          {
+            "name": "BndEvt__Button1_K2Node_ComponentBoundEvent_0_OnButtonReleasedEvent__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt button component bound event released delegate"
+          }
+        ],
+        "tags": "pre construct bnd evt button component bound event"
+      }
+    ],
+    "functions": [],
+    "macros": []
+  },
+  "event_dispatchers": [
+    {
+      "name": "OnClicked",
+      "category": "Default",
+      "tags": "clicked"
+    }
+  ],
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

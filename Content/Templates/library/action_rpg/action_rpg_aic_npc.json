@@ -1,0 +1,352 @@
+{
+  "template_id": "action_rpg_aic_npc",
+  "display_name": "AIC_NPC",
+  "tags": "aic npc ai controller ranged",
+  "catalog_description": "AIC_NPC: AIController-based blueprint with 1 function. Handles ai.",
+  "source_project": "action_rpg",
+  "depends_on": null,
+  "schema_version": "1.0",
+  "name": "AIC_NPC",
+  "path": "/Game/Blueprints/AI/GruntAI/AIC_NPC.AIC_NPC",
+  "type": "Normal",
+  "parent_class": {
+    "name": "AIController",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "bIsRanged",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 6,
+        "connection_count": 12,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "ReceiveBeginPlay",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "UseBlackboard",
+            "owning_class": "AIController",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "AIController"
+                }
+              },
+              {
+                "name": "BlackboardAsset",
+                "type": {
+                  "category": "object",
+                  "class": "BlackboardData"
+                },
+                "default": "/Game/Blueprints/AI/BB_Base.BB_Base"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "BlackboardComponent",
+                "type": {
+                  "category": "object",
+                  "class": "BlackboardComponent"
+                },
+                "connections": [
+                  "node_3.self"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "RunBehaviorTree",
+            "owning_class": "AIController",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "AIController"
+                }
+              },
+              {
+                "name": "BTAsset",
+                "type": {
+                  "category": "object",
+                  "class": "BehaviorTree"
+                },
+                "default": "/Game/Blueprints/AI/GruntAI/BT_NPC.BT_NPC"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "SetValueAsBool",
+            "owning_class": "BlackboardComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BlackboardComponent"
+                }
+              },
+              {
+                "name": "KeyName",
+                "type": {
+                  "category": "name",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "default": "None"
+              },
+              {
+                "name": "BoolValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "MakeLiteralName",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "Value",
+                "type": {
+                  "category": "name"
+                },
+                "default": "isRanged"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "name"
+                },
+                "connections": [
+                  "node_3.KeyName"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "bIsRanged",
+            "pins_out": [
+              {
+                "name": "bIsRanged",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_3.BoolValue"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "ReceiveBeginPlay",
+            "type": "Event",
+            "tags": "receive begin play"
+          }
+        ],
+        "tags": "receive begin play"
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 1,
+        "connection_count": 0,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

@@ -1,0 +1,238 @@
+{
+  "template_id": "action_rpg_bt_task_is_playing_high_priority_montage",
+  "display_name": "BTTask_IsPlayingHighPriorityMontage",
+  "tags": "task playing high priority montage decorator perform condition check ai animation character",
+  "catalog_description": "BTTask_IsPlayingHighPriorityMontage: BTDecorator_BlueprintBase-based blueprint with 1 function. Handles animation and character.",
+  "source_project": "action_rpg",
+  "depends_on": null,
+  "schema_version": "1.0",
+  "name": "BTTask_IsPlayingHighPriorityMontage",
+  "path": "/Game/Blueprints/AI/BTTask_IsPlayingHighPriorityMontage.BTTask_IsPlayingHighPriorityMontage",
+  "type": "Normal",
+  "parent_class": {
+    "name": "BTDecorator_BlueprintBase",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 0,
+        "connection_count": 0,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 0,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": []
+      }
+    ],
+    "functions": [
+      {
+        "name": "PerformConditionCheckAI",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "OwnerController",
+            "display_name": "Owner Controller",
+            "type": {
+              "category": "object",
+              "class": "AIController"
+            }
+          },
+          {
+            "name": "ControlledPawn",
+            "display_name": "Controlled Pawn",
+            "type": {
+              "category": "object",
+              "class": "Pawn"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "display_name": "Return Value",
+            "type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "access": "protected",
+        "node_count": 4,
+        "connection_count": 10,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "PerformConditionCheckAI",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              },
+              {
+                "name": "OwnerController",
+                "type": {
+                  "category": "object",
+                  "class": "AIController"
+                }
+              },
+              {
+                "name": "ControlledPawn",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                },
+                "connections": [
+                  "node_2.Object"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "FunctionResult",
+            "function": "PerformConditionCheckAI",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ]
+          },
+          {
+            "id": "node_2",
+            "type": "Cast",
+            "title": "Cast To BP_Character",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AsBP Character",
+                "type": {
+                  "category": "object",
+                  "class": "BP_Character_C"
+                },
+                "connections": [
+                  "node_3.self"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "BP_Character_C",
+              "TargetClassPath": "/Game/Blueprints/BP_Character.BP_Character_C"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "IsPlayingHighPriorityMontage",
+            "owning_class": "SKEL_BP_Character_C",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_Character_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Return Value",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_1.ReturnValue"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "tags": "perform condition check ai playing high priority montage",
+        "description": "PerformConditionCheckAI: Handles condition check ai animation character."
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

@@ -1,0 +1,839 @@
+{
+  "template_id": "action_rpg_ga_spawn_projectile_base",
+  "display_name": "GA_SpawnProjectileBase",
+  "tags": "spawn projectile rpg gameplay ability montage play movement pawn",
+  "catalog_description": "GA_SpawnProjectileBase: RPGGameplayAbility-based blueprint with no functions. Handles movement, ability, and pawn.",
+  "source_project": "action_rpg",
+  "depends_on": null,
+  "schema_version": "1.0",
+  "name": "GA_SpawnProjectileBase",
+  "path": "/Game/Abilities/Shared/GA_SpawnProjectileBase.GA_SpawnProjectileBase",
+  "type": "Normal",
+  "parent_class": {
+    "name": "RPGGameplayAbility",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "MontageToPlay",
+      "type": {
+        "category": "object",
+        "class": "AnimMontage"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ProjectileClass",
+      "type": {
+        "category": "class",
+        "class": "BP_AbilityProjectileBase_C"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 16,
+        "connection_count": 43,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "K2_ActivateAbility",
+            "owning_class": "GameplayAbility",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "Event",
+            "function": "K2_OnEndAbility",
+            "owning_class": "GameplayAbility",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "bWasCancelled",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "K2_CommitAbility",
+            "owning_class": "GameplayAbility",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "GameplayAbility"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_3.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "K2Node_LatentAbilityCall",
+            "title": "PlayMontageAndWaitForEvent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TaskInstanceName",
+                "type": {
+                  "category": "name"
+                },
+                "default": "None"
+              },
+              {
+                "name": "MontageToPlay",
+                "type": {
+                  "category": "object",
+                  "class": "AnimMontage"
+                }
+              },
+              {
+                "name": "EventTags",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTagContainer"
+                },
+                "default": "(GameplayTags=((TagName=\"Event.Montage\")))"
+              },
+              {
+                "name": "Rate",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "StartSection",
+                "type": {
+                  "category": "name"
+                },
+                "default": "None"
+              },
+              {
+                "name": "bStopWhenAbilityEnds",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "AnimRootMotionTranslationScale",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AsyncTaskProxy",
+                "type": {
+                  "category": "object",
+                  "class": "RPGAbilityTask_PlayMontageAndWaitForEvent"
+                }
+              },
+              {
+                "name": "OnCompleted",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "OnBlendOut",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              },
+              {
+                "name": "OnInterrupted",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              },
+              {
+                "name": "OnCancelled",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              },
+              {
+                "name": "EventReceived",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_12.execute"
+                ]
+              },
+              {
+                "name": "EventTag",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTag"
+                },
+                "connections": [
+                  "node_12.ContainerTag"
+                ]
+              },
+              {
+                "name": "EventData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayEventData"
+                },
+                "connections": [
+                  "node_12.EventData"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "MontageToPlay",
+            "pins_out": [
+              {
+                "name": "MontageToPlay",
+                "type": {
+                  "category": "object",
+                  "class": "AnimMontage"
+                },
+                "connections": [
+                  "node_4.MontageToPlay"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "K2_EndAbility",
+            "owning_class": "GameplayAbility",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "GameplayAbility"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "K2Node_SpawnActorFromClass",
+            "title": "SpawnActor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Class",
+                "type": {
+                  "category": "class",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "SpawnTransform_Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "SpawnTransform_Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "SpawnTransform_Scale",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "1.000000,1.000000,1.000000"
+              },
+              {
+                "name": "CollisionHandlingOverride",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "AlwaysSpawn"
+              },
+              {
+                "name": "TransformScaleMethod",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "SelectDefaultAtRuntime"
+              },
+              {
+                "name": "Owner",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "EffectContainerSpec",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RPGGameplayEffectContainerSpec"
+                }
+              },
+              {
+                "name": "Instigator",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "BP_AbilityProjectileBase_C"
+                }
+              }
+            ]
+          },
+          {
+            "id": "node_8",
+            "type": "CallFunction",
+            "function": "K2_GetActorLocation",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_7.SpawnTransform_Location"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "CallFunction",
+            "function": "GetAvatarActorFromActorInfo",
+            "owning_class": "GameplayAbility",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "GameplayAbility"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_10.Object",
+                  "node_8.self",
+                  "node_15.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "Cast",
+            "title": "Cast To Pawn",
+            "pins_in": [
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "AsPawn",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                },
+                "connections": [
+                  "node_7.Instigator"
+                ]
+              },
+              {
+                "name": "bSuccess",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "TargetClass": "Pawn",
+              "TargetClassPath": "/Script/Engine.Pawn"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "VariableGet",
+            "variable": "ProjectileClass",
+            "pins_out": [
+              {
+                "name": "ProjectileClass",
+                "type": {
+                  "category": "class",
+                  "class": "BP_AbilityProjectileBase_C"
+                },
+                "connections": [
+                  "node_7.Class"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "CallFunction",
+            "function": "MakeEffectContainerSpec",
+            "owning_class": "RPGGameplayAbility",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGGameplayAbility"
+                }
+              },
+              {
+                "name": "ContainerTag",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTag"
+                }
+              },
+              {
+                "name": "EventData",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayEventData",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "OverrideGameplayLevel",
+                "type": {
+                  "category": "int"
+                },
+                "default": "-1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_13.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RPGGameplayEffectContainerSpec"
+                },
+                "connections": [
+                  "node_7.EffectContainerSpec",
+                  "node_14.ContainerSpec"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_14",
+            "type": "CallFunction",
+            "function": "DoesEffectContainerSpecHaveEffects",
+            "owning_class": "RPGBlueprintLibrary",
+            "pins_in": [
+              {
+                "name": "ContainerSpec",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RPGGameplayEffectContainerSpec",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_13.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "CallFunction",
+            "function": "K2_GetActorRotation",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "connections": [
+                  "node_7.SpawnTransform_Rotation"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "K2_ActivateAbility",
+            "type": "Event",
+            "tags": "activate ability"
+          },
+          {
+            "name": "K2_OnEndAbility",
+            "type": "Event",
+            "tags": "end ability"
+          }
+        ],
+        "tags": "activate ability end"
+      }
+    ],
+    "functions": [],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

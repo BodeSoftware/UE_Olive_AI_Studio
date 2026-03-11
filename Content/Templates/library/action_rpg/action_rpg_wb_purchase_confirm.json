@@ -1,0 +1,2435 @@
+{
+  "template_id": "action_rpg_wb_purchase_confirm",
+  "display_name": "WB_PurchaseConfirm",
+  "tags": "wb purchase confirm widget item clicked cancel quantity try fade animation icon slot button label",
+  "catalog_description": "WB_PurchaseConfirm: UserWidget-based blueprint with 1 function. Handles animation, widget, timer, and visual.",
+  "source_project": "action_rpg",
+  "depends_on": null,
+  "schema_version": "1.0",
+  "name": "WB_PurchaseConfirm",
+  "path": "/Game/Blueprints/WidgetBP/Inventory/WB_PurchaseConfirm.WB_PurchaseConfirm",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "UserWidget",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": true,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "ItemType",
+      "type": {
+        "category": "object",
+        "class": "RPGItem"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "OnClickedConfirm",
+      "type": {
+        "category": "multicastdelegate"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "OnClickedCancel",
+      "type": {
+        "category": "multicastdelegate"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Quantity",
+      "type": {
+        "category": "int"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ItemWidget",
+      "type": {
+        "category": "object",
+        "class": "WB_PurchaseItem_C"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 61,
+        "connection_count": 114,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "Construct",
+            "owning_class": "UserWidget",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "VariableGet",
+            "variable": "FadeAnimation",
+            "pins_out": [
+              {
+                "name": "FadeAnimation",
+                "type": {
+                  "category": "object",
+                  "class": "WidgetAnimation"
+                },
+                "connections": [
+                  "node_2.InAnimation"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "PlayAnimation",
+            "owning_class": "UserWidget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "UserWidget"
+                }
+              },
+              {
+                "name": "InAnimation",
+                "type": {
+                  "category": "object",
+                  "class": "WidgetAnimation"
+                }
+              },
+              {
+                "name": "StartAtTime",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "NumLoopsToPlay",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              },
+              {
+                "name": "PlayMode",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Forward"
+              },
+              {
+                "name": "PlaybackSpeed",
+                "type": {
+                  "category": "float"
+                },
+                "default": "2.000000"
+              },
+              {
+                "name": "bRestoreState",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_12.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "WidgetAnimationHandle"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "Event",
+            "function": "BndEvt__MainMenuButton_K2Node_ComponentBoundEvent_5_OnClicked__DelegateSignature",
+            "owning_class": "SKEL_WB_ButtonText_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_14.execute"
+                ]
+              },
+              {
+                "name": "EventDescription",
+                "type": {
+                  "category": "string"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "FadeAnimation",
+            "pins_out": [
+              {
+                "name": "FadeAnimation",
+                "type": {
+                  "category": "object",
+                  "class": "WidgetAnimation"
+                },
+                "connections": [
+                  "node_5.InAnimation",
+                  "node_20.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "PlayAnimation",
+            "owning_class": "UserWidget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "UserWidget"
+                }
+              },
+              {
+                "name": "InAnimation",
+                "type": {
+                  "category": "object",
+                  "class": "WidgetAnimation"
+                }
+              },
+              {
+                "name": "StartAtTime",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "NumLoopsToPlay",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              },
+              {
+                "name": "PlayMode",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Reverse"
+              },
+              {
+                "name": "PlaybackSpeed",
+                "type": {
+                  "category": "float"
+                },
+                "default": "2.000000"
+              },
+              {
+                "name": "bRestoreState",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "WidgetAnimationHandle"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "GetEndTime",
+            "owning_class": "WidgetAnimation",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WidgetAnimation"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_7.Duration"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "CallFunction",
+            "function": "Delay",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Duration",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.2"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_8.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "true"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "CallFunction",
+            "function": "RemoveFromParent",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "Event",
+            "function": "BndEvt__ConfirmButton_K2Node_ComponentBoundEvent_38_OnClicked__DelegateSignature",
+            "owning_class": "SKEL_WB_ButtonText_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_60.execute"
+                ]
+              },
+              {
+                "name": "EventDescription",
+                "type": {
+                  "category": "string"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "VariableGet",
+            "variable": "IconSlot",
+            "pins_out": [
+              {
+                "name": "IconSlot",
+                "type": {
+                  "category": "object",
+                  "class": "NamedSlot"
+                },
+                "connections": [
+                  "node_11.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "CallFunction",
+            "function": "AddChild",
+            "owning_class": "PanelWidget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "PanelWidget"
+                }
+              },
+              {
+                "name": "Content",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_47.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "PanelSlot"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "K2Node_CreateWidget",
+            "title": "Create WB Purchase Item Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Class",
+                "type": {
+                  "category": "class",
+                  "class": "UserWidget"
+                },
+                "default": "/Game/Blueprints/WidgetBP/Inventory/WB_PurchaseItem.WB_PurchaseItem_C"
+              },
+              {
+                "name": "OwningPlayer",
+                "type": {
+                  "category": "object",
+                  "class": "PlayerController"
+                }
+              },
+              {
+                "name": "Owning List",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InventoryList_C"
+                }
+              },
+              {
+                "name": "ItemClass",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_42.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "WB_PurchaseItem_C"
+                },
+                "connections": [
+                  "node_42.ItemWidget"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_13",
+            "type": "VariableGet",
+            "variable": "ItemType",
+            "pins_out": [
+              {
+                "name": "ItemType",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                },
+                "connections": [
+                  "node_12.ItemClass"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "K2Node_CallDelegate",
+            "title": "Call On Clicked Cancel",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_PurchaseConfirm_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_15",
+            "type": "VariableGet",
+            "variable": "ConfirmButton",
+            "pins_out": [
+              {
+                "name": "ConfirmButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_ButtonText_C"
+                },
+                "connections": [
+                  "node_19.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "VariableGet",
+            "variable": "ItemType",
+            "pins_out": [
+              {
+                "name": "ItemType",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                },
+                "connections": [
+                  "node_18.Item"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "CallFunction",
+            "function": "GetPlayerControllerBP",
+            "owning_class": "SKEL_BP_RPGFunctionLibrary_C",
+            "pins_out": [
+              {
+                "name": "Controller",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerController_C"
+                },
+                "connections": [
+                  "node_18.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "CallFunction",
+            "function": "CanPurchaseItem",
+            "owning_class": "SKEL_BP_PlayerController_C",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerController_C"
+                }
+              },
+              {
+                "name": "Item",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              },
+              {
+                "name": "Quantity",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_19.bInIsEnabled"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "CallFunction",
+            "function": "SetIsEnabled",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "bInIsEnabled",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_44.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "CustomEvent",
+            "function": "UpdateQuantitySelector",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_36.execute"
+                ]
+              },
+              {
+                "name": "UpdateValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_26.A"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_25",
+            "type": "VariableGet",
+            "variable": "Quantity",
+            "pins_out": [
+              {
+                "name": "Quantity",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_26.B"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "CallFunction",
+            "function": "Add_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_35.A",
+                  "node_55.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "VariableSet",
+            "variable": "Quantity",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Quantity",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_29.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_30.Value"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_28",
+            "type": "VariableGet",
+            "variable": "QuantityLabel",
+            "pins_out": [
+              {
+                "name": "QuantityLabel",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_29.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_29",
+            "type": "CallFunction",
+            "function": "SetText",
+            "owning_class": "TextBlock",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                }
+              },
+              {
+                "name": "InText",
+                "type": {
+                  "category": "text"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_40.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "CallFunction",
+            "function": "Conv_IntToText",
+            "owning_class": "KismetTextLibrary",
+            "pins_in": [
+              {
+                "name": "Value",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "bAlwaysSign",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "bUseGrouping",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "MinimumIntegralDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              },
+              {
+                "name": "MaximumIntegralDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "324"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_29.InText"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_31",
+            "type": "Event",
+            "function": "BndEvt__MoreButton_K2Node_ComponentBoundEvent_0_OnButtonClickedEvent__DelegateSignature",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_32.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_32",
+            "type": "CallFunction",
+            "function": "UpdateQuantitySelector",
+            "owning_class": "SKEL_WB_PurchaseConfirm_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "UpdateValue",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_33",
+            "type": "Event",
+            "function": "BndEvt__LessButton_K2Node_ComponentBoundEvent_1_OnButtonClickedEvent__DelegateSignature",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_34.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_34",
+            "type": "CallFunction",
+            "function": "UpdateQuantitySelector",
+            "owning_class": "SKEL_WB_PurchaseConfirm_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "UpdateValue",
+                "type": {
+                  "category": "int"
+                },
+                "default": "-1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_35",
+            "type": "CallFunction",
+            "function": "GreaterEqual_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_36.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_36",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_27.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_37",
+            "type": "VariableGet",
+            "variable": "Quantity",
+            "pins_out": [
+              {
+                "name": "Quantity",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_18.Quantity"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_38",
+            "type": "CustomEvent",
+            "function": "UpdateWindow",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_19.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_39",
+            "type": "CallFunction",
+            "function": "UpdateWindow",
+            "owning_class": "SKEL_WB_PurchaseConfirm_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_41.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_40",
+            "type": "CallFunction",
+            "function": "UpdateWindow",
+            "owning_class": "SKEL_WB_PurchaseConfirm_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_41",
+            "type": "CallFunction",
+            "function": "UpdateQuantitySelector",
+            "owning_class": "SKEL_WB_PurchaseConfirm_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "UpdateValue",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_56.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_42",
+            "type": "VariableSet",
+            "variable": "ItemWidget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ItemWidget",
+                "type": {
+                  "category": "object",
+                  "class": "WB_PurchaseItem_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_11.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "WB_PurchaseItem_C"
+                },
+                "connections": [
+                  "node_11.Content"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_43",
+            "type": "VariableGet",
+            "variable": "ItemWidget",
+            "pins_out": [
+              {
+                "name": "ItemWidget",
+                "type": {
+                  "category": "object",
+                  "class": "WB_PurchaseItem_C"
+                },
+                "connections": [
+                  "node_44.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_44",
+            "type": "CallFunction",
+            "function": "UpdatePriceLabel",
+            "owning_class": "SKEL_WB_PurchaseItem_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_PurchaseItem_C"
+                }
+              },
+              {
+                "name": "Quantity",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_45",
+            "type": "VariableGet",
+            "variable": "Quantity",
+            "pins_out": [
+              {
+                "name": "Quantity",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_44.Quantity"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_46",
+            "type": "VariableGet",
+            "variable": "QuantitySelectionBox",
+            "pins_out": [
+              {
+                "name": "QuantitySelectionBox",
+                "type": {
+                  "category": "object",
+                  "class": "HorizontalBox"
+                },
+                "connections": [
+                  "node_47.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_47",
+            "type": "CallFunction",
+            "function": "SetVisibility",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "InVisibility",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Visible"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_39.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_48",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Hidden"
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Visible"
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_47.InVisibility"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_49",
+            "type": "VariableGet",
+            "variable": "ItemType",
+            "pins_out": [
+              {
+                "name": "ItemType",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                },
+                "connections": [
+                  "node_50.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_50",
+            "type": "CallFunction",
+            "function": "IsConsumable",
+            "owning_class": "RPGItem",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_48.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_51",
+            "type": "CallFunction",
+            "function": "TryPurchaseItem",
+            "owning_class": "SKEL_WB_PurchaseConfirm_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "Quantity",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_53.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_52",
+            "type": "VariableGet",
+            "variable": "Quantity",
+            "pins_out": [
+              {
+                "name": "Quantity",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_51.Quantity"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_53",
+            "type": "K2Node_CallDelegate",
+            "title": "Call On Clicked Confirm",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_PurchaseConfirm_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_56",
+            "type": "CallFunction",
+            "function": "SetUserFocus",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "PlayerController",
+                "type": {
+                  "category": "object",
+                  "class": "PlayerController"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_57",
+            "type": "CallFunction",
+            "function": "GetPlayerControllerBP",
+            "owning_class": "SKEL_BP_RPGFunctionLibrary_C",
+            "pins_out": [
+              {
+                "name": "Controller",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerController_C"
+                },
+                "connections": [
+                  "node_56.PlayerController"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_58",
+            "type": "VariableGet",
+            "variable": "ConfirmButton",
+            "pins_out": [
+              {
+                "name": "ConfirmButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_ButtonText_C"
+                },
+                "connections": [
+                  "node_56.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_59",
+            "type": "VariableGet",
+            "variable": "ConfirmButton",
+            "pins_out": [
+              {
+                "name": "ConfirmButton",
+                "type": {
+                  "category": "object",
+                  "class": "WB_ButtonText_C"
+                },
+                "connections": [
+                  "node_60.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_60",
+            "type": "CallFunction",
+            "function": "SetIsEnabled",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "bInIsEnabled",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_51.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "Construct",
+            "type": "Event",
+            "tags": "construct"
+          },
+          {
+            "name": "BndEvt__MainMenuButton_K2Node_ComponentBoundEvent_5_OnClicked__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt main menu button component bound event"
+          },
+          {
+            "name": "BndEvt__ConfirmButton_K2Node_ComponentBoundEvent_38_OnClicked__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt confirm button component bound event clicked"
+          },
+          {
+            "name": "UpdateQuantitySelector",
+            "type": "CustomEvent",
+            "tags": "update quantity selector conditional"
+          },
+          {
+            "name": "BndEvt__MoreButton_K2Node_ComponentBoundEvent_0_OnButtonClickedEvent__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt more button component bound event clicked"
+          },
+          {
+            "name": "BndEvt__LessButton_K2Node_ComponentBoundEvent_1_OnButtonClickedEvent__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt less button component bound event clicked"
+          },
+          {
+            "name": "UpdateWindow",
+            "type": "CustomEvent",
+            "tags": "update window"
+          }
+        ],
+        "tags": "construct bnd evt main menu button component bound"
+      }
+    ],
+    "functions": [
+      {
+        "name": "TryPurchaseItem",
+        "graph_type": "Function",
+        "inputs": [
+          {
+            "name": "Quantity",
+            "display_name": "Quantity",
+            "type": {
+              "category": "int"
+            },
+            "default": "1"
+          }
+        ],
+        "access": "public",
+        "node_count": 7,
+        "connection_count": 16,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "TryPurchaseItem",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              },
+              {
+                "name": "Quantity",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_2.Quantity"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "GetPlayerControllerBP",
+            "owning_class": "SKEL_BP_RPGFunctionLibrary_C",
+            "pins_out": [
+              {
+                "name": "Controller",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerController_C"
+                },
+                "connections": [
+                  "node_2.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "PurchaseItem",
+            "owning_class": "SKEL_BP_PlayerController_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerController_C"
+                }
+              },
+              {
+                "name": "NewItem",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              },
+              {
+                "name": "Quantity",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_3.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_5.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "PrintString",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "InString",
+                "type": {
+                  "category": "string"
+                },
+                "default": "Can't touch this..."
+              },
+              {
+                "name": "bPrintToScreen",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "bPrintToLog",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "TextColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=1.000000,G=0.000000,B=0.000000,A=1.000000)"
+              },
+              {
+                "name": "Duration",
+                "type": {
+                  "category": "float"
+                },
+                "default": "2.000000"
+              },
+              {
+                "name": "Key",
+                "type": {
+                  "category": "name",
+                  "is_const": true
+                },
+                "default": "None"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "PrintString",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "InString",
+                "type": {
+                  "category": "string"
+                },
+                "default": "Purchase: Purchase was successful."
+              },
+              {
+                "name": "bPrintToScreen",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "bPrintToLog",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "TextColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=0.000000,G=1.000000,B=0.000000,A=1.000000)"
+              },
+              {
+                "name": "Duration",
+                "type": {
+                  "category": "float"
+                },
+                "default": "2.000000"
+              },
+              {
+                "name": "Key",
+                "type": {
+                  "category": "name",
+                  "is_const": true
+                },
+                "default": "None"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "VariableGet",
+            "variable": "ItemType",
+            "pins_out": [
+              {
+                "name": "ItemType",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                },
+                "connections": [
+                  "node_2.NewItem"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ],
+        "tags": "try purchase item player controller print debug",
+        "description": "TryPurchaseItem: Handles purchase item debug player."
+      }
+    ],
+    "macros": []
+  },
+  "event_dispatchers": [
+    {
+      "name": "OnClickedConfirm",
+      "category": "Default",
+      "tags": "clicked confirm"
+    },
+    {
+      "name": "OnClickedCancel",
+      "category": "Default",
+      "tags": "clicked cancel"
+    }
+  ],
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

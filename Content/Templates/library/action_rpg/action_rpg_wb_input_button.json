@@ -1,0 +1,3738 @@
+{
+  "template_id": "action_rpg_wb_input_button",
+  "display_name": "WB_InputButton",
+  "tags": "wb button widget clicked item consumable skill icon brush padding slot reference cooldown bar ready",
+  "catalog_description": "WB_InputButton: UserWidget-based blueprint with no functions. Handles animation, timer, mana, and visual.",
+  "source_project": "action_rpg",
+  "depends_on": null,
+  "schema_version": "1.0",
+  "name": "WB_InputButton",
+  "path": "/Game/Blueprints/WidgetBP/HUD/WB_InputButton.WB_InputButton",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "UserWidget",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": true,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "OnClicked",
+      "type": {
+        "category": "multicastdelegate"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "ItemType",
+      "type": {
+        "category": "struct",
+        "struct_name": "PrimaryAssetType"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "IsConsumable?",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "IsSkill?",
+      "type": {
+        "category": "bool"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "IconBrush",
+      "type": {
+        "category": "struct",
+        "struct_name": "SlateBrush"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "IconPadding",
+      "type": {
+        "category": "struct",
+        "struct_name": "Margin"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "DisabledBrush",
+      "type": {
+        "category": "struct",
+        "struct_name": "SlateBrush"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "SlotItemReference",
+      "type": {
+        "category": "object",
+        "class": "RPGItem"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 116,
+        "connection_count": 232,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "PreConstruct",
+            "owning_class": "UserWidget",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_6.execute"
+                ]
+              },
+              {
+                "name": "IsDesignTime",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "Event",
+            "function": "Construct",
+            "owning_class": "UserWidget",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_52.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "Event",
+            "function": "BndEvt__InputButton_K2Node_ComponentBoundEvent_0_OnButtonClickedEvent__DelegateSignature",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_3",
+            "type": "K2Node_CallDelegate",
+            "title": "Call On Clicked",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InputButton_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_4",
+            "type": "VariableGet",
+            "variable": "SkillCooldownBar",
+            "pins_out": [
+              {
+                "name": "SkillCooldownBar",
+                "type": {
+                  "category": "object",
+                  "class": "ProgressBar"
+                },
+                "connections": [
+                  "node_6.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "SkillReadyImage",
+            "pins_out": [
+              {
+                "name": "SkillReadyImage",
+                "type": {
+                  "category": "object",
+                  "class": "Image"
+                },
+                "connections": [
+                  "node_6.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "CallFunction",
+            "function": "SetVisibility",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "InVisibility",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Visible"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_10.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "VariableGet",
+            "variable": "IsSkill?",
+            "pins_out": [
+              {
+                "name": "IsSkill?",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_8.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Collapsed"
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Visible"
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_6.InVisibility"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "ButtonIcon",
+            "pins_out": [
+              {
+                "name": "ButtonIcon",
+                "type": {
+                  "category": "object",
+                  "class": "Image"
+                },
+                "connections": [
+                  "node_10.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "CallFunction",
+            "function": "SetBrush",
+            "owning_class": "Image",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Image"
+                }
+              },
+              {
+                "name": "InBrush",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_20.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "VariableGet",
+            "variable": "IconBrush",
+            "pins_out": [
+              {
+                "name": "IconBrush",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush"
+                },
+                "connections": [
+                  "node_22.Option 1"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Collapsed"
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Visible"
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_13.InVisibility"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_13",
+            "type": "CallFunction",
+            "function": "SetVisibility",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "InVisibility",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Visible"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "VariableGet",
+            "variable": "IsConsumable?",
+            "pins_out": [
+              {
+                "name": "IsConsumable?",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_12.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_15",
+            "type": "VariableGet",
+            "variable": "ConsumablePanel",
+            "pins_out": [
+              {
+                "name": "ConsumablePanel",
+                "type": {
+                  "category": "object",
+                  "class": "Border"
+                },
+                "connections": [
+                  "node_13.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "VariableGet",
+            "variable": "ButtonIcon",
+            "pins_out": [
+              {
+                "name": "ButtonIcon",
+                "type": {
+                  "category": "object",
+                  "class": "Image"
+                },
+                "connections": [
+                  "node_18.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "VariableGet",
+            "variable": "IconPadding",
+            "pins_out": [
+              {
+                "name": "IconPadding",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Margin"
+                },
+                "connections": [
+                  "node_20.InPadding"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "VariableGet",
+            "variable": "Slot",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Slot",
+                "type": {
+                  "category": "object",
+                  "class": "PanelSlot"
+                },
+                "connections": [
+                  "node_19.Object"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "Widget"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "Cast",
+            "title": "Cast To ButtonSlot",
+            "pins_in": [
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "AsButton Slot",
+                "type": {
+                  "category": "object",
+                  "class": "ButtonSlot"
+                },
+                "connections": [
+                  "node_20.self"
+                ]
+              },
+              {
+                "name": "bSuccess",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "TargetClass": "ButtonSlot",
+              "TargetClassPath": "/Script/UMG.ButtonSlot"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "CallFunction",
+            "function": "SetPadding",
+            "owning_class": "ButtonSlot",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ButtonSlot"
+                }
+              },
+              {
+                "name": "InPadding",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Margin"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_13.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_21",
+            "type": "VariableGet",
+            "variable": "DisabledBrush",
+            "pins_out": [
+              {
+                "name": "DisabledBrush",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush"
+                },
+                "connections": [
+                  "node_22.Option 0"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_22",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "connections": [
+                  "node_10.InBrush"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_23",
+            "type": "CallFunction",
+            "function": "GetIsEnabled",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_22.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_24",
+            "type": "VariableGet",
+            "variable": "CooldownAnim",
+            "pins_out": [
+              {
+                "name": "CooldownAnim",
+                "type": {
+                  "category": "object",
+                  "class": "WidgetAnimation"
+                },
+                "connections": [
+                  "node_25.InAnimation"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_25",
+            "type": "CallFunction",
+            "function": "PlayAnimation",
+            "owning_class": "UserWidget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "UserWidget"
+                }
+              },
+              {
+                "name": "InAnimation",
+                "type": {
+                  "category": "object",
+                  "class": "WidgetAnimation"
+                }
+              },
+              {
+                "name": "StartAtTime",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "NumLoopsToPlay",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              },
+              {
+                "name": "PlayMode",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Forward"
+              },
+              {
+                "name": "PlaybackSpeed",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "bRestoreState",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_27.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "WidgetAnimationHandle"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "CallFunction",
+            "function": "Divide_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_25.PlaybackSpeed"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "CallFunction",
+            "function": "Delay",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Duration",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.2"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_30.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "true"
+            }
+          },
+          {
+            "id": "node_29",
+            "type": "CallFunction",
+            "function": "SetIsEnabled",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "bInIsEnabled",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_25.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "CallFunction",
+            "function": "SetIsEnabled",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "bInIsEnabled",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_54.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_31",
+            "type": "CustomEvent",
+            "function": "SkillCooldown",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_58.execute"
+                ]
+              },
+              {
+                "name": "TimeInSeconds",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_60.InputPin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_32",
+            "type": "CustomEvent",
+            "function": "UpdateButton",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_93.execute"
+                ]
+              },
+              {
+                "name": "Slot Number",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_35.SlotNumber"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_33",
+            "type": "CallFunction",
+            "function": "GetPlayerControllerBP",
+            "owning_class": "SKEL_BP_RPGFunctionLibrary_C",
+            "pins_out": [
+              {
+                "name": "Controller",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerController_C"
+                },
+                "connections": [
+                  "node_34.self",
+                  "node_44.InputPin"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_34",
+            "type": "CallFunction",
+            "function": "GetSlottedItem",
+            "owning_class": "RPGPlayerControllerBase",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGPlayerControllerBase"
+                }
+              },
+              {
+                "name": "ItemSlot",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RPGItemSlot"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                },
+                "connections": [
+                  "node_37.self",
+                  "node_36.Object",
+                  "node_45.InputPin",
+                  "node_93.SlotItemReference"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_35",
+            "type": "K2Node_MakeStruct",
+            "title": "Make RPGItem Slot",
+            "pins_in": [
+              {
+                "name": "ItemType",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PrimaryAssetType"
+                },
+                "default": "None"
+              },
+              {
+                "name": "SlotNumber",
+                "type": {
+                  "category": "int"
+                },
+                "default": "-1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "RPGItemSlot",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RPGItemSlot"
+                },
+                "connections": [
+                  "node_34.ItemSlot"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_36",
+            "type": "CallFunction",
+            "function": "IsValid",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object",
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_66.B"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_37",
+            "type": "VariableGet",
+            "variable": "ItemIcon",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ItemIcon",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush"
+                },
+                "connections": [
+                  "node_38.Option 1"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "RPGItem"
+            }
+          },
+          {
+            "id": "node_38",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "connections": [
+                  "node_40.InBrush"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_39",
+            "type": "CallFunction",
+            "function": "SetIsEnabled",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "bInIsEnabled",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_40.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_40",
+            "type": "CallFunction",
+            "function": "SetBrush",
+            "owning_class": "Image",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Image"
+                }
+              },
+              {
+                "name": "InBrush",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_41.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_41",
+            "type": "CallFunction",
+            "function": "SetText",
+            "owning_class": "TextBlock",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                }
+              },
+              {
+                "name": "InText",
+                "type": {
+                  "category": "text"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_42",
+            "type": "CallFunction",
+            "function": "Conv_IntToText",
+            "owning_class": "KismetTextLibrary",
+            "pins_in": [
+              {
+                "name": "Value",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "bAlwaysSign",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "bUseGrouping",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "MinimumIntegralDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              },
+              {
+                "name": "MaximumIntegralDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "324"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_41.InText"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_43",
+            "type": "CallFunction",
+            "function": "GetInventoryItemCount",
+            "owning_class": "RPGPlayerControllerBase",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGPlayerControllerBase"
+                }
+              },
+              {
+                "name": "Item",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_42.Value"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_47",
+            "type": "VariableGet",
+            "variable": "ButtonIcon",
+            "pins_out": [
+              {
+                "name": "ButtonIcon",
+                "type": {
+                  "category": "object",
+                  "class": "Image"
+                },
+                "connections": [
+                  "node_40.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_48",
+            "type": "VariableGet",
+            "variable": "ConsumableLabel",
+            "pins_out": [
+              {
+                "name": "ConsumableLabel",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_41.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_49",
+            "type": "VariableGet",
+            "variable": "DisabledBrush",
+            "pins_out": [
+              {
+                "name": "DisabledBrush",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush"
+                },
+                "connections": [
+                  "node_38.Option 0"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_50",
+            "type": "VariableGet",
+            "variable": "ItemType",
+            "pins_out": [
+              {
+                "name": "ItemType",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PrimaryAssetType"
+                },
+                "connections": [
+                  "node_35.ItemType"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_51",
+            "type": "VariableGet",
+            "variable": "IsSkill?",
+            "pins_out": [
+              {
+                "name": "IsSkill?",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_56.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_52",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_74.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_53",
+            "type": "VariableGet",
+            "variable": "SkillReadyImage",
+            "pins_out": [
+              {
+                "name": "SkillReadyImage",
+                "type": {
+                  "category": "object",
+                  "class": "Image"
+                },
+                "connections": [
+                  "node_54.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_54",
+            "type": "CallFunction",
+            "function": "SetVisibility",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "InVisibility",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Visible"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_55",
+            "type": "CallFunction",
+            "function": "GetIsEnabled",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_56.B"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_56",
+            "type": "CallFunction",
+            "function": "BooleanAND",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_52.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_57",
+            "type": "VariableGet",
+            "variable": "SkillReadyImage",
+            "pins_out": [
+              {
+                "name": "SkillReadyImage",
+                "type": {
+                  "category": "object",
+                  "class": "Image"
+                },
+                "connections": [
+                  "node_58.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_58",
+            "type": "CallFunction",
+            "function": "SetVisibility",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "InVisibility",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Hidden"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_29.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_61",
+            "type": "CallFunction",
+            "function": "GetPlayerCharacterBP",
+            "owning_class": "SKEL_BP_RPGFunctionLibrary_C",
+            "pins_out": [
+              {
+                "name": "MyCharacter",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                },
+                "connections": [
+                  "node_62.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_62",
+            "type": "CallFunction",
+            "function": "GetMana",
+            "owning_class": "RPGCharacterBase",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGCharacterBase"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_63.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_63",
+            "type": "CallFunction",
+            "function": "Greater_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_67.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_64",
+            "type": "VariableGet",
+            "variable": "IsSkill?",
+            "pins_out": [
+              {
+                "name": "IsSkill?",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_65.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_65",
+            "type": "CallFunction",
+            "function": "Not_PreBool",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_67.B"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_66",
+            "type": "CallFunction",
+            "function": "BooleanAND",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_39.bInIsEnabled",
+                  "node_38.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_67",
+            "type": "CallFunction",
+            "function": "BooleanOR",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_66.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_68",
+            "type": "CallFunction",
+            "function": "GetPlayerCharacterBP",
+            "owning_class": "SKEL_BP_RPGFunctionLibrary_C",
+            "pins_out": [
+              {
+                "name": "MyCharacter",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                },
+                "connections": [
+                  "node_74.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_69",
+            "type": "CallFunction",
+            "function": "GetCooldownRemainingForTag",
+            "owning_class": "RPGCharacterBase",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGCharacterBase"
+                }
+              },
+              {
+                "name": "CooldownTags",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "GameplayTagContainer"
+                },
+                "default": "(GameplayTags=((TagName=\"Cooldown.Skill\")))"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_70.execute"
+                ]
+              },
+              {
+                "name": "TimeRemaining",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_71.InputPin"
+                ]
+              },
+              {
+                "name": "CooldownDuration",
+                "type": {
+                  "category": "float"
+                }
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_70.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_70",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_72.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_72",
+            "type": "CallFunction",
+            "function": "SkillCooldown",
+            "owning_class": "SKEL_WB_InputButton_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              },
+              {
+                "name": "TimeInSeconds",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_74",
+            "type": "K2Node_AddDelegate",
+            "title": "Bind Event to On Skill Attack",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_Character_C"
+                }
+              },
+              {
+                "name": "Delegate",
+                "type": {
+                  "category": "delegate",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          },
+          {
+            "id": "node_75",
+            "type": "CustomEvent",
+            "function": "CooldownAnimation",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                },
+                "connections": [
+                  "node_74.Delegate"
+                ]
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_69.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_76",
+            "type": "CallFunction",
+            "function": "GetPlayerCharacterBP",
+            "owning_class": "SKEL_BP_RPGFunctionLibrary_C",
+            "pins_out": [
+              {
+                "name": "MyCharacter",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                },
+                "connections": [
+                  "node_69.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_77",
+            "type": "CustomEvent",
+            "function": "UpdateWeapon",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_86.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_78",
+            "type": "CallFunction",
+            "function": "IsValid",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object",
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_83.bInIsEnabled",
+                  "node_81.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_79",
+            "type": "VariableGet",
+            "variable": "ItemIcon",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ItemIcon",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush"
+                },
+                "connections": [
+                  "node_81.Option 1"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "RPGItem"
+            }
+          },
+          {
+            "id": "node_80",
+            "type": "VariableGet",
+            "variable": "DisabledBrush",
+            "pins_out": [
+              {
+                "name": "DisabledBrush",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush"
+                },
+                "connections": [
+                  "node_81.Option 0"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_81",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush",
+                  "is_reference": true,
+                  "is_const": true
+                },
+                "connections": [
+                  "node_84.InBrush"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_82",
+            "type": "VariableGet",
+            "variable": "ButtonIcon",
+            "pins_out": [
+              {
+                "name": "ButtonIcon",
+                "type": {
+                  "category": "object",
+                  "class": "Image"
+                },
+                "connections": [
+                  "node_84.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_83",
+            "type": "CallFunction",
+            "function": "SetIsEnabled",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "bInIsEnabled",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_84.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_84",
+            "type": "CallFunction",
+            "function": "SetBrush",
+            "owning_class": "Image",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Image"
+                }
+              },
+              {
+                "name": "InBrush",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateBrush",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_85",
+            "type": "CallFunction",
+            "function": "GetOwningPlayerPawn",
+            "owning_class": "UserWidget",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "UserWidget"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                },
+                "connections": [
+                  "node_86.Object"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_86",
+            "type": "Cast",
+            "title": "Cast To BP_PlayerCharacter",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_83.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AsBP Player Character",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                },
+                "connections": [
+                  "node_87.self"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "BP_PlayerCharacter_C",
+              "TargetClassPath": "/Game/Blueprints/BP_PlayerCharacter.BP_PlayerCharacter_C"
+            }
+          },
+          {
+            "id": "node_87",
+            "type": "VariableGet",
+            "variable": "CurrentWeapon",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_Character_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "CurrentWeapon",
+                "type": {
+                  "category": "object",
+                  "class": "WeaponActor_C"
+                },
+                "connections": [
+                  "node_88.self",
+                  "node_78.Object",
+                  "node_115.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "BP_Character_C"
+            }
+          },
+          {
+            "id": "node_88",
+            "type": "VariableGet",
+            "variable": "RPGWeaponItem",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WeaponActor_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "RPGWeaponItem",
+                "type": {
+                  "category": "object",
+                  "class": "RPGWeaponItem"
+                },
+                "connections": [
+                  "node_79.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "WeaponActor_C"
+            }
+          },
+          {
+            "id": "node_89",
+            "type": "CallFunction",
+            "function": "IsConsumable",
+            "owning_class": "RPGItem",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_90.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_90",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Collapsed"
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Visible"
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_91.InVisibility"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_91",
+            "type": "CallFunction",
+            "function": "SetVisibility",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "InVisibility",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Visible"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_92",
+            "type": "VariableGet",
+            "variable": "ConsumablePanel",
+            "pins_out": [
+              {
+                "name": "ConsumablePanel",
+                "type": {
+                  "category": "object",
+                  "class": "Border"
+                },
+                "connections": [
+                  "node_91.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_93",
+            "type": "VariableSet",
+            "variable": "SlotItemReference",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SlotItemReference",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_39.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_94",
+            "type": "VariableGet",
+            "variable": "SlotItemReference",
+            "pins_out": [
+              {
+                "name": "SlotItemReference",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                },
+                "connections": [
+                  "node_89.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_96",
+            "type": "VariableGet",
+            "variable": "SlotItemReference",
+            "pins_out": [
+              {
+                "name": "SlotItemReference",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                },
+                "connections": [
+                  "node_97.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_97",
+            "type": "VariableGet",
+            "variable": "MaxCount",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "MaxCount",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_98.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "RPGItem"
+            }
+          },
+          {
+            "id": "node_98",
+            "type": "CallFunction",
+            "function": "Greater_IntInt",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_99.Index"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_99",
+            "type": "K2Node_Select",
+            "title": "Select",
+            "pins_in": [
+              {
+                "name": "Option 0",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Collapsed"
+              },
+              {
+                "name": "Option 1",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Visible"
+              },
+              {
+                "name": "Index",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "byte"
+                },
+                "connections": [
+                  "node_101.InVisibility"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_100",
+            "type": "VariableGet",
+            "variable": "HealthBar",
+            "pins_out": [
+              {
+                "name": "HealthBar",
+                "type": {
+                  "category": "object",
+                  "class": "HorizontalBox"
+                },
+                "connections": [
+                  "node_101.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_101",
+            "type": "CallFunction",
+            "function": "SetVisibility",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              },
+              {
+                "name": "InVisibility",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Visible"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_109.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_102",
+            "type": "VariableGet",
+            "variable": "HealthLabel",
+            "pins_out": [
+              {
+                "name": "HealthLabel",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_110.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_103",
+            "type": "VariableGet",
+            "variable": "SlotItemReference",
+            "pins_out": [
+              {
+                "name": "SlotItemReference",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                },
+                "connections": [
+                  "node_104.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_104",
+            "type": "VariableGet",
+            "variable": "MaxCount",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "MaxCount",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_113.InInt"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "RPGItem"
+            }
+          },
+          {
+            "id": "node_105",
+            "type": "CallFunction",
+            "function": "GetInventoryItemCount",
+            "owning_class": "RPGPlayerControllerBase",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "RPGPlayerControllerBase"
+                }
+              },
+              {
+                "name": "Item",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_111.Value",
+                  "node_112.InInt"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_106",
+            "type": "CallFunction",
+            "function": "GetPlayerControllerBP",
+            "owning_class": "SKEL_BP_RPGFunctionLibrary_C",
+            "pins_out": [
+              {
+                "name": "Controller",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerController_C"
+                },
+                "connections": [
+                  "node_105.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_107",
+            "type": "VariableGet",
+            "variable": "SlotItemReference",
+            "pins_out": [
+              {
+                "name": "SlotItemReference",
+                "type": {
+                  "category": "object",
+                  "class": "RPGItem"
+                },
+                "connections": [
+                  "node_105.Item"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_108",
+            "type": "VariableGet",
+            "variable": "HealthProgressBar",
+            "pins_out": [
+              {
+                "name": "HealthProgressBar",
+                "type": {
+                  "category": "object",
+                  "class": "ProgressBar"
+                },
+                "connections": [
+                  "node_109.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_109",
+            "type": "CallFunction",
+            "function": "SetPercent",
+            "owning_class": "ProgressBar",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ProgressBar"
+                }
+              },
+              {
+                "name": "InPercent",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_110.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_110",
+            "type": "CallFunction",
+            "function": "SetText",
+            "owning_class": "TextBlock",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                }
+              },
+              {
+                "name": "InText",
+                "type": {
+                  "category": "text"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_111",
+            "type": "CallFunction",
+            "function": "Conv_IntToText",
+            "owning_class": "KismetTextLibrary",
+            "pins_in": [
+              {
+                "name": "Value",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "bAlwaysSign",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "bUseGrouping",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "MinimumIntegralDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              },
+              {
+                "name": "MaximumIntegralDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "324"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_110.InText"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_112",
+            "type": "CallFunction",
+            "function": "Conv_IntToDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "InInt",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_114.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_113",
+            "type": "CallFunction",
+            "function": "Conv_IntToDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "InInt",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_114.B"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_114",
+            "type": "CallFunction",
+            "function": "Divide_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_109.InPercent"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_115",
+            "type": "VariableGet",
+            "variable": "Slot",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WeaponActor_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Slot",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "RPGItemSlot"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "WeaponActor_C"
+            }
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "PreConstruct",
+            "type": "Event",
+            "tags": "pre construct"
+          },
+          {
+            "name": "Construct",
+            "type": "Event",
+            "tags": "construct"
+          },
+          {
+            "name": "BndEvt__InputButton_K2Node_ComponentBoundEvent_0_OnButtonClickedEvent__DelegateSignature",
+            "type": "Event",
+            "tags": "bnd evt button component bound event clicked delegate"
+          },
+          {
+            "name": "SkillCooldown",
+            "type": "CustomEvent",
+            "tags": "skill cooldown"
+          },
+          {
+            "name": "UpdateButton",
+            "type": "CustomEvent",
+            "tags": "update button"
+          },
+          {
+            "name": "CooldownAnimation",
+            "type": "CustomEvent",
+            "tags": "cooldown animation"
+          },
+          {
+            "name": "UpdateWeapon",
+            "type": "CustomEvent",
+            "tags": "update weapon"
+          }
+        ],
+        "tags": "pre construct bnd evt button component bound event"
+      }
+    ],
+    "functions": [],
+    "macros": []
+  },
+  "event_dispatchers": [
+    {
+      "name": "OnClicked",
+      "category": "Default",
+      "tags": "clicked"
+    }
+  ],
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

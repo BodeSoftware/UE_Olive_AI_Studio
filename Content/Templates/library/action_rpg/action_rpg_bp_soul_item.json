@@ -1,0 +1,897 @@
+{
+  "template_id": "action_rpg_bp_soul_item",
+  "display_name": "BP_SoulItem",
+  "tags": "soul item actor initial location sphere summon startup component player character movement physics spawning timer",
+  "catalog_description": "BP_SoulItem: Actor-based blueprint with 1 function. Handles movement, spawning, timer, and physics.",
+  "source_project": "action_rpg",
+  "depends_on": null,
+  "schema_version": "1.0",
+  "name": "BP_SoulItem",
+  "path": "/Game/Blueprints/BP_SoulItem.BP_SoulItem",
+  "type": "Normal",
+  "parent_class": {
+    "name": "Actor",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "InitialActorLocation",
+      "type": {
+        "category": "struct",
+        "struct_name": "Vector"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Sphere",
+      "type": {
+        "category": "object",
+        "class": "SphereComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "P_Summon_Parent_Startup",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystemComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "components": {
+    "root": "DefaultSceneRoot",
+    "tree": [
+      {
+        "name": "Sphere",
+        "class": "SphereComponent",
+        "children": [
+          {
+            "name": "P_Summon_Parent_Startup",
+            "class": "ParticleSystemComponent",
+            "properties": {
+              "Template": "/Script/Engine.ParticleSystem'/Game/Effects/FX_Ability/Summon/P_Summon_Parent_Startup.P_Summon_Parent_Startup'",
+              "bAllowRecycling": "True",
+              "RelativeScale3D": "(X=0.500000,Y=0.500000,Z=0.500000)",
+              "PrimaryComponentTick": "(TickGroup=TG_DuringPhysics,bCanEverTick=True)"
+            }
+          }
+        ],
+        "properties": {
+          "SphereRadius": "24.000000",
+          "bUseSystemDefaultObstacleAreaClass": "False",
+          "AreaClassOverride": "/Script/CoreUObject.Class'/Script/NavigationSystem.NavArea_Obstacle'",
+          "BodyInstance": "(PositionSolverIterationCount=8,VelocitySolverIterationCount=2,ProjectionSolverIterationCount=1,ObjectType=ECC_WorldDynamic,CollisionEnabled=QueryAndPhysics,bAllowPartialIslandSleep=True,bLockTranslation=True,bLockRotation=True,bInterpolateWhenSubStepping=True,bInertiaConditioning=True,SolverAsyncDeltaTime=0.016667,CollisionProfileName=\"Custom\",CollisionResponses=(ResponseArray=((Channel=\"Pawn\",Response=ECR_Ignore),(Channel=\"Camera\",Response=ECR_Ignore),(Channel=\"WorldDynamic\",Response=ECR_Ignore),(Channel=\"Vehicle\",Response=ECR_Ignore),(Channel=\"Destructible\",Response=ECR_Ignore))),MassInKgOverride=2.000000,LinearDamping=0.010000,CustomDOFPlaneNormal=(X=0.000000,Y=0.000000,Z=0.000000),COMNudge=(X=0.000000,Y=0.000000,Z=0.000000),MassScale=1.000000,InertiaTensorScale=(X=1.000000,Y=1.000000,Z=1.000000),WalkableSlopeOverride=(),MaxAngularVelocity=3600.000000,CustomSleepThresholdMultiplier=1.000000,StabilizationThresholdMultiplier=1.000000,bSimulatePhysics=True,bOverrideMass=True,bEnableGravity=True,bAutoWeld=True,bStartAwake=True,bUpdateMassWhenScaleChanges=True)"
+        }
+      }
+    ]
+  },
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 19,
+        "connection_count": 36,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "CallFunction",
+            "function": "K2_DestroyActor",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "K2_GetActorLocation",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_9.B"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "GetPlayerControllerBP",
+            "owning_class": "SKEL_BP_RPGFunctionLibrary_C",
+            "pins_out": [
+              {
+                "name": "Controller",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerController_C"
+                },
+                "connections": [
+                  "node_3.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "AddSouls",
+            "owning_class": "SKEL_BP_PlayerController_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerController_C"
+                }
+              },
+              {
+                "name": "Amount",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "GetPlayerControllerBP",
+            "owning_class": "SKEL_BP_RPGFunctionLibrary_C",
+            "pins_out": [
+              {
+                "name": "Controller",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerController_C"
+                },
+                "connections": [
+                  "node_5.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "VariableGet",
+            "variable": "PlayerCharacter",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerController_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "PlayerCharacter",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                },
+                "connections": [
+                  "node_1.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "BP_PlayerController_C"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "Event",
+            "function": "ReceiveBeginPlay",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_7.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "CallFunction",
+            "function": "Delay",
+            "owning_class": "KismetSystemLibrary",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Duration",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.2"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_12.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "true"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "Timeline",
+            "function": "MoveToPlayer",
+            "pins_in": [
+              {
+                "name": "Play",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "PlayFromStart",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Stop",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Reverse",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReverseFromEnd",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SetNewTime",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "NewTime",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Update",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_10.execute"
+                ]
+              },
+              {
+                "name": "Finished",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_15.execute"
+                ]
+              },
+              {
+                "name": "Direction",
+                "type": {
+                  "category": "byte"
+                }
+              },
+              {
+                "name": "Alpha",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_9.Alpha"
+                ]
+              }
+            ],
+            "properties": {
+              "TimelineName": "MoveToPlayer",
+              "bAutoPlay": "false",
+              "bLoop": "false",
+              "bReplicated": "false",
+              "bIgnoreTimeDilation": "false"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "CallFunction",
+            "function": "VLerp",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "Alpha",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_10.NewLocation"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "CallFunction",
+            "function": "K2_SetActorLocation",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "NewLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "bSweep",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "bTeleport",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "SweepHitResult",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "HitResult"
+                }
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "VariableGet",
+            "variable": "Sphere",
+            "pins_out": [
+              {
+                "name": "Sphere",
+                "type": {
+                  "category": "object",
+                  "class": "SphereComponent"
+                },
+                "connections": [
+                  "node_12.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "CallFunction",
+            "function": "SetSimulatePhysics",
+            "owning_class": "PrimitiveComponent",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "PrimitiveComponent"
+                }
+              },
+              {
+                "name": "bSimulate",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_17.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "CallFunction",
+            "function": "RandomFloatInRange",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "Min",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.500000"
+              },
+              {
+                "name": "Max",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_7.Duration"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "CustomEvent",
+            "function": "FinishCollectItem",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_0.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_15",
+            "type": "CallFunction",
+            "function": "FinishCollectItem",
+            "owning_class": "SKEL_BP_SoulItem_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "self"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "CallFunction",
+            "function": "K2_GetActorLocation",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_17.InitialActorLocation"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "VariableSet",
+            "variable": "InitialActorLocation",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "InitialActorLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_8.Play"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "VariableGet",
+            "variable": "InitialActorLocation",
+            "pins_out": [
+              {
+                "name": "InitialActorLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_9.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "ReceiveBeginPlay",
+            "type": "Event",
+            "tags": "receive begin play"
+          },
+          {
+            "name": "FinishCollectItem",
+            "type": "CustomEvent",
+            "tags": "finish collect item"
+          }
+        ],
+        "tags": "receive begin play finish collect item"
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 1,
+        "connection_count": 0,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

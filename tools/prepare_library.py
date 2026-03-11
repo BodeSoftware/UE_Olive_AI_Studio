@@ -1,11 +1,14 @@
 """
 prepare_library.py
 
-Reads the CombatFS manifest and prepares library-ready template JSON files
+Reads a project manifest and prepares library-ready template JSON files
 by injecting metadata fields (template_id, display_name, source_project,
 depends_on) at the top of each source JSON object.
 
-Output directory: Content/Templates/library/combatfs/
+Usage: python prepare_library.py [project_name]
+  project_name defaults to "combatfs" if not provided.
+
+Output directory: Content/Templates/library/{project_name}/
 """
 
 import json
@@ -15,13 +18,16 @@ import time
 from collections import OrderedDict
 from pathlib import Path
 
+# ----- Project name from CLI -----
+PROJECT = sys.argv[1] if len(sys.argv) > 1 else "combatfs"
+
 # ----- Paths -----
 PLUGIN_ROOT = Path(r"B:\Unreal Projects\UE_Olive_AI_Toolkit\Plugins\UE_Olive_AI_Studio")
-MANIFEST_PATH = PLUGIN_ROOT / "tools" / "combatfs_manifest.json"
-SOURCE_DIR = PLUGIN_ROOT / "sample_project_templates" / "combatfs" / "blueprints"
-OUTPUT_DIR = PLUGIN_ROOT / "Content" / "Templates" / "library" / "combatfs"
+MANIFEST_PATH = PLUGIN_ROOT / "tools" / f"{PROJECT}_manifest.json"
+SOURCE_DIR = PLUGIN_ROOT / "sample_project_templates" / PROJECT
+OUTPUT_DIR = PLUGIN_ROOT / "Content" / "Templates" / "library" / PROJECT
 
-SOURCE_PROJECT = "CombatFS"
+SOURCE_PROJECT = PROJECT
 
 
 def main():

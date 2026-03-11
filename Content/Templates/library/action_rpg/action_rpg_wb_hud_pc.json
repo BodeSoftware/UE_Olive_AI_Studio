@@ -1,0 +1,1967 @@
+{
+  "template_id": "action_rpg_wb_hud_pc",
+  "display_name": "WB_HUD_PC",
+  "tags": "wb hud pc widget player character time seconds animation bonus anim label hp progress bar",
+  "catalog_description": "WB_HUD_PC: UserWidget-based blueprint with no functions. Handles animation, audio, mana, and visual.",
+  "source_project": "action_rpg",
+  "depends_on": null,
+  "schema_version": "1.0",
+  "name": "WB_HUD_PC",
+  "path": "/Game/Blueprints/WidgetBP/HUD/WB_HUD_PC.WB_HUD_PC",
+  "type": "Unknown",
+  "parent_class": {
+    "name": "UserWidget",
+    "source": "cpp"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": false,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": true,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "interfaces": [
+    {
+      "name": "iHUD_C",
+      "path": "/Game/Blueprints/WidgetBP/HUD/iHUD.iHUD",
+      "required_functions": [
+        "SetAutoplayEnabled",
+        "SetMana",
+        "SetHP",
+        "UpdateIcons",
+        "AddBonusTime",
+        "UpdateTimer",
+        "ExecuteUbergraph"
+      ]
+    }
+  ],
+  "variables": [
+    {
+      "name": "PlayerCharacter",
+      "type": {
+        "category": "object",
+        "class": "BP_PlayerCharacter_C"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "TimeSeconds",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "self",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 52,
+        "connection_count": 97,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "Construct",
+            "owning_class": "UserWidget",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "Cast",
+            "title": "Cast To BP_PlayerCharacter",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Object",
+                "type": {
+                  "category": "object",
+                  "class": "Object"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              },
+              {
+                "name": "CastFailed",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "AsBP Player Character",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                },
+                "connections": [
+                  "node_2.PlayerCharacter"
+                ]
+              }
+            ],
+            "properties": {
+              "TargetClass": "BP_PlayerCharacter_C",
+              "TargetClassPath": "/Game/Blueprints/BP_PlayerCharacter.BP_PlayerCharacter_C"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "VariableSet",
+            "variable": "PlayerCharacter",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "PlayerCharacter",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "GetOwningPlayer",
+            "owning_class": "Widget",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Widget"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "PlayerController"
+                },
+                "connections": [
+                  "node_5.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "CallFunction",
+            "function": "K2_GetPawn",
+            "owning_class": "Controller",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Controller"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "Pawn"
+                },
+                "connections": [
+                  "node_1.Object"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_6",
+            "type": "Event",
+            "function": "UpdateTimer",
+            "owning_class": "SKEL_iHUD_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_17.execute"
+                ]
+              },
+              {
+                "name": "Time",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_17.TimeSeconds",
+                  "node_11.A"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_7",
+            "type": "Event",
+            "function": "AddBonusTime",
+            "owning_class": "SKEL_iHUD_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_32.execute"
+                ]
+              },
+              {
+                "name": "DeltaTime",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_33.Value"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_8",
+            "type": "Event",
+            "function": "UpdateIcons",
+            "owning_class": "SKEL_iHUD_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_50.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_9",
+            "type": "VariableGet",
+            "variable": "TimeText",
+            "pins_out": [
+              {
+                "name": "TimeText",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_10.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_10",
+            "type": "CallFunction",
+            "function": "SetText",
+            "owning_class": "TextBlock",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                }
+              },
+              {
+                "name": "InText",
+                "type": {
+                  "category": "text"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_14.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_11",
+            "type": "CallFunction",
+            "function": "FFloor",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_12.Value"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_12",
+            "type": "CallFunction",
+            "function": "Conv_IntToText",
+            "owning_class": "KismetTextLibrary",
+            "pins_in": [
+              {
+                "name": "Value",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "bAlwaysSign",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "bUseGrouping",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "MinimumIntegralDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              },
+              {
+                "name": "MaximumIntegralDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "324"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_10.InText"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_13",
+            "type": "CallFunction",
+            "function": "LessEqual_DoubleDouble",
+            "owning_class": "KismetMathLibrary",
+            "pins_in": [
+              {
+                "name": "A",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "B",
+                "type": {
+                  "category": "float"
+                },
+                "default": "10.000000"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_14.Condition"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_14",
+            "type": "Branch",
+            "title": "Branch",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Condition",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_20.execute"
+                ]
+              },
+              {
+                "name": "else",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_25.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_15",
+            "type": "VariableGet",
+            "variable": "TimeAnimation",
+            "pins_out": [
+              {
+                "name": "TimeAnimation",
+                "type": {
+                  "category": "object",
+                  "class": "WidgetAnimation"
+                },
+                "connections": [
+                  "node_16.InAnimation"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_16",
+            "type": "CallFunction",
+            "function": "PlayAnimation",
+            "owning_class": "UserWidget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "UserWidget"
+                }
+              },
+              {
+                "name": "InAnimation",
+                "type": {
+                  "category": "object",
+                  "class": "WidgetAnimation"
+                }
+              },
+              {
+                "name": "StartAtTime",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "NumLoopsToPlay",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              },
+              {
+                "name": "PlayMode",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Forward"
+              },
+              {
+                "name": "PlaybackSpeed",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "bRestoreState",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_26.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "WidgetAnimationHandle"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_17",
+            "type": "VariableSet",
+            "variable": "TimeSeconds",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "TimeSeconds",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_10.execute"
+                ]
+              },
+              {
+                "name": "Output_Get",
+                "type": {
+                  "category": "float"
+                }
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_18",
+            "type": "VariableGet",
+            "variable": "TimeSeconds",
+            "pins_out": [
+              {
+                "name": "TimeSeconds",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_13.A"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_19",
+            "type": "VariableGet",
+            "variable": "TimeText",
+            "pins_out": [
+              {
+                "name": "TimeText",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_20.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_20",
+            "type": "CallFunction",
+            "function": "SetColorAndOpacity",
+            "owning_class": "TextBlock",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                }
+              },
+              {
+                "name": "InColorAndOpacity",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateColor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_16.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_21",
+            "type": "K2Node_MakeStruct",
+            "title": "Make Slate Color",
+            "pins_in": [
+              {
+                "name": "SpecifiedColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=1.000000,G=0.000000,B=0.000000,A=1.000000)"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SlateColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateColor"
+                },
+                "connections": [
+                  "node_20.InColorAndOpacity"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_23",
+            "type": "K2Node_MakeStruct",
+            "title": "Make Slate Color",
+            "pins_in": [
+              {
+                "name": "SpecifiedColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "LinearColor"
+                },
+                "default": "(R=1.000000,G=1.000000,B=1.000000,A=1.000000)"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "SlateColor",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateColor"
+                },
+                "connections": [
+                  "node_25.InColorAndOpacity"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_24",
+            "type": "VariableGet",
+            "variable": "TimeText",
+            "pins_out": [
+              {
+                "name": "TimeText",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_25.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_25",
+            "type": "CallFunction",
+            "function": "SetColorAndOpacity",
+            "owning_class": "TextBlock",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                }
+              },
+              {
+                "name": "InColorAndOpacity",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "SlateColor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_26",
+            "type": "CallFunction",
+            "function": "PlaySound2D",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "Sound",
+                "type": {
+                  "category": "object",
+                  "class": "SoundBase"
+                },
+                "default": "/Game/Assets/Sounds/UI/A_UI_Select02.A_UI_Select02"
+              },
+              {
+                "name": "VolumeMultiplier",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "PitchMultiplier",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "StartTime",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "ConcurrencySettings",
+                "type": {
+                  "category": "object",
+                  "class": "SoundConcurrency"
+                }
+              },
+              {
+                "name": "OwningActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor",
+                  "is_const": true
+                }
+              },
+              {
+                "name": "bIsUISound",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_27",
+            "type": "VariableGet",
+            "variable": "TimeAnimation",
+            "pins_out": [
+              {
+                "name": "TimeAnimation",
+                "type": {
+                  "category": "object",
+                  "class": "WidgetAnimation"
+                },
+                "connections": [
+                  "node_30.InAnimation"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_28",
+            "type": "CallFunction",
+            "function": "PlayAnimation",
+            "owning_class": "UserWidget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "UserWidget"
+                }
+              },
+              {
+                "name": "InAnimation",
+                "type": {
+                  "category": "object",
+                  "class": "WidgetAnimation"
+                }
+              },
+              {
+                "name": "StartAtTime",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "NumLoopsToPlay",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              },
+              {
+                "name": "PlayMode",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Forward"
+              },
+              {
+                "name": "PlaybackSpeed",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "bRestoreState",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_30.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "WidgetAnimationHandle"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_29",
+            "type": "VariableGet",
+            "variable": "TimeBonusAnim",
+            "pins_out": [
+              {
+                "name": "TimeBonusAnim",
+                "type": {
+                  "category": "object",
+                  "class": "WidgetAnimation"
+                },
+                "connections": [
+                  "node_28.InAnimation"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_30",
+            "type": "CallFunction",
+            "function": "PlayAnimation",
+            "owning_class": "UserWidget",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "UserWidget"
+                }
+              },
+              {
+                "name": "InAnimation",
+                "type": {
+                  "category": "object",
+                  "class": "WidgetAnimation"
+                }
+              },
+              {
+                "name": "StartAtTime",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.000000"
+              },
+              {
+                "name": "NumLoopsToPlay",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              },
+              {
+                "name": "PlayMode",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "Forward"
+              },
+              {
+                "name": "PlaybackSpeed",
+                "type": {
+                  "category": "float"
+                },
+                "default": "1.000000"
+              },
+              {
+                "name": "bRestoreState",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "WidgetAnimationHandle"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_31",
+            "type": "VariableGet",
+            "variable": "TimeBonusLabel",
+            "pins_out": [
+              {
+                "name": "TimeBonusLabel",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                },
+                "connections": [
+                  "node_32.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_32",
+            "type": "CallFunction",
+            "function": "SetText",
+            "owning_class": "TextBlock",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "TextBlock"
+                }
+              },
+              {
+                "name": "InText",
+                "type": {
+                  "category": "text"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_28.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_33",
+            "type": "CallFunction",
+            "function": "Conv_DoubleToText",
+            "owning_class": "KismetTextLibrary",
+            "pins_in": [
+              {
+                "name": "Value",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              },
+              {
+                "name": "RoundingMode",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "HalfToEven"
+              },
+              {
+                "name": "bAlwaysSign",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              },
+              {
+                "name": "bUseGrouping",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "MinimumIntegralDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "1"
+              },
+              {
+                "name": "MaximumIntegralDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "324"
+              },
+              {
+                "name": "MinimumFractionalDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              },
+              {
+                "name": "MaximumFractionalDigits",
+                "type": {
+                  "category": "int"
+                },
+                "default": "3"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_34.1"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_34",
+            "type": "K2Node_FormatText",
+            "title": "Format Text",
+            "pins_in": [
+              {
+                "name": "Format",
+                "type": {
+                  "category": "text"
+                },
+                "default": "+{1}"
+              },
+              {
+                "name": "1",
+                "type": {
+                  "category": "text"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "Result",
+                "type": {
+                  "category": "text"
+                },
+                "connections": [
+                  "node_32.InText"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_35",
+            "type": "Event",
+            "function": "SetHP",
+            "owning_class": "SKEL_iHUD_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_36.execute"
+                ]
+              },
+              {
+                "name": "InPercent",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_36.InPercent"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_36",
+            "type": "CallFunction",
+            "function": "SetPercent",
+            "owning_class": "ProgressBar",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ProgressBar"
+                }
+              },
+              {
+                "name": "InPercent",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_37",
+            "type": "VariableGet",
+            "variable": "HP_ProgressBar",
+            "pins_out": [
+              {
+                "name": "HP_ProgressBar",
+                "type": {
+                  "category": "object",
+                  "class": "ProgressBar"
+                },
+                "connections": [
+                  "node_36.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_38",
+            "type": "Event",
+            "function": "SetMana",
+            "owning_class": "SKEL_iHUD_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_39.execute"
+                ]
+              },
+              {
+                "name": "InPercent",
+                "type": {
+                  "category": "float"
+                },
+                "connections": [
+                  "node_39.InPercent"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_39",
+            "type": "CallFunction",
+            "function": "SetPercent",
+            "owning_class": "ProgressBar",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "ProgressBar"
+                }
+              },
+              {
+                "name": "InPercent",
+                "type": {
+                  "category": "float"
+                },
+                "default": "0.0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_40",
+            "type": "VariableGet",
+            "variable": "MP_ProgressBar",
+            "pins_out": [
+              {
+                "name": "MP_ProgressBar",
+                "type": {
+                  "category": "object",
+                  "class": "ProgressBar"
+                },
+                "connections": [
+                  "node_39.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_41",
+            "type": "Event",
+            "function": "SetAutoplayEnabled",
+            "owning_class": "SKEL_iHUD_C",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_42.execute"
+                ]
+              },
+              {
+                "name": "Enabled",
+                "type": {
+                  "category": "bool"
+                },
+                "connections": [
+                  "node_42.InIsChecked"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_42",
+            "type": "CallFunction",
+            "function": "SetIsChecked",
+            "owning_class": "CheckBox",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "CheckBox"
+                }
+              },
+              {
+                "name": "InIsChecked",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "false"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_43",
+            "type": "VariableGet",
+            "variable": "AutoPlayButton",
+            "pins_out": [
+              {
+                "name": "AutoPlayButton",
+                "type": {
+                  "category": "object",
+                  "class": "CheckBox"
+                },
+                "connections": [
+                  "node_42.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_44",
+            "type": "VariableGet",
+            "variable": "ButtonMelee",
+            "pins_out": [
+              {
+                "name": "ButtonMelee",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InputButton_C"
+                },
+                "connections": [
+                  "node_50.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_45",
+            "type": "VariableGet",
+            "variable": "ButtonPotion",
+            "pins_out": [
+              {
+                "name": "ButtonPotion",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InputButton_C"
+                },
+                "connections": [
+                  "node_47.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_46",
+            "type": "VariableGet",
+            "variable": "ButtonSkill",
+            "pins_out": [
+              {
+                "name": "ButtonSkill",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InputButton_C"
+                },
+                "connections": [
+                  "node_47.self"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "self"
+            }
+          },
+          {
+            "id": "node_47",
+            "type": "CallFunction",
+            "function": "UpdateButton",
+            "owning_class": "SKEL_WB_InputButton_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InputButton_C"
+                }
+              },
+              {
+                "name": "Slot Number",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_49",
+            "type": "CallFunction",
+            "function": "GetPlayerCharacterBP",
+            "owning_class": "SKEL_BP_RPGFunctionLibrary_C",
+            "pins_out": [
+              {
+                "name": "MyCharacter",
+                "type": {
+                  "category": "object",
+                  "class": "BP_PlayerCharacter_C"
+                },
+                "connections": [
+                  "node_51.self"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "true",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_50",
+            "type": "CallFunction",
+            "function": "UpdateButton",
+            "owning_class": "SKEL_WB_InputButton_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "WB_InputButton_C"
+                }
+              },
+              {
+                "name": "Slot Number",
+                "type": {
+                  "category": "int"
+                },
+                "default": "0"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_47.execute"
+                ]
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_51",
+            "type": "VariableGet",
+            "variable": "CurrentWeaponSlot",
+            "pins_in": [
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "BP_Character_C"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "CurrentWeaponSlot_ItemType",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "PrimaryAssetType"
+                }
+              },
+              {
+                "name": "CurrentWeaponSlot_SlotNumber",
+                "type": {
+                  "category": "int"
+                },
+                "connections": [
+                  "node_50.Slot Number"
+                ]
+              }
+            ],
+            "properties": {
+              "Scope": "BP_Character_C"
+            }
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "Construct",
+            "type": "Event",
+            "tags": "construct"
+          },
+          {
+            "name": "UpdateTimer",
+            "type": "Event",
+            "tags": "update timer"
+          },
+          {
+            "name": "AddBonusTime",
+            "type": "Event",
+            "tags": "add bonus time"
+          },
+          {
+            "name": "UpdateIcons",
+            "type": "Event",
+            "tags": "update icons"
+          },
+          {
+            "name": "SetHP",
+            "type": "Event",
+            "tags": "hp"
+          },
+          {
+            "name": "SetMana",
+            "type": "Event",
+            "tags": "mana"
+          },
+          {
+            "name": "SetAutoplayEnabled",
+            "type": "Event",
+            "tags": "autoplay"
+          }
+        ],
+        "tags": "construct update timer add bonus time icons hp"
+      }
+    ],
+    "functions": [],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

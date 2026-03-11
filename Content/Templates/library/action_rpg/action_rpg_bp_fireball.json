@@ -1,0 +1,580 @@
+{
+  "template_id": "action_rpg_bp_fireball",
+  "display_name": "BP_Fireball",
+  "tags": "fireball particle system audio point light",
+  "catalog_description": "BP_Fireball: BP_AbilityProjectileBase-based (child of BP_AbilityProjectileBase) blueprint with 1 function. Handles spawning.",
+  "inherited_tags": "ability projectile actor attack damage effect container spec hit actors movement sphere arrow component collection",
+  "source_project": "action_rpg",
+  "depends_on": "action_rpg_bp_ability_projectile_base",
+  "schema_version": "1.0",
+  "name": "BP_Fireball",
+  "path": "/Game/Abilities/Player/Skills/BP_Fireball.BP_Fireball",
+  "type": "Normal",
+  "parent_class": {
+    "name": "BP_AbilityProjectileBase_C",
+    "source": "blueprint",
+    "path": "/Game/Abilities/Shared/BP_AbilityProjectileBase.BP_AbilityProjectileBase"
+  },
+  "capabilities": {
+    "has_event_graph": true,
+    "has_functions": true,
+    "has_variables": true,
+    "has_components": true,
+    "has_macros": true,
+    "has_anim_graph": false,
+    "has_widget_tree": false,
+    "has_state_machine": false
+  },
+  "compile_status": "success",
+  "variables": [
+    {
+      "name": "ParticleSystem",
+      "type": {
+        "category": "object",
+        "class": "ParticleSystemComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "Audio",
+      "type": {
+        "category": "object",
+        "class": "AudioComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "PointLight",
+      "type": {
+        "category": "object",
+        "class": "PointLightComponent"
+      },
+      "defined_in": "component",
+      "flags": {
+        "blueprint_read_write": false,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": false,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "AttackDamage",
+      "type": {
+        "category": "float"
+      },
+      "category": "Default",
+      "defined_in": "BP_AbilityProjectileBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "EffectContainerSpec",
+      "type": {
+        "category": "struct",
+        "struct_name": "RPGGameplayEffectContainerSpec"
+      },
+      "category": "Default",
+      "defined_in": "BP_AbilityProjectileBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    },
+    {
+      "name": "HitActors",
+      "type": {
+        "category": "array",
+        "element_type": "{\r\n\t\"category\": \"object\",\r\n\t\"class\": \"Actor\"\r\n}"
+      },
+      "category": "Default",
+      "defined_in": "BP_AbilityProjectileBase",
+      "flags": {
+        "blueprint_read_write": true,
+        "expose_on_spawn": false,
+        "replicated": false,
+        "save_game": false,
+        "edit_anywhere": true,
+        "blueprint_visible": true
+      }
+    }
+  ],
+  "components": {
+    "root": "DefaultSceneRoot",
+    "tree": [
+      {
+        "name": "ParticleSystem",
+        "class": "ParticleSystemComponent",
+        "properties": {
+          "Template": "/Script/Engine.ParticleSystem'/Game/Effects/FX_Mobile/Fire/combat/P_FireBall_Strong.P_FireBall_Strong'",
+          "RelativeLocation": "(X=10.000000,Y=0.000000,Z=0.000000)",
+          "RelativeScale3D": "(X=1.500000,Y=1.500000,Z=1.500000)",
+          "PrimaryComponentTick": "(TickGroup=TG_DuringPhysics,bCanEverTick=True)"
+        }
+      },
+      {
+        "name": "Audio",
+        "class": "AudioComponent",
+        "properties": {
+          "Sound": "/Script/Engine.SoundCue'/Game/Assets/Sounds/Ambient/A_Ambient_Fire01_Cue.A_Ambient_Fire01_Cue'",
+          "RelativeLocation": "(X=13.333334,Y=0.000000,Z=0.000000)",
+          "RelativeScale3D": "(X=0.666667,Y=0.666667,Z=0.666667)"
+        }
+      },
+      {
+        "name": "PointLight",
+        "class": "PointLightComponent",
+        "properties": {
+          "Intensity": "100000.000000",
+          "LightColor": "(B=0,G=84,R=200,A=255)",
+          "CastShadows": "False",
+          "RelativeLocation": "(X=13.333334,Y=0.000000,Z=0.000000)",
+          "RelativeScale3D": "(X=0.666667,Y=0.666667,Z=0.666667)"
+        }
+      }
+    ]
+  },
+  "graphs": {
+    "event_graphs": [
+      {
+        "name": "EventGraph",
+        "graph_type": "EventGraph",
+        "node_count": 7,
+        "connection_count": 10,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "Event",
+            "function": "ReceiveBeginPlay",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_1",
+            "type": "Event",
+            "function": "ReceiveActorBeginOverlap",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_2.execute"
+                ]
+              },
+              {
+                "name": "OtherActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                },
+                "connections": [
+                  "node_2.OtherActor"
+                ]
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          },
+          {
+            "id": "node_2",
+            "type": "CallFunction",
+            "function": "ReceiveActorBeginOverlap",
+            "owning_class": "SKEL_BP_AbilityProjectileBase_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "OtherActor",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_3",
+            "type": "CallFunction",
+            "function": "SpawnEmitterAtLocation",
+            "owning_class": "GameplayStatics",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "EmitterTemplate",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystem"
+                },
+                "default": "/Game/Effects/FX_Mobile/P_Bomb.P_Bomb"
+              },
+              {
+                "name": "Location",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "Rotation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Rotator"
+                },
+                "default": "0, 0, 0"
+              },
+              {
+                "name": "Scale",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "default": "1.000000,1.000000,1.000000"
+              },
+              {
+                "name": "bAutoDestroy",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              },
+              {
+                "name": "PoolingMethod",
+                "type": {
+                  "category": "byte"
+                },
+                "default": "None"
+              },
+              {
+                "name": "bAutoActivateSystem",
+                "type": {
+                  "category": "bool"
+                },
+                "default": "true"
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_4.execute"
+                ]
+              },
+              {
+                "name": "ReturnValue",
+                "type": {
+                  "category": "object",
+                  "class": "ParticleSystemComponent"
+                }
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_4",
+            "type": "CallFunction",
+            "function": "K2_DestroyActor",
+            "owning_class": "Actor",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              },
+              {
+                "name": "self",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          },
+          {
+            "id": "node_5",
+            "type": "Event",
+            "function": "ReceiveHit",
+            "owning_class": "Actor",
+            "pins_out": [
+              {
+                "name": "OutputDelegate",
+                "type": {
+                  "category": "delegate"
+                }
+              },
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_3.execute"
+                ]
+              },
+              {
+                "name": "MyComp",
+                "type": {
+                  "category": "object",
+                  "class": "PrimitiveComponent"
+                }
+              },
+              {
+                "name": "Other",
+                "type": {
+                  "category": "object",
+                  "class": "Actor"
+                }
+              },
+              {
+                "name": "OtherComp",
+                "type": {
+                  "category": "object",
+                  "class": "PrimitiveComponent"
+                }
+              },
+              {
+                "name": "bSelfMoved",
+                "type": {
+                  "category": "bool"
+                }
+              },
+              {
+                "name": "HitLocation",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                },
+                "connections": [
+                  "node_3.Location"
+                ]
+              },
+              {
+                "name": "HitNormal",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "NormalImpulse",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "Vector"
+                }
+              },
+              {
+                "name": "Hit",
+                "type": {
+                  "category": "struct",
+                  "struct_name": "HitResult",
+                  "is_reference": true,
+                  "is_const": true
+                }
+              }
+            ],
+            "properties": {
+              "IsOverride": "true"
+            }
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "ReceiveBeginPlay",
+            "type": "Event",
+            "tags": "receive begin play"
+          },
+          {
+            "name": "ReceiveActorBeginOverlap",
+            "type": "Event",
+            "tags": "receive actor begin overlap"
+          },
+          {
+            "name": "ReceiveHit",
+            "type": "Event",
+            "tags": "receive hit"
+          }
+        ],
+        "tags": "receive begin play actor overlap hit"
+      }
+    ],
+    "functions": [
+      {
+        "name": "UserConstructionScript",
+        "graph_type": "Function",
+        "access": "public",
+        "node_count": 2,
+        "connection_count": 2,
+        "page": 0,
+        "page_size": 200,
+        "total_pages": 1,
+        "is_large_graph": false,
+        "normalized_params": true,
+        "normalized_fields": [
+          "path->asset_path"
+        ],
+        "nodes": [
+          {
+            "id": "node_0",
+            "type": "FunctionEntry",
+            "function": "UserConstructionScript",
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true,
+                "connections": [
+                  "node_1.execute"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "node_1",
+            "type": "CallFunction",
+            "function": "UserConstructionScript",
+            "owning_class": "SKEL_BP_AbilityProjectileBase_C",
+            "pins_in": [
+              {
+                "name": "execute",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "pins_out": [
+              {
+                "name": "then",
+                "type": {
+                  "category": "exec"
+                },
+                "is_exec": true
+              }
+            ],
+            "properties": {
+              "IsPure": "false",
+              "IsLatent": "false"
+            }
+          }
+        ]
+      }
+    ],
+    "macros": []
+  },
+  "normalized_params": true,
+  "normalized_fields": [
+    "path->asset_path"
+  ]
+}

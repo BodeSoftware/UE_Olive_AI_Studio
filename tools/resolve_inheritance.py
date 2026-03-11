@@ -2,15 +2,21 @@
 resolve_inheritance.py - Build a topologically-sorted inheritance manifest
 for extracted Blueprint JSON files.
 
-Scans all JSON files in the combatfs blueprints directory, resolves
-parent-child relationships, performs a topological sort (parents before
-children), and outputs a manifest JSON file.
+Scans all JSON files across all subdirectories of a project's
+sample_project_templates folder (blueprints, animation, behavior_trees,
+enums_structs, interfaces, misc, widgets), resolves parent-child
+relationships, performs a topological sort (parents before children),
+and outputs a manifest JSON file.
 
 Usage:
-    python resolve_inheritance.py
+    python resolve_inheritance.py [project]
+
+    project: Name of the source project (default: combatfs).
+             Must have extracted templates at
+             sample_project_templates/{project}/.
 
 Output:
-    tools/combatfs_manifest.json
+    tools/{project}_manifest.json
 """
 
 import json
@@ -21,36 +27,44 @@ from collections import defaultdict, deque
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+PROJECT = sys.argv[1] if len(sys.argv) > 1 else "combatfs"
+
+# ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_DIR = SCRIPT_DIR.parent
-BLUEPRINTS_DIR = PLUGIN_DIR / "sample_project_templates" / "combatfs" / "blueprints"
-OUTPUT_PATH = SCRIPT_DIR / "combatfs_manifest.json"
+PROJECT_DIR = PLUGIN_DIR / "sample_project_templates" / PROJECT
+OUTPUT_PATH = SCRIPT_DIR / f"{PROJECT}_manifest.json"
 
 
 # ---------------------------------------------------------------------------
 # Template ID generation
 # ---------------------------------------------------------------------------
 
-def make_template_id(name: str) -> str:
+def make_template_id(name: str, project: str = "combatfs") -> str:
     """
-    Convert a Blueprint name to a template_id.
+    Convert a Blueprint name to a template_id with a project prefix.
 
     Rules:
-      1. Strip 'FCS_' prefix (case-insensitive)
+      1. Strip 'FCS_' prefix (case-insensitive, harmless for non-combatfs)
       2. Convert CamelCase to snake_case
       3. Replace hyphens and spaces with underscores
       4. Collapse multiple underscores
       5. Lowercase everything
       6. Keep existing prefixes like 'bp_', 'cr_', etc.
+      7. Prepend project name prefix (e.g., 'combatfs_', 'action_rpg_')
 
-    Examples:
-      BP_AbilityParent        -> bp_ability_parent
-      BP_FCS_MeleeComponent   -> bp_melee_component
-      CR_BoneTransformUE5     -> cr_bone_transform_ue5
-      BP_Spawner-Random       -> bp_spawner_random
+    Examples (project="combatfs"):
+      BP_AbilityParent        -> combatfs_bp_ability_parent
+      BP_FCS_MeleeComponent   -> combatfs_bp_melee_component
+
+    Examples (project="action_rpg"):
+      BP_PlayerCharacter      -> action_rpg_bp_player_character
     """
     cleaned = name
     # Strip FCS_ prefix (handles BP_FCS_Foo -> BP_Foo)
@@ -68,7 +82,7 @@ def make_template_id(name: str) -> str:
     # Collapse multiple underscores
     result = re.sub(r"_+", "_", result)
 
-    return result.lower()
+    return f"{project}_{result.lower()}"
 
 
 # ---------------------------------------------------------------------------
@@ -96,10 +110,11 @@ class BlueprintEntry:
         parent_source: str,
         parent_display_name: str,
         bp_type: str,
+        project: str = "combatfs",
     ):
         self.name = name
         self.file_name = file_name
-        self.template_id = make_template_id(name)
+        self.template_id = make_template_id(name, project)
         self.parent_name = parent_name          # Resolved BP name (no _C)
         self.parent_source = parent_source      # "blueprint" or "cpp"
         self.parent_display_name = parent_display_name  # Raw name from JSON
@@ -110,48 +125,77 @@ class BlueprintEntry:
 # Scanning
 # ---------------------------------------------------------------------------
 
-def scan_blueprints(directory: Path) -> list[BlueprintEntry]:
+def scan_blueprints(project_dir: Path, project: str) -> list[BlueprintEntry]:
     """
-    Scan all JSON files in the directory and extract name + parent_class
-    metadata. Only reads the first ~20 lines worth of data (the header
-    fields are always at the top of the file).
+    Scan all JSON files across all subdirectories of the project directory
+    (blueprints, animation, behavior_trees, enums_structs, interfaces,
+    misc, widgets) and extract name + parent_class metadata.
+
+    The file field in each entry includes the subdirectory prefix so
+    downstream tools know where to find the file (e.g.,
+    "blueprints/Game_Abilities_Player_Axe_GA_PlayerAxeMelee.json").
     """
     entries = []
-    json_files = sorted(f for f in os.listdir(directory) if f.endswith(".json"))
 
-    for file_name in json_files:
-        file_path = directory / file_name
-        try:
-            with open(file_path, "r", encoding="utf-8") as fp:
-                data = json.load(fp)
-        except (json.JSONDecodeError, IOError) as e:
-            print(f"WARNING: Could not parse {file_name}: {e}", file=sys.stderr)
-            continue
+    # Collect JSON files from all immediate subdirectories
+    if not project_dir.is_dir():
+        return entries
 
-        name = data.get("name", "")
-        bp_type = data.get("type", "Normal")
-        parent_class = data.get("parent_class", {})
-        parent_raw_name = parent_class.get("name", "Unknown")
-        parent_source = parent_class.get("source", "cpp")
+    subdirs = sorted(
+        d for d in project_dir.iterdir()
+        if d.is_dir()
+    )
 
-        # For blueprint-source parents, strip the _C suffix to get the BP name
-        if parent_source == "blueprint":
-            parent_bp_name = parent_raw_name
-            if parent_bp_name.endswith("_C"):
-                parent_bp_name = parent_bp_name[:-2]
-        else:
-            # For C++ parents, use the raw class name (Actor, Character, etc.)
-            parent_bp_name = parent_raw_name
+    for subdir in subdirs:
+        subdir_name = subdir.name
+        json_files = sorted(f for f in os.listdir(subdir) if f.endswith(".json"))
 
-        entry = BlueprintEntry(
-            name=name,
-            file_name=file_name,
-            parent_name=parent_bp_name,
-            parent_source=parent_source,
-            parent_display_name=parent_raw_name,
-            bp_type=bp_type,
-        )
-        entries.append(entry)
+        for file_name in json_files:
+            file_path = subdir / file_name
+            # Store relative path with subdir prefix
+            relative_file = f"{subdir_name}/{file_name}"
+
+            try:
+                with open(file_path, "r", encoding="utf-8") as fp:
+                    data = json.load(fp)
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"WARNING: Could not parse {relative_file}: {e}", file=sys.stderr)
+                continue
+
+            name = data.get("name", "")
+            if not name:
+                print(f"  SKIP (no name): {relative_file}", file=sys.stderr)
+                continue
+
+            # Skip non-blueprint files (behavior trees, enums/structs, misc)
+            parent_class = data.get("parent_class")
+            if not isinstance(parent_class, dict):
+                print(f"  SKIP (no parent_class): {relative_file}", file=sys.stderr)
+                continue
+
+            bp_type = data.get("type", "Normal")
+            parent_raw_name = parent_class.get("name", "Unknown")
+            parent_source = parent_class.get("source", "cpp")
+
+            # For blueprint-source parents, strip the _C suffix to get the BP name
+            if parent_source == "blueprint":
+                parent_bp_name = parent_raw_name
+                if parent_bp_name.endswith("_C"):
+                    parent_bp_name = parent_bp_name[:-2]
+            else:
+                # For C++ parents, use the raw class name (Actor, Character, etc.)
+                parent_bp_name = parent_raw_name
+
+            entry = BlueprintEntry(
+                name=name,
+                file_name=relative_file,
+                parent_name=parent_bp_name,
+                parent_source=parent_source,
+                parent_display_name=parent_raw_name,
+                bp_type=bp_type,
+                project=project,
+            )
+            entries.append(entry)
 
     return entries
 
@@ -252,12 +296,12 @@ def build_children_map(entries: list[BlueprintEntry]) -> dict[str, list[str]]:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    if not BLUEPRINTS_DIR.is_dir():
-        print(f"ERROR: Blueprints directory not found: {BLUEPRINTS_DIR}", file=sys.stderr)
+    if not PROJECT_DIR.is_dir():
+        print(f"ERROR: Project directory not found: {PROJECT_DIR}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Scanning {BLUEPRINTS_DIR}...")
-    entries = scan_blueprints(BLUEPRINTS_DIR)
+    print(f"Scanning {PROJECT_DIR} (project: {PROJECT})...")
+    entries = scan_blueprints(PROJECT_DIR, PROJECT)
     print(f"  Found {len(entries)} blueprint files")
 
     # Count by parent source
@@ -302,7 +346,7 @@ def main() -> None:
     for entry in sorted_entries:
         # For the parent_class display: use the raw C++ class name for cpp parents,
         # or the BP name (without _C) for blueprint parents
-        if entry.parent_source == "blueprint":
+        if entry.parent_source == "blueprint" and entry.parent_name in name_lookup:
             depends_on = name_lookup[entry.parent_name].template_id
         else:
             depends_on = None
@@ -320,7 +364,7 @@ def main() -> None:
         processing_order.append(item)
 
     manifest = {
-        "project": "combatfs",
+        "project": PROJECT,
         "total_files": len(sorted_entries),
         "max_inheritance_depth": max_depth,
         "depth_distribution": {

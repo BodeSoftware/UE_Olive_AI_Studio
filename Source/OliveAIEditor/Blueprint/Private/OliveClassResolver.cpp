@@ -279,6 +279,22 @@ UClass* FOliveClassResolver::TryBlueprintPath(const FString& Path)
 		}
 	}
 
+	// If path ends with _C, strip it and retry as Blueprint asset path
+	// e.g. "/Game/Blueprints/BPI_Interactable_C" -> "/Game/Blueprints/BPI_Interactable"
+	if (Path.EndsWith(TEXT("_C")))
+	{
+		FString StrippedPath = Path.LeftChop(2);
+		UE_LOG(LogOliveClassResolver, Verbose, TEXT("  TryBlueprintPath: stripping _C suffix, trying '%s'"), *StrippedPath);
+
+		UBlueprint* StrippedBP = LoadObject<UBlueprint>(nullptr, *StrippedPath);
+		if (StrippedBP && StrippedBP->GeneratedClass)
+		{
+			UE_LOG(LogOliveClassResolver, Verbose, TEXT("  TryBlueprintPath: found Blueprint '%s' -> GeneratedClass=%s"),
+				*StrippedPath, *StrippedBP->GeneratedClass->GetName());
+			return StrippedBP->GeneratedClass;
+		}
+	}
+
 	// Also try as a class object reference (path ending with _C)
 	if (!Path.EndsWith(TEXT("_C")))
 	{
