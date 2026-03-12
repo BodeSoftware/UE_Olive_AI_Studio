@@ -4079,6 +4079,33 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAddFunctionType_Function(
 				 "Do NOT add another function until this one has graph logic."),
 			*WriteResult.CreatedItemName));
 
+		// Scan for other empty function graphs on this Blueprint
+		UBlueprint* BP = Cast<UBlueprint>(Target);
+		if (BP)
+		{
+			int32 EmptyCount = 0;
+			FString FirstEmpty;
+			for (const UEdGraph* FuncGraph : BP->FunctionGraphs)
+			{
+				if (!FuncGraph) continue;
+				if (FuncGraph->GetName() == Signature.Name) continue;
+				if (FuncGraph->Nodes.Num() <= 2)
+				{
+					EmptyCount++;
+					if (FirstEmpty.IsEmpty()) FirstEmpty = FuncGraph->GetName();
+				}
+			}
+			if (EmptyCount > 0)
+			{
+				FString CurrentMsg;
+				ResultData->TryGetStringField(TEXT("message"), CurrentMsg);
+				ResultData->SetStringField(TEXT("message"),
+					CurrentMsg + FString::Printf(
+						TEXT(" Note: %s has no graph logic yet (%d empty function(s) total). Write graph logic with apply_plan_json before adding more functions."),
+						*FirstEmpty, EmptyCount));
+			}
+		}
+
 		return FOliveWriteResult::Success(ResultData);
 	});
 

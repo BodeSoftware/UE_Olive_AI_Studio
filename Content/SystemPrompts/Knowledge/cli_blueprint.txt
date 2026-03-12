@@ -141,6 +141,19 @@ For pin wiring, use `@step.auto` — the resolver handles ~80% of connections au
 
 After completing each function's graph logic (regardless of how many plan_json calls it took), compile the Blueprint. Fix the first error before moving to the next function. This catches wiring issues early instead of accumulating errors across 5+ functions.
 
+## Multi-Asset Build Order
+
+For tasks that create multiple Blueprints (e.g., inventory system, weapon system):
+1. Create ALL assets first (blueprint.create for each).
+2. Add variables + components to ALL assets.
+3. Then go DEPTH-FIRST: pick ONE Blueprint, write ALL its function graph logic (apply_plan_json), compile to 0 errors, then move to the next.
+
+WRONG: Create BP_Inventory -> add functions -> Create WBP_Grid -> add functions -> (timeout with no graph logic)
+RIGHT: Create BP_Inventory -> add functions -> write AddItem logic -> write RemoveItem logic -> compile -> Create WBP_Grid -> ...
+
+Empty function shells are worthless. A Blueprint with 5 function signatures but 0 graph logic does nothing.
+If you've created function signatures, write their logic IMMEDIATELY before creating more assets.
+
 ## Common Mistakes
 
 WRONG: connect_pins node_1.Pressed → node_2.execute (where node_2 is a CustomEvent)

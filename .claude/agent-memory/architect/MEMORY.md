@@ -117,6 +117,18 @@
 - **Fix 3 (P0, Senior)**: SpawnActor step-reference support. When `spawn_actor` target starts with `@`, resolver uses AActor placeholder + stores `dynamic_class_ref`. Phase 4 wires Class pin from referenced step, clears placeholder default, calls ReconstructNode. ~50 lines across resolver + executor.
 - **Key insight**: `CreateSpawnActorNode` calls `FindClass(actor_class)` at Phase 1 -- `@step.auto` is NOT a class path. Resolver must intercept and defer to Phase 4 data wiring.
 
+### Continuation Completeness System - Mar 2026
+- `plans/continuation-completeness-design.md` -- 5 changes to fix breadth-first scaffolding timeout
+- **Problem**: Agent creates all assets breadth-first, stalls 120+s planning logic, gets killed by timeout before any apply_plan_json
+- **Critical discovery**: `LaunchCLIProcess` closes stdin pipe after delivering initial message (line 1035). Cannot inject nudge text mid-process. Nudge must be a kill-and-relaunch.
+- **Change 1 (COMPLEX)**: Two-tier tool idle timeout: 120s nudge-kill + 300s hard kill. Raise stdout idle from 120s to 300s. Read `AutonomousIdleToolSeconds` from settings (currently unused despite existing). Local `bNudgeKillIssued` bool in background lambda.
+- **Change 2 (COMPLEX, highest priority)**: `ScanEmptyFunctionGraphs()` helper extracts function signatures from empty graphs. `BuildContinuationPrompt()` generates directive naming first function to implement. Sort by dependency (pure-logic first, cross-asset last). Cap at 4000 chars.
+- **Change 3 (SIMPLE)**: In `HandleAddFunctionType_Function` executor lambda success path, scan same Blueprint for other empty function graphs, append note to result message.
+- **Change 4 (SIMPLE)**: Extend `CastTargetMap` pre-scan to include `_synth_getcomp_` steps. Look up SCS component class, add to map. Existing `ResolveCallOp` fallback then searches component class for the function.
+- **Change 5 (SIMPLE)**: Add "Multi-Asset Build Order" section to cli_blueprint.txt after Compile-Per-Function.
+- **Key insight**: `CLI_IDLE_TIMEOUT_SECONDS = 120.0` constant is used for BOTH stdout idle AND tool idle timeouts. Settings field `AutonomousIdleToolSeconds = 240` exists but is never read.
+- **Key insight**: Rate-limited tool calls still fire `OnToolCalled` delegate, so `LastToolCallTimestamp` is updated. This is correct.
+
 ### Error Messages 08g - Mar 2026
 - `plans/error-messages-08g-design.md` -- 3 targeted improvements to reduce plan_json first-failure-to-fix
 - **Change 1**: UPROPERTY detection in `FindFunctionEx()` -- after search trail, scan classes for matching property names. Strips Set/Get prefix, checks BlueprintVisible properties. Appends `PROPERTY MATCH:` to SearchedLocations.

@@ -491,6 +491,57 @@ FOlivePlanResolveResult FOliveBlueprintPlanResolver::Resolve(
 		}
 	}
 
+	// 3. Synthetic component get_var steps: look up SCS component class.
+	// When ExpandMissingComponentTargets() synthesizes a _synth_getcomp_ step,
+	// we need to record the component's class in CastTargetMap so that
+	// ResolveCallOp's fallback can find functions on the component class.
+	if (Blueprint && Blueprint->SimpleConstructionScript)
+	{
+		for (const FOliveIRBlueprintPlanStep& PreScanStep : MutablePlan.Steps)
+		{
+			if (PreScanStep.Op == OlivePlanOps::GetVar
+				&& PreScanStep.StepId.StartsWith(TEXT("_synth_getcomp_")))
+			{
+				if (CastTargetMap.Contains(PreScanStep.StepId))
+				{
+					continue;
+				}
+
+				// Find the component class from SCS (includes inherited nodes)
+				TArray<USCS_Node*> AllSCSNodes = Blueprint->SimpleConstructionScript->GetAllNodes();
+				for (USCS_Node* SCSNode : AllSCSNodes)
+				{
+					if (SCSNode && SCSNode->ComponentClass
+						&& SCSNode->GetVariableName().ToString().Equals(
+							PreScanStep.Target, ESearchCase::IgnoreCase))
+					{
+						CastTargetMap.Add(PreScanStep.StepId,
+							SCSNode->ComponentClass->GetName());
+						break;
+					}
+				}
+
+				// Also check native C++ components (e.g., CapsuleComponent on ACharacter)
+				if (!CastTargetMap.Contains(PreScanStep.StepId) && Blueprint->GeneratedClass)
+				{
+					for (TFieldIterator<FObjectProperty> It(Blueprint->GeneratedClass,
+						EFieldIteratorFlags::IncludeSuper); It; ++It)
+					{
+						FObjectProperty* ObjProp = *It;
+						if (ObjProp && ObjProp->PropertyClass
+							&& ObjProp->PropertyClass->IsChildOf(UActorComponent::StaticClass())
+							&& ObjProp->GetName().Equals(PreScanStep.Target, ESearchCase::IgnoreCase))
+						{
+							CastTargetMap.Add(PreScanStep.StepId,
+								ObjProp->PropertyClass->GetName());
+							break;
+						}
+					}
+				}
+			}
+		}
+	}
+
 	if (CastTargetMap.Num() > 0)
 	{
 		UE_LOG(LogOlivePlanResolver, Log,

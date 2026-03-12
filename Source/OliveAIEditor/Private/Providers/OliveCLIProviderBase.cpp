@@ -26,6 +26,9 @@
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
 #include "EdGraph/EdGraph.h"
+#include "EdGraphSchema_K2.h"
+#include "K2Node_FunctionEntry.h"
+#include "K2Node_FunctionResult.h"
 #include "Index/OliveProjectIndex.h"
 #include "Services/OliveUtilityModel.h"
 
@@ -33,8 +36,16 @@ DEFINE_LOG_CATEGORY_STATIC(LogOliveCLIProvider, Log, All);
 
 namespace
 {
-	/** Flat idle timeout: kill the CLI process if no stdout for 120 seconds. */
-	constexpr double CLI_IDLE_TIMEOUT_SECONDS = 120.0;
+	/** Tier 1: nudge-kill after no tool call. Terminates process; auto-continue
+	 *  relaunches with enriched continuation prompt. */
+	constexpr double CLI_TOOL_IDLE_NUDGE_SECONDS = 120.0;
+
+	/** Tier 2: hard kill. Safety net for genuinely hung processes that
+	 *  fail to make progress even after a nudge-kill + relaunch. */
+	constexpr double CLI_TOOL_IDLE_KILL_SECONDS = 300.0;
+
+	/** Stdout idle: process produces no output at all (frozen/deadlocked). */
+	constexpr double CLI_STDOUT_IDLE_SECONDS = 300.0;
 
 	/** Determine tool prefixes needed for a given user message.
 	 *  Used in autonomous mode to filter tools/list to only relevant domains. */
@@ -132,6 +143,150 @@ namespace
 			|| ToolName.Contains(TEXT("add_variable"))
 			|| ToolName.Contains(TEXT("modify_component"))
 			|| ToolName.Contains(TEXT("create_from_template"));
+	}
+
+	/** Info about a function graph that has no logic (just entry point). */
+	struct FEmptyFunctionInfo
+	{
+		FString AssetPath;
+		FString FunctionName;
+		int32 NodeCount = 0;
+		TArray<FString> Inputs;   // "ParamName:TypeName" pairs
+		TArray<FString> Outputs;  // "ParamName:TypeName" pairs
+		bool bHasCrossAssetDeps = false;
+	};
+
+	/** Info about an event graph with very sparse logic. */
+	struct FSparseEventGraphInfo
+	{
+		FString AssetPath;
+		FString GraphName;
+		int32 NodeCount = 0;
+	};
+
+	/**
+	 * Extract a human-readable type name from a pin's type info.
+	 * Prefers the sub-category object name (e.g., "Vector", "MyEnum") over
+	 * the raw pin category (e.g., "struct", "byte").
+	 */
+	FString GetPinTypeName(const UEdGraphPin* Pin)
+	{
+		if (UObject* SubCatObj = Pin->PinType.PinSubCategoryObject.Get())
+		{
+			return SubCatObj->GetName();
+		}
+		return Pin->PinType.PinCategory.ToString();
+	}
+
+	/**
+	 * Scan modified assets for empty function graphs and sparse event graphs.
+	 * MUST be called on the game thread (loads UObject packages).
+	 *
+	 * @param AssetPaths            Asset paths to scan
+	 * @param OutEmptyFunctions     Populated with functions that have no logic (<=2 nodes)
+	 * @param OutSparseEventGraphs  Populated with event graphs that have <=3 nodes
+	 */
+	void ScanEmptyFunctionGraphs(
+		const TArray<FString>& AssetPaths,
+		TArray<FEmptyFunctionInfo>& OutEmptyFunctions,
+		TArray<FSparseEventGraphInfo>& OutSparseEventGraphs)
+	{
+		// Collect all modified asset class names for cross-dep detection
+		TSet<FString> ModifiedAssetClassNames;
+
+		for (const FString& AssetPath : AssetPaths)
+		{
+			UBlueprint* BP = LoadObject<UBlueprint>(nullptr, *AssetPath);
+			if (!BP) continue;
+			if (BP->GeneratedClass)
+			{
+				ModifiedAssetClassNames.Add(BP->GeneratedClass->GetName());
+			}
+		}
+
+		for (const FString& AssetPath : AssetPaths)
+		{
+			UBlueprint* BP = LoadObject<UBlueprint>(nullptr, *AssetPath);
+			if (!BP) continue;
+
+			// Scan function graphs
+			for (UEdGraph* Graph : BP->FunctionGraphs)
+			{
+				if (!Graph) continue;
+				if (Graph->Nodes.Num() > 2) continue;  // Has logic beyond entry/result stubs
+
+				FEmptyFunctionInfo Info;
+				Info.AssetPath = AssetPath;
+				Info.FunctionName = Graph->GetName();
+				Info.NodeCount = Graph->Nodes.Num();
+
+				// Extract function signature from FunctionEntry/FunctionResult nodes
+				for (UEdGraphNode* Node : Graph->Nodes)
+				{
+					if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(Node))
+					{
+						for (UEdGraphPin* Pin : Entry->Pins)
+						{
+							if (Pin && !Pin->bHidden && Pin->Direction == EGPD_Output
+								&& Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+							{
+								FString TypeName = GetPinTypeName(Pin);
+								Info.Inputs.Add(FString::Printf(TEXT("%s:%s"),
+									*Pin->PinName.ToString(), *TypeName));
+
+								// Cross-asset dep check: does this param reference another
+								// modified Blueprint's class?
+								if (UObject* PinClass = Pin->PinType.PinSubCategoryObject.Get())
+								{
+									if (ModifiedAssetClassNames.Contains(PinClass->GetName()))
+									{
+										Info.bHasCrossAssetDeps = true;
+									}
+								}
+							}
+						}
+					}
+					else if (UK2Node_FunctionResult* Result = Cast<UK2Node_FunctionResult>(Node))
+					{
+						for (UEdGraphPin* Pin : Result->Pins)
+						{
+							if (Pin && !Pin->bHidden && Pin->Direction == EGPD_Input
+								&& Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+							{
+								FString TypeName = GetPinTypeName(Pin);
+								Info.Outputs.Add(FString::Printf(TEXT("%s:%s"),
+									*Pin->PinName.ToString(), *TypeName));
+							}
+						}
+					}
+				}
+
+				OutEmptyFunctions.Add(MoveTemp(Info));
+			}
+
+			// Scan event graphs (UbergraphPages) for sparse logic
+			for (UEdGraph* Graph : BP->UbergraphPages)
+			{
+				if (!Graph) continue;
+				if (Graph->Nodes.Num() <= 3)
+				{
+					FSparseEventGraphInfo EventInfo;
+					EventInfo.AssetPath = AssetPath;
+					EventInfo.GraphName = Graph->GetName();
+					EventInfo.NodeCount = Graph->Nodes.Num();
+					OutSparseEventGraphs.Add(MoveTemp(EventInfo));
+				}
+			}
+		}
+
+		// Sort empty functions: non-cross-asset first (simpler deps), then by
+		// total parameter count ascending (simpler signatures first).
+		OutEmptyFunctions.Sort([](const FEmptyFunctionInfo& A, const FEmptyFunctionInfo& B)
+		{
+			if (A.bHasCrossAssetDeps != B.bHasCrossAssetDeps)
+				return !A.bHasCrossAssetDeps;  // non-cross-asset first
+			return A.Inputs.Num() + A.Outputs.Num() < B.Inputs.Num() + B.Outputs.Num();
+		});
 	}
 
 	/** Quick heuristic for messages that imply write/mutation intent. */
@@ -1041,12 +1196,19 @@ void FOliveCLIProviderBase::LaunchCLIProcess(
 		double LastOutputTime = FPlatformTime::Seconds();
 		const double ProcessStartTime = FPlatformTime::Seconds();
 		int32 AccumulatedOutputChars = 0; // All stdout chars received this run
+		bool bNudgeKillIssued = false; // True after tier-1 nudge-kill fired
 
 		// Read max runtime from settings (0 = no limit). This is primarily a cost-control
 		// safety net for autonomous mode, but applies universally since orchestrated turns
 		// complete in seconds and will never hit a reasonable limit.
 		const UOliveAISettings* RuntimeSettings = UOliveAISettings::Get();
 		const double MaxRuntimeSeconds = RuntimeSettings ? static_cast<double>(RuntimeSettings->AutonomousMaxRuntimeSeconds) : 300.0;
+
+		// Nudge threshold from settings (AutonomousIdleToolSeconds), clamped to a
+		// minimum of 60s so users can't accidentally make the agent unusable.
+		const double NudgeSeconds = RuntimeSettings
+			? FMath::Max(static_cast<double>(RuntimeSettings->AutonomousIdleToolSeconds), 60.0)
+			: CLI_TOOL_IDLE_NUDGE_SECONDS;
 
 		while (FPlatformProcess::IsProcRunning(ProcessHandle) && !bStopReading)
 		{
@@ -1079,14 +1241,16 @@ void FOliveCLIProviderBase::LaunchCLIProcess(
 			}
 			else
 			{
-				// Idle timeout: kill if no stdout for CLI_IDLE_TIMEOUT_SECONDS.
-				const double EffectiveIdleTimeout = CLI_IDLE_TIMEOUT_SECONDS;
+				// Stdout idle timeout: kill if process produces no output at all
+				// (frozen/deadlocked). Uses a generous 300s since the process may
+				// be genuinely thinking with tool calls flowing through MCP.
+				const double StdoutIdleTimeout = CLI_STDOUT_IDLE_SECONDS;
 
-				if (FPlatformTime::Seconds() - LastOutputTime > EffectiveIdleTimeout)
+				if (FPlatformTime::Seconds() - LastOutputTime > StdoutIdleTimeout)
 				{
 					UE_LOG(LogOliveCLIProvider, Warning,
 						TEXT("%s process idle for %.0f seconds (limit=%.0fs) - terminating"),
-						*CLIName, FPlatformTime::Seconds() - LastOutputTime, EffectiveIdleTimeout);
+						*CLIName, FPlatformTime::Seconds() - LastOutputTime, StdoutIdleTimeout);
 					bLastRunTimedOut = true;
 					bStopReading = true;
 					if (*Guard)
@@ -1098,20 +1262,46 @@ void FOliveCLIProviderBase::LaunchCLIProcess(
 				FPlatformProcess::Sleep(0.01f);
 			}
 
-			// Activity-based timeout: kill if no MCP tool call in AutonomousIdleToolSeconds.
-			// This catches "thinking but not acting" scenarios where stdout is flowing
-			// (so idle timeout doesn't trigger) but no tool calls are being made.
+			// Two-tier activity-based timeout: catches "thinking but not acting"
+			// scenarios where stdout is flowing (so the stdout idle timeout above
+			// doesn't trigger) but no MCP tool calls are being made.
+			//
+			// Tier 1 (nudge-kill): terminates the process after NudgeSeconds of no
+			//   tool call. bLastRunTimedOut triggers auto-continue, which relaunches
+			//   with an enriched continuation prompt.
+			// Tier 2 (hard-kill): if the process is STILL running (shouldn't happen
+			//   normally, but covers edge cases) after CLI_TOOL_IDLE_KILL_SECONDS,
+			//   terminates unconditionally.
+			//
 			// LastToolCallTimestamp is std::atomic<double>, written on game thread by
 			// OnToolCalled delegate, read here on background thread -- safe without lock.
 			const double LastToolCall = LastToolCallTimestamp.load();
 			if (LastToolCall > 0.0)
 			{
-				const double IdleToolTimeout = CLI_IDLE_TIMEOUT_SECONDS;
-				if (FPlatformTime::Seconds() - LastToolCall > IdleToolTimeout)
+				const double TimeSinceLastTool = FPlatformTime::Seconds() - LastToolCall;
+
+				if (TimeSinceLastTool > CLI_TOOL_IDLE_KILL_SECONDS)
 				{
+					// Tier 2: hard kill -- genuinely hung
 					UE_LOG(LogOliveCLIProvider, Warning,
-						TEXT("%s process: no MCP tool call in %.0f seconds (limit=%.0fs) - terminating"),
-						*CLIName, FPlatformTime::Seconds() - LastToolCall, IdleToolTimeout);
+						TEXT("%s process: no MCP tool call in %.0f seconds (hard limit=%.0fs) - terminating"),
+						*CLIName, TimeSinceLastTool, CLI_TOOL_IDLE_KILL_SECONDS);
+					bLastRunTimedOut = true;
+					bStopReading = true;
+					if (*Guard)
+					{
+						FPlatformProcess::TerminateProc(ProcessHandle, true);
+					}
+					break;
+				}
+				else if (TimeSinceLastTool > NudgeSeconds && !bNudgeKillIssued)
+				{
+					// Tier 1: nudge-kill -- agent thinking too long, relaunch
+					// with enriched prompt via auto-continue
+					UE_LOG(LogOliveCLIProvider, Warning,
+						TEXT("%s process: no MCP tool call in %.0f seconds (nudge limit=%.0fs) - nudge kill (will auto-continue)"),
+						*CLIName, TimeSinceLastTool, NudgeSeconds);
+					bNudgeKillIssued = true;
 					bLastRunTimedOut = true;
 					bStopReading = true;
 					if (*Guard)
@@ -1540,15 +1730,92 @@ FString FOliveCLIProviderBase::BuildContinuationPrompt(const FString& UserMessag
 		Prompt += AssetState;
 	}
 
-	// Action directive
-	Prompt += TEXT("\n### Your Task Now\n");
-	if (LastRunContext.ModifiedAssetPaths.Num() > 0)
+	// Scan for empty function graphs and sparse event graphs to build a concrete directive.
+	// This runs on the game thread (same as BuildAssetStateSummary above).
+	TArray<FEmptyFunctionInfo> EmptyGraphs;
+	TArray<FSparseEventGraphInfo> SparseEventGraphs;
+	ScanEmptyFunctionGraphs(LastRunContext.ModifiedAssetPaths, EmptyGraphs, SparseEventGraphs);
+
+	// Empty function graph listing with signatures
+	if (EmptyGraphs.Num() > 0)
 	{
-		Prompt += TEXT("**Do NOT re-read these assets** -- their current state is shown above.\n");
-		Prompt += TEXT("1. Implement the remaining empty functions (0-1 nodes = empty stubs) using `blueprint.apply_plan_json`.\n");
-		Prompt += TEXT("   Compile after each function's graph is complete. Use `@step.auto` for pin wiring when unsure.\n");
-		Prompt += TEXT("2. Wire event graph logic if needed.\n");
-		Prompt += TEXT("3. Compile each Blueprint and verify 0 errors.\n");
+		Prompt += TEXT("\n### Remaining Work: Empty Function Graphs\n\n");
+		Prompt += TEXT("EMPTY (no logic -- write these with apply_plan_json):\n");
+
+		/** Show full signatures for the first few, names-only for the rest. */
+		constexpr int32 MaxDetailedEntries = 3;
+		int32 CharBudget = 4000;
+
+		for (int32 i = 0; i < EmptyGraphs.Num() && CharBudget > 0; i++)
+		{
+			const FEmptyFunctionInfo& Info = EmptyGraphs[i];
+			FString AssetName = FPaths::GetBaseFilename(Info.AssetPath);
+
+			FString Line;
+			if (i < MaxDetailedEntries)
+			{
+				// Full detail: index, name, signature, cross-dep flag
+				Line = FString::Printf(TEXT("%d. %s::%s"), i + 1, *AssetName, *Info.FunctionName);
+				if (Info.Inputs.Num() > 0)
+				{
+					Line += TEXT(" (") + FString::Join(Info.Inputs, TEXT(", ")) + TEXT(")");
+				}
+				else
+				{
+					Line += TEXT(" (no inputs)");
+				}
+				if (Info.Outputs.Num() > 0)
+				{
+					Line += TEXT(" -> ") + FString::Join(Info.Outputs, TEXT(", "));
+				}
+				if (Info.bHasCrossAssetDeps)
+				{
+					Line += TEXT(" [cross-asset deps]");
+				}
+			}
+			else
+			{
+				// Name only for entries beyond the detailed threshold
+				Line = FString::Printf(TEXT("%d. %s::%s"), i + 1, *AssetName, *Info.FunctionName);
+			}
+
+			Line += TEXT("\n");
+			CharBudget -= Line.Len();
+			if (CharBudget > 0)
+			{
+				Prompt += Line;
+			}
+		}
+	}
+
+	// Sparse event graph note
+	if (SparseEventGraphs.Num() > 0)
+	{
+		Prompt += TEXT("\nSPARSE EVENT GRAPHS (<=3 nodes -- likely need logic):\n");
+		for (const FSparseEventGraphInfo& Info : SparseEventGraphs)
+		{
+			FString AssetName = FPaths::GetBaseFilename(Info.AssetPath);
+			Prompt += FString::Printf(TEXT("- %s::%s (%d nodes)\n"),
+				*AssetName, *Info.GraphName, Info.NodeCount);
+		}
+	}
+
+	// Action directive -- concrete "do THIS first" when empty functions are known
+	Prompt += TEXT("\n### Your Task Now\n\n");
+	if (EmptyGraphs.Num() > 0)
+	{
+		FString FirstAsset = FPaths::GetBaseFilename(EmptyGraphs[0].AssetPath);
+		Prompt += FString::Printf(
+			TEXT("Write the logic for %s::%s FIRST using apply_plan_json.\n"),
+			*FirstAsset, *EmptyGraphs[0].FunctionName);
+		Prompt += TEXT("Then write the next empty function. Compile after each.\n");
+		Prompt += TEXT("Do NOT re-read these assets -- their current state is shown above.\n");
+	}
+	else if (LastRunContext.ModifiedAssetPaths.Num() > 0)
+	{
+		Prompt += TEXT("All functions have graph logic. Compile each Blueprint and verify 0 errors.\n");
+		Prompt += TEXT("If errors exist, fix them. If all clean, the task may be complete.\n");
+		Prompt += TEXT("Do NOT re-read these assets -- their current state is shown above.\n");
 	}
 	else
 	{
