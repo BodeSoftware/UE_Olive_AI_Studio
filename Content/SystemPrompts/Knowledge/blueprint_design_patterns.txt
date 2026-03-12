@@ -61,6 +61,37 @@ Direct call pattern (simpler but tightly coupled):
   Multiple widgets can't listen. Use only when the widget is guaranteed to exist and only one
   consumer needs the data.
 
+### Widget Ownership — Connecting Widgets to Game Actors
+
+Widgets need actor references to display game state. Three patterns, simplest first:
+
+Pattern 1 — Construct-time resolution (simplest, single-player):
+  In the widget's Construct event:
+  1. GetPlayerCharacter(0) -> Cast to BP_ThirdPersonCharacter -> Set OwnerCharacter
+  Best when: only one player, widget always refers to the local player's character.
+  No setup needed by the widget creator.
+
+Pattern 2 — expose_on_spawn variable (explicit, multi-widget safe):
+  1. Widget has OwnerCharacter variable with expose_on_spawn = true
+  2. Creator calls CreateWidget -> sets OwnerCharacter -> AddToViewport
+  CRITICAL: expose_on_spawn variables are only settable BETWEEN CreateWidget and
+  AddToViewport. If you AddToViewport first, the variable is never set.
+  In plan_json on the creator's side:
+    create_widget -> set_var OwnerCharacter on widget ref -> add_to_viewport
+  Best when: different widget instances track different actors.
+
+Pattern 3 — Event dispatcher binding (reactive, decoupled):
+  Already covered above. Widget binds to actor's dispatcher in Construct.
+  Best when: widget reacts to state CHANGES, not just reads initial state.
+
+Common mistake: creating a widget with expose_on_spawn=true but never setting the
+variable. The widget compiles clean but crashes at runtime with "Accessed None".
+If a widget has an actor reference variable, it MUST be initialized — either in
+Construct (Pattern 1) or by the creator (Pattern 2).
+
+CreateWidget requires an owning player controller. Use GetPlayerController(0) or,
+from within a widget, GetOwningPlayer(). Never pass None as the owning player.
+
 ### Prefer Better Patterns
 - ForEachLoop + Cast to find actors is usually wrong → overlap events give you the actor directly
 - Casting inside a loop usually means you want a Blueprint Interface instead

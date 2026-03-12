@@ -4048,7 +4048,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAddFunctionType_Function(
 	);
 	Request.OperationCategory = TEXT("function_creation"); // Tier 2
 	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
-	Request.bAutoCompile = false;
+	Request.bAutoCompile = true;
 	Request.bSkipVerification = false;
 
 	// Create executor
@@ -4175,7 +4175,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAddFunctionType_CustomEvent(
 	);
 	Request.OperationCategory = TEXT("variable"); // Tier 1 - custom events are low risk
 	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
-	Request.bAutoCompile = false;
+	Request.bAutoCompile = true;
 	Request.bSkipVerification = false;
 
 	// Create executor
@@ -4270,7 +4270,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAddFunctionType_EventDispatc
 	);
 	Request.OperationCategory = TEXT("variable"); // Tier 1 - dispatchers are like variables
 	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
-	Request.bAutoCompile = false;
+	Request.bAutoCompile = true;
 	Request.bSkipVerification = false;
 
 	// Create executor
@@ -4340,7 +4340,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAddFunctionType_Override(
 	);
 	Request.OperationCategory = TEXT("function_creation"); // Tier 2
 	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
-	Request.bAutoCompile = false;
+	Request.bAutoCompile = true;
 	Request.bSkipVerification = false;
 
 	// Create executor
@@ -4572,7 +4572,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintModifyFunctionSigna
 	);
 	Request.OperationCategory = TEXT("function_creation"); // Tier 2
 	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
-	Request.bAutoCompile = false;
+	Request.bAutoCompile = true;
 	Request.bSkipVerification = false;
 
 	// Create executor

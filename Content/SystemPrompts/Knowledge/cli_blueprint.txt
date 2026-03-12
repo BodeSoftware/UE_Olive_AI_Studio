@@ -168,3 +168,7 @@ WHY: Tilde (~) disambiguates among a node's output pins. It does not decompose s
 WRONG: "exec_after": "@step_id"
 RIGHT: "exec_after": "step_id"
 WHY: Exec wires use plain step_id with no prefix. The @ prefix is for data wire references only.
+
+WRONG: connect_pins to wire from a function's entry node (searching for node_id="entry", "FunctionEntry", etc.)
+RIGHT: Use apply_plan_json with exec_after chains — the auto-chain feature automatically wires the event/entry node to your first step.
+WHY: apply_plan_json's auto-chain handles function entry wiring automatically. Using connect_pins for this wastes tool calls on node ID guessing.

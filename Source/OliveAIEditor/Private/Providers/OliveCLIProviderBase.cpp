@@ -566,7 +566,10 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 	AgentContext += TEXT("- `blueprint.describe_node_type(type)` -- check K2Node properties and pins\n");
 	AgentContext += TEXT("- `project.search(query)` -- find existing assets by name\n");
 	AgentContext += TEXT("- `olive.get_recipe(query)` -- tested wiring patterns for common tasks\n\n");
-	AgentContext += TEXT("Research when you are unsure. Skip research when you are confident in your UE5 knowledge.\n\n");
+	AgentContext += TEXT("Before creating any assets, call get_recipe or get_template for the primary task domain.\n");
+	AgentContext += TEXT("For inventory/pickup systems: search pickup, inventory, widget. For combat: search damage, health, weapon.\n");
+	AgentContext += TEXT("Research is mandatory, not optional — it takes 10 seconds and prevents 10 minutes of failures.\n");
+	AgentContext += TEXT("Exception: if search returns no relevant results (0-1 weak matches), proceed without.\n\n");
 
 	AgentContext += TEXT("## Building\n\n");
 	AgentContext += TEXT("Three approaches -- use whichever fits, mix freely:\n");
