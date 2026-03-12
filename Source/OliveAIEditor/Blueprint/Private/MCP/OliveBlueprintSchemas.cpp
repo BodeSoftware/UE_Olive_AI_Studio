@@ -1374,6 +1374,10 @@ namespace OliveBlueprintSchemas
 		Properties->SetObjectField(TEXT("name"),
 			StringProp(TEXT("Widget variable name (auto-generated if not provided)")));
 
+		Properties->SetObjectField(TEXT("is_variable"),
+			BoolProp(TEXT("Mark widget as a Blueprint variable (default: true). "
+						  "Set false for decorative widgets that don't need graph access."), true));
+
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
 		Schema->SetStringField(TEXT("description"), TEXT("Add a widget to a Widget Blueprint"));
 		Schema->SetObjectField(TEXT("properties"), Properties);

@@ -65,6 +65,9 @@ protected:
 	// FOliveCLIProviderBase Virtual Hooks
 	// ==========================================
 
+	/** Claude is an Anthropic provider — skip prescriptive guidance in AGENTS.md */
+	virtual bool IsAnthropicProvider() const override { return true; }
+
 	/** Returns the Claude Code CLI executable path */
 	virtual FString GetExecutablePath() const override;
 

@@ -463,6 +463,21 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 		AgentContext += TEXT("\n\n");
 	}
 
+	// --- Prescriptive guidance for non-Anthropic providers ---
+	// Claude models deeply understand UE5 APIs and tool schemas from training.
+	// Other models (GPT, Gemini) need explicit rules to avoid common failure patterns
+	// observed in testing: pin name guessing, rate limit hammering, granular-tool spirals.
+	if (!IsAnthropicProvider())
+	{
+		UE_LOG(LogOliveCLIProvider, Log, TEXT("Non-Anthropic provider detected (%s) — appending prescriptive tool guidance to AGENTS.md"), *GetCLIName());
+		AgentContext += TEXT("\n---\n\n");
+		AgentContext += BuildPrescriptiveGuidance();
+	}
+	else
+	{
+		UE_LOG(LogOliveCLIProvider, Log, TEXT("Anthropic provider (%s) — skipping prescriptive guidance"), *GetCLIName());
+	}
+
 	// --- Write AGENTS.md (read by all CLI providers: Claude, Codex, Gemini, etc.) ---
 	const FString SandboxAgentsPath = FPaths::Combine(AutonomousSandboxDir, TEXT("AGENTS.md"));
 	FFileHelper::SaveStringToFile(AgentContext, *SandboxAgentsPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
@@ -476,6 +491,107 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 void FOliveCLIProviderBase::WriteProviderSpecificSandboxFiles(const FString& AgentContext)
 {
 	// Default: no-op. Subclasses override to write provider-specific files.
+}
+
+FString FOliveCLIProviderBase::BuildPrescriptiveGuidance() const
+{
+	FString G;
+
+	G += TEXT("# MANDATORY Tool Usage Rules\n\n");
+	G += TEXT("These rules are NON-NEGOTIABLE. Violating them causes broken Blueprints.\n\n");
+
+	// === Rule 1: plan_json is mandatory for multi-node graphs ===
+	G += TEXT("## Rule 1: Use plan_json for Graph Logic (NOT add_node + connect_pins)\n\n");
+	G += TEXT("For ANY graph logic with 2+ connected nodes, you MUST use `blueprint.preview_plan_json` followed by `blueprint.apply_plan_json`.\n");
+	G += TEXT("plan_json handles ALL pin wiring automatically via `@step.auto` syntax.\n");
+	G += TEXT("Do NOT use `add_node` + `connect_pins` for standard logic — you WILL get pin names wrong.\n\n");
+	G += TEXT("Only use add_node + connect_pins for:\n");
+	G += TEXT("- Wiring a SINGLE connection between existing nodes\n");
+	G += TEXT("- Node types outside plan_json ops vocabulary\n\n");
+
+	// === Rule 2: plan_json example ===
+	G += TEXT("## Rule 2: plan_json Format (Follow Exactly)\n\n");
+	G += TEXT("```json\n");
+	G += TEXT("{\n");
+	G += TEXT("  \"schema_version\": \"2.0\",\n");
+	G += TEXT("  \"steps\": [\n");
+	G += TEXT("    {\"step_id\": \"evt\", \"op\": \"event\", \"target\": \"BeginPlay\"},\n");
+	G += TEXT("    {\"step_id\": \"get_hp\", \"op\": \"get_var\", \"target\": \"Health\"},\n");
+	G += TEXT("    {\"step_id\": \"check\", \"op\": \"branch\", \"inputs\": {\"Condition\": \"@get_hp.auto\"}, \"exec_after\": \"evt\"},\n");
+	G += TEXT("    {\"step_id\": \"print\", \"op\": \"print_string\", \"inputs\": {\"InString\": \"Alive!\"}, \"exec_after\": \"check.true\"}\n");
+	G += TEXT("  ]\n");
+	G += TEXT("}\n");
+	G += TEXT("```\n\n");
+	G += TEXT("Key syntax:\n");
+	G += TEXT("- `@step_id.auto` — auto-wire output of that step (plan_json resolves the correct pin)\n");
+	G += TEXT("- `@step_id.PinName` — wire a specific output pin\n");
+	G += TEXT("- `exec_after` — exec wiring: step_id, or step_id.true / step_id.false for branches\n");
+	G += TEXT("- `@entry.ParamName` — wire from function input parameter\n");
+	G += TEXT("- String literals go directly: `\"InString\": \"Hello\"`\n");
+	G += TEXT("- Numeric literals: `\"Amount\": \"100.0\"`\n\n");
+	G += TEXT("Available ops: event, custom_event, call, get_var, set_var, branch, sequence, cast,\n");
+	G += TEXT("for_loop, for_each_loop, while_loop, do_once, flip_flop, gate, delay, is_valid,\n");
+	G += TEXT("print_string, spawn_actor, make_struct, break_struct, return, comment,\n");
+	G += TEXT("call_delegate, call_dispatcher, bind_dispatcher\n\n");
+	G += TEXT("IMPORTANT: Always call `blueprint.preview_plan_json` first, then `blueprint.apply_plan_json`\n");
+	G += TEXT("with the fingerprint from the preview. NEVER call both in the same response.\n\n");
+
+	// === Rule 3: NEVER guess pin names ===
+	G += TEXT("## Rule 3: NEVER Guess Pin Names\n\n");
+	G += TEXT("If you must use `connect_pins`, you MUST call `blueprint.get_node_pins` first.\n");
+	G += TEXT("Pin names in Unreal Engine are NOT the same as function parameter names.\n\n");
+	G += TEXT("Common mistakes:\n");
+	G += TEXT("- VariableGet nodes have NO exec pins (no `then`, no `execute`). They only have data output.\n");
+	G += TEXT("- VariableSet nodes have exec pins (`execute` input, `then` output) plus data pins.\n");
+	G += TEXT("- CallFunction `then` is the exec output. `execute` is the exec input.\n");
+	G += TEXT("- Pin names often have spaces: `Return Value`, `Inventory Items`, `World Context Object`.\n");
+	G += TEXT("- Output pin names do NOT match input parameter names on other nodes.\n\n");
+
+	// === Rule 4: Batching limits ===
+	G += TEXT("## Rule 4: Limit Write Operations Per Turn\n\n");
+	G += TEXT("The server enforces a rate limit of 30 write operations per 60 seconds.\n");
+	G += TEXT("If you batch too many writes, they will be rejected with RATE_LIMITED.\n\n");
+	G += TEXT("Rules:\n");
+	G += TEXT("- Maximum 8 write tool calls per turn (add_variable, add_component, add_node, etc.)\n");
+	G += TEXT("- Read operations (blueprint.read, describe_function, get_node_pins) are unlimited\n");
+	G += TEXT("- If you get RATE_LIMITED, wait the suggested seconds, then retry\n");
+	G += TEXT("- Do NOT use shell sleep commands to wait — just make fewer calls per turn\n\n");
+
+	// === Rule 5: Common UE class name pitfalls ===
+	G += TEXT("## Rule 5: Correct UE5 Class Names\n\n");
+	G += TEXT("Common wrong names (these WILL fail):\n");
+	G += TEXT("- `SystemLibrary` is wrong — use `KismetSystemLibrary`\n");
+	G += TEXT("- `MathLibrary` is wrong — use `KismetMathLibrary`\n");
+	G += TEXT("- `StringLibrary` is wrong — use `KismetStringLibrary`\n");
+	G += TEXT("- `ArrayLibrary` is wrong — use `KismetArrayLibrary`\n");
+	G += TEXT("- `GameplayStatics` (correct as-is)\n");
+	G += TEXT("- `WidgetBlueprintLibrary` (correct as-is)\n\n");
+	G += TEXT("When unsure, call `blueprint.describe_function(function_name)` WITHOUT target_class.\n");
+	G += TEXT("The server searches all known library classes automatically.\n\n");
+
+	// === Rule 6: Workflow order ===
+	G += TEXT("## Rule 6: Build Order (Follow Strictly)\n\n");
+	G += TEXT("1. `blueprint.create` — create the Blueprint\n");
+	G += TEXT("2. `blueprint.add_variable` / `blueprint.add_component` — add structure\n");
+	G += TEXT("3. `blueprint.add_function` — create function signatures (with parameters/return types)\n");
+	G += TEXT("4. `blueprint.compile` — compile structure before adding graph logic\n");
+	G += TEXT("5. `blueprint.preview_plan_json` then `blueprint.apply_plan_json` — add graph logic per function\n");
+	G += TEXT("6. `blueprint.compile` — final compile, fix errors\n\n");
+	G += TEXT("NEVER skip step 4. Compiling structure first ensures variables and functions resolve in plan_json.\n\n");
+
+	// === Rule 7: Error recovery ===
+	G += TEXT("## Rule 7: Error Recovery\n\n");
+	G += TEXT("When plan_json fails:\n");
+	G += TEXT("- All nodes from that plan are ROLLED BACK (you cannot reference them)\n");
+	G += TEXT("- Read the error message carefully — it tells you exactly what went wrong\n");
+	G += TEXT("- Fix the issue in your plan and try again\n");
+	G += TEXT("- Do NOT fall back to add_node + connect_pins as a workaround\n\n");
+	G += TEXT("When connect_pins fails with 'pin not found':\n");
+	G += TEXT("- The error shows available pins — use THOSE exact names\n");
+	G += TEXT("- Call `blueprint.get_node_pins` to see all pins on a node\n");
+	G += TEXT("- Do NOT retry with the same wrong pin name\n\n");
+
+	return G;
 }
 
 void FOliveCLIProviderBase::SendMessageAutonomous(

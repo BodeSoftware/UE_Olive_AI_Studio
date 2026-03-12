@@ -42,6 +42,7 @@
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
 #include "Components/ActorComponent.h"
+#include "UObject/UnrealType.h"
 #include "Services/OliveBatchExecutionScope.h"
 #include "OliveClassResolver.h"
 
@@ -4513,6 +4514,120 @@ void FOlivePlanExecutor::PhasePreCompileValidation(
                             *NodeDesc, *Func->GetName());
                     }
                 }
+            }
+        }
+
+        // ================================================================
+        // Check 4: Unwired required object input pins
+        // Only checks object-like pins (PC_Object, PC_Interface, etc.)
+        // Uses CPF_RequiredParm to distinguish required vs optional params
+        // ================================================================
+        {
+            // Get UFunction for CallFunction nodes (used for CPF_RequiredParm check)
+            UK2Node_CallFunction* Check4CallFunc = Cast<UK2Node_CallFunction>(K2Node);
+            UFunction* Check4Func = Check4CallFunc ? Check4CallFunc->GetTargetFunction() : nullptr;
+
+            for (UEdGraphPin* Pin : K2Node->Pins)
+            {
+                if (!Pin || Pin->Direction != EGPD_Input)
+                {
+                    continue;
+                }
+
+                // Skip exec pins
+                if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+                {
+                    continue;
+                }
+
+                // Skip wildcard pins
+                if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Wildcard)
+                {
+                    continue;
+                }
+
+                // Only check object-like pin categories
+                const FName& Category = Pin->PinType.PinCategory;
+                if (Category != UEdGraphSchema_K2::PC_Object &&
+                    Category != UEdGraphSchema_K2::PC_Interface &&
+                    Category != UEdGraphSchema_K2::PC_SoftObject &&
+                    Category != UEdGraphSchema_K2::PC_SoftClass &&
+                    Category != UEdGraphSchema_K2::PC_Class)
+                {
+                    continue;
+                }
+
+                // Skip hidden/not-connectable pins
+                if (Pin->bHidden || Pin->bNotConnectable)
+                {
+                    continue;
+                }
+
+                // Skip Self pin (handled by Check 2 and Phase 1.5)
+                if (Pin->PinName == UEdGraphSchema_K2::PN_Self)
+                {
+                    continue;
+                }
+
+                // Skip WorldContextObject (auto-wired by UE at compile time)
+                if (Pin->PinName == TEXT("WorldContextObject"))
+                {
+                    continue;
+                }
+
+                // Skip advanced view pins
+                if (Pin->bAdvancedView)
+                {
+                    continue;
+                }
+
+                // Skip if already wired or has a default
+                if (Pin->LinkedTo.Num() > 0 || !Pin->DefaultValue.IsEmpty() || Pin->DefaultObject != nullptr)
+                {
+                    continue;
+                }
+
+                // Check underlying FProperty for optional status (CallFunction nodes only)
+                if (Check4Func)
+                {
+                    bool bIsOptionalParam = false;
+                    for (TFieldIterator<FProperty> PropIt(Check4Func); PropIt; ++PropIt)
+                    {
+                        if (PropIt->GetFName() == Pin->PinName &&
+                            PropIt->HasAnyPropertyFlags(CPF_Parm) &&
+                            !PropIt->HasAnyPropertyFlags(CPF_RequiredParm))
+                        {
+                            bIsOptionalParam = true;
+                            break;
+                        }
+                    }
+                    if (bIsOptionalParam)
+                    {
+                        continue; // Optional param -- skip
+                    }
+                }
+
+                // This pin is unwired, has no default, and is required -- report it
+                const FString StepId4 = Context.FindStepIdForNode(Node);
+                FString NodeDesc = FString::Printf(TEXT("%s (step: %s)"),
+                    *Node->GetNodeTitle(ENodeTitleType::ListView).ToString(),
+                    StepId4.IsEmpty() ? TEXT("unknown") : *StepId4);
+
+                FString TypeName = Pin->PinType.PinCategory.ToString();
+                if (UObject* SubObj = Pin->PinType.PinSubCategoryObject.Get())
+                {
+                    TypeName = SubObj->GetName();
+                }
+
+                Context.PreCompileIssues.Add(FString::Printf(
+                    TEXT("UNWIRED_REQUIRED_INPUT: '%s' has required object input '%s' (%s) "
+                         "that is not wired and has no default. Wire it to a valid source or "
+                         "use set_pin_default to set a value."),
+                    *NodeDesc, *Pin->GetName(), *TypeName));
+
+                UE_LOG(LogOlivePlanExecutor, Warning,
+                    TEXT("Phase 5.5: Unwired required input '%s' (%s) on '%s'"),
+                    *Pin->GetName(), *TypeName, *NodeDesc);
             }
         }
     }

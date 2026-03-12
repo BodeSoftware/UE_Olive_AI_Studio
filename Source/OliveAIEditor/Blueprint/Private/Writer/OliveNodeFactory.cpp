@@ -3388,6 +3388,13 @@ const TMap<FString, FString>& FOliveNodeFactory::GetAliasMap()
 		Map.Add(TEXT("EnableInput"), TEXT("EnableInput"));
 		Map.Add(TEXT("DisableInput"), TEXT("DisableInput"));
 
+		// Input Mode (UWidgetBlueprintLibrary)
+		Map.Add(TEXT("SetInputModeGameAndUI"), TEXT("SetInputMode_GameAndUIEx"));
+		Map.Add(TEXT("SetInputMode_GameAndUI"), TEXT("SetInputMode_GameAndUIEx"));
+		Map.Add(TEXT("SetInputModeUIOnly"), TEXT("SetInputMode_UIOnlyEx"));
+		Map.Add(TEXT("SetInputMode_UIOnly"), TEXT("SetInputMode_UIOnlyEx"));
+		Map.Add(TEXT("SetInputModeGameOnly"), TEXT("SetInputMode_GameOnly"));
+
 		// ================================================================
 		// Array Operations (UKismetArrayLibrary)
 		// ================================================================

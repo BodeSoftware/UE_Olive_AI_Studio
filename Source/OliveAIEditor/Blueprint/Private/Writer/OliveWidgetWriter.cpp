@@ -43,7 +43,8 @@ FOliveBlueprintWriteResult FOliveWidgetWriter::AddWidget(
 	const FString& WidgetClass,
 	const FString& WidgetName,
 	const FString& ParentWidgetName,
-	const FString& SlotType)
+	const FString& SlotType,
+	bool bIsVariable)
 {
 	FString ErrorMsg;
 	UWidgetBlueprint* WidgetBlueprint = LoadWidgetBlueprintForEditing(AssetPath, ErrorMsg);
@@ -138,6 +139,10 @@ FOliveBlueprintWriteResult FOliveWidgetWriter::AddWidget(
 			FString::Printf(TEXT("Failed to construct widget of class '%s'"), *WidgetClass),
 			AssetPath);
 	}
+
+	// Default to variable so Blueprint graph can reference this widget via get_var.
+	// The agent needs @WidgetName refs to wire data in function graphs.
+	NewWidget->bIsVariable = bIsVariable;
 
 	// Add to parent or set as root
 	if (ParentWidget)

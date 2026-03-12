@@ -238,6 +238,14 @@ protected:
 	 */
 	virtual FString GetCLIName() const;
 
+	/**
+	 * Whether this provider is an Anthropic/Claude provider.
+	 * When false, SetupAutonomousSandbox() appends additional prescriptive
+	 * guidance to AGENTS.md to compensate for weaker tool-schema comprehension.
+	 * Default: false (non-Anthropic providers get prescriptive guidance).
+	 */
+	virtual bool IsAnthropicProvider() const { return false; }
+
 	// ==========================================
 	// Shared infrastructure (protected, usable by subclasses)
 	// ==========================================
@@ -381,6 +389,15 @@ protected:
 	 * @return Formatted summary for injection into continuation prompts
 	 */
 	FString BuildAssetStateSummary() const { return BuildAssetStateSummary(LastRunContext.ModifiedAssetPaths); }
+
+	/**
+	 * Build additional prescriptive guidance for non-Anthropic CLI providers.
+	 * Returns strict rules and examples that compensate for weaker UE5 knowledge
+	 * and tool-schema comprehension observed in testing (pin name guessing,
+	 * rate limit hammering, granular-tool spirals).
+	 * @return Formatted markdown string with mandatory tool usage rules
+	 */
+	FString BuildPrescriptiveGuidance() const;
 
 	/**
 	 * Kill the running CLI process and clean up all resources.

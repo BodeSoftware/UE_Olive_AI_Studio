@@ -57,6 +57,8 @@ public:
 	 * @param WidgetName Variable name for the new widget (auto-generated if empty)
 	 * @param ParentWidgetName Name of the parent widget (empty for root)
 	 * @param SlotType Optional slot type hint (e.g., "Canvas", "HorizontalBox")
+	 * @param bIsVariable If true (default), the widget is exposed as a Blueprint variable so the
+	 *        graph can reference it via get_var. Set false for purely decorative widgets.
 	 * @return Result with widget name on success
 	 */
 	FOliveBlueprintWriteResult AddWidget(
@@ -64,7 +66,8 @@ public:
 		const FString& WidgetClass,
 		const FString& WidgetName = TEXT(""),
 		const FString& ParentWidgetName = TEXT(""),
-		const FString& SlotType = TEXT(""));
+		const FString& SlotType = TEXT(""),
+		bool bIsVariable = true);
 
 	/**
 	 * Remove a widget from a Widget Blueprint

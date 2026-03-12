@@ -6617,6 +6617,12 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleWidgetAddWidget(const TShare
 	FString SlotType = TEXT("");
 	Params->TryGetStringField(TEXT("slot"), SlotType);
 
+	bool bIsVariable = true; // Default true — agent creates widgets to use them in logic
+	if (Params->HasField(TEXT("is_variable")))
+	{
+		bIsVariable = Params->GetBoolField(TEXT("is_variable"));
+	}
+
 	// Build write request for pipeline
 	FOliveWriteRequest Request;
 	Request.ToolName = TEXT("widget.add_widget");
@@ -6632,7 +6638,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleWidgetAddWidget(const TShare
 
 	// Define executor
 	FOliveWriteExecutor Executor;
-	Executor.BindLambda([WidgetClass, WidgetName, ParentWidget, SlotType](const FOliveWriteRequest& Req, UObject* Target) -> FOliveWriteResult
+	Executor.BindLambda([WidgetClass, WidgetName, ParentWidget, SlotType, bIsVariable](const FOliveWriteRequest& Req, UObject* Target) -> FOliveWriteResult
 	{
 		FOliveWidgetWriter& Writer = FOliveWidgetWriter::Get();
 		FOliveBlueprintWriteResult WriteResult = Writer.AddWidget(
@@ -6640,7 +6646,8 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleWidgetAddWidget(const TShare
 			WidgetClass,
 			WidgetName,
 			ParentWidget,
-			SlotType);
+			SlotType,
+			bIsVariable);
 
 		if (!WriteResult.bSuccess)
 		{

@@ -34,10 +34,15 @@ After listing assets, identify how they communicate:
 ## Cross-Blueprint Communication Patterns
 
 ### Decision Tree
-ONE known type → Direct cast (simplest)
+ONE known type, need TYPE-SPECIFIC DATA → Direct cast (read properties unique to that class)
+Calling a SHARED BEHAVIOR on an actor → Blueprint Interface (any type can implement it)
 TWO+ types share a behavior → Blueprint Interface (no casting)
 Notify others about state changes → Event Dispatcher
 Gameplay → UI updates → Prefer Event Dispatcher (decouples gameplay from presentation)
+
+Type-specific data examples: read CurrentAmmo from BP_Gun, check bIsDead on BP_Enemy.
+Shared behavior examples: AddToInventory, TakeDamage, Interact, Collect — any actor could
+implement these. If the function name could reasonably live on an interface, it probably should.
 
 ### UI / Widget Updates
 For gameplay → UI communication, prefer event dispatchers over direct widget function calls.
@@ -257,7 +262,10 @@ NOT for continuous detection — that's what overlap events are for.
 
 ### When Cast IS Correct
 - Need data specific to ONE known type: Cast to BP_Gun → read CurrentAmmo
-- After overlap gives you OtherActor and you need type-specific data
+- Overlap gives you OtherActor and you need DATA from a specific class (not a shared behavior)
+  e.g., read weapon stats from a weapon pickup, check if the overlapping actor has a specific variable
+  If you're calling a function that should work on any actor (AddToInventory, TakeDamage),
+  that's a shared behavior — BPI avoids the cast and works for any actor type.
 - ONE cast after an event = fine. Cast inside a loop = WRONG.
 
 plan_json cast example:
@@ -310,6 +318,10 @@ then apply_plan_json for the rest of the logic starting from is_valid onward.
 ---
 
 ## 6. Complete Example: Interaction System
+
+Pickups (collectibles, ammo, power-ups) follow the same pattern — they ARE interactables
+that call a behavior on the overlapping actor (AddToInventory, AddAmmo, GiveWeapon).
+BPI means the pickup works with any pawn, not just the specific character class.
 
 Goal: Character presses E to interact with doors, chests, switches (all different types).
 

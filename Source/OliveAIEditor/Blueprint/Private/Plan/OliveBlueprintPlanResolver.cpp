@@ -815,6 +815,24 @@ bool FOliveBlueprintPlanResolver::ExpandComponentRefs(
 		}
 	}
 
+	// Build set of WidgetTree variable names (Widget Blueprints only)
+	TSet<FString> WidgetTreeVariableNames;
+	{
+		const UWidgetBlueprint* WidgetBP = Cast<UWidgetBlueprint>(Blueprint);
+		if (WidgetBP && WidgetBP->WidgetTree)
+		{
+			TArray<UWidget*> AllWidgets;
+			WidgetBP->WidgetTree->GetAllWidgets(AllWidgets);
+			for (const UWidget* Widget : AllWidgets)
+			{
+				if (Widget && Widget->bIsVariable)
+				{
+					WidgetTreeVariableNames.Add(Widget->GetName());
+				}
+			}
+		}
+	}
+
 	// Track synthesized steps to insert (step, insertion index)
 	struct FSyntheticStepInsert
 	{
@@ -1065,6 +1083,42 @@ bool FOliveBlueprintPlanResolver::ExpandComponentRefs(
 					bExpanded = true;
 					continue;
 				}
+
+				// Check if it's a widget tree variable with a dot (e.g., @ItemIcon.Brush)
+				if (WidgetTreeVariableNames.Contains(RefStepId))
+				{
+					FString* ExistingSynthId = SynthesizedComponentSteps.Find(RefStepId);
+					if (!ExistingSynthId)
+					{
+						FString SynthStepId = FString::Printf(TEXT("_synth_widget_%s"), *RefStepId.ToLower());
+
+						FOliveIRBlueprintPlanStep SynthStep;
+						SynthStep.StepId = SynthStepId;
+						SynthStep.Op = OlivePlanOps::GetVar;
+						SynthStep.Target = RefStepId;
+
+						Inserts.Add({ MoveTemp(SynthStep), i });
+						SynthesizedComponentSteps.Add(RefStepId, SynthStepId);
+						ExistingStepIds.Add(SynthStepId);
+
+						FOliveResolverNote Note;
+						Note.Field = FString::Printf(TEXT("step '%s' inputs.%s"), *Step.StepId, *PinName);
+						Note.OriginalValue = Value;
+						Note.ResolvedValue = FString::Printf(TEXT("Synthesized get_var step '%s' for widget '%s'"), *SynthStepId, *RefStepId);
+						Note.Reason = TEXT("@ref referenced a widget tree variable name, not a step_id. Synthesized a get_var step to access the widget.");
+						OutNotes.Add(MoveTemp(Note));
+
+						UE_LOG(LogOlivePlanResolver, Log,
+							TEXT("ExpandComponentRefs: Synthesized get_var step '%s' for widget '%s' (referenced by step '%s')"),
+							*SynthStepId, *RefStepId, *Step.StepId);
+					}
+
+					FString PinHint = RefBody.Mid(DotIndex + 1);
+					FString SynthId = SynthesizedComponentSteps[RefStepId];
+					RewrittenInputs.Add(PinName, FString::Printf(TEXT("@%s.%s"), *SynthId, *PinHint));
+					bExpanded = true;
+					continue;
+				}
 			}
 			else
 			{
@@ -1152,6 +1206,41 @@ bool FOliveBlueprintPlanResolver::ExpandComponentRefs(
 
 						UE_LOG(LogOlivePlanResolver, Log,
 							TEXT("ExpandComponentRefs: Synthesized get_var step '%s' for bare variable ref '@%s' (referenced by step '%s')"),
+							*SynthStepId, *RefBody, *Step.StepId);
+					}
+
+					FString SynthId = SynthesizedComponentSteps[RefBody];
+					RewrittenInputs.Add(PinName, FString::Printf(TEXT("@%s.auto"), *SynthId));
+					bExpanded = true;
+					continue;
+				}
+
+				// Check widget tree variables (bare @WidgetName ref)
+				if (WidgetTreeVariableNames.Contains(RefBody))
+				{
+					FString* ExistingSynthId = SynthesizedComponentSteps.Find(RefBody);
+					if (!ExistingSynthId)
+					{
+						FString SynthStepId = FString::Printf(TEXT("_synth_widget_%s"), *RefBody.ToLower());
+
+						FOliveIRBlueprintPlanStep SynthStep;
+						SynthStep.StepId = SynthStepId;
+						SynthStep.Op = OlivePlanOps::GetVar;
+						SynthStep.Target = RefBody;
+
+						Inserts.Add({ MoveTemp(SynthStep), i });
+						SynthesizedComponentSteps.Add(RefBody, SynthStepId);
+						ExistingStepIds.Add(SynthStepId);
+
+						FOliveResolverNote Note;
+						Note.Field = FString::Printf(TEXT("step '%s' inputs.%s"), *Step.StepId, *PinName);
+						Note.OriginalValue = Value;
+						Note.ResolvedValue = FString::Printf(TEXT("Synthesized get_var step '%s' for widget '%s'"), *SynthStepId, *RefBody);
+						Note.Reason = TEXT("Bare @ref with no dot referenced a widget tree variable name. Synthesized a get_var step and used .auto pin matching.");
+						OutNotes.Add(MoveTemp(Note));
+
+						UE_LOG(LogOlivePlanResolver, Log,
+							TEXT("ExpandComponentRefs: Synthesized get_var step '%s' for bare widget ref '@%s' (referenced by step '%s')"),
 							*SynthStepId, *RefBody, *Step.StepId);
 					}
 
