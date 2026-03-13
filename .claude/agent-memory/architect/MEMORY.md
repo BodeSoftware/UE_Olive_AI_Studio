@@ -143,8 +143,21 @@
 - Timer functions: `K2_SetTimer`, `K2_ClearTimer`, `K2_PauseTimer` etc. (NOT `K2_SetTimerByFunctionName`)
 
 ## FindFunction Search Order (7+1 steps)
-- Alias map -> specified class -> BP GeneratedClass + FunctionGraphs -> parent hierarchy -> SCS components -> interfaces -> 11 hardcoded libraries -> universal UBlueprintFunctionLibrary scan -> K2_ fuzzy match
+- Alias map -> specified class -> BP GeneratedClass + FunctionGraphs -> parent hierarchy -> SCS components -> interfaces -> 11+ hardcoded libraries (incl. UMG widgets) -> universal UBlueprintFunctionLibrary scan -> K2_ fuzzy match
 - `FindFunctionEx()` returns `FOliveFunctionSearchResult` with search trail on failure
+- Library classes include non-library types (AActor, APawn, UUserWidget, UProgressBar, UTextBlock, etc.) as "common classes AI calls functions on"
+
+## Widget Blueprint Events
+- UUserWidget uses BARE function names (`Construct`, `Destruct`, `PreConstruct`) as the UFUNCTION name
+- Unlike AActor which uses `Receive*` prefix (`ReceiveBeginPlay`, `ReceiveTick`)
+- EventNameMap in resolver must map to bare names, NOT `ReceiveConstruct` (which doesn't exist)
+- `OnInitialized` is also a valid UUserWidget BlueprintImplementableEvent
+
+### Widget & Rate Limit Fixes - Mar 2026
+- `plans/widget-ratelimit-fixes-design.md` -- 3 surgical fixes
+- **Fix 1**: EventNameMap widget entries wrong (`Construct`->`ReceiveConstruct` should be `Construct`->`Construct`)
+- **Fix 2**: `MaxWriteOpsPerMinute` default 30->120 (was blocking autonomous mode Tier 1 ops)
+- **Fix 3**: Add 9 UMG widget classes to FindFunction LibraryClasses list (ProgressBar, TextBlock, Image, Button, Slider, CheckBox, EditableTextBox, ComboBoxString, WidgetSwitcher)
 
 ## Component Bound Events
 - `CreateComponentBoundEventNode()` uses `InitializeComponentBoundEventParams(FObjectProperty*, FMulticastDelegateProperty*)`
@@ -164,3 +177,10 @@
 - `ResolveEventOp` searches `ImplementedInterfaces` after SCS scan
 - `SetFromField<UFunction>(Func, false)` + `bOverrideFunction = true`
 - BPI functions on `SkeletonGeneratedClass`, NOT `InterfaceDesc.Interface` directly
+
+### Run Regression Fixes - Mar 2026
+- `plans/run-regression-fixes-design.md` -- 6 issues from test runs (3 tool bugs, 3 template/knowledge)
+- **Issue 1 (P0)**: `AddEventDispatcher` + resolver + auto-reroute all only check `NewVariables` for dispatchers, missing C++ parent `FMulticastDelegateProperty`. Fix: `TFieldIterator<FMulticastDelegateProperty>` on parent class in 4 locations (Writer, ResolveCallDelegateOp, ResolveBindDelegateOp, ResolveCallOp auto-reroute).
+- **Issue 2 (P1)**: `blueprint.create` response lacks inherited members. Fix: enumerate parent class properties after pipeline returns, add `inherited_variables`, `inherited_dispatchers`, `inherited_components` to success response. Cap at 30 entries.
+- **Issue 4 (P2)**: `SetInstigator` not Blueprint-callable. Fix: alias to `SetOwner` + knowledge pack entries.
+- **Issue 6 (P2)**: Retry plans drop working steps. Fix: add "only fix failing step, keep all others" to `BuildRollbackAwareMessage` + `BuildToolErrorMessage`.

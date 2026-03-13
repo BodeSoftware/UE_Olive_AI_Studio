@@ -169,6 +169,12 @@
 - **FOliveNodeFactory::FindClass is PRIVATE** -- use `FOliveClassResolver::Resolve()` from outside the class
 - Self-correction: FUNCTION_NOT_FOUND now progressive (attempt 1=check scoped suggestions, 2=property/K2_, 3+=read components)
 
+## C++ Parent Dispatcher Collision Fix (2026-03-13, run-regression-fixes Phase 1+2)
+- AddEventDispatcher: parent class `FindPropertyByName` + `CastField<FMulticastDelegateProperty>` check before transaction
+- ResolveCallDelegateOp/ResolveBindDelegateOp: `TFieldIterator<FMulticastDelegateProperty>` on `BP->ParentClass` after NewVariables loop
+- ResolveCallOp auto-reroute: same TFieldIterator search after NewVariables dispatcher check
+- `blueprint.create` response enrichment: `inherited_variables`, `inherited_dispatchers`, `inherited_components` arrays on success
+
 ## Agent Pipeline (REMOVED - Single-Agent Revert 2026-03-09)
 - `OliveAgentPipeline.h`, `OliveAgentPipeline.cpp`, `OliveAgentConfig.h` DELETED
 - Multi-agent pipeline replaced with single-agent flow: discovery pass + decomposition directive

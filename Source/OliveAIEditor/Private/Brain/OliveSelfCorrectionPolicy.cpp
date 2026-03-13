@@ -917,7 +917,8 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 			"the executor will auto-wire it (no action needed). If multiple components "
 			"match, add a get_var step for the specific component and wire its output to Target. "
 			"EXEC_WIRING_CONFLICT: remove exec_after and restructure using exec_outputs on the branch node. "
-			"Fix the plan and resubmit.");
+			"Fix ONLY the failing step and resubmit the COMPLETE plan. "
+			"Keep ALL working steps intact -- do NOT drop steps that were not causing errors.");
 	}
 	else
 	{
@@ -969,7 +970,9 @@ FString FOliveSelfCorrectionPolicy::BuildRollbackAwareMessage(
 		TEXT("[COMPILE FAILED + ROLLBACK - Attempt %d/%d] The Blueprint failed to compile after executing '%s'. "
 			 "%d nodes were ROLLED BACK -- the graph is restored to its pre-plan state.\n"
 			 "Errors:\n%s\n"
-			 "REQUIRED ACTION: Fix the plan and resubmit with apply_plan_json.\n"
+			 "REQUIRED ACTION: Fix ONLY the failing step and resubmit the COMPLETE plan with apply_plan_json.\n"
+			 "CRITICAL: Keep ALL working steps intact. Only remove or modify the step that caused the error. "
+			 "Do NOT simplify by dropping steps that were working -- that causes missing functionality.\n"
 			 "Do NOT use connect_pins or reference any node IDs from the failed plan -- those nodes no longer exist.\n"
 			 "Common fixes:\n"
 			 "- Latent calls (Delay, AI MoveTo, etc.) CANNOT be in function graphs -- use a Custom Event in EventGraph instead\n"

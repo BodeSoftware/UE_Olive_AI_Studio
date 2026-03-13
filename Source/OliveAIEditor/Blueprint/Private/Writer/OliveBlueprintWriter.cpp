@@ -23,6 +23,7 @@
 #include "UObject/Package.h"
 #include "UObject/SavePackage.h"
 #include "UObject/UObjectGlobals.h"
+#include "UObject/UnrealType.h"
 #include "Editor.h"
 #include "WidgetBlueprint.h"
 #include "Animation/AnimBlueprint.h"
@@ -1562,6 +1563,34 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::AddEventDispatcher(
 		{
 			return FOliveBlueprintWriteResult::Error(
 				FString::Printf(TEXT("Event dispatcher '%s' already exists"), *DispatcherName));
+		}
+	}
+
+	// Check parent class chain for inherited properties with same name.
+	// C++ parent classes may declare MulticastDelegateProperties that would
+	// collide with a Blueprint dispatcher of the same name, causing internal
+	// compiler errors ("Tried to create a property X in scope SKEL_Y, but
+	// another object already exists there").
+	if (Blueprint->ParentClass)
+	{
+		FProperty* InheritedProp = Blueprint->ParentClass->FindPropertyByName(FName(*DispatcherName));
+		if (InheritedProp)
+		{
+			UClass* OwningClass = InheritedProp->GetOwnerClass();
+
+			// Determine if the inherited property is itself a multicast delegate
+			bool bIsDelegate = CastField<FMulticastDelegateProperty>(InheritedProp) != nullptr;
+
+			FString Suggestion = bIsDelegate
+				? FString::Printf(TEXT("Parent class '%s' already has dispatcher '%s'. "
+					"Use call_delegate/bind_dispatcher to access it directly -- do NOT create a duplicate."),
+					OwningClass ? *OwningClass->GetName() : TEXT("Unknown"), *DispatcherName)
+				: FString::Printf(TEXT("Name '%s' conflicts with property on parent class '%s'. "
+					"Use a different name (e.g., 'On%sChanged' or 'BP_%s')."),
+					*DispatcherName, OwningClass ? *OwningClass->GetName() : TEXT("Unknown"),
+					*DispatcherName, *DispatcherName);
+
+			return FOliveBlueprintWriteResult::Error(Suggestion);
 		}
 	}
 

@@ -61,6 +61,15 @@
 #include "Components/SceneComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Blueprint/UserWidget.h"
+#include "Components/ProgressBar.h"
+#include "Components/TextBlock.h"
+#include "Components/Image.h"
+#include "Components/Button.h"
+#include "Components/Slider.h"
+#include "Components/CheckBox.h"
+#include "Components/EditableTextBox.h"
+#include "Components/ComboBoxString.h"
+#include "Components/WidgetSwitcher.h"
 
 // Universal node creation includes
 #include "UObject/UObjectGlobals.h"  // For StaticLoadClass
@@ -329,7 +338,10 @@ UK2Node* FOliveNodeFactory::CreateCallFunctionNode(
 
 	if (!Function)
 	{
-		LastError = FString::Printf(TEXT("Function '%s' not found"), **FunctionNamePtr);
+		LastError = FString::Printf(
+			TEXT("Function '%s' not found. If this is a local Blueprint function, "
+			     "use blueprint.apply_plan_json with {\"op\":\"call\",\"target\":\"%s\"} instead."),
+			**FunctionNamePtr, **FunctionNamePtr);
 		return nullptr;
 	}
 
@@ -2128,6 +2140,11 @@ UEdGraphNode* FOliveNodeFactory::CreateNodeByClass(
 	// pins after reconstruction (which may read properties, resolve references, etc.).
 	NewNode->ReconstructNode();
 
+	// Force Slate to refresh its pin widget cache after reconstruction.
+	// ReconstructNode destroys and recreates pin objects, which invalidates
+	// any previously-cached pin widget pointers in the Slate layer.
+	Graph->NotifyGraphChanged();
+
 	// --- Zero-pin guard for UK2Node_CallFunction ---
 	// If a CallFunction node ends up with 0 pins, it means FunctionReference was
 	// never set correctly. This produces a "ghost node" that compiles with
@@ -2486,6 +2503,16 @@ UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FS
 		APawn::StaticClass(),
 		ACharacter::StaticClass(),
 		UUserWidget::StaticClass(),
+		// UMG widget classes — common children in Widget Blueprints
+		UProgressBar::StaticClass(),
+		UTextBlock::StaticClass(),
+		UImage::StaticClass(),
+		UButton::StaticClass(),
+		USlider::StaticClass(),
+		UCheckBox::StaticClass(),
+		UEditableTextBox::StaticClass(),
+		UComboBoxString::StaticClass(),
+		UWidgetSwitcher::StaticClass(),
 	};
 
 	// Accumulate classes searched in Steps 1-5 for Step 7 fuzzy matching
@@ -3227,6 +3254,9 @@ const TMap<FString, FString>& FOliveNodeFactory::GetAliasMap()
 		Map.Add(TEXT("AttachToComponent"), TEXT("K2_AttachToComponent"));
 		Map.Add(TEXT("DetachFromActor"), TEXT("K2_DetachFromActor"));
 		Map.Add(TEXT("GetOwner"), TEXT("GetOwner"));
+		// SetInstigator is C++ only (not a UFUNCTION). SetOwner is the correct UE5 Blueprint pattern
+		// for establishing the ownership chain -- GetInstigator() walks the owner chain automatically.
+		Map.Add(TEXT("SetInstigator"), TEXT("SetOwner"));
 		Map.Add(TEXT("GetDistanceTo"), TEXT("GetDistanceTo"));
 		Map.Add(TEXT("Distance"), TEXT("GetDistanceTo"));
 

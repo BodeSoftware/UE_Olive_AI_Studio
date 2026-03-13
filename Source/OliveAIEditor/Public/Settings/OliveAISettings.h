@@ -326,7 +326,7 @@ public:
 	/** Maximum write operations allowed per minute (0 = unlimited). Rate-limits AI tool calls to prevent runaway loops. */
 	UPROPERTY(Config, EditAnywhere, Category="Policy",
 		meta=(DisplayName="Max Write Ops Per Minute", ClampMin=0, ClampMax=120))
-	int32 MaxWriteOpsPerMinute = 30;
+	int32 MaxWriteOpsPerMinute = 120;
 
 	/** Steps between automatic checkpoints in Run Mode (0 = manual only) */
 	UPROPERTY(Config, EditAnywhere, Category="Policy",

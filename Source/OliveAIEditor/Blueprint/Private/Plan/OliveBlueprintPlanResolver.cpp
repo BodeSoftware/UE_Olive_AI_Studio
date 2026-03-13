@@ -1875,6 +1875,30 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 				}
 			}
 		}
+
+		// Also check parent class chain for C++ declared MulticastDelegateProperties.
+		// Dispatchers inherited from C++ parents are valid targets for call_delegate
+		// but are NOT listed in NewVariables.
+		if (BP->ParentClass)
+		{
+			for (TFieldIterator<FMulticastDelegateProperty> It(BP->ParentClass); It; ++It)
+			{
+				const FString PropName = It->GetFName().ToString();
+				if (PropName == Step.Target || PropName.Equals(Step.Target, ESearchCase::IgnoreCase))
+				{
+					UE_LOG(LogOlivePlanResolver, Log,
+						TEXT("    ResolveCallOp step '%s': '%s' matches inherited dispatcher '%s'. Rerouting to call_delegate."),
+						*Step.StepId, *Step.Target, *PropName);
+
+					Out.ResolverNotes.Add(FOliveResolverNote{
+						TEXT("op"), TEXT("call"), TEXT("call_delegate"),
+						FString::Printf(TEXT("'%s' is an inherited event dispatcher from C++ parent"), *Step.Target)
+					});
+
+					return ResolveCallDelegateOp(Step, BP, Idx, Out, Errors);
+				}
+			}
+		}
 	}
 
 	// --- Function NOT found -- check if an input references a cast step ---
@@ -2617,16 +2641,21 @@ bool FOliveBlueprintPlanResolver::ResolveEventOp(
 		{ TEXT("ReceiveDestroyed"),        TEXT("ReceiveDestroyed") },
 
 		// Widget Blueprint events (UUserWidget overridable events)
-		{ TEXT("Construct"),                TEXT("ReceiveConstruct") },
-		{ TEXT("Destruct"),                TEXT("ReceiveDestruct") },
-		{ TEXT("PreConstruct"),            TEXT("ReceivePreConstruct") },
-		{ TEXT("EventConstruct"),          TEXT("ReceiveConstruct") },
-		{ TEXT("EventDestruct"),           TEXT("ReceiveDestruct") },
-		{ TEXT("EventPreConstruct"),       TEXT("ReceivePreConstruct") },
-		// Pass-throughs (AI sometimes uses internal names directly)
-		{ TEXT("ReceiveConstruct"),         TEXT("ReceiveConstruct") },
-		{ TEXT("ReceiveDestruct"),          TEXT("ReceiveDestruct") },
-		{ TEXT("ReceivePreConstruct"),      TEXT("ReceivePreConstruct") },
+		// NOTE: Unlike AActor (which uses ReceiveBeginPlay etc.), UUserWidget
+		// declares its BlueprintImplementableEvent UFunctions with bare names:
+		// Construct(), Destruct(), PreConstruct(bool), OnInitialized().
+		{ TEXT("Construct"),                TEXT("Construct") },
+		{ TEXT("Destruct"),                 TEXT("Destruct") },
+		{ TEXT("PreConstruct"),             TEXT("PreConstruct") },
+		{ TEXT("OnInitialized"),            TEXT("OnInitialized") },
+		{ TEXT("Initialized"),              TEXT("OnInitialized") },
+		{ TEXT("EventConstruct"),           TEXT("Construct") },
+		{ TEXT("EventDestruct"),            TEXT("Destruct") },
+		{ TEXT("EventPreConstruct"),        TEXT("PreConstruct") },
+		// Safety: if AI sends the (incorrect) Receive-prefixed names, fix them
+		{ TEXT("ReceiveConstruct"),          TEXT("Construct") },
+		{ TEXT("ReceiveDestruct"),           TEXT("Destruct") },
+		{ TEXT("ReceivePreConstruct"),       TEXT("PreConstruct") },
 
 		// Pawn/Character events
 		{ TEXT("Possessed"),               TEXT("ReceivePossessed") },
@@ -3144,6 +3173,25 @@ bool FOliveBlueprintPlanResolver::ResolveCallDelegateOp(
 		}
 	}
 
+	// If not found in NewVariables, search parent class chain for C++ declared
+	// MulticastDelegateProperties. These are valid dispatchers that can be
+	// called/bound from Blueprint but are NOT listed in NewVariables.
+	if (!bFoundDispatcher && BP && BP->ParentClass)
+	{
+		for (TFieldIterator<FMulticastDelegateProperty> It(BP->ParentClass); It; ++It)
+		{
+			const FString PropName = It->GetFName().ToString();
+			AvailableDispatchers.AddUnique(PropName);
+
+			if (PropName == Step.Target)
+			{
+				bFoundDispatcher = true;
+				// Mark as inherited for potential downstream use
+				Out.Properties.Add(TEXT("inherited_dispatcher"), TEXT("true"));
+			}
+		}
+	}
+
 	if (!bFoundDispatcher)
 	{
 		FString SuggestionText;
@@ -3293,6 +3341,25 @@ bool FOliveBlueprintPlanResolver::ResolveBindDelegateOp(
 				{
 					bFoundDispatcher = true;
 				}
+			}
+		}
+	}
+
+	// If not found in NewVariables, search parent class chain for C++ declared
+	// MulticastDelegateProperties. These are valid dispatchers that can be
+	// called/bound from Blueprint but are NOT listed in NewVariables.
+	if (!bFoundDispatcher && BP && BP->ParentClass)
+	{
+		for (TFieldIterator<FMulticastDelegateProperty> It(BP->ParentClass); It; ++It)
+		{
+			const FString PropName = It->GetFName().ToString();
+			AvailableDispatchers.AddUnique(PropName);
+
+			if (PropName == Step.Target)
+			{
+				bFoundDispatcher = true;
+				// Mark as inherited for potential downstream use
+				Out.Properties.Add(TEXT("inherited_dispatcher"), TEXT("true"));
 			}
 		}
 	}

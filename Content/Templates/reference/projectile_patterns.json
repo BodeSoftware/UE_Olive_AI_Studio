@@ -17,7 +17,7 @@
         {
             "name": "ApplyDamageOnHit",
             "description": "UGameplayStatics::ApplyDamage is the simplest damage function. It takes DamagedActor, BaseDamage, EventInstigator (Controller), DamageCauser (the projectile), and an optional DamageTypeClass.",
-            "notes": "Get the instigator controller via GetInstigatorController on the projectile. For directional damage use ApplyPointDamage instead, which also requires HitFromDirection (FVector) and HitInfo (FHitResult) from the collision event. Store a damage variable (e.g., BulletDamage) on the projectile and reference it in the damage call."
+            "notes": "Get the instigator controller via GetInstigatorController on the projectile. For directional damage use ApplyPointDamage instead, which also requires HitFromDirection (FVector) and HitInfo (FHitResult) from the collision event. Store a damage variable (e.g., BulletDamage) on the projectile and reference it in the damage call. NOTE: SetInstigator is NOT Blueprint-callable. Instead, call SetOwner on the spawned projectile immediately after SpawnActor -- GetInstigator walks the owner chain."
         },
         {
             "name": "BounceCountingWithDestroy",
@@ -28,6 +28,11 @@
             "name": "HomingTargetAssignment",
             "description": "The ProjectileMovementComponent supports homing when bIsHomingProjectile is true. The HomingTargetComponent property must be set to the root component of the target actor at runtime.",
             "notes": "Typically set from the spawning Blueprint immediately after SpawnActor, not inside the projectile. Alternatively, expose a public function on the projectile (e.g., SetTarget) that accepts an Actor, gets its root component, and assigns it to HomingTargetComponent. HomingAccelerationMagnitude controls turn strength."
+        },
+        {
+            "name": "IgnoreSpawnerCollision",
+            "description": "Projectiles must ignore their spawning actor to avoid immediate self-collision.",
+            "notes": "Call SetOwner on the projectile at spawn time (from the gun/spawner), then in the projectile's BeginPlay: GetOwner -> IsValid check -> CollisionComponent.IgnoreActorWhenMoving(Owner, true). Without this, BlockAllDynamic causes instant self-hit."
         },
         {
             "name": "LifespanAutoDestroy",

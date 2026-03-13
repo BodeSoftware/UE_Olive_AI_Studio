@@ -48,6 +48,11 @@
 #include "Curves/CurveVector.h"
 #include "Curves/CurveLinearColor.h"
 #include "Components/TimelineComponent.h"
+#include "UObject/UnrealType.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
+#include "GameFramework/Actor.h"
+#include "Components/ActorComponent.h"
 
 DEFINE_LOG_CATEGORY(LogOliveBPTools);
 
@@ -2253,6 +2258,110 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	FOliveToolResult ToolResult = Result.ToToolResult();
+
+	// Enrich success response with inherited members so the AI knows what the
+	// parent class provides and doesn't try to add duplicate variables/dispatchers.
+	if (ToolResult.bSuccess && ToolResult.Data.IsValid())
+	{
+		UBlueprint* CreatedBP = LoadObject<UBlueprint>(nullptr, *AssetPath);
+		if (CreatedBP && CreatedBP->ParentClass)
+		{
+			TArray<TSharedPtr<FJsonValue>> InheritedVars;
+			TArray<TSharedPtr<FJsonValue>> InheritedDispatchers;
+
+			for (TFieldIterator<FProperty> It(CreatedBP->ParentClass); It; ++It)
+			{
+				// Skip private/internal properties
+				if (!It->HasAnyPropertyFlags(CPF_BlueprintVisible | CPF_BlueprintReadOnly))
+				{
+					continue;
+				}
+
+				const FString PropName = It->GetName();
+
+				// Skip known internal properties
+				if (PropName.StartsWith(TEXT("UberGraphFrame")) ||
+					PropName == TEXT("bCanEverTick"))
+				{
+					continue;
+				}
+
+				if (CastField<FMulticastDelegateProperty>(*It))
+				{
+					InheritedDispatchers.Add(MakeShared<FJsonValueString>(PropName));
+				}
+				else
+				{
+					// Build "Name (Type)" string for concise listing
+					FString TypeName = It->GetCPPType();
+					InheritedVars.Add(MakeShared<FJsonValueString>(
+						FString::Printf(TEXT("%s (%s)"), *PropName, *TypeName)));
+				}
+			}
+
+			if (InheritedVars.Num() > 0)
+			{
+				// Cap at 30 to avoid bloating the response
+				if (InheritedVars.Num() > 30)
+				{
+					int32 Total = InheritedVars.Num();
+					InheritedVars.SetNum(30);
+					InheritedVars.Add(MakeShared<FJsonValueString>(
+						FString::Printf(TEXT("... and %d more"), Total - 30)));
+				}
+				ToolResult.Data->SetArrayField(TEXT("inherited_variables"), InheritedVars);
+			}
+
+			if (InheritedDispatchers.Num() > 0)
+			{
+				ToolResult.Data->SetArrayField(TEXT("inherited_dispatchers"), InheritedDispatchers);
+			}
+
+			// Also list inherited SCS components from parent Blueprints
+			TArray<TSharedPtr<FJsonValue>> InheritedComponents;
+			UBlueprint* ParentBP = Cast<UBlueprint>(CreatedBP->ParentClass->ClassGeneratedBy);
+			if (ParentBP && ParentBP->SimpleConstructionScript)
+			{
+				TArray<USCS_Node*> AllNodes = ParentBP->SimpleConstructionScript->GetAllNodes();
+				for (USCS_Node* Node : AllNodes)
+				{
+					if (Node && Node->ComponentTemplate)
+					{
+						InheritedComponents.Add(MakeShared<FJsonValueString>(
+							FString::Printf(TEXT("%s (%s)"),
+								*Node->GetVariableName().ToString(),
+								*Node->ComponentClass->GetName())));
+					}
+				}
+			}
+
+			// Also enumerate native components from C++ parent class CDO
+			// (covers ACharacter, APawn, etc. whose components aren't in SCS)
+			if (!ParentBP && CreatedBP->ParentClass->IsChildOf(AActor::StaticClass()))
+			{
+				AActor* CDO = Cast<AActor>(CreatedBP->ParentClass->GetDefaultObject());
+				if (CDO)
+				{
+					TInlineComponentArray<UActorComponent*> NativeComps;
+					CDO->GetComponents(NativeComps);
+					for (UActorComponent* Comp : NativeComps)
+					{
+						if (Comp)
+						{
+							InheritedComponents.Add(MakeShared<FJsonValueString>(
+								FString::Printf(TEXT("%s (%s)"),
+									*Comp->GetName(), *Comp->GetClass()->GetName())));
+						}
+					}
+				}
+			}
+
+			if (InheritedComponents.Num() > 0)
+			{
+				ToolResult.Data->SetArrayField(TEXT("inherited_components"), InheritedComponents);
+			}
+		}
+	}
 
 	if (!bCommunitySearchHintShownCreate && ToolResult.bSuccess && ToolResult.Data.IsValid())
 	{

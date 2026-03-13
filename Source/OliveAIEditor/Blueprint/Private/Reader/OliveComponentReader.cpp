@@ -8,6 +8,7 @@
 #include "Components/SceneComponent.h"
 #include "UObject/PropertyPortFlags.h"
 #include "UObject/UnrealType.h"
+#include "GameFramework/Actor.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogOliveComponentReader, Log, All);
 
@@ -68,6 +69,59 @@ TArray<FOliveIRComponent> FOliveComponentReader::ReadComponents(const UBlueprint
 		{
 			// If there's only one root node, mark it as root
 			Components[0].bIsRoot = true;
+		}
+	}
+
+	// Read native C++ components from parent class CDO.
+	// These are components defined in C++ constructors (e.g., ACharacter's CapsuleComponent,
+	// Mesh, CharacterMovement) that don't appear in the Blueprint's SCS.
+	if (Blueprint->ParentClass && Blueprint->ParentClass->IsChildOf(AActor::StaticClass()))
+	{
+		AActor* CDO = Cast<AActor>(Blueprint->ParentClass->GetDefaultObject());
+		if (CDO)
+		{
+			TInlineComponentArray<UActorComponent*> NativeComps;
+			CDO->GetComponents(NativeComps);
+
+			// Build a set of SCS component names to avoid duplicates
+			TSet<FString> SCSNames;
+			for (const FOliveIRComponent& Existing : Components)
+			{
+				SCSNames.Add(Existing.Name);
+			}
+
+			for (UActorComponent* Comp : NativeComps)
+			{
+				if (!Comp)
+				{
+					continue;
+				}
+
+				FString CompName = Comp->GetName();
+				if (SCSNames.Contains(CompName))
+				{
+					continue; // SCS overrides native
+				}
+
+				FOliveIRComponent IRComp;
+				IRComp.Name = CompName;
+				IRComp.ComponentClass = GetCleanClassName(Comp->GetClass());
+				IRComp.bIsRoot = (Comp == CDO->GetRootComponent());
+				// Mark as inherited via Properties map (avoids IR struct change)
+				IRComp.Properties.Add(TEXT("inherited"), TEXT("true"));
+
+				// Capture attachment parent for hierarchy visibility
+				if (USceneComponent* Scene = Cast<USceneComponent>(Comp))
+				{
+					if (Scene->GetAttachParent())
+					{
+						IRComp.Properties.Add(TEXT("attach_parent"),
+							Scene->GetAttachParent()->GetName());
+					}
+				}
+
+				Components.Add(MoveTemp(IRComp));
+			}
 		}
 	}
 

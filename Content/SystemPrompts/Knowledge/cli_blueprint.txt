@@ -12,6 +12,7 @@ Never simplify your design to fit a tool's limitations — use a different tool 
 
 ## Workflows
 CREATE new Blueprint:
+0. project.search + project.get_relevant_context with task keywords — check if the project already has the system you're about to build. If it does, modify the existing asset instead of creating a duplicate.
 1. Reference patterns are available via blueprint.list_templates(query="relevant terms"). Study matching functions with blueprint.get_template(id, pattern="FuncName").
 2. If a library template closely matches, clone it directly: blueprint.create_from_library(template_id, path, mode="portable"). This recreates the full structure and engine-resolvable logic. Use remap for source-project classes.
 3. If a factory template fits, use blueprint.create with template_id for quick scaffolding.
@@ -172,3 +173,7 @@ WHY: Exec wires use plain step_id with no prefix. The @ prefix is for data wire 
 WRONG: connect_pins to wire from a function's entry node (searching for node_id="entry", "FunctionEntry", etc.)
 RIGHT: Use apply_plan_json with exec_after chains — the auto-chain feature automatically wires the event/entry node to your first step.
 WHY: apply_plan_json's auto-chain handles function entry wiring automatically. Using connect_pins for this wastes tool calls on node ID guessing.
+
+WRONG: call SetInstigator on spawned actor (SetInstigator is C++ only, NOT a UFUNCTION)
+RIGHT: call SetOwner(SpawningActor) -- GetInstigator() walks the owner chain automatically
+WHY: SetInstigator does not exist as a Blueprint-callable function. SetOwner is the standard UE5 pattern.
