@@ -15,6 +15,8 @@
 #include "EdGraphSchema_K2.h"
 #include "K2Node_Tunnel.h"
 #include "K2Node_Composite.h"
+#include "K2Node_CallArrayFunction.h"
+#include "K2Node_MakeContainer.h"
 
 // JSON includes
 #include "Dom/JsonObject.h"
@@ -692,6 +694,20 @@ FOliveBlueprintWriteResult FOliveGraphWriter::ConnectPins(
 	{
 		UE_LOG(LogOliveGraphWriter, Log, TEXT("Connected pins: %s -> %s in graph '%s' of '%s'"),
 			*SourcePinRef, *TargetPinRef, *GraphName, *BlueprintPath);
+
+		// Reconstruct container nodes after pin connection to propagate wildcard types.
+		// Container nodes (MakeArray, Array_Add, etc.) use wildcard pins that resolve
+		// their concrete type from connected pins. ReconstructNode() triggers this
+		// propagation and preserves existing connections via MovePersistentDataFromOldPin().
+		auto ReconstructIfContainer = [](UEdGraphNode* Node)
+		{
+			if (Cast<UK2Node_CallArrayFunction>(Node) || Cast<UK2Node_MakeContainer>(Node))
+			{
+				Node->ReconstructNode();
+			}
+		};
+		ReconstructIfContainer(SourcePin->GetOwningNode());
+		ReconstructIfContainer(TargetPin->GetOwningNode());
 	}
 
 	return Result;

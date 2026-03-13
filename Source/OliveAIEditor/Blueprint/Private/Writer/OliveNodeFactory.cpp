@@ -60,6 +60,7 @@
 #include "GameFramework/Character.h"
 #include "Components/SceneComponent.h"
 #include "Components/PrimitiveComponent.h"
+#include "Blueprint/UserWidget.h"
 
 // Universal node creation includes
 #include "UObject/UObjectGlobals.h"  // For StaticLoadClass
@@ -2484,6 +2485,7 @@ UFunction* FOliveNodeFactory::FindFunction(const FString& FunctionName, const FS
 		UPrimitiveComponent::StaticClass(),
 		APawn::StaticClass(),
 		ACharacter::StaticClass(),
+		UUserWidget::StaticClass(),
 	};
 
 	// Accumulate classes searched in Steps 1-5 for Step 7 fuzzy matching
@@ -3491,6 +3493,8 @@ const TMap<FString, FString>& FOliveNodeFactory::GetAliasMap()
 		// Widget/UI — "Create" is the actual UFunction on UWidgetBlueprintLibrary
 		// ================================================================
 		Map.Add(TEXT("CreateWidget"), TEXT("Create"));
+		Map.Add(TEXT("AddToViewport"), TEXT("AddToViewport"));
+		Map.Add(TEXT("RemoveFromParent"), TEXT("RemoveFromParent"));
 
 		// ================================================================
 		// Save/Load shorthand

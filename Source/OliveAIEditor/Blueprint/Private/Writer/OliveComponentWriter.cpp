@@ -12,6 +12,7 @@
 #include "Components/ActorComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "UObject/PropertyPortFlags.h"
@@ -872,6 +873,23 @@ bool FOliveComponentWriter::SetComponentProperty(
 	{
 		OutError = TEXT("Component is null");
 		return false;
+	}
+
+	// Special case: StaticMesh property must use SetStaticMesh() to avoid ensure failure
+	// in the generic ImportText_Direct path (UStaticMeshComponent validates mesh assignment)
+	if (PropertyName == TEXT("StaticMesh") || PropertyName == TEXT("Static Mesh"))
+	{
+		if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Component))
+		{
+			UStaticMesh* Mesh = LoadObject<UStaticMesh>(nullptr, *Value);
+			if (Mesh)
+			{
+				SMC->SetStaticMesh(Mesh);
+				return true;
+			}
+			OutError = FString::Printf(TEXT("Could not load StaticMesh '%s'"), *Value);
+			return false;
+		}
 	}
 
 	// Find the property

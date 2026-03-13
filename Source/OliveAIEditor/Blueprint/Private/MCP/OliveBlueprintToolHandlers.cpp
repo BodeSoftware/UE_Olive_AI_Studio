@@ -3252,6 +3252,38 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 
 	if (bModifyOnly)
 	{
+		// Check if the variable is inherited from a parent Blueprint before returning not-found
+		bool bFoundInherited = false;
+		UClass* CheckClass = Blueprint->ParentClass;
+		while (CheckClass)
+		{
+			UBlueprint* ParentBP = Cast<UBlueprint>(CheckClass->ClassGeneratedBy);
+			if (ParentBP)
+			{
+				for (const FBPVariableDescription& VarDesc : ParentBP->NewVariables)
+				{
+					if (VarDesc.VarName.ToString() == Variable.Name)
+					{
+						bFoundInherited = true;
+						break;
+					}
+				}
+				if (bFoundInherited) break;
+				CheckClass = ParentBP->ParentClass;
+			}
+			else break;
+		}
+
+		if (bFoundInherited)
+		{
+			return FOliveToolResult::Error(
+				TEXT("INHERITED_VARIABLE"),
+				FString::Printf(TEXT("Variable '%s' is inherited from a parent Blueprint. "
+					"Inherited variable defaults cannot be changed in child Blueprints. "
+					"To set this variable's value at runtime, use plan_json with set_var "
+					"in the child's BeginPlay event."), *Variable.Name));
+		}
+
 		// modify_only=true requires the variable to already exist
 		return FOliveToolResult::Error(
 			TEXT("VARIABLE_NOT_FOUND"),

@@ -38,6 +38,8 @@
 #include "K2Node_CallFunction.h"
 #include "K2Node_AddDelegate.h"
 #include "K2Node_SpawnActorFromClass.h"
+#include "K2Node_CallArrayFunction.h"
+#include "K2Node_MakeContainer.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
@@ -3089,6 +3091,43 @@ void FOlivePlanExecutor::PhaseWireData(
                     Result.ErrorMessage,
                     SuggestionText));
             }
+        }
+    }
+
+    // ----------------------------------------------------------------
+    // Phase 4.1: Reconstruct container nodes to propagate concrete types.
+    //
+    // Container nodes (Array_Add, MakeArray, MakeMap, MakeSet, etc.) use
+    // wildcard pins that need ReconstructNode() after data wiring so the
+    // compiler can propagate concrete types from connected pins. Without
+    // this, the compiler sees "type undetermined" on wildcard pins even
+    // though they are correctly wired.
+    //
+    // ReconstructNode() preserves existing pin connections via
+    // MovePersistentDataFromOldPin(), so this is safe to call post-wiring.
+    // ----------------------------------------------------------------
+    for (const auto& Pair : Context.StepToNodePtr)
+    {
+        UEdGraphNode* Node = Pair.Value;
+        if (!Node) continue;
+
+        bool bNeedsReconstruct = false;
+
+        if (Cast<UK2Node_CallArrayFunction>(Node))
+        {
+            bNeedsReconstruct = true;
+        }
+        else if (Cast<UK2Node_MakeContainer>(Node))
+        {
+            bNeedsReconstruct = true;
+        }
+
+        if (bNeedsReconstruct)
+        {
+            Node->ReconstructNode();
+            UE_LOG(LogOlivePlanExecutor, Verbose,
+                TEXT("  Reconstructed container node for step '%s' (%s)"),
+                *Pair.Key, *Node->GetClass()->GetName());
         }
     }
 

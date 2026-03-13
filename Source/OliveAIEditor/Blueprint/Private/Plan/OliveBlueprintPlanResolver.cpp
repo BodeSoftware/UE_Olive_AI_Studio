@@ -2616,6 +2616,18 @@ bool FOliveBlueprintPlanResolver::ResolveEventOp(
 		{ TEXT("ReceiveRadialDamage"),     TEXT("ReceiveRadialDamage") },
 		{ TEXT("ReceiveDestroyed"),        TEXT("ReceiveDestroyed") },
 
+		// Widget Blueprint events (UUserWidget overridable events)
+		{ TEXT("Construct"),                TEXT("ReceiveConstruct") },
+		{ TEXT("Destruct"),                TEXT("ReceiveDestruct") },
+		{ TEXT("PreConstruct"),            TEXT("ReceivePreConstruct") },
+		{ TEXT("EventConstruct"),          TEXT("ReceiveConstruct") },
+		{ TEXT("EventDestruct"),           TEXT("ReceiveDestruct") },
+		{ TEXT("EventPreConstruct"),       TEXT("ReceivePreConstruct") },
+		// Pass-throughs (AI sometimes uses internal names directly)
+		{ TEXT("ReceiveConstruct"),         TEXT("ReceiveConstruct") },
+		{ TEXT("ReceiveDestruct"),          TEXT("ReceiveDestruct") },
+		{ TEXT("ReceivePreConstruct"),      TEXT("ReceivePreConstruct") },
+
 		// Pawn/Character events
 		{ TEXT("Possessed"),               TEXT("ReceivePossessed") },
 		{ TEXT("UnPossessed"),             TEXT("ReceiveUnPossessed") },
