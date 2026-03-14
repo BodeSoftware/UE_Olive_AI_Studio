@@ -17,6 +17,8 @@
 #include "K2Node_Composite.h"
 #include "K2Node_CallArrayFunction.h"
 #include "K2Node_MakeContainer.h"
+#include "K2Node_CallFunction.h"
+#include "Kismet/KismetArrayLibrary.h"
 
 // JSON includes
 #include "Dom/JsonObject.h"
@@ -704,6 +706,16 @@ FOliveBlueprintWriteResult FOliveGraphWriter::ConnectPins(
 			if (Cast<UK2Node_CallArrayFunction>(Node) || Cast<UK2Node_MakeContainer>(Node))
 			{
 				Node->ReconstructNode();
+			}
+			else if (UK2Node_CallFunction* CallNode = Cast<UK2Node_CallFunction>(Node))
+			{
+				if (UFunction* Func = CallNode->GetTargetFunction())
+				{
+					if (Func->GetOuterUClass() && Func->GetOuterUClass()->IsChildOf(UKismetArrayLibrary::StaticClass()))
+					{
+						Node->ReconstructNode();
+					}
+				}
 			}
 		};
 		ReconstructIfContainer(SourcePin->GetOwningNode());

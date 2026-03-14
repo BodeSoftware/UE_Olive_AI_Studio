@@ -141,8 +141,7 @@ namespace
 	{
 		return ToolName.Contains(TEXT("add_component"))
 			|| ToolName.Contains(TEXT("add_variable"))
-			|| ToolName.Contains(TEXT("modify_component"))
-			|| ToolName.Contains(TEXT("create_from_template"));
+			|| ToolName.Contains(TEXT("modify_component"));
 	}
 
 	/** Info about a function graph that has no logic (just entry point). */
@@ -542,12 +541,11 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 	AgentContext += TEXT("- You are NOT a plugin developer. Do NOT modify plugin source code.\n");
 	AgentContext += TEXT("- Use ONLY the MCP tools to create and edit game assets.\n");
 	AgentContext += TEXT("- All asset paths should be under `/Game/` (the project's Content directory).\n");
-	AgentContext += TEXT("- When creating Blueprints, use `blueprint.create` (with optional template_id for templates) -- never try to create .uasset files manually.\n");
+	AgentContext += TEXT("- When creating Blueprints, use `blueprint.create` with parent_class -- never try to create .uasset files manually.\n");
 	AgentContext += TEXT("- Complete the FULL task: create structures, wire graph logic, compile, and verify. Do not stop partway.\n");
 	AgentContext += TEXT("- After each compile pass, ask yourself: 'Have I built everything the user asked for?' If not, continue building the next part.\n");
 	AgentContext += TEXT("- Before finishing, verify you built EVERY part the user asked for — don't stop after the first Blueprint compiles.\n");
-	AgentContext += TEXT("- Batch independent tool calls (add_variable, add_component) in a single response when possible.\n");
-	AgentContext += TEXT("- After creating from a template (blueprint.create with template_id), check the result for the list of created functions. Write plan_json for EACH function -- they are empty stubs. Do NOT call blueprint.read or read_function after template creation.\n\n");
+	AgentContext += TEXT("- Batch independent tool calls (add_variable, add_component) in a single response when possible.\n\n");
 
 	AgentContext += TEXT("## Planning\n\n");
 	AgentContext += TEXT("For multi-asset tasks, plan before building. Ask:\n");
@@ -2040,7 +2038,7 @@ FString FOliveCLIProviderBase::BuildConversationPrompt(const TArray<FOliveChatMe
 	if (UserMessageCount == 1 && ToolResultCount == 0)
 	{
 		Prompt += TEXT("- Respond ONLY with <tool_call> blocks. Do NOT respond with explanation text.\n");
-		Prompt += TEXT("- If the task is creating NEW Blueprints, check if a template fits first (blueprint.create with template_id). Otherwise use blueprint.create with parent_class.\n");
+		Prompt += TEXT("- If the task is creating NEW Blueprints, search templates for reference patterns (blueprint.list_templates), then use blueprint.create with parent_class.\n");
 		Prompt += TEXT("- If the task is modifying EXISTING assets, start with project.search to find exact paths.\n");
 		Prompt += TEXT("- Batch only independent calls (e.g., create + add_component + add_variable).\n");
 		Prompt += TEXT("- Do NOT batch blueprint.preview_plan_json and blueprint.apply_plan_json in the same response.\n\n");

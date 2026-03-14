@@ -40,6 +40,7 @@
 #include "K2Node_SpawnActorFromClass.h"
 #include "K2Node_CallArrayFunction.h"
 #include "K2Node_MakeContainer.h"
+#include "Kismet/KismetArrayLibrary.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
@@ -3120,6 +3121,16 @@ void FOlivePlanExecutor::PhaseWireData(
         else if (Cast<UK2Node_MakeContainer>(Node))
         {
             bNeedsReconstruct = true;
+        }
+        else if (UK2Node_CallFunction* CallNode = Cast<UK2Node_CallFunction>(Node))
+        {
+            if (UFunction* Func = CallNode->GetTargetFunction())
+            {
+                if (Func->GetOuterUClass() && Func->GetOuterUClass()->IsChildOf(UKismetArrayLibrary::StaticClass()))
+                {
+                    bNeedsReconstruct = true;
+                }
+            }
         }
 
         if (bNeedsReconstruct)

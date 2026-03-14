@@ -332,16 +332,34 @@ UK2Node* FOliveNodeFactory::CreateCallFunctionNode(
 	}
 	else
 	{
-		// Fallback: resolve via FindFunction (for non-plan callers like add_node tool)
-		Function = FindFunction(*FunctionNamePtr, TargetClassName, Blueprint, &MatchMethod);
+		// Fallback: resolve via FindFunctionEx (for non-plan callers like add_node tool)
+		FOliveFunctionSearchResult SearchResult = FindFunctionEx(*FunctionNamePtr, TargetClassName, Blueprint);
+
+		// If target_class was specified but search failed, retry with broad search
+		if (!SearchResult.IsValid() && !TargetClassName.IsEmpty())
+		{
+			SearchResult = FindFunctionEx(*FunctionNamePtr, TEXT(""), Blueprint);
+		}
+
+		if (SearchResult.IsValid())
+		{
+			Function = SearchResult.Function;
+			MatchMethod = SearchResult.MatchMethod;
+		}
 	}
 
 	if (!Function)
 	{
+		// Build error with search trail for better diagnostics
+		FOliveFunctionSearchResult FailedResult = FindFunctionEx(*FunctionNamePtr, TargetClassName, Blueprint);
 		LastError = FString::Printf(
-			TEXT("Function '%s' not found. If this is a local Blueprint function, "
-			     "use blueprint.apply_plan_json with {\"op\":\"call\",\"target\":\"%s\"} instead."),
-			**FunctionNamePtr, **FunctionNamePtr);
+			TEXT("Function '%s' not found. Searched: %s. "
+			     "Try: (1) blueprint.compile first if the function was just created, "
+			     "(2) use type='K2Node_CallFunction' instead, or "
+			     "(3) use blueprint.apply_plan_json with {\"op\":\"call\",\"target\":\"%s\"}."),
+			**FunctionNamePtr,
+			*FailedResult.BuildSearchedLocationsString(),
+			**FunctionNamePtr);
 		return nullptr;
 	}
 
@@ -3463,7 +3481,6 @@ const TMap<FString, FString>& FOliveNodeFactory::GetAliasMap()
 		// ================================================================
 		Map.Add(TEXT("SetMaterial"), TEXT("SetMaterial"));
 		Map.Add(TEXT("SetCollisionProfileName"), TEXT("SetCollisionProfileName"));
-		Map.Add(TEXT("SetVisibility"), TEXT("SetVisibility"));
 		Map.Add(TEXT("SetHiddenInGame"), TEXT("SetHiddenInGame"));
 
 		// ================================================================

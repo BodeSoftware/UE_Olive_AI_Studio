@@ -491,8 +491,8 @@ protected:
 	 *  Updated by MCP server OnToolCalled delegate. Used for activity-based timeout. */
 	std::atomic<double> LastToolCallTimestamp{0.0};
 
-	/** Count of scaffolding operations (add_component, add_variable, modify_component,
-	 *  create_from_template) in the current run. Written on game thread via OnToolCalled,
+	/** Count of scaffolding operations (add_component, add_variable, modify_component)
+	 *  in the current run. Written on game thread via OnToolCalled,
 	 *  read on background thread for adaptive idle timeout. */
 	std::atomic<int32> ScaffoldingOpCount{0};
 

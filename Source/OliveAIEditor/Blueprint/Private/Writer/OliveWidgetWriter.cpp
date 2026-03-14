@@ -19,6 +19,7 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Editor.h"
 #include "UObject/UObjectGlobals.h"
+#include "UObject/UnrealType.h"
 #include "Serialization/JsonWriter.h"
 #include "Serialization/JsonSerializer.h"
 
@@ -532,21 +533,114 @@ bool FOliveWidgetWriter::SetWidgetProperty(
 		return false;
 	}
 
-	// Find the property on the widget
-	FProperty* Property = Widget->GetClass()->FindPropertyByName(*PropertyName);
-	if (!Property)
+	// --- Fix 9: Dot-path nested property support (e.g. "Font.Size") ---
+	FProperty* Property = nullptr;
+	void* ContainerAddress = Widget;
+
+	int32 DotIndex;
+	if (PropertyName.FindChar(TEXT('.'), DotIndex))
 	{
-		OutError = FString::Printf(TEXT("Property '%s' not found on widget class '%s'"),
-			*PropertyName, *Widget->GetClass()->GetName());
-		return false;
+		FString OuterName = PropertyName.Left(DotIndex);
+		FString InnerName = PropertyName.Mid(DotIndex + 1);
+
+		FProperty* OuterProp = Widget->GetClass()->FindPropertyByName(*OuterName);
+		if (!OuterProp)
+		{
+			OutError = FString::Printf(TEXT("Property '%s' not found on widget class '%s'"),
+				*OuterName, *Widget->GetClass()->GetName());
+			return false;
+		}
+
+		FStructProperty* StructProp = CastField<FStructProperty>(OuterProp);
+		if (!StructProp)
+		{
+			OutError = FString::Printf(TEXT("Property '%s' on '%s' is not a struct — cannot use dot notation"),
+				*OuterName, *Widget->GetClass()->GetName());
+			return false;
+		}
+
+		ContainerAddress = OuterProp->ContainerPtrToValuePtr<void>(Widget);
+		Property = StructProp->Struct->FindPropertyByName(*InnerName);
+		if (!Property)
+		{
+			TArray<FString> FieldNames;
+			for (TFieldIterator<FProperty> It(StructProp->Struct); It; ++It)
+			{
+				FieldNames.Add(It->GetName());
+			}
+			OutError = FString::Printf(TEXT("Field '%s' not found on struct '%s'. Available fields: %s"),
+				*InnerName, *StructProp->Struct->GetName(),
+				*FString::Join(FieldNames, TEXT(", ")));
+			return false;
+		}
+	}
+	else
+	{
+		Property = Widget->GetClass()->FindPropertyByName(*PropertyName);
+		if (!Property)
+		{
+			OutError = FString::Printf(TEXT("Property '%s' not found on widget class '%s'"),
+				*PropertyName, *Widget->GetClass()->GetName());
+			return false;
+		}
+	}
+
+	// --- Fix 8: Shorthand pre-processing for common struct types ---
+	FString ProcessedValue = PropertyValue;
+	if (FStructProperty* StructProp = CastField<FStructProperty>(Property))
+	{
+		const FName StructName = StructProp->Struct->GetFName();
+
+		if (StructName == TEXT("Margin") && !PropertyValue.StartsWith(TEXT("(")))
+		{
+			TArray<FString> Parts;
+			PropertyValue.ParseIntoArray(Parts, TEXT(" "), true);
+			if (Parts.Num() == 1)
+			{
+				ProcessedValue = FString::Printf(TEXT("(Left=%s,Top=%s,Right=%s,Bottom=%s)"),
+					*Parts[0], *Parts[0], *Parts[0], *Parts[0]);
+			}
+			else if (Parts.Num() == 2)
+			{
+				ProcessedValue = FString::Printf(TEXT("(Left=%s,Top=%s,Right=%s,Bottom=%s)"),
+					*Parts[0], *Parts[1], *Parts[0], *Parts[1]);
+			}
+			else if (Parts.Num() >= 4)
+			{
+				ProcessedValue = FString::Printf(TEXT("(Left=%s,Top=%s,Right=%s,Bottom=%s)"),
+					*Parts[0], *Parts[1], *Parts[2], *Parts[3]);
+			}
+		}
+		else if (StructName == TEXT("Vector2D") && !PropertyValue.StartsWith(TEXT("(")))
+		{
+			TArray<FString> Parts;
+			PropertyValue.ParseIntoArray(Parts, TEXT(" "), true);
+			if (Parts.Num() == 1)
+			{
+				ProcessedValue = FString::Printf(TEXT("(X=%s,Y=%s)"), *Parts[0], *Parts[0]);
+			}
+			else if (Parts.Num() >= 2)
+			{
+				ProcessedValue = FString::Printf(TEXT("(X=%s,Y=%s)"), *Parts[0], *Parts[1]);
+			}
+		}
 	}
 
 	// Try to import the value
-	void* PropertyAddress = Property->ContainerPtrToValuePtr<void>(Widget);
-	if (!Property->ImportText_Direct(*PropertyValue, PropertyAddress, Widget, PPF_None))
+	void* PropertyAddress = Property->ContainerPtrToValuePtr<void>(ContainerAddress);
+	if (!Property->ImportText_Direct(*ProcessedValue, PropertyAddress, Widget, PPF_None))
 	{
-		OutError = FString::Printf(TEXT("Failed to import value '%s' for property '%s'"),
-			*PropertyValue, *PropertyName);
+		FString FormatHint;
+		if (FStructProperty* StructProp = CastField<FStructProperty>(Property))
+		{
+			const FName StructName = StructProp->Struct->GetFName();
+			if (StructName == TEXT("Margin"))
+				FormatHint = TEXT(". Expected format: '16' (uniform), '16 8' (horiz vert), '16 8 16 8' (L T R B), or '(Left=16,Top=8,Right=16,Bottom=8)'");
+			else if (StructName == TEXT("Vector2D"))
+				FormatHint = TEXT(". Expected format: '100 200' or '(X=100,Y=200)'");
+		}
+		OutError = FString::Printf(TEXT("Failed to import value '%s' for property '%s'%s"),
+			*PropertyValue, *PropertyName, *FormatHint);
 		return false;
 	}
 

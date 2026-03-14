@@ -153,14 +153,8 @@ private:
 	// ============================================================================
 
 	void RegisterTemplateTools();
-	/** Internal helper: create Blueprint from template (called by HandleBlueprintCreate when template_id is set) */
-	FOliveToolResult HandleBlueprintCreateFromTemplate(const FString& TemplateId, const FString& AssetPath,
-		const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlueprintGetTemplate(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlueprintListTemplates(const TSharedPtr<FJsonObject>& Params);
-
-	/** Clone a library template into a real Blueprint asset */
-	FOliveToolResult HandleBlueprintCreateFromLibrary(const TSharedPtr<FJsonObject>& Params);
 
 	// ============================================================================
 	// Graph Writer Tool Handlers

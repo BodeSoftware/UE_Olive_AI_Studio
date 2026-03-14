@@ -133,29 +133,14 @@
 - Sub-pin naming: `{ParentPinName}_{ComponentName}` (e.g., `ReturnValue_X`, `Location_Pitch`)
 - ConversionNote for SplitPin: `ConversionNodeType = "SplitPin(X)"` etc.
 
-## Library Clone Tool (Phase 1+2: Structure + Graph Cloning, Completed)
-- `OliveLibraryCloner.h` at `Blueprint/Public/Template/`; `OliveLibraryCloner.cpp` at `Blueprint/Private/Template/`
-- NOT a singleton; instantiate fresh per clone operation (like FOlivePlanExecutor)
-- Log category: `LogOliveLibraryCloner`
-- `FLibraryCloneResult::ToJson()` for structured reporting
-- Resolution pipeline: `ApplyRemap()` (strips _C, case-insensitive) -> `FOliveClassResolver::Resolve()`
-- `ResolveStruct()`: searches 9 engine module prefixes with string concatenation (NOT FString::Printf due to UE 5.5 literal requirement)
-- `ResolveParentClass()`: root native ancestor strategy -- walks depends_on chain, deepest resolvable wins
-- Type demotion: object->UObject*, struct->String, enum->Byte, array element types also demoted
-- Variables with `defined_in: "component"` are skipped (created by AddComponent)
-- Components use `components.tree` (recursive hierarchical JSON), NOT flat array
-- Library template functions live in `graphs.functions[]` (not top-level `functions`)
-- Function signatures extracted from `inputs`/`outputs` on the function graph JSON (not from FunctionEntry/FunctionResult nodes)
-- Intermediate compile via `FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::SkipSave)` -- CRITICAL for FindFunction to resolve sibling calls
-- **Phase 2 Graph Cloning**: 6-phase pipeline per graph: ClassifyNodes -> CreateNodes -> WireExecConnections -> WireDataConnections -> SetPinDefaults -> AutoLayout
-- `NodeMap`/`NodeIdMap` cleared per-graph (library node IDs like "node_0" repeat across graphs)
-- `FCloneGraphResult.ExecGapsBridged`/`ExecGapsUnbridgeable` for exec gap repair reporting
-- Classification: FunctionEntry/FunctionResult/Knot/Reroute/ControlRig always Skip; Branch/Sequence/Event/CustomEvent/Comment always Create; CallFunction resolves via FindFunction; VariableGet/Set checks `VariableExistsOnBlueprint()`; Cast resolves target class; Timeline skipped
-- Exec gap repair: for skipped nodes with exactly 1 exec-in + 1 exec-out, bridge across; multiple outs = unbridgeable
-- `FindPinByName()`: exact match -> case-insensitive -> space-stripped fallback
-- `IsAssetReference()`: checks /Game/, /Script/ prefixes and UE quote+path format
-- `TemplateClassName` field stores source template's `DisplayName` for self-call detection in CallFunction classification
-- `VariableExistsOnBlueprint()` checks NewVariables + FlattenedVariableNames + SCS components
+## Template System (Reference-Only Migration, 2026-03-13)
+- `OliveLibraryCloner.h/.cpp` DELETED (~3700 lines); `ApplyTemplate()`, `MergeParameters()`, `SubstituteParameters()`, `EvaluateConditionals()` DELETED from OliveTemplateSystem (~980 lines)
+- Tools removed: `blueprint.create_from_library`, `blueprint.create` template_id path, `create_from_template` alias
+- Templates are now reference-only: `blueprint.list_templates` (search) + `blueprint.get_template` (read) survive unchanged
+- `FOliveTemplateSystem` retains: Initialize, Shutdown, Reload, FindTemplate, GetAllTemplates, GetTemplatesByType, SearchTemplates, GetCatalogBlock, GetTemplateContent
+- `FOliveLibraryIndex` fully retained (lazy-load + inverted search index)
+- Factory templates still on disk with `${param}` tokens -- read as reference, AI substitutes own values
+- Knowledge files updated: cli_blueprint.txt, recipe_routing.txt, Worker_Blueprint.txt -- all "clone directly" / "template_id" language removed
 
 ## Class API Helper + Error Recovery (Phases 1-2, error-recovery-design.md)
 - `OliveClassAPIHelper.h/cpp` at `Blueprint/Public/Writer/` and `Blueprint/Private/Writer/`

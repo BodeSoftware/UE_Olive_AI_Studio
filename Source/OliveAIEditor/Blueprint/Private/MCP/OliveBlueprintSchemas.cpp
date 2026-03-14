@@ -434,32 +434,15 @@ namespace OliveBlueprintSchemas
 
 		Properties->SetObjectField(TEXT("parent_class"),
 			StringProp(TEXT("Parent class name (e.g., 'Actor', 'Character', '/Game/Blueprints/BP_Base'). "
-				"Not required when template_id is set (template defines the parent class).")));
+				"Auto-defaults to UserWidget for WidgetBlueprint, AnimInstance for AnimationBlueprint.")));
 
 		Properties->SetObjectField(TEXT("type"),
 			EnumProp(TEXT("Blueprint type (defaults to 'Normal')"),
 			{TEXT("Normal"), TEXT("Interface"), TEXT("FunctionLibrary"), TEXT("MacroLibrary"), TEXT("AnimationBlueprint"), TEXT("WidgetBlueprint")}));
 
-		// Template parameters (optional — when set, delegates to template system)
-		Properties->SetObjectField(TEXT("template_id"),
-			StringProp(TEXT("Factory template ID. When set, creates a Blueprint from a factory template "
-				"instead of an empty one. Use blueprint.list_templates to discover available templates.")));
-
-		TSharedPtr<FJsonObject> TemplateParamsProp = MakeSchema(TEXT("object"));
-		TemplateParamsProp->SetStringField(TEXT("description"),
-			TEXT("Parameter overrides for the template as key-value pairs (e.g., {\"stat_name\": \"Health\", \"max_value\": \"100\"})"));
-		TSharedPtr<FJsonObject> AdditionalProps = MakeSchema(TEXT("string"));
-		TemplateParamsProp->SetObjectField(TEXT("additionalProperties"), AdditionalProps);
-		Properties->SetObjectField(TEXT("template_params"), TemplateParamsProp);
-
-		Properties->SetObjectField(TEXT("preset"),
-			StringProp(TEXT("Named preset to use as template parameter base (e.g., 'Health', 'Stamina'). Only used with template_id.")));
-
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
 		Schema->SetStringField(TEXT("description"),
-			TEXT("Create a new Blueprint asset. When template_id is provided, creates from a factory template "
-				"with parameterized, pre-wired logic. Without template_id, creates an empty Blueprint with "
-				"the specified parent_class. Use blueprint.list_templates to discover available factory templates."));
+			TEXT("Create a new empty Blueprint asset with the specified parent_class."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path")});
 
@@ -1162,8 +1145,7 @@ namespace OliveBlueprintSchemas
 	// Template Tool Schemas
 	// ============================================================================
 
-	// NOTE: BlueprintCreateFromTemplate has been consolidated into BlueprintCreate with template_id parameter.
-	// Old tool name 'blueprint.create_from_template' is an alias that redirects to 'blueprint.create'.
+	// Templates are reference-only. No create/clone tools -- only get_template and list_templates.
 
 	TSharedPtr<FJsonObject> BlueprintGetTemplate()
 	{
@@ -1205,49 +1187,6 @@ namespace OliveBlueprintSchemas
 			TEXT("List available templates. Use query parameter to search by name, tag, function name, "
 				"or keyword across all templates including library templates from extracted projects."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
-
-		return Schema;
-	}
-
-	TSharedPtr<FJsonObject> BlueprintCreateFromLibrary()
-	{
-		TSharedPtr<FJsonObject> Properties = MakeProperties();
-
-		Properties->SetObjectField(TEXT("template_id"),
-			StringProp(TEXT("Library template ID (e.g., 'combatfs_arrow_component'). Use blueprint.list_templates to search.")));
-
-		Properties->SetObjectField(TEXT("path"),
-			StringProp(TEXT("Target asset path for the new Blueprint (e.g., '/Game/Blueprints/BP_MyArrow')")));
-
-		Properties->SetObjectField(TEXT("mode"),
-			EnumProp(TEXT("Clone depth. 'structure': variables + components + function signatures. "
-				"'portable': structure + engine-resolvable graph nodes (skips source-project-specific calls). "
-				"'full': everything, broken refs as warnings."),
-				{TEXT("structure"), TEXT("portable"), TEXT("full")}));
-
-		// remap: object with additionalProperties
-		TSharedPtr<FJsonObject> RemapProp = MakeSchema(TEXT("object"));
-		RemapProp->SetStringField(TEXT("description"),
-			TEXT("Optional type remapping. Keys are source class names (e.g., 'BP_ArrowParent_C'), "
-				"values are target equivalents."));
-		TSharedPtr<FJsonObject> RemapAdditional = MakeSchema(TEXT("string"));
-		RemapProp->SetObjectField(TEXT("additionalProperties"), RemapAdditional);
-		Properties->SetObjectField(TEXT("remap"), RemapProp);
-
-		Properties->SetObjectField(TEXT("graphs"),
-			ArrayProp(TEXT("Optional: only clone these graph names. If omitted, clones all."),
-				MakeSchema(TEXT("string"))));
-
-		Properties->SetObjectField(TEXT("parent_class_override"),
-			StringProp(TEXT("Override the parent class instead of using the template's.")));
-
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"),
-			TEXT("Clone a library template into a real Blueprint asset. Creates the asset with all structure "
-				"(variables, components, dispatchers) and optionally recreates node graphs. "
-				"Handles missing dependencies gracefully with type demotion and skip logic."));
-		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("template_id"), TEXT("path")});
 
 		return Schema;
 	}

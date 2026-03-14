@@ -58,10 +58,14 @@
 - `plans/codex-cli-provider-design.md` -- FOliveCodexProvider subclass of CLIProviderBase
 - See `autonomous-mode-decisions.md` for details. Key: direct HTTP MCP (no bridge), `codex exec --json`.
 
-### Library Clone Tool - Mar 2026
-- `plans/library-clone-design.md` -- `blueprint.create_from_library` tool
-- **FOliveLibraryCloner** NOT a singleton (per-operation). 3 modes: structure, portable, full.
-- 6-phase per-graph pipeline: Classify -> Create -> WireExec -> WireData -> SetDefaults -> AutoLayout
+### Library Clone Tool - REMOVED Mar 2026
+- Originally `plans/library-clone-design.md` -- `blueprint.create_from_library` tool
+- **Removed** in `plans/template-reference-only-design.md` -- all templates became reference-only
+- OliveLibraryCloner.h/.cpp DELETED (~3700 lines), ApplyTemplate DELETED (~760 lines)
+- Tools removed: `create_from_library`, `blueprint.create` template_id path
+- Tools kept: `list_templates`, `get_template` (reference reading)
+- FOliveLibraryIndex and GetTemplateContent() preserved for reference reads
+- Factory templates stay on disk with ${param} tokens -- AI reads them, understands the pattern, substitutes own values
 
 ### Error Recovery - Mar 2026
 - `plans/error-recovery-design.md` -- Fix FUNCTION_NOT_FOUND wasting 3-4 turns on wrong-class fuzzy matches

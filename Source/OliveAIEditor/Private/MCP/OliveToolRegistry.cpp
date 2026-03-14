@@ -175,9 +175,8 @@ namespace
 		TryApplyAlias(Effective, TEXT("parent_class"), TEXT("parent"), OutNormalizedFields)
 			|| TryApplyAlias(Effective, TEXT("parent_class"), TEXT("base_class"), OutNormalizedFields);
 
-		// template_id <- template / id
-		TryApplyAlias(Effective, TEXT("template_id"), TEXT("template"), OutNormalizedFields)
-			|| TryApplyAlias(Effective, TEXT("template_id"), TEXT("id"), OutNormalizedFields);
+		// template_id <- id
+		TryApplyAlias(Effective, TEXT("template_id"), TEXT("id"), OutNormalizedFields);
 	}
 
 	/** Normalize parameters for BT / Blackboard tools. */
@@ -397,15 +396,6 @@ namespace
 				{
 					P->SetStringField(TEXT("section"), TEXT("overridable_functions"));
 				}
-			});
-
-			// ------------------------------------------------------------------
-			// Blueprint create tools -> blueprint.create
-			// ------------------------------------------------------------------
-
-			Map.Add(TEXT("blueprint.create_from_template"), {
-				TEXT("blueprint.create"),
-				nullptr // template_id and template_params pass through as-is
 			});
 
 			// ------------------------------------------------------------------

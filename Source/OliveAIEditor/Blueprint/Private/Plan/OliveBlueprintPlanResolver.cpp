@@ -927,23 +927,32 @@ bool FOliveBlueprintPlanResolver::ExpandComponentRefs(
 				// (RC3: @ParamName.PinHint where ParamName is a function input)
 				FString RefStepId = RefBody.Left(DotIndex);
 
-				// Handle @self.X -- Target auto-wires to self by default, so dotted
-				// self-refs like @self.ReturnValue are also redundant. Strip them.
+				// Handle @self.X -- behavior depends on the pin name:
+				// - Target/self pins: auto-wire to self by default, so strip the input.
+				// - Any other pin (NewOwner, Actor, etc.): @self means "wire a
+				//   UK2Node_Self reference node" -- let the executor handle it in Phase 4.
 				if (RefStepId.Equals(TEXT("self"), ESearchCase::IgnoreCase))
 				{
-					RewrittenInputs.Add(PinName, FString()); // empty = mark for removal
-					bExpanded = true;
+					if (PinName.Equals(TEXT("Target"), ESearchCase::IgnoreCase)
+						|| PinName.Equals(TEXT("self"), ESearchCase::IgnoreCase))
+					{
+						RewrittenInputs.Add(PinName, FString()); // empty = mark for removal
+						bExpanded = true;
 
-					FOliveResolverNote Note;
-					Note.Field = FString::Printf(TEXT("step '%s' inputs.%s"), *Step.StepId, *PinName);
-					Note.OriginalValue = Value;
-					Note.ResolvedValue = TEXT("(removed)");
-					Note.Reason = TEXT("@self is redundant -- Target pins auto-wire to self by default. Stripped.");
-					OutNotes.Add(MoveTemp(Note));
+						FOliveResolverNote Note;
+						Note.Field = FString::Printf(TEXT("step '%s' inputs.%s"), *Step.StepId, *PinName);
+						Note.OriginalValue = Value;
+						Note.ResolvedValue = TEXT("(removed)");
+						Note.Reason = TEXT("@self is redundant -- Target pins auto-wire to self by default. Stripped.");
+						OutNotes.Add(MoveTemp(Note));
 
-					UE_LOG(LogOlivePlanResolver, Verbose,
-						TEXT("ExpandComponentRefs: Stripped redundant @self reference from step '%s' input '%s'"),
-						*Step.StepId, *PinName);
+						UE_LOG(LogOlivePlanResolver, Verbose,
+							TEXT("ExpandComponentRefs: Stripped redundant @self reference from step '%s' input '%s'"),
+							*Step.StepId, *PinName);
+						continue;
+					}
+					// Non-Target pin: leave @self.X in place for executor Phase 4 handling.
+					// The executor creates UK2Node_Self inline and wires it to this pin.
 					continue;
 				}
 
@@ -1175,22 +1184,45 @@ bool FOliveBlueprintPlanResolver::ExpandComponentRefs(
 			{
 				// No dot -- this is a bare @ComponentName, @VarName, or @self
 
-				// Handle @self -- Target auto-wires to self by default, so this is a no-op.
-				// Strip it from the inputs to prevent ParseDataRef from choking on it.
+				// Handle @self -- behavior depends on pin name:
+				// - Target/self pins: strip (auto-wire to self by default).
+				// - Other pins: rewrite bare @self to @self.auto so ParseDataRef can
+				//   parse it. The executor's @self handler creates UK2Node_Self.
 				if (RefBody.Equals(TEXT("self"), ESearchCase::IgnoreCase))
 				{
-					RewrittenInputs.Add(PinName, FString()); // empty = mark for removal
+					if (PinName.Equals(TEXT("Target"), ESearchCase::IgnoreCase)
+						|| PinName.Equals(TEXT("self"), ESearchCase::IgnoreCase))
+					{
+						RewrittenInputs.Add(PinName, FString()); // empty = mark for removal
+						bExpanded = true;
+
+						FOliveResolverNote Note;
+						Note.Field = FString::Printf(TEXT("step '%s' inputs.%s"), *Step.StepId, *PinName);
+						Note.OriginalValue = Value;
+						Note.ResolvedValue = TEXT("(removed)");
+						Note.Reason = TEXT("@self is redundant -- Target pins auto-wire to self by default. Stripped.");
+						OutNotes.Add(MoveTemp(Note));
+
+						UE_LOG(LogOlivePlanResolver, Verbose,
+							TEXT("ExpandComponentRefs: Stripped redundant @self reference from step '%s' input '%s'"),
+							*Step.StepId, *PinName);
+						continue;
+					}
+					// Bare @self on a non-Target pin: rewrite to @self.auto so ParseDataRef
+					// can parse it (requires a dot). The executor's @self handler (Phase 4)
+					// will create a UK2Node_Self and wire it to this pin.
+					RewrittenInputs.Add(PinName, TEXT("@self.auto"));
 					bExpanded = true;
 
 					FOliveResolverNote Note;
 					Note.Field = FString::Printf(TEXT("step '%s' inputs.%s"), *Step.StepId, *PinName);
 					Note.OriginalValue = Value;
-					Note.ResolvedValue = TEXT("(removed)");
-					Note.Reason = TEXT("@self is redundant -- Target pins auto-wire to self by default. Stripped.");
+					Note.ResolvedValue = TEXT("@self.auto");
+					Note.Reason = TEXT("Bare @self on non-Target pin rewritten to @self.auto for Self reference node wiring.");
 					OutNotes.Add(MoveTemp(Note));
 
-					UE_LOG(LogOlivePlanResolver, Verbose,
-						TEXT("ExpandComponentRefs: Stripped redundant @self reference from step '%s' input '%s'"),
+					UE_LOG(LogOlivePlanResolver, Log,
+						TEXT("ExpandComponentRefs: Rewrote bare @self to @self.auto for step '%s' input '%s'"),
 						*Step.StepId, *PinName);
 					continue;
 				}

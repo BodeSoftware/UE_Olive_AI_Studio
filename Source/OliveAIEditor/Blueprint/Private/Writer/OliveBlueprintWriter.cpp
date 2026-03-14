@@ -30,6 +30,9 @@
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "GameFramework/Actor.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
 
 DEFINE_LOG_CATEGORY(LogOliveBPWriter);
 
@@ -392,6 +395,24 @@ FOliveBlueprintWriteResult FOliveBlueprintWriter::SetParentClass(
 		FOliveBlueprintWriteResult Result = FOliveBlueprintWriteResult::Success(AssetPath);
 		Result.AddWarning(TEXT("Blueprint already has this parent class"));
 		return Result;
+	}
+
+	// Guard: Actor -> Actor reparenting when the current BP has SCS components.
+	// Both old and new parents are Actor subclasses AND the BP already has components.
+	// This creates duplicate DefaultSceneRoot nodes, causing compiler errors.
+	if (NewParentUClass->IsChildOf(AActor::StaticClass()) && Blueprint->ParentClass->IsChildOf(AActor::StaticClass()))
+	{
+		if (Blueprint->SimpleConstructionScript &&
+			Blueprint->SimpleConstructionScript->GetAllNodes().Num() > 0)
+		{
+			return FOliveBlueprintWriteResult::Error(
+				FString::Printf(TEXT("Cannot reparent '%s' to '%s': both are Actor Blueprints. "
+					"Reparenting Actor BPs with components creates duplicate DefaultSceneRoot "
+					"nodes, causing compiler errors. "
+					"Instead use: (1) a shared Blueprint Interface for common functions, "
+					"(2) composition via add_component, or (3) reparent to a C++ base class."),
+					*Blueprint->GetName(), *NewParentUClass->GetName()));
+		}
 	}
 
 	// Use transaction for undo support

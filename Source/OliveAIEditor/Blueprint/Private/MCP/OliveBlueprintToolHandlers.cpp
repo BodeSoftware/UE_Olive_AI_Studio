@@ -41,7 +41,6 @@
 #include "IR/OliveIRSchema.h"
 #include "IR/BlueprintPlanIR.h"
 #include "Template/OliveTemplateSystem.h"
-#include "Template/OliveLibraryCloner.h"
 #include "K2Node_Timeline.h"
 #include "Engine/TimelineTemplate.h"
 #include "Curves/CurveFloat.h"
@@ -2125,26 +2124,6 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 		}
 	}
 
-	// One-time hint: nudge the agent to research community patterns after creating.
-	// Declared here so both template and non-template paths share one static bool.
-	static bool bCommunitySearchHintShownCreate = false;
-
-	// Check for template_id — if set, delegate to template creation
-	FString TemplateId;
-	if (Params->TryGetStringField(TEXT("template_id"), TemplateId) && !TemplateId.IsEmpty())
-	{
-		UE_LOG(LogOliveBPTools, Log, TEXT("blueprint.create: template_id='%s' detected, delegating to template system"), *TemplateId);
-		FOliveToolResult TemplateResult = HandleBlueprintCreateFromTemplate(TemplateId, AssetPath, Params);
-
-		if (!bCommunitySearchHintShownCreate && TemplateResult.bSuccess && TemplateResult.Data.IsValid())
-		{
-			bCommunitySearchHintShownCreate = true;
-			TemplateResult.Data->SetStringField(TEXT("tip"),
-				TEXT("olive.search_community_blueprints('relevant query') can show how other developers built similar patterns."));
-		}
-		return TemplateResult;
-	}
-
 	// Extract type first (needed for parent_class defaults)
 	FString TypeString = TEXT("Normal");
 	Params->TryGetStringField(TEXT("type"), TypeString);
@@ -2202,8 +2181,9 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 		{
 			return FOliveToolResult::Error(
 				TEXT("VALIDATION_MISSING_PARAM"),
-				TEXT("Required parameter 'parent_class' is missing or empty. Either provide parent_class for a blank Blueprint, or provide template_id to create from a template."),
-				TEXT("Provide the parent class name (e.g., 'Actor', 'Character', '/Game/BP_Base') or use template_id")
+				TEXT("Required parameter 'parent_class' is missing or empty."),
+				TEXT("Provide the parent class name (e.g., 'Actor', 'Character', 'Pawn', '/Game/Blueprints/BP_Base'). "
+					"WidgetBlueprint and AnimationBlueprint types auto-default to UserWidget and AnimInstance respectively.")
 			);
 		}
 	}
@@ -2363,6 +2343,8 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 		}
 	}
 
+	// One-time hint: nudge the agent to research community patterns after creating
+	static bool bCommunitySearchHintShownCreate = false;
 	if (!bCommunitySearchHintShownCreate && ToolResult.bSuccess && ToolResult.Data.IsValid())
 	{
 		bCommunitySearchHintShownCreate = true;
@@ -9280,14 +9262,10 @@ void FOliveBlueprintToolHandlers::RegisterTemplateTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
-	// NOTE: blueprint.create_from_template is now an alias that redirects to blueprint.create (with template_id).
-	// It is no longer registered as a separate tool.
-
 	Registry.RegisterTool(
 		TEXT("blueprint.get_template"),
-		TEXT("View a template's content, or extract a specific function's full plan_json. "
-			"Without pattern param: shows parameters, presets, function outlines. "
-			"With pattern=FunctionName: returns the function's complete plan ready for apply_plan_json."),
+		TEXT("View a template's content. Without pattern: shows structure overview (components, variables, function signatures). "
+			"With pattern=FunctionName: returns the function's full graph or plan as reference for building your own."),
 		OliveBlueprintSchemas::BlueprintGetTemplate(),
 		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintGetTemplate),
 		{TEXT("blueprint"), TEXT("read"), TEXT("template")},
@@ -9306,19 +9284,7 @@ void FOliveBlueprintToolHandlers::RegisterTemplateTools()
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.list_templates"));
 
-	Registry.RegisterTool(
-		TEXT("blueprint.create_from_library"),
-		TEXT("Clone a library template into a real Blueprint asset. Creates the asset with all structure "
-			"(variables, components, dispatchers) and optionally recreates node graphs. "
-			"Handles missing dependencies gracefully with type demotion and skip logic."),
-		OliveBlueprintSchemas::BlueprintCreateFromLibrary(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintCreateFromLibrary),
-		{TEXT("blueprint"), TEXT("write"), TEXT("create"), TEXT("template"), TEXT("library")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.create_from_library"));
-
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered template tools (get_template, list_templates, create_from_library)"));
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered template tools (get_template, list_templates)"));
 }
 
 FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintListTemplates(const TSharedPtr<FJsonObject>& Params)
@@ -9367,8 +9333,8 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintListTemplates(const
 			ResultData->SetStringField(TEXT("type_filter"), TypeFilter);
 		}
 		ResultData->SetStringField(TEXT("note"),
-			TEXT("Use blueprint.get_template(template_id) to view full content. "
-				"For library templates, use pattern param to retrieve a specific function's node graph."));
+			TEXT("Use blueprint.get_template(template_id) to view structure. "
+				"Use pattern param to read a specific function's graph as reference."));
 
 		return FOliveToolResult::Success(ResultData);
 	}
@@ -9559,171 +9525,4 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintGetTemplate(const T
 	return FOliveToolResult::Success(ResultData);
 }
 
-FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreateFromTemplate(
-	const FString& TemplateId,
-	const FString& AssetPath,
-	const TSharedPtr<FJsonObject>& Params)
-{
-	FString PresetName;
-	if (Params.IsValid())
-	{
-		Params->TryGetStringField(TEXT("preset"), PresetName);
-	}
 
-	// Extract template parameters — accept both "template_params" and "parameters" (alias from old tool)
-	TMap<FString, FString> UserParams;
-	const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
-	if (Params.IsValid())
-	{
-		if (!(Params->TryGetObjectField(TEXT("template_params"), ParamsObj) && ParamsObj && (*ParamsObj).IsValid()))
-		{
-			// Fallback: accept "parameters" for backward compatibility with old create_from_template format
-			Params->TryGetObjectField(TEXT("parameters"), ParamsObj);
-		}
-	}
-	if (ParamsObj && (*ParamsObj).IsValid())
-	{
-		for (const auto& KV : (*ParamsObj)->Values)
-		{
-			FString Value;
-			if (KV.Value->TryGetString(Value))
-			{
-				UserParams.Add(KV.Key, Value);
-			}
-		}
-	}
-
-	return FOliveTemplateSystem::Get().ApplyTemplate(TemplateId, UserParams, PresetName, AssetPath);
-}
-
-FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreateFromLibrary(const TSharedPtr<FJsonObject>& Params)
-{
-	if (!Params.IsValid())
-	{
-		return FOliveToolResult::Error(
-			TEXT("MISSING_PARAMS"),
-			TEXT("No parameters provided"),
-			TEXT("Provide template_id and path at minimum."));
-	}
-
-	// 1. Extract and validate required params
-	FString TemplateId;
-	if (!Params->TryGetStringField(TEXT("template_id"), TemplateId) || TemplateId.IsEmpty())
-	{
-		return FOliveToolResult::Error(
-			TEXT("MISSING_PARAM"),
-			TEXT("'template_id' is required"),
-			TEXT("Provide a library template ID. Use blueprint.list_templates(query=\"...\") to search."));
-	}
-
-	FString AssetPath;
-	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
-	{
-		return FOliveToolResult::Error(
-			TEXT("MISSING_PARAM"),
-			TEXT("'path' is required"),
-			TEXT("Provide target asset path like '/Game/Blueprints/BP_MyArrow'"));
-	}
-
-	// 2. Extract optional params
-	FString ModeStr = TEXT("portable");
-	Params->TryGetStringField(TEXT("mode"), ModeStr);
-
-	ELibraryCloneMode Mode = ELibraryCloneMode::Portable;
-	if (ModeStr.Equals(TEXT("structure"), ESearchCase::IgnoreCase))
-	{
-		Mode = ELibraryCloneMode::Structure;
-	}
-	else if (ModeStr.Equals(TEXT("full"), ESearchCase::IgnoreCase))
-	{
-		Mode = ELibraryCloneMode::Full;
-	}
-
-	// Parse remap map
-	TMap<FString, FString> RemapMap;
-	const TSharedPtr<FJsonObject>* RemapObj = nullptr;
-	if (Params->TryGetObjectField(TEXT("remap"), RemapObj) && RemapObj && (*RemapObj).IsValid())
-	{
-		for (const auto& Pair : (*RemapObj)->Values)
-		{
-			FString Val;
-			if (Pair.Value->TryGetString(Val))
-			{
-				RemapMap.Add(Pair.Key, Val);
-			}
-		}
-	}
-
-	// Parse optional graphs whitelist
-	TArray<FString> GraphWhitelist;
-	const TArray<TSharedPtr<FJsonValue>>* GraphsArray = nullptr;
-	if (Params->TryGetArrayField(TEXT("graphs"), GraphsArray) && GraphsArray)
-	{
-		for (const TSharedPtr<FJsonValue>& Val : *GraphsArray)
-		{
-			FString GraphName;
-			if (Val->TryGetString(GraphName))
-			{
-				GraphWhitelist.Add(GraphName);
-			}
-		}
-	}
-
-	FString ParentClassOverride;
-	Params->TryGetStringField(TEXT("parent_class_override"), ParentClassOverride);
-
-	// 3. Execute the clone
-	UE_LOG(LogOliveBPTools, Log, TEXT("Cloning library template '%s' to '%s' (mode=%s)"),
-		*TemplateId, *AssetPath, *ModeStr);
-
-	FOliveLibraryCloner Cloner;
-	FLibraryCloneResult CloneResult = Cloner.Clone(
-		TemplateId, AssetPath, Mode, RemapMap, GraphWhitelist, ParentClassOverride);
-
-	// 4. Convert to tool result
-	if (CloneResult.bSuccess)
-	{
-		TSharedPtr<FJsonObject> ResultJson = CloneResult.ToJson();
-		return FOliveToolResult::Success(ResultJson);
-	}
-
-	// Check for specific fatal errors to provide targeted suggestions
-	for (const FString& Warning : CloneResult.Warnings)
-	{
-		if (Warning.StartsWith(TEXT("LIBRARY_TEMPLATE_NOT_FOUND")))
-		{
-			return FOliveToolResult::Error(
-				TEXT("LIBRARY_TEMPLATE_NOT_FOUND"),
-				Warning,
-				TEXT("Check the template_id. Use blueprint.list_templates(query=\"...\") to search."));
-		}
-		if (Warning.StartsWith(TEXT("LIBRARY_CLONE_PARENT_UNRESOLVABLE")))
-		{
-			return FOliveToolResult::Error(
-				TEXT("LIBRARY_CLONE_PARENT_UNRESOLVABLE"),
-				Warning,
-				TEXT("Provide parent_class_override or add entries to remap."));
-		}
-		if (Warning.StartsWith(TEXT("LIBRARY_CLONE_CREATE_FAILED")))
-		{
-			return FOliveToolResult::Error(
-				TEXT("LIBRARY_CLONE_CREATE_FAILED"),
-				Warning,
-				TEXT("Check that the path is valid and doesn't already exist."));
-		}
-	}
-
-	// Generic failure -- serialize full result JSON into the suggestion for diagnostics
-	TSharedPtr<FJsonObject> ResultJson = CloneResult.ToJson();
-	FString DiagnosticsString;
-	if (ResultJson.IsValid())
-	{
-		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&DiagnosticsString);
-		FJsonSerializer::Serialize(ResultJson.ToSharedRef(), Writer);
-	}
-
-	return FOliveToolResult::Error(
-		TEXT("LIBRARY_CLONE_FAILED"),
-		TEXT("Library clone failed. Check the warnings and remap_suggestions in the diagnostics."),
-		DiagnosticsString.IsEmpty() ? TEXT("Review template_id, path, and remap parameters.") : DiagnosticsString);
-}

@@ -298,7 +298,9 @@ FOliveBlueprintWriteResult FOliveComponentWriter::ModifyComponent(
 	if (!Node)
 	{
 		return FOliveBlueprintWriteResult::Error(
-			FString::Printf(TEXT("Component '%s' not found in Blueprint '%s'"), *ComponentName, *AssetPath));
+			FString::Printf(TEXT("Component '%s' not found in Blueprint '%s'."
+				" If you just added this component via blueprint.add_component, compile the Blueprint first (blueprint.compile), then retry."),
+				*ComponentName, *AssetPath));
 	}
 
 	if (Properties.Num() == 0)

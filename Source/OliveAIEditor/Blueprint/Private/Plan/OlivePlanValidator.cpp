@@ -3,6 +3,7 @@
 #include "Plan/OlivePlanValidator.h"
 #include "Plan/OliveBlueprintPlanResolver.h"
 #include "Writer/OliveNodeFactory.h"
+#include "OliveClassResolver.h"
 #include "Engine/Blueprint.h"
 #include "Components/ActorComponent.h"
 #include "Engine/SimpleConstructionScript.h"
@@ -612,18 +613,59 @@ void FOlivePlanValidator::CheckVariableExists(
 			AvailableList += FString::Printf(TEXT(" (+%d more)"), AvailableVars.Num() - 10);
 		}
 
+		// Check whether any cast step in the plan resolved to a class that HAS
+		// this variable. If so, emit a more specific "cross-BP access" error.
+		FString CrossBPNote;
+		for (const FOliveResolvedStep& OtherStep : Context.ResolvedSteps)
+		{
+			if (OtherStep.NodeType != OliveNodeTypes::Cast)
+			{
+				continue;
+			}
+
+			const FString* CastTargetClassNamePtr = OtherStep.Properties.Find(TEXT("target_class"));
+			if (!CastTargetClassNamePtr || CastTargetClassNamePtr->IsEmpty())
+			{
+				continue;
+			}
+
+			FOliveClassResolveResult ClassResolve = FOliveClassResolver::Resolve(*CastTargetClassNamePtr);
+			if (!ClassResolve.IsValid())
+			{
+				continue;
+			}
+
+			FProperty* Prop = ClassResolve.Class->FindPropertyByName(FName(*VariableName));
+			if (Prop)
+			{
+				CrossBPNote = FString::Printf(
+					TEXT(" Variable '%s' exists on cast target class '%s' (from step '%s'), "
+						 "but get_var only reads variables on the CURRENT Blueprint. "
+						 "Instead: add a pure getter function (e.g., Get%s) to the target Blueprint "
+						 "and call it with Target=@%s.auto."),
+					*VariableName,
+					**CastTargetClassNamePtr,
+					*OtherStep.StepId,
+					*VariableName,
+					*OtherStep.StepId);
+				break;
+			}
+		}
+
 		Result.Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
 			TEXT("VARIABLE_NOT_FOUND"),
 			Resolved.StepId,
 			FString::Printf(TEXT("/steps/%d/target"), *PlanIndexPtr),
 			FString::Printf(
 				TEXT("Variable '%s' not found on Blueprint '%s' or its parent classes. "
-					 "get_var/set_var requires an existing variable. Components use their SCS variable name."),
-				*VariableName, *Context.Blueprint->GetName()),
-			FString::Printf(
-				TEXT("Add the variable first with blueprint.add_variable, or check the variable name. "
-					 "Available variables: [%s]"),
-				*AvailableList)));
+					 "get_var/set_var requires an existing variable. Components use their SCS variable name.%s"),
+				*VariableName, *Context.Blueprint->GetName(), *CrossBPNote),
+			CrossBPNote.IsEmpty()
+				? FString::Printf(
+					TEXT("Add the variable first with blueprint.add_variable, or check the variable name. "
+						 "Available variables: [%s]"),
+					*AvailableList)
+				: TEXT("Add a pure getter function to the foreign Blueprint and call it with Target=@cast_step.auto.")));
 
 		UE_LOG(LogOlivePlanValidator, Warning,
 			TEXT("Phase 0: VARIABLE_NOT_FOUND -- step '%s' references '%s' on '%s'"),

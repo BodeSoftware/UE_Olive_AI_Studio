@@ -14,9 +14,8 @@ Never simplify your design to fit a tool's limitations — use a different tool 
 CREATE new Blueprint:
 0. project.search + project.get_relevant_context with task keywords — check if the project already has the system you're about to build. If it does, modify the existing asset instead of creating a duplicate.
 1. Reference patterns are available via blueprint.list_templates(query="relevant terms"). Study matching functions with blueprint.get_template(id, pattern="FuncName").
-2. If a library template closely matches, clone it directly: blueprint.create_from_library(template_id, path, mode="portable"). This recreates the full structure and engine-resolvable logic. Use remap for source-project classes.
-3. If a factory template fits, use blueprint.create with template_id for quick scaffolding.
-4. From scratch: blueprint.create → add_component/add_variable → apply_plan_json
+2. Create the Blueprint: blueprint.create with parent_class -> add_component/add_variable -> apply_plan_json
+3. Use template patterns as reference to inform your plan_json structure, variable naming, and component layout.
 
 MODIFY existing Blueprint:
 1. project.search (find path) → blueprint.read
@@ -83,29 +82,21 @@ Array: {"category":"array","value_type":{"category":"float"}}
 
 ## Templates & Pattern Sources
 Templates are reference material, not scripts. Study patterns, then build your own approach.
-Often you will find library templates are the best quality (if available), factory templates
-are still good quality, and community blueprints have a mixed variety. Compare several
-templates for each Blueprint need in your plan (or function if doing a function-level search).
+Often library templates are the best quality (if available), factory templates are still good,
+and community blueprints have mixed variety. Compare several templates before building.
 - Library templates: extracted from real shipped projects with full node graphs. Search with
   blueprint.list_templates(query="..."), read specific functions with
   blueprint.get_template(id, pattern="FuncName"). The catalog lists domain keywords per
-  project so you know what's available.
-  - **Clone directly**: blueprint.create_from_library(template_id, path) creates a real
-    Blueprint from a library template. Mode "portable" (default) recreates all engine-
-    resolvable nodes; source-project-specific calls are skipped. Use remap param to map
-    source classes to your project's equivalents. Remap suggestions are returned on failure.
-  - **Use as reference**: read functions with get_template, then build your own using plan_json.
-- Factory templates: blueprint.create with template_id for quick scaffolding. Good for
-  getting started — you can also extract individual functions with get_template.
+  project so you know what's available. Adapt naming to fit your project.
+- Factory templates: hand-crafted parameterized templates for common patterns. Read with
+  get_template to study architecture, variable layout, and plan_json patterns.
 - Community blueprints: olive.search_community_blueprints(query) for 150K+ community
-  examples. Mixed quality — compare multiple results before committing.
+  examples. Mixed quality -- compare multiple results before committing.
 - Recipes: olive.get_recipe(query) has tested wiring patterns for common tasks.
 - Search strategy: search for the specific thing (e.g., "bow", "arrow", "shield"), not just
   the generic category ("weapon"). Multiple narrow searches beat one broad search.
-- Component architecture: when a library template's parent class is an ActorComponent or
-  SceneComponent, the architecture IS the component. Create a matching component Blueprint
-  (e.g., BP_RangedComponent) and add it to the actor — don't copy the functions onto the
-  actor directly. This replicates the same reusable, encapsulated design as the original.
+- Component architecture: when a template's parent is ActorComponent or SceneComponent,
+  the pattern IS a component. Create a component Blueprint and add it to an actor.
 
 ## Function Verification
 
@@ -177,3 +168,24 @@ WHY: apply_plan_json's auto-chain handles function entry wiring automatically. U
 WRONG: call SetInstigator on spawned actor (SetInstigator is C++ only, NOT a UFUNCTION)
 RIGHT: call SetOwner(SpawningActor) -- GetInstigator() walks the owner chain automatically
 WHY: SetInstigator does not exist as a Blueprint-callable function. SetOwner is the standard UE5 pattern.
+
+WRONG: call SetVisibility without target_class in a Widget Blueprint
+RIGHT: call SetVisibility with target_class="UserWidget" (pin: InVisibility, type: ESlateVisibility)
+WHY: Without target_class, FindFunction may resolve to SceneComponent::SetVisibility (pin: bNewVisibility, type: bool) instead of UWidget::SetVisibility. Always specify target_class for ambiguous function names.
+
+WRONG: get_var "ForeignVar" after casting to another Blueprint class
+RIGHT: Add a pure getter function to the foreign Blueprint, call it with Target=@cast.auto
+WHY: get_var only reads variables on the CURRENT Blueprint. Cross-Blueprint variable access requires a function call.
+
+## Widget Blueprint Design
+
+WRONG: Using CanvasPanel as root with a full-viewport dark BackgroundBorder for overlay UIs (inventory, pause menu)
+RIGHT: Set the root widget to Collapsed or Hidden visibility by default. Use widget.set_property to set Visibility="Collapsed" immediately after construction. For overlay backgrounds, use a SizeBox or Border with explicit size anchored to center, not a full-viewport tint.
+WHY: CanvasPanel children fill the viewport by default. A dark-tinted Border at the root creates an opaque overlay that blocks the entire game view. If SetVisibility fails or the widget is visible for even one frame at BeginPlay, players see a full-screen dark screen.
+
+WRONG: Relying on BeginPlay plan_json to hide a widget immediately after AddToViewport
+RIGHT: Set the widget's default Visibility to "Collapsed" via widget.set_property BEFORE any plan_json that calls AddToViewport. Or set it on the root widget in the widget BP itself.
+WHY: There's a frame gap between AddToViewport and the SetVisibility call. During that frame, the widget is visible with its default state.
+
+FMargin/Padding format: Use shorthand "16" (uniform), "16 8" (horiz vert), "16 8 16 8" (L T R B), or full UE format "(Left=16,Top=8,Right=16,Bottom=8)".
+Font.Size: Use dot notation — property="Font.Size" value="24".
