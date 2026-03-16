@@ -30,6 +30,9 @@
 #include "Kismet/GameplayStatics.h"
 #include "UObject/UnrealType.h"
 #include "Components/ActorComponent.h"
+#include "Components/PrimitiveComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "WidgetBlueprint.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Widget.h"
@@ -823,6 +826,309 @@ bool FOliveBlueprintPlanResolver::ExpandBranchConditions(
 }
 
 // ============================================================================
+// ExpandMissingCollisionDisable — Auto-inject SetCollisionEnabled(NoCollision)
+// after attach-to-component calls when the Blueprint has a mesh component
+// but no existing collision-disable step.
+// ============================================================================
+
+bool FOliveBlueprintPlanResolver::ExpandMissingCollisionDisable(
+	FOliveIRBlueprintPlan& Plan,
+	TArray<FOliveResolvedStep>& ResolvedSteps,
+	UBlueprint* Blueprint,
+	TArray<FOliveResolverNote>& OutNotes)
+{
+	if (!Blueprint || !Blueprint->SimpleConstructionScript)
+	{
+		return false;
+	}
+
+	// Attach function names to detect (case-insensitive matching)
+	static const TArray<FString> AttachFunctionNames = {
+		TEXT("K2_AttachToComponent"),
+		TEXT("AttachToComponent"),
+		TEXT("K2_AttachToActor"),
+		TEXT("AttachActorToComponent"),
+		TEXT("K2_AttachRootComponentToActor"),
+		TEXT("K2_AttachRootComponentTo"),
+	};
+
+	// Collision-related function names — if ANY of these exist in the plan,
+	// the AI already handles collision, so we return early.
+	static const TArray<FString> CollisionFunctionNames = {
+		TEXT("SetCollisionEnabled"),
+		TEXT("SetCollisionProfileName"),
+		TEXT("SetCollisionResponseToAllChannels"),
+		TEXT("SetCollisionResponseToChannel"),
+	};
+
+	// ------------------------------------------------------------------
+	// Step 1: Detect attach steps (by resolved function name or plan target)
+	// ------------------------------------------------------------------
+	struct FAttachStepInfo
+	{
+		int32 PlanIndex;
+		FString StepId;
+	};
+	TArray<FAttachStepInfo> AttachSteps;
+
+	for (int32 i = 0; i < Plan.Steps.Num(); ++i)
+	{
+		const FOliveIRBlueprintPlanStep& Step = Plan.Steps[i];
+		if (Step.Op != OlivePlanOps::Call)
+		{
+			continue;
+		}
+
+		// Check by plan step Target (the function name the AI wrote)
+		bool bIsAttach = false;
+		for (const FString& AttachName : AttachFunctionNames)
+		{
+			if (Step.Target.Equals(AttachName, ESearchCase::IgnoreCase))
+			{
+				bIsAttach = true;
+				break;
+			}
+		}
+
+		// Also check the resolved function name (more reliable after alias resolution)
+		if (!bIsAttach && i < ResolvedSteps.Num() && ResolvedSteps[i].ResolvedFunction)
+		{
+			const FString ResolvedName = ResolvedSteps[i].ResolvedFunction->GetName();
+			for (const FString& AttachName : AttachFunctionNames)
+			{
+				if (ResolvedName.Equals(AttachName, ESearchCase::IgnoreCase))
+				{
+					bIsAttach = true;
+					break;
+				}
+			}
+		}
+
+		if (bIsAttach)
+		{
+			AttachSteps.Add({ i, Step.StepId });
+		}
+	}
+
+	if (AttachSteps.Num() == 0)
+	{
+		return false; // No attach calls in this plan
+	}
+
+	// ------------------------------------------------------------------
+	// Step 2: Check if collision is already handled anywhere in the plan
+	// ------------------------------------------------------------------
+	for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
+	{
+		if (Step.Op != OlivePlanOps::Call)
+		{
+			continue;
+		}
+
+		for (const FString& CollisionName : CollisionFunctionNames)
+		{
+			if (Step.Target.Equals(CollisionName, ESearchCase::IgnoreCase))
+			{
+				UE_LOG(LogOlivePlanResolver, Verbose,
+					TEXT("ExpandMissingCollisionDisable: Found existing collision step '%s' targeting '%s'. Skipping auto-injection."),
+					*Step.StepId, *Step.Target);
+				return false; // AI already handles collision
+			}
+		}
+	}
+
+	// Also check resolved function names for collision handling
+	for (int32 i = 0; i < ResolvedSteps.Num(); ++i)
+	{
+		if (ResolvedSteps[i].ResolvedFunction)
+		{
+			const FString ResolvedName = ResolvedSteps[i].ResolvedFunction->GetName();
+			for (const FString& CollisionName : CollisionFunctionNames)
+			{
+				if (ResolvedName.Equals(CollisionName, ESearchCase::IgnoreCase))
+				{
+					UE_LOG(LogOlivePlanResolver, Verbose,
+						TEXT("ExpandMissingCollisionDisable: Found existing collision step (resolved '%s'). Skipping auto-injection."),
+						*ResolvedName);
+					return false;
+				}
+			}
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// Step 3: Find the first mesh component (StaticMesh or SkeletalMesh)
+	// ------------------------------------------------------------------
+	FString MeshComponentName;
+	{
+		TArray<USCS_Node*> AllNodes = Blueprint->SimpleConstructionScript->GetAllNodes();
+		for (USCS_Node* SCSNode : AllNodes)
+		{
+			if (!SCSNode || !SCSNode->ComponentClass)
+			{
+				continue;
+			}
+
+			if (SCSNode->ComponentClass->IsChildOf(UStaticMeshComponent::StaticClass())
+				|| SCSNode->ComponentClass->IsChildOf(USkeletalMeshComponent::StaticClass()))
+			{
+				MeshComponentName = SCSNode->GetVariableName().ToString();
+				break;
+			}
+		}
+
+		// Also check native C++ components from the parent hierarchy
+		if (MeshComponentName.IsEmpty() && Blueprint->GeneratedClass)
+		{
+			for (TFieldIterator<FObjectProperty> It(Blueprint->GeneratedClass,
+				EFieldIteratorFlags::IncludeSuper); It; ++It)
+			{
+				FObjectProperty* ObjProp = *It;
+				if (ObjProp && ObjProp->PropertyClass
+					&& (ObjProp->PropertyClass->IsChildOf(UStaticMeshComponent::StaticClass())
+						|| ObjProp->PropertyClass->IsChildOf(USkeletalMeshComponent::StaticClass())))
+				{
+					MeshComponentName = ObjProp->GetName();
+					break;
+				}
+			}
+		}
+	}
+
+	if (MeshComponentName.IsEmpty())
+	{
+		UE_LOG(LogOlivePlanResolver, Verbose,
+			TEXT("ExpandMissingCollisionDisable: No mesh component found on Blueprint '%s'. Skipping."),
+			*Blueprint->GetName());
+		return false; // No mesh component to disable collision on
+	}
+
+	// ------------------------------------------------------------------
+	// Step 4: Synthesize get_var + SetCollisionEnabled steps after each attach
+	// ------------------------------------------------------------------
+	bool bExpanded = false;
+	int32 InsertionOffset = 0; // Track index drift from insertions
+
+	for (int32 AttachIdx = 0; AttachIdx < AttachSteps.Num(); ++AttachIdx)
+	{
+		const FAttachStepInfo& AttachInfo = AttachSteps[AttachIdx];
+		const int32 AdjustedIndex = AttachInfo.PlanIndex + InsertionOffset;
+
+		// Generate unique step IDs with counter to handle multiple attach calls
+		const FString SynthGetVarId = FString::Printf(
+			TEXT("_synth_collision_getmesh_%d"), AttachIdx);
+		const FString SynthCallId = FString::Printf(
+			TEXT("_synth_collision_disable_%d"), AttachIdx);
+
+		// --- Synthesize get_var step for the mesh component ---
+		FOliveIRBlueprintPlanStep GetMeshStep;
+		GetMeshStep.StepId = SynthGetVarId;
+		GetMeshStep.Op = OlivePlanOps::GetVar;
+		GetMeshStep.Target = MeshComponentName;
+
+		// --- Synthesize SetCollisionEnabled(NoCollision) call step ---
+		FOliveIRBlueprintPlanStep SetCollisionStep;
+		SetCollisionStep.StepId = SynthCallId;
+		SetCollisionStep.Op = OlivePlanOps::Call;
+		SetCollisionStep.Target = TEXT("SetCollisionEnabled");
+		SetCollisionStep.Inputs.Add(TEXT("NewType"), TEXT("NoCollision"));
+		// Wire Target pin to the mesh component get_var step
+		SetCollisionStep.Inputs.Add(TEXT("Target"),
+			FString::Printf(TEXT("@%s.auto"), *SynthGetVarId));
+
+		// --- Wire exec chain: attach -> get_var -> SetCollisionEnabled ---
+		// The get_var is pure (no exec), so wire: attach -> SetCollisionEnabled
+		// The get_var step will have its exec cleared by CollapseExecThroughPureSteps later.
+		// For now, wire the SetCollisionEnabled step after the attach step.
+
+		FOliveIRBlueprintPlanStep& AttachStep = Plan.Steps[AdjustedIndex];
+
+		// Check if the attach step already has exec_outputs or if something is wired after it
+		// via exec_after. We need to splice the collision steps into the chain.
+		FString OriginalNextStepId;
+
+		// Find any step that has exec_after pointing to the attach step
+		for (FOliveIRBlueprintPlanStep& OtherStep : Plan.Steps)
+		{
+			if (OtherStep.ExecAfter == AttachInfo.StepId)
+			{
+				OriginalNextStepId = OtherStep.StepId;
+				// Rewire: that step now follows the SetCollisionEnabled step
+				OtherStep.ExecAfter = SynthCallId;
+				break;
+			}
+		}
+
+		// Wire SetCollisionEnabled after the attach step
+		SetCollisionStep.ExecAfter = AttachInfo.StepId;
+
+		// Insert the two steps after the attach step
+		// get_var goes first (pure, no exec), then SetCollisionEnabled
+		Plan.Steps.Insert(GetMeshStep, AdjustedIndex + 1);
+		Plan.Steps.Insert(SetCollisionStep, AdjustedIndex + 2);
+
+		// Also insert corresponding resolved steps to keep arrays in sync.
+		// These are placeholder entries -- they will be re-resolved if needed,
+		// but we need them to maintain index correspondence.
+		FOliveResolvedStep GetVarResolved;
+		GetVarResolved.StepId = SynthGetVarId;
+		GetVarResolved.NodeType = TEXT("GetVariable");
+		GetVarResolved.Properties.Add(TEXT("variable_name"), MeshComponentName);
+		GetVarResolved.bIsPure = true;
+
+		FOliveResolvedStep SetCollisionResolved;
+		SetCollisionResolved.StepId = SynthCallId;
+		SetCollisionResolved.NodeType = TEXT("CallFunction");
+		SetCollisionResolved.Properties.Add(TEXT("function_name"), TEXT("SetCollisionEnabled"));
+		// Try to resolve UPrimitiveComponent::SetCollisionEnabled
+		UFunction* SetCollisionFunc = UPrimitiveComponent::StaticClass()->FindFunctionByName(
+			FName(TEXT("SetCollisionEnabled")));
+		if (SetCollisionFunc)
+		{
+			SetCollisionResolved.ResolvedFunction = SetCollisionFunc;
+			SetCollisionResolved.ResolvedOwningClass = UPrimitiveComponent::StaticClass();
+		}
+
+		if (AdjustedIndex + 1 <= ResolvedSteps.Num())
+		{
+			ResolvedSteps.Insert(MoveTemp(GetVarResolved), AdjustedIndex + 1);
+			ResolvedSteps.Insert(MoveTemp(SetCollisionResolved), AdjustedIndex + 2);
+		}
+		else
+		{
+			ResolvedSteps.Add(MoveTemp(GetVarResolved));
+			ResolvedSteps.Add(MoveTemp(SetCollisionResolved));
+		}
+
+		InsertionOffset += 2;
+		bExpanded = true;
+
+		// ------------------------------------------------------------------
+		// Step 5: Add resolver note
+		// ------------------------------------------------------------------
+		FOliveResolverNote Note;
+		Note.Field = TEXT("collision_auto_disable");
+		Note.OriginalValue = FString::Printf(TEXT("attach step '%s'"), *AttachInfo.StepId);
+		Note.ResolvedValue = FString::Printf(
+			TEXT("Injected get_var('%s') + SetCollisionEnabled(NoCollision) after attach"),
+			*MeshComponentName);
+		Note.Reason = FString::Printf(
+			TEXT("Auto-injected SetCollisionEnabled(NoCollision) on '%s' after attach step '%s'. "
+				"Mesh collision blocks character movement when attached. "
+				"Override with an explicit SetCollisionEnabled step if collision is intentional."),
+			*MeshComponentName, *AttachInfo.StepId);
+		OutNotes.Add(MoveTemp(Note));
+
+		UE_LOG(LogOlivePlanResolver, Log,
+			TEXT("ExpandMissingCollisionDisable: Injected SetCollisionEnabled(NoCollision) on '%s' "
+				"after attach step '%s' in Blueprint '%s'"),
+			*MeshComponentName, *AttachInfo.StepId, *Blueprint->GetName());
+	}
+
+	return bExpanded;
+}
+
+// ============================================================================
 // ExpandComponentRefs — Pre-process dotless @refs to component/variable get_var steps
 // ============================================================================
 
@@ -1445,7 +1751,7 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 	}
 	else if (Op == OlivePlanOps::GetVar)
 	{
-		bResult = ResolveGetVarOp(Step, Blueprint, StepIndex, OutResolved, OutErrors, OutWarnings, GraphContext);
+		bResult = ResolveGetVarOp(Step, Blueprint, StepIndex, OutResolved, OutErrors, OutWarnings, GraphContext, CastTargetMap);
 	}
 	else if (Op == OlivePlanOps::SetVar)
 	{
@@ -1938,6 +2244,7 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 	// self from cast output, the function "Interact" exists on BP_Gun (via
 	// its interface), not on the editing Blueprint. We scan the step's inputs
 	// for @refs that point to cast steps and search the cast target class.
+	FOliveFunctionSearchResult LastCastSearchResult;
 	if (CastTargetMap.Num() > 0)
 	{
 		for (const auto& InputPair : Step.Inputs)
@@ -1983,6 +2290,7 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 			FOliveFunctionSearchResult CastSearchResult =
 				FOliveNodeFactory::Get().FindFunctionEx(
 					Step.Target, ClassResolve.Class->GetName(), nullptr);
+			LastCastSearchResult = CastSearchResult;
 
 			if (CastSearchResult.IsValid())
 			{
@@ -2037,6 +2345,75 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 		}
 	}
 
+	// --- UPROPERTY auto-rewrite from cast-target search ---
+	// The cast-target FindFunctionEx may have detected a property match on the
+	// target class (e.g., GetMesh -> Mesh on Character). Check its SearchedLocations
+	// before falling through to the original (self-class) UPROPERTY check.
+	if (LastCastSearchResult.SearchedLocations.Num() > 0)
+	{
+		for (const FString& Location : LastCastSearchResult.SearchedLocations)
+		{
+			if (Location.StartsWith(TEXT("PROPERTY MATCH:")))
+			{
+				int32 FirstQuote = Location.Find(TEXT("'"));
+				int32 SecondQuote = Location.Find(TEXT("'"), ESearchCase::CaseSensitive, ESearchDir::FromStart, FirstQuote + 1);
+				if (FirstQuote != INDEX_NONE && SecondQuote != INDEX_NONE)
+				{
+					FString PropertyName = Location.Mid(FirstQuote + 1, SecondQuote - FirstQuote - 1);
+
+					// Determine the owning class name from the PROPERTY MATCH message.
+					// Format: "PROPERTY MATCH: 'PropName' is a Type property on ClassName, not..."
+					// Extract ClassName -- it is between " on " and ", not"
+					FString ExternalClassName;
+					int32 OnIdx = Location.Find(TEXT(" on "));
+					int32 CommaIdx = Location.Find(TEXT(", not"), ESearchCase::CaseSensitive, ESearchDir::FromStart, OnIdx + 4);
+					if (OnIdx != INDEX_NONE && CommaIdx != INDEX_NONE)
+					{
+						ExternalClassName = Location.Mid(OnIdx + 4, CommaIdx - (OnIdx + 4));
+					}
+
+					// Determine set vs get based on Step.Target prefix and non-target input count
+					int32 NonTargetInputCount = 0;
+					for (const auto& Pair : Step.Inputs)
+					{
+						if (!Pair.Key.Equals(TEXT("Target"), ESearchCase::IgnoreCase) &&
+							!Pair.Key.Equals(TEXT("self"), ESearchCase::IgnoreCase))
+						{
+							NonTargetInputCount++;
+						}
+					}
+					bool bIsSet = Step.Target.StartsWith(TEXT("Set"), ESearchCase::IgnoreCase)
+								|| NonTargetInputCount > 0;
+
+					Out.NodeType = bIsSet ? OliveNodeTypes::SetVariable : OliveNodeTypes::GetVariable;
+					Out.Properties.Add(TEXT("variable_name"), PropertyName);
+					Out.bIsPure = !bIsSet;
+
+					// Mark as external variable access so the node factory creates
+					// a VariableGet/Set with SetExternalMember instead of SetSelfMember
+					if (!ExternalClassName.IsEmpty())
+					{
+						Out.Properties.Add(TEXT("external_class"), ExternalClassName);
+					}
+
+					Out.ResolverNotes.Add(FOliveResolverNote{
+						TEXT("op"),
+						OlivePlanOps::Call,
+						bIsSet ? OlivePlanOps::SetVar : OlivePlanOps::GetVar,
+						FString::Printf(TEXT("'%s' is a property on external class '%s'. Rewritten from 'call' to '%s'."),
+							*Step.Target, *ExternalClassName, bIsSet ? *OlivePlanOps::SetVar : *OlivePlanOps::GetVar)
+					});
+
+					Warnings.Add(FString::Printf(
+						TEXT("Step '%s': '%s' auto-rewritten from call to %s (external UPROPERTY on '%s')"),
+						*Step.StepId, *Step.Target, bIsSet ? TEXT("set_var") : TEXT("get_var"), *ExternalClassName));
+
+					return true;
+				}
+			}
+		}
+	}
+
 	// --- UPROPERTY auto-rewrite ---
 	// When FindFunctionEx fails but detects a matching UPROPERTY, the AI
 	// intended to set/get a property, not call a function. Rewrite the op.
@@ -2053,9 +2430,19 @@ bool FOliveBlueprintPlanResolver::ResolveCallOp(
 			{
 				FString PropertyName = Location.Mid(FirstQuote + 1, SecondQuote - FirstQuote - 1);
 
-				// Determine set vs get based on Step.Target prefix and presence of Inputs
+				// Determine set vs get based on Step.Target prefix and presence of non-target Inputs.
+				// Exclude "Target" and "self" keys — those are object references, not value inputs.
+				int32 NonTargetInputCount = 0;
+				for (const auto& Pair : Step.Inputs)
+				{
+					if (!Pair.Key.Equals(TEXT("Target"), ESearchCase::IgnoreCase) &&
+					    !Pair.Key.Equals(TEXT("self"), ESearchCase::IgnoreCase))
+					{
+						NonTargetInputCount++;
+					}
+				}
 				bool bIsSet = Step.Target.StartsWith(TEXT("Set"), ESearchCase::IgnoreCase)
-				           || Step.Inputs.Num() > 0;
+				           || NonTargetInputCount > 0;
 
 				Out.NodeType = bIsSet ? OliveNodeTypes::SetVariable : OliveNodeTypes::GetVariable;
 				Out.Properties.Add(TEXT("variable_name"), PropertyName);
@@ -2276,7 +2663,8 @@ bool FOliveBlueprintPlanResolver::ResolveGetVarOp(
 	FOliveResolvedStep& Out,
 	TArray<FOliveIRBlueprintPlanError>& Errors,
 	TArray<FString>& Warnings,
-	const FOliveGraphContext& GraphContext)
+	const FOliveGraphContext& GraphContext,
+	const TMap<FString, FString>& CastTargetMap)
 {
 	Out.NodeType = OliveNodeTypes::GetVariable;
 
@@ -2381,6 +2769,51 @@ bool FOliveBlueprintPlanResolver::ResolveGetVarOp(
 	else if (BP)
 	{
 		UE_LOG(LogOlivePlanResolver, Verbose, TEXT("    Variable '%s' found on Blueprint"), *Step.Target);
+	}
+
+	// --- External Target input handling ---
+	// When the AI writes get_var with "Target": "@cast.auto", this is an external
+	// variable access on another object (e.g., getting Mesh from a Character ref).
+	// Determine the external class from the CastTargetMap and set external_class
+	// so the node factory creates a VariableGet with SetExternalMember.
+	const FString* TargetInput = Step.Inputs.Find(TEXT("Target"));
+	if (!TargetInput)
+	{
+		TargetInput = Step.Inputs.Find(TEXT("self"));
+	}
+	if (TargetInput && TargetInput->StartsWith(TEXT("@")))
+	{
+		// Parse the @ref to find the source step
+		FString RefBody = TargetInput->Mid(1);
+		FString RefStepId;
+		int32 DotIdx;
+		if (RefBody.FindChar(TEXT('.'), DotIdx))
+		{
+			RefStepId = RefBody.Left(DotIdx);
+		}
+		else
+		{
+			RefStepId = RefBody;
+		}
+
+		// Check if the referenced step is a cast op
+		const FString* CastClassName = CastTargetMap.Find(RefStepId);
+		if (CastClassName && !CastClassName->IsEmpty())
+		{
+			FOliveClassResolveResult ClassResolve = FOliveClassResolver::Resolve(*CastClassName);
+			if (ClassResolve.IsValid())
+			{
+				Out.Properties.Add(TEXT("external_class"), ClassResolve.Class->GetName());
+
+				UE_LOG(LogOlivePlanResolver, Log,
+					TEXT("    ResolveGetVarOp: step '%s' get_var '%s' with external Target from cast step '%s' (class '%s')"),
+					*Step.StepId, *Step.Target, *RefStepId, *ClassResolve.Class->GetName());
+
+				Warnings.Add(FString::Printf(
+					TEXT("Step '%s': get_var '%s' with external Target from cast step '%s' (class '%s')"),
+					*Step.StepId, *Step.Target, *RefStepId, *ClassResolve.Class->GetName()));
+			}
+		}
 	}
 
 	return true;

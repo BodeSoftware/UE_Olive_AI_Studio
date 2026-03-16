@@ -6,7 +6,7 @@
     "catalog_description": "Actor lifecycle and interaction events with their output pin signatures.",
     "catalog_examples": "",
 
-    "tags": "event beginplay tick overlap damage hit destroyed endplay actor lifecycle",
+    "tags": "event beginplay tick overlap damage hit destroyed endplay actor lifecycle component",
 
     "patterns": [
         {
@@ -26,13 +26,23 @@
         },
         {
             "name": "ActorBeginOverlap",
-            "description": "Fires when another actor begins overlapping this actor. Requires a collision component with Generate Overlap Events enabled.",
-            "notes": "Target name: ReceiveActorBeginOverlap. Output pins: OtherActor (Actor)."
+            "description": "Fires when another actor begins overlapping this actor. This is an actor-level event -- it fires for ANY overlap on the entire actor, regardless of which component caused it.",
+            "notes": "Target name: ReceiveActorBeginOverlap. Output pins: OtherActor (Actor). Use this when you don't care which specific component was overlapped. For per-component overlap detection (e.g., a pickup sphere), use OnComponentBeginOverlap instead."
         },
         {
             "name": "ActorEndOverlap",
-            "description": "Fires when another actor stops overlapping this actor.",
+            "description": "Fires when another actor stops overlapping this actor. Actor-level counterpart to ActorBeginOverlap.",
             "notes": "Target name: ReceiveActorEndOverlap. Output pins: OtherActor (Actor)."
+        },
+        {
+            "name": "OnComponentBeginOverlap",
+            "description": "Fires when another actor begins overlapping a SPECIFIC component. This is a component-bound event -- it only fires for the named component, not for other colliders on the actor.",
+            "notes": "Requires component_name in properties (e.g., {\"component_name\": \"PickupSphere\"}). Output pins: OverlappedComponent (PrimitiveComponent), OtherActor (Actor), OtherComp (PrimitiveComponent), OtherBodyIndex (Integer), bFromSweep (Boolean), SweepResult (HitResult). Prefer this over ActorBeginOverlap when the actor has multiple collision components and you need to distinguish which one was overlapped."
+        },
+        {
+            "name": "OnComponentEndOverlap",
+            "description": "Fires when another actor stops overlapping a specific component. Component-bound counterpart to OnComponentBeginOverlap.",
+            "notes": "Requires component_name in properties (e.g., {\"component_name\": \"PickupSphere\"}). Output pins: OverlappedComponent (PrimitiveComponent), OtherActor (Actor), OtherComp (PrimitiveComponent), OtherBodyIndex (Integer)."
         },
         {
             "name": "Hit",

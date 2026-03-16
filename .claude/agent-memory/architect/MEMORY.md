@@ -182,6 +182,20 @@
 - `SetFromField<UFunction>(Func, false)` + `bOverrideFunction = true`
 - BPI functions on `SkeletonGeneratedClass`, NOT `InterfaceDesc.Interface` directly
 
+### External Variable Access (get_var/set_var) - Mar 2026
+- `plans/external-get-var-design.md` -- External property access for plan_json get_var/set_var
+- **Problem**: `GetMesh()` is a C++ inline accessor (NOT a UFUNCTION), so FindFunction fails when AI tries to access Character's Mesh on a cast target
+- **Fix**: `external_class` property on resolved step -> `SetExternalMember(VarName, ExternalClass)` in NodeFactory -> visible PN_Self pin -> Phase 4 existing self-pin wiring handles the rest
+- **Resolver**: New accessor-to-property detection on cast target class (before existing PROPERTY MATCH rewrite), strips Get/Set prefix, scans TFieldIterator<FProperty>
+- **Validator**: Skip VARIABLE_NOT_FOUND when `external_class` present (property is on external class, not editing BP)
+- **Key UE API**: `K2Node_Variable::CreatePinForSelf()` creates visible PN_Self when `!IsSelfContext()`, hidden when self-context
+- **4 files**: OliveNodeFactory.cpp, OliveBlueprintPlanResolver.cpp, OlivePlanValidator.cpp (~120 lines total)
+
+### Non-Interactive Pins Fix - Mar 2026
+- `plans/non-interactive-pins-design.md` -- root cause of non-draggable pins in Blueprint editor
+- See `non-interactive-pins.md` for details. Key: missing `RF_Transactional` + `CreateNewGuid()` on type-specific creators.
+- Fix: 4-line block in `CreateNode()` central dispatch, guarded for `CreateNodeByClass` path.
+
 ### Run Regression Fixes - Mar 2026
 - `plans/run-regression-fixes-design.md` -- 6 issues from test runs (3 tool bugs, 3 template/knowledge)
 - **Issue 1 (P0)**: `AddEventDispatcher` + resolver + auto-reroute all only check `NewVariables` for dispatchers, missing C++ parent `FMulticastDelegateProperty`. Fix: `TFieldIterator<FMulticastDelegateProperty>` on parent class in 4 locations (Writer, ResolveCallDelegateOp, ResolveBindDelegateOp, ResolveCallOp auto-reroute).

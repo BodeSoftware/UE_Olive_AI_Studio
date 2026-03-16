@@ -122,9 +122,15 @@ For pin wiring, use `@step.auto` — the resolver handles ~80% of connections au
 - After a plan_json failure, all nodes from that plan are rolled back — they do not exist. Do NOT use connect_pins or add_node with node IDs from a failed plan. Instead: fix the plan and retry apply_plan_json, or start fresh with granular tools using new add_node calls.
 - After applying plan_json to a complex function (5+ steps), read the function back with blueprint.read_function to verify the graph looks correct. Disconnected data wires don't always cause compile errors.
 - Component functions (SetVelocityInLocalSpace, SetSimulatePhysics, etc.) require target_class when the component is NOT on the current Blueprint's SCS. If you're calling a function on a spawned actor's component, you need a reference to that component first.
-- Calling functions on non-self actors: add `"Target": "@step.auto"` to inputs. Example — attach a spawned actor to the character's mesh:
-  `{"op":"call","target":"AttachToComponent","inputs":{"Target":"@spawn.auto","Parent":"@get_mesh.auto","SocketName":"hand_r"}}`
+- Calling functions on non-self actors: add `"Target": "@step.auto"` to inputs. Example — set lifespan on a spawned actor:
+  `{"op":"call","target":"SetLifeSpan","inputs":{"Target":"@spawn.auto","InLifespan":"3.0"}}`
   Without Target, the function runs on self (the current Blueprint's actor). With Target, it runs on the referenced actor.
+- Accessing properties on external actors (e.g., Character's Mesh after a cast): use get_var with Target.
+  `{"op":"get_var","target":"Mesh","inputs":{"Target":"@cast.auto"}}` creates a VariableGet with external context.
+  This works for any BlueprintReadOnly/BlueprintReadWrite UPROPERTY on the target class.
+  Equip/attach example (read the target mesh's components first to see available bones/sockets):
+  `{"step_id":"get_mesh","op":"get_var","target":"Mesh"},{"step_id":"attach","op":"call","target":"K2_AttachToComponent","inputs":{"Target":"@cast.auto","Parent":"@get_mesh.auto","SocketName":"hand_r","LocationRule":"SnapToTarget","RotationRule":"SnapToTarget","ScaleRule":"SnapToTarget"}}`
+  SocketName accepts bone names or socket names. Read the character's components to see available attachment points before choosing.
 - Component refs: `@ComponentName` auto-expands to get_var (dotless @refs). Do NOT use `@ComponentName.auto` — that looks for a step named "ComponentName".
 - Component classes: StaticMeshComponent, SphereComponent, BoxComponent, CapsuleComponent, ArrowComponent, ProjectileMovementComponent, SceneComponent, AudioComponent
 - If you're struggling with a complex pattern (timelines, animation montages, AI behavior, physics), search blueprint.list_templates(query="timeline") for working examples. Library templates have tagged functions — try different keywords to find relevant implementations.
@@ -173,9 +179,22 @@ WRONG: call SetVisibility without target_class in a Widget Blueprint
 RIGHT: call SetVisibility with target_class="UserWidget" (pin: InVisibility, type: ESlateVisibility)
 WHY: Without target_class, FindFunction may resolve to SceneComponent::SetVisibility (pin: bNewVisibility, type: bool) instead of UWidget::SetVisibility. Always specify target_class for ambiguous function names.
 
-WRONG: get_var "ForeignVar" after casting to another Blueprint class
-RIGHT: Add a pure getter function to the foreign Blueprint, call it with Target=@cast.auto
-WHY: get_var only reads variables on the CURRENT Blueprint. Cross-Blueprint variable access requires a function call.
+WRONG: get_var "ForeignVar" after casting to another Blueprint class (without Target input)
+RIGHT: Use get_var with Target: `{"op":"get_var","target":"Mesh","inputs":{"Target":"@cast.auto"}}`
+WHY: get_var without Target reads the CURRENT Blueprint's variables only. With Target, it creates an external VariableGet that reads properties from the referenced actor. Works for engine UPROPERTYs (Mesh, CapsuleComponent, etc.) and parent class variables.
+
+
+WRONG: Disabling collision on the pickup trigger (SphereComponent) when equipping a weapon
+RIGHT: Disable collision on the MESH component (StaticMeshComponent) so it doesn't collide with the character when attached
+WHY: Pickup spheres are overlap triggers — they don't block movement. The mesh is what physically collides. On equip: disable mesh collision + optionally disable pickup sphere overlap.
+
+WRONG: spawn_actor with default/zero SpawnTransform for a weapon projectile
+RIGHT: Get MuzzlePoint component location (GetWorldLocation) + Controller aim rotation (GetControlRotation) for the SpawnTransform
+WHY: Default SpawnTransform spawns at world origin (0,0,0). Projectiles must spawn at the weapon's muzzle and aim where the player's camera/crosshair points. Use GetControlRotation (not GetActorForwardVector) for camera-aligned aim.
+
+WRONG: Using ActorBeginOverlap on the CHARACTER to detect pickup items
+RIGHT: Use OnComponentBeginOverlap on the ITEM's PickupSphere component (component_name in properties)
+WHY: ActorBeginOverlap fires for ANY collision on the entire actor (ground, walls, other characters). OnComponentBeginOverlap fires only for the specific pickup sphere. The overlap trigger belongs on the ITEM, not the character.
 
 ## Widget Blueprint Design
 

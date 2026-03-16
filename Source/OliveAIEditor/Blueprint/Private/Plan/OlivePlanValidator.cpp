@@ -11,6 +11,10 @@
 #include "WidgetBlueprint.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Widget.h"
+#include "Components/SphereComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 
 DEFINE_LOG_CATEGORY(LogOlivePlanValidator);
 
@@ -48,6 +52,7 @@ FOlivePlanValidationResult FOlivePlanValidator::Validate(
 	CheckLatentInFunctionGraph(Context, ResolvedSteps, GraphContext, Result);
 	CheckVariableExists(Context, Result);
 	CheckExecSourceIsReturn(Context, Result);
+	CheckCollisionOnTriggerComponent(Context, Result);
 
 	if (Result.Errors.Num() > 0)
 	{
@@ -502,6 +507,35 @@ void FOlivePlanValidator::CheckVariableExists(
 		}
 		const FString& VariableName = *VarNamePtr;
 
+		// External variable access — property lives on another class, not the editing Blueprint.
+		// The resolver sets external_class when get_var has a Target input referencing a cast step.
+		// Verify the variable actually exists on that class rather than blindly skipping.
+		const FString* ExternalClassPtr = Resolved.Properties.Find(TEXT("external_class"));
+		if (ExternalClassPtr && !ExternalClassPtr->IsEmpty())
+		{
+			UClass* ExternalClass = UClass::TryFindTypeSlow<UClass>(**ExternalClassPtr);
+			if (!ExternalClass)
+			{
+				// Try with _C suffix (Blueprint generated class naming)
+				ExternalClass = UClass::TryFindTypeSlow<UClass>(
+					FString::Printf(TEXT("%s_C"), **ExternalClassPtr));
+			}
+			if (ExternalClass)
+			{
+				FProperty* Prop = ExternalClass->FindPropertyByName(FName(*VariableName));
+				if (Prop)
+				{
+					continue; // Validated: variable exists on external class
+				}
+				// Variable not found on external class — fall through to local Blueprint check.
+				// If it's not found locally either, the VARIABLE_NOT_FOUND error below will fire.
+			}
+			else
+			{
+				continue; // Can't resolve class (likely BP-only, not yet compiled) — skip gracefully
+			}
+		}
+
 		// Check on this Blueprint
 		if (ValidatorBlueprintHasVariable(Context.Blueprint, VariableName))
 		{
@@ -639,10 +673,9 @@ void FOlivePlanValidator::CheckVariableExists(
 			if (Prop)
 			{
 				CrossBPNote = FString::Printf(
-					TEXT(" Variable '%s' exists on cast target class '%s' (from step '%s'), "
-						 "but get_var only reads variables on the CURRENT Blueprint. "
-						 "Instead: add a pure getter function (e.g., Get%s) to the target Blueprint "
-						 "and call it with Target=@%s.auto."),
+					TEXT(" Variable '%s' exists on cast target class '%s' (from step '%s'). "
+						 "Use get_var with Target to access it: "
+						 "{\"op\":\"get_var\",\"target\":\"%s\",\"inputs\":{\"Target\":\"@%s.auto\"}}"),
 					*VariableName,
 					**CastTargetClassNamePtr,
 					*OtherStep.StepId,
@@ -665,7 +698,7 @@ void FOlivePlanValidator::CheckVariableExists(
 					TEXT("Add the variable first with blueprint.add_variable, or check the variable name. "
 						 "Available variables: [%s]"),
 					*AvailableList)
-				: TEXT("Add a pure getter function to the foreign Blueprint and call it with Target=@cast_step.auto.")));
+				: TEXT("Use get_var with Target to access external properties: {\"op\":\"get_var\",\"target\":\"VarName\",\"inputs\":{\"Target\":\"@cast_step.auto\"}}")));
 
 		UE_LOG(LogOlivePlanValidator, Warning,
 			TEXT("Phase 0: VARIABLE_NOT_FOUND -- step '%s' references '%s' on '%s'"),
@@ -731,5 +764,275 @@ void FOlivePlanValidator::CheckExecSourceIsReturn(
 		UE_LOG(LogOlivePlanValidator, Warning,
 			TEXT("Phase 0: EXEC_SOURCE_IS_RETURN -- step '%s' exec_after targets FunctionOutput step '%s'"),
 			*Step.StepId, *Step.ExecAfter);
+	}
+}
+
+// ============================================================================
+// Check 6: Collision-on-Trigger Heuristic
+// ============================================================================
+
+namespace
+{
+	/**
+	 * Traces a plan step's "Target" input back to a component variable name.
+	 * Handles two patterns:
+	 *   - @ref syntax: "@get_sphere.auto" -> looks up get_sphere step -> returns its Target
+	 *   - Literal name: "SphereComp" -> returns as-is
+	 *
+	 * Intentionally simple (no multi-hop trace). This is a heuristic nudge, not a guarantee.
+	 */
+	FString ResolveTargetComponentName(
+		const FOliveIRBlueprintPlanStep& PlanStep,
+		const FOlivePlanValidationContext& Context)
+	{
+		const FString* TargetValue = PlanStep.Inputs.Find(TEXT("Target"));
+		if (!TargetValue || TargetValue->IsEmpty())
+		{
+			return FString();
+		}
+
+		// Case 1: @ref syntax (e.g., "@get_sphere.auto")
+		if (TargetValue->StartsWith(TEXT("@")))
+		{
+			// Extract step ID: strip "@", split on "."
+			FString RefPart = TargetValue->Mid(1); // Strip leading "@"
+			FString RefStepId;
+			FString PinPart;
+			if (!RefPart.Split(TEXT("."), &RefStepId, &PinPart))
+			{
+				RefStepId = RefPart; // No "." -- entire thing is the step ID
+			}
+
+			const int32* RefIndexPtr = Context.StepIdToIndex.Find(RefStepId);
+			if (!RefIndexPtr || !Context.Plan.Steps.IsValidIndex(*RefIndexPtr))
+			{
+				return FString();
+			}
+
+			const FOliveIRBlueprintPlanStep& RefStep = Context.Plan.Steps[*RefIndexPtr];
+			if (RefStep.Op == OlivePlanOps::GetVar)
+			{
+				return RefStep.Target;
+			}
+
+			return FString();
+		}
+
+		// Case 2: Literal component variable name
+		return *TargetValue;
+	}
+}
+
+void FOlivePlanValidator::CheckCollisionOnTriggerComponent(
+	const FOlivePlanValidationContext& Context,
+	FOlivePlanValidationResult& Result)
+{
+	// --- Gate: need SCS ---
+	USimpleConstructionScript* SCS = Context.Blueprint->SimpleConstructionScript;
+	if (!SCS)
+	{
+		return;
+	}
+
+	// --- Collect SCS component info (single pass) ---
+	// TriggerComponents: varName -> (varName, class) for sphere/capsule components
+	// MeshComponents: (varName, class) for static/skeletal mesh components
+	TMap<FString, TPair<FString, UClass*>> TriggerComponents;
+	TArray<TPair<FString, UClass*>> MeshComponents;
+
+	for (USCS_Node* SCSNode : SCS->GetAllNodes())
+	{
+		if (!SCSNode || !SCSNode->ComponentClass)
+		{
+			continue;
+		}
+
+		const FString VarName = SCSNode->GetVariableName().ToString();
+		UClass* CompClass = SCSNode->ComponentClass;
+
+		if (CompClass->IsChildOf(USphereComponent::StaticClass()) ||
+			CompClass->IsChildOf(UCapsuleComponent::StaticClass()))
+		{
+			TriggerComponents.Add(VarName, TPair<FString, UClass*>(VarName, CompClass));
+		}
+
+		if (CompClass->IsChildOf(UStaticMeshComponent::StaticClass()) ||
+			CompClass->IsChildOf(USkeletalMeshComponent::StaticClass()))
+		{
+			MeshComponents.Add(TPair<FString, UClass*>(VarName, CompClass));
+		}
+	}
+
+	// --- Early exit: need BOTH trigger and mesh components ---
+	if (TriggerComponents.Num() == 0 || MeshComponents.Num() == 0)
+	{
+		return;
+	}
+
+	// --- Build pickup context signals from the plan (single pass over steps) ---
+	static const TSet<FString> CollisionFunctions = {
+		TEXT("SetCollisionEnabled"),
+		TEXT("SetCollisionResponseToAllChannels"),
+		TEXT("SetCollisionProfileName")
+	};
+
+	static const TSet<FString> AttachFunctions = {
+		TEXT("AttachToComponent"),
+		TEXT("AttachActorToComponent"),
+		TEXT("K2_AttachToComponent"),
+		TEXT("AttachToActor"),
+		TEXT("K2_AttachToActor"),
+		TEXT("AttachComponentToComponent")
+	};
+
+	static const TArray<FString> PickupVarKeywords = {
+		TEXT("equip"), TEXT("pickup"), TEXT("collect"), TEXT("grab"), TEXT("held")
+	};
+
+	static const TSet<FString> CleanupFunctions = {
+		TEXT("DestroyActor"),
+		TEXT("K2_DestroyActor"),
+		TEXT("SetActorHiddenInGame")
+	};
+
+	bool bHasAttachCall = false;
+	bool bHasOverlapEvent = false;
+	bool bHasEquipVariable = false;
+	bool bHasDestroyOrHide = false;
+	int32 CollisionStepCount = 0;
+	TSet<FString> CollisionTargetComponents;
+
+	for (int32 i = 0; i < Context.Plan.Steps.Num(); ++i)
+	{
+		const FOliveIRBlueprintPlanStep& PlanStep = Context.Plan.Steps[i];
+
+		// Resolve function name from resolved properties, falling back to raw Target
+		FString FuncName;
+		if (i < Context.ResolvedSteps.Num())
+		{
+			const FString* ResolvedFuncName = Context.ResolvedSteps[i].Properties.Find(TEXT("function_name"));
+			if (ResolvedFuncName)
+			{
+				FuncName = *ResolvedFuncName;
+			}
+		}
+		if (FuncName.IsEmpty())
+		{
+			FuncName = PlanStep.Target;
+		}
+
+		if (PlanStep.Op == OlivePlanOps::Call && !FuncName.IsEmpty())
+		{
+			if (CollisionFunctions.Contains(FuncName))
+			{
+				CollisionStepCount++;
+				const FString TargetComp = ResolveTargetComponentName(PlanStep, Context);
+				if (!TargetComp.IsEmpty())
+				{
+					CollisionTargetComponents.Add(TargetComp);
+				}
+			}
+
+			if (AttachFunctions.Contains(FuncName))
+			{
+				bHasAttachCall = true;
+			}
+
+			if (CleanupFunctions.Contains(FuncName))
+			{
+				bHasDestroyOrHide = true;
+			}
+		}
+
+		if (PlanStep.Op == OlivePlanOps::Event)
+		{
+			if (PlanStep.Target.Contains(TEXT("Overlap"), ESearchCase::IgnoreCase))
+			{
+				bHasOverlapEvent = true;
+			}
+		}
+
+		if (PlanStep.Op == OlivePlanOps::SetVar)
+		{
+			const FString LowerTarget = PlanStep.Target.ToLower();
+			for (const FString& Keyword : PickupVarKeywords)
+			{
+				if (LowerTarget.Contains(Keyword))
+				{
+					bHasEquipVariable = true;
+					break;
+				}
+			}
+		}
+	}
+
+	// --- Check condition 4: pickup/equip context ---
+	const bool bHasPickupContext = bHasAttachCall || bHasOverlapEvent || bHasEquipVariable
+		|| bHasDestroyOrHide
+		|| (CollisionStepCount >= 2 && CollisionTargetComponents.Num() >= 2);
+
+	if (!bHasPickupContext)
+	{
+		return;
+	}
+
+	// --- Find collision steps targeting trigger components and emit warnings ---
+	for (int32 i = 0; i < Context.Plan.Steps.Num(); ++i)
+	{
+		const FOliveIRBlueprintPlanStep& PlanStep = Context.Plan.Steps[i];
+		if (PlanStep.Op != OlivePlanOps::Call)
+		{
+			continue;
+		}
+
+		FString FuncName;
+		if (i < Context.ResolvedSteps.Num())
+		{
+			const FString* ResolvedFuncName = Context.ResolvedSteps[i].Properties.Find(TEXT("function_name"));
+			if (ResolvedFuncName)
+			{
+				FuncName = *ResolvedFuncName;
+			}
+		}
+		if (FuncName.IsEmpty())
+		{
+			FuncName = PlanStep.Target;
+		}
+
+		if (!CollisionFunctions.Contains(FuncName))
+		{
+			continue;
+		}
+
+		const FString TargetComp = ResolveTargetComponentName(PlanStep, Context);
+		if (TargetComp.IsEmpty())
+		{
+			continue;
+		}
+
+		const TPair<FString, UClass*>* TriggerInfo = TriggerComponents.Find(TargetComp);
+		if (!TriggerInfo)
+		{
+			continue;
+		}
+
+		// This collision call targets a trigger component in a pickup context -- emit warning
+		const TPair<FString, UClass*>& MeshInfo = MeshComponents[0];
+
+		const FString WarningMessage = FString::Printf(
+			TEXT("Step '%s': %s targets '%s' (%s), which is typically an overlap trigger. "
+				 "Did you mean to target '%s' (%s)? In pickup/equip patterns, the mesh component "
+				 "usually needs collision changes, not the trigger volume."),
+			*PlanStep.StepId,
+			*FuncName,
+			*TriggerInfo->Key,
+			*TriggerInfo->Value->GetName(),
+			*MeshInfo.Key,
+			*MeshInfo.Value->GetName());
+
+		Result.Warnings.Add(WarningMessage);
+
+		UE_LOG(LogOlivePlanValidator, Warning,
+			TEXT("Phase 0: COLLISION_ON_TRIGGER_COMPONENT -- %s"), *WarningMessage);
 	}
 }

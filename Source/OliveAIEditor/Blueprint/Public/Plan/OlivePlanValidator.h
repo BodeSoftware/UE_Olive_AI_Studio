@@ -57,6 +57,7 @@ struct OLIVEAIEDITOR_API FOlivePlanValidationResult
  *   - Latent-in-function-graph guard (LATENT_IN_FUNCTION)
  *   - Variable existence guard (VARIABLE_NOT_FOUND)
  *   - Exec source is return guard (EXEC_SOURCE_IS_RETURN)
+ *   - Collision-on-trigger heuristic (COLLISION_ON_TRIGGER_COMPONENT) [warning]
  *
  * Extensible: add new checks as private static methods and call from Validate().
  *
@@ -141,6 +142,19 @@ private:
 	 * valid (wiring INTO the return node's exec input).
 	 */
 	static void CheckExecSourceIsReturn(
+		const FOlivePlanValidationContext& Context,
+		FOlivePlanValidationResult& Result);
+
+	/**
+	 * Check 6: Collision-on-trigger heuristic.
+	 * Warns when SetCollisionEnabled (or similar) targets a sphere/capsule trigger
+	 * component while the Blueprint also has a mesh component and the plan context
+	 * suggests a pickup/equip/attach pattern.
+	 *
+	 * Severity: Warning (non-blocking). The AI can proceed but gets a nudge
+	 * toward the correct component.
+	 */
+	static void CheckCollisionOnTriggerComponent(
 		const FOlivePlanValidationContext& Context,
 		FOlivePlanValidationResult& Result);
 };

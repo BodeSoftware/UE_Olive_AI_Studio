@@ -414,6 +414,29 @@ UK2Node* FOliveNodeFactory::CreateVariableGetNode(
 
 	FName VarName(**VarNamePtr);
 
+	// Check for external variable access (property on another class, e.g., Mesh on Character).
+	// When external_class is set, use SetExternalMember instead of SetSelfMember so UE creates
+	// a VariableGet node with a self/context input pin for wiring to the external object.
+	const FString* ExternalClassPtr = Properties.Find(TEXT("external_class"));
+	if (ExternalClassPtr && !ExternalClassPtr->IsEmpty())
+	{
+		UClass* ExternalClass = FindClass(*ExternalClassPtr);
+		if (ExternalClass)
+		{
+			UK2Node_VariableGet* GetNode = NewObject<UK2Node_VariableGet>(Graph);
+			GetNode->VariableReference.SetExternalMember(VarName, ExternalClass);
+			GetNode->AllocateDefaultPins();
+			Graph->AddNode(GetNode, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+			return GetNode;
+		}
+		else
+		{
+			UE_LOG(LogOliveNodeFactory, Warning,
+				TEXT("CreateVariableGetNode: external_class '%s' not found, falling back to self member"),
+				**ExternalClassPtr);
+		}
+	}
+
 	// Create the node -- variable resolution happens at AllocateDefaultPins/compile
 	// time via SetSelfMember, not at creation time.
 	UK2Node_VariableGet* GetNode = NewObject<UK2Node_VariableGet>(Graph);
@@ -437,6 +460,28 @@ UK2Node* FOliveNodeFactory::CreateVariableSetNode(
 	}
 
 	FName VarName(**VarNamePtr);
+
+	// Check for external variable access (property on another class).
+	// Same pattern as CreateVariableGetNode -- see comment there for details.
+	const FString* ExternalClassPtr = Properties.Find(TEXT("external_class"));
+	if (ExternalClassPtr && !ExternalClassPtr->IsEmpty())
+	{
+		UClass* ExternalClass = FindClass(*ExternalClassPtr);
+		if (ExternalClass)
+		{
+			UK2Node_VariableSet* SetNode = NewObject<UK2Node_VariableSet>(Graph);
+			SetNode->VariableReference.SetExternalMember(VarName, ExternalClass);
+			SetNode->AllocateDefaultPins();
+			Graph->AddNode(SetNode, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+			return SetNode;
+		}
+		else
+		{
+			UE_LOG(LogOliveNodeFactory, Warning,
+				TEXT("CreateVariableSetNode: external_class '%s' not found, falling back to self member"),
+				**ExternalClassPtr);
+		}
+	}
 
 	// Create the node
 	UK2Node_VariableSet* SetNode = NewObject<UK2Node_VariableSet>(Graph);
@@ -2150,18 +2195,25 @@ UEdGraphNode* FOliveNodeFactory::CreateNodeByClass(
 	// Allocate pins based on current property state
 	NewNode->AllocateDefaultPins();
 
-	// Add to graph BEFORE ReconstructNode -- some nodes need graph context
+	// PostPlacedNewNode is Epic's canonical post-creation hook, called by
+	// FEdGraphSchemaAction_K2NewNode::CreateNode() after AllocateDefaultPins.
+	// Critical for UK2Node_FunctionResult (syncs return pins with entry node)
+	// and UK2Node_CallFunction (refreshes self-pin scope), among others.
+	NewNode->PostPlacedNewNode();
+
+	// Add to graph. Do NOT call ReconstructNode() here -- freshly created nodes
+	// already have correct pins from AllocateDefaultPins + PostPlacedNewNode.
+	// Dedicated creators (SpawnActor, VariableGet/Set, etc.) configure properties
+	// BEFORE reaching this point, so pins are already authoritative.
+	// Calling ReconstructNode on a new node destroys the original pin objects
+	// while Slate still holds deferred widget references to them, producing
+	// stale SGraphPin pointers that make pins non-draggable until editor restart.
+	// Post-wiring reconstruction (containers, SpawnActor class pin, custom_event
+	// signatures) is handled by PlanExecutor at the appropriate phase.
+	// NotifyGraphChanged is also omitted -- the caller (OliveGraphWriter::AddNode)
+	// already calls RefreshBlueprintEditorState which fires NotifyGraphChanged +
+	// BroadcastChanged. Double-firing causes Slate timer stacking.
 	Graph->AddNode(NewNode, /*bFromUI=*/false, /*bSelectNewNode=*/false);
-
-	// Reconstruct to finalize pin layout.
-	// This is mandatory defense-in-depth -- many K2Nodes only produce correct
-	// pins after reconstruction (which may read properties, resolve references, etc.).
-	NewNode->ReconstructNode();
-
-	// Force Slate to refresh its pin widget cache after reconstruction.
-	// ReconstructNode destroys and recreates pin objects, which invalidates
-	// any previously-cached pin widget pointers in the Slate layer.
-	Graph->NotifyGraphChanged();
 
 	// --- Zero-pin guard for UK2Node_CallFunction ---
 	// If a CallFunction node ends up with 0 pins, it means FunctionReference was

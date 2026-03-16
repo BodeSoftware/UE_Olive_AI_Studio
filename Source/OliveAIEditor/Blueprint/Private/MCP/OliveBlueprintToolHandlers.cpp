@@ -298,6 +298,111 @@ TSharedPtr<FJsonObject> BuildPinDescriptor(const UEdGraphPin* Pin)
 	return PinObj;
 }
 
+/**
+ * Build a compact JSON snapshot of a Blueprint's current structural state.
+ * Used to give the AI agent immediate feedback about the Blueprint after write operations,
+ * so it can make informed decisions about next steps without a separate read call.
+ *
+ * @param Blueprint The Blueprint to snapshot
+ * @return JSON object with parent_class, components, variables, event_dispatchers, functions,
+ *         event_graph_nodes, and compile_status fields. Returns nullptr if Blueprint is null.
+ */
+static TSharedPtr<FJsonObject> BuildCompactStateJson(UBlueprint* Blueprint)
+{
+	if (!Blueprint)
+	{
+		return nullptr;
+	}
+
+	TSharedPtr<FJsonObject> StateJson = MakeShareable(new FJsonObject());
+
+	// Parent class
+	StateJson->SetStringField(TEXT("parent_class"),
+		Blueprint->ParentClass ? Blueprint->ParentClass->GetName() : TEXT("unknown"));
+
+	// Components
+	TArray<TSharedPtr<FJsonValue>> ComponentsArray;
+	if (Blueprint->SimpleConstructionScript)
+	{
+		const TArray<USCS_Node*>& SCSNodes = Blueprint->SimpleConstructionScript->GetAllNodes();
+		for (const USCS_Node* Node : SCSNodes)
+		{
+			if (Node && Node->ComponentClass)
+			{
+				FString Entry = FString::Printf(TEXT("%s (%s)"),
+					*Node->GetVariableName().ToString(),
+					*Node->ComponentClass->GetName());
+				ComponentsArray.Add(MakeShareable(new FJsonValueString(Entry)));
+			}
+		}
+	}
+	StateJson->SetArrayField(TEXT("components"), ComponentsArray);
+
+	// Variables
+	TArray<TSharedPtr<FJsonValue>> VariablesArray;
+	for (const FBPVariableDescription& Var : Blueprint->NewVariables)
+	{
+		FString Entry = FString::Printf(TEXT("%s (%s)"),
+			*Var.VarName.ToString(),
+			*Var.VarType.PinCategory.ToString());
+		VariablesArray.Add(MakeShareable(new FJsonValueString(Entry)));
+	}
+	StateJson->SetArrayField(TEXT("variables"), VariablesArray);
+
+	// Event dispatchers
+	TArray<TSharedPtr<FJsonValue>> DispatchersArray;
+	for (const UEdGraph* Graph : Blueprint->DelegateSignatureGraphs)
+	{
+		if (Graph)
+		{
+			DispatchersArray.Add(MakeShareable(new FJsonValueString(Graph->GetName())));
+		}
+	}
+	StateJson->SetArrayField(TEXT("event_dispatchers"), DispatchersArray);
+
+	// Functions with node counts
+	TArray<TSharedPtr<FJsonValue>> FunctionsArray;
+	for (const UEdGraph* FuncGraph : Blueprint->FunctionGraphs)
+	{
+		if (!FuncGraph) continue;
+		const int32 NodeCount = FuncGraph->Nodes.Num();
+		FString Entry = (NodeCount <= 1)
+			? FString::Printf(TEXT("%s (EMPTY)"), *FuncGraph->GetName())
+			: FString::Printf(TEXT("%s (%d nodes)"), *FuncGraph->GetName(), NodeCount);
+		FunctionsArray.Add(MakeShareable(new FJsonValueString(Entry)));
+	}
+	StateJson->SetArrayField(TEXT("functions"), FunctionsArray);
+
+	// Event graph node count
+	int32 TotalEventGraphNodes = 0;
+	for (const UEdGraph* Graph : Blueprint->UbergraphPages)
+	{
+		if (Graph)
+		{
+			TotalEventGraphNodes += Graph->Nodes.Num();
+		}
+	}
+	StateJson->SetNumberField(TEXT("event_graph_nodes"), TotalEventGraphNodes);
+
+	// Compile status
+	FString CompileStatus;
+	if (Blueprint->Status == BS_UpToDate)
+	{
+		CompileStatus = TEXT("ok");
+	}
+	else if (Blueprint->Status == BS_Error)
+	{
+		CompileStatus = TEXT("error");
+	}
+	else
+	{
+		CompileStatus = TEXT("dirty");
+	}
+	StateJson->SetStringField(TEXT("compile_status"), CompileStatus);
+
+	return StateJson;
+}
+
 TSharedPtr<FJsonObject> BuildPinManifest(const UEdGraphNode* Node)
 {
 	TSharedPtr<FJsonObject> PinsObj = MakeShared<FJsonObject>();
@@ -3182,6 +3287,11 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 			ResultData->SetStringField(TEXT("variable_name"), ModifyVariableName);
 			ResultData->SetNumberField(TEXT("modified_properties_count"), Modifications.Num());
 
+			if (TSharedPtr<FJsonObject> StateJson = BuildCompactStateJson(Cast<UBlueprint>(Target)))
+			{
+				ResultData->SetObjectField(TEXT("blueprint_state"), StateJson);
+			}
+
 			return FOliveWriteResult::Success(ResultData);
 		});
 
@@ -3433,6 +3543,11 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 		ResultData->SetStringField(TEXT("variable_type"), Variable.Type.GetDisplayName());
 		ResultData->SetStringField(TEXT("action"), TEXT("created"));
 
+		if (TSharedPtr<FJsonObject> StateJson = BuildCompactStateJson(Cast<UBlueprint>(Target)))
+		{
+			ResultData->SetObjectField(TEXT("blueprint_state"), StateJson);
+		}
+
 		FOliveWriteResult Result = FOliveWriteResult::Success(ResultData);
 		Result.CreatedItem = Variable.Name;
 		return Result;
@@ -3654,6 +3769,11 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddComponent(const 
 		if (!ParentName.IsEmpty())
 		{
 			ResultData->SetStringField(TEXT("parent_component"), ParentName);
+		}
+
+		if (TSharedPtr<FJsonObject> StateJson = BuildCompactStateJson(Cast<UBlueprint>(Target)))
+		{
+			ResultData->SetObjectField(TEXT("blueprint_state"), StateJson);
 		}
 
 		FOliveWriteResult Result = FOliveWriteResult::Success(ResultData);
@@ -3914,6 +4034,11 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintModifyComponent(con
 				WarningsArray.Add(MakeShareable(new FJsonValueString(Warning)));
 			}
 			ResultData->SetArrayField(TEXT("warnings"), WarningsArray);
+		}
+
+		if (TSharedPtr<FJsonObject> StateJson = BuildCompactStateJson(Cast<UBlueprint>(Target)))
+		{
+			ResultData->SetObjectField(TEXT("blueprint_state"), StateJson);
 		}
 
 		return FOliveWriteResult::Success(ResultData);
@@ -4227,6 +4352,11 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAddFunctionType_Function(
 						TEXT(" Note: %s has no graph logic yet (%d empty function(s) total). Write graph logic with apply_plan_json before adding more functions."),
 						*FirstEmpty, EmptyCount));
 			}
+		}
+
+		if (TSharedPtr<FJsonObject> StateJson = BuildCompactStateJson(Cast<UBlueprint>(Target)))
+		{
+			ResultData->SetObjectField(TEXT("blueprint_state"), StateJson);
 		}
 
 		return FOliveWriteResult::Success(ResultData);
@@ -8073,6 +8203,10 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 	FOliveBlueprintPlanResolver::InferMissingExecChain(
 		ExpandedPlan, ResolveResult.ResolvedSteps, ResolveResult.GlobalNotes);
 
+	// Auto-inject SetCollisionEnabled(NoCollision) after attach calls when mesh collision is unhandled
+	FOliveBlueprintPlanResolver::ExpandMissingCollisionDisable(
+		ExpandedPlan, ResolveResult.ResolvedSteps, Blueprint, ResolveResult.GlobalNotes);
+
 	// Collapse exec chains through pure steps (pure nodes have no exec pins)
 	FOliveBlueprintPlanResolver::CollapseExecThroughPureSteps(
 		ExpandedPlan, ResolveResult.ResolvedSteps, ResolveResult.GlobalNotes);
@@ -8098,6 +8232,12 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 				Phase0Result.Errors.Num() > 0 ? Phase0Result.Errors[0].Suggestion : TEXT(""));
 			Result.Data = ErrorData;
 			return Result;
+		}
+
+		// Surface Phase 0 warnings (e.g. COLLISION_ON_TRIGGER_COMPONENT) so the AI can self-correct
+		for (const FString& W : Phase0Result.Warnings)
+		{
+			ResolveResult.Warnings.Add(W);
 		}
 	}
 
@@ -8440,6 +8580,10 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 	FOliveBlueprintPlanResolver::InferMissingExecChain(
 		ExpandedPlan, ResolveResult.ResolvedSteps, ResolveResult.GlobalNotes);
 
+	// Auto-inject SetCollisionEnabled(NoCollision) after attach calls when mesh collision is unhandled
+	FOliveBlueprintPlanResolver::ExpandMissingCollisionDisable(
+		ExpandedPlan, ResolveResult.ResolvedSteps, Blueprint, ResolveResult.GlobalNotes);
+
 	// Collapse exec chains through pure steps (pure nodes have no exec pins)
 	FOliveBlueprintPlanResolver::CollapseExecThroughPureSteps(
 		ExpandedPlan, ResolveResult.ResolvedSteps, ResolveResult.GlobalNotes);
@@ -8465,6 +8609,12 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 				Phase0Result.Errors.Num() > 0 ? Phase0Result.Errors[0].Suggestion : TEXT(""));
 			Result.Data = ErrorData;
 			return Result;
+		}
+
+		// Surface Phase 0 warnings (e.g. COLLISION_ON_TRIGGER_COMPONENT) so the AI can self-correct
+		for (const FString& W : Phase0Result.Warnings)
+		{
+			ResolveResult.Warnings.Add(W);
 		}
 	}
 
@@ -8799,6 +8949,11 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 					ResultData->SetBoolField(TEXT("success"), true);
 					// Deliberately NOT setting error_code -- partial success is not an error
 
+					if (TSharedPtr<FJsonObject> StateJson = BuildCompactStateJson(BP))
+					{
+						ResultData->SetObjectField(TEXT("blueprint_state"), StateJson);
+					}
+
 					FOliveWriteResult PartialResult = FOliveWriteResult::Success(ResultData);
 
 					// Provide created node IDs for the pipeline's verification stage
@@ -8818,6 +8973,11 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 					FString::Printf(TEXT("Plan applied successfully: %d nodes created, %d connections wired"),
 						PlanResult.StepToNodeMap.Num(),
 						PlanResult.ConnectionsSucceeded));
+
+				if (TSharedPtr<FJsonObject> StateJson = BuildCompactStateJson(BP))
+				{
+					ResultData->SetObjectField(TEXT("blueprint_state"), StateJson);
+				}
 
 				FOliveWriteResult SuccessResult = FOliveWriteResult::Success(ResultData);
 

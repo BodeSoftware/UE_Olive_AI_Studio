@@ -537,6 +537,12 @@ struct OLIVEAIRUNTIME_API FOliveIRComponent
 	UPROPERTY()
 	TMap<FString, FString> Properties;
 
+	/** Socket names on this component's mesh (SkeletalMeshComponents only) */
+	TArray<FString> Sockets;
+
+	/** Filtered bone names suitable for attachment (SkeletalMeshComponents only) */
+	TArray<FString> Bones;
+
 	TSharedPtr<FJsonObject> ToJson() const;
 	static FOliveIRComponent FromJson(const TSharedPtr<FJsonObject>& JsonObject);
 };

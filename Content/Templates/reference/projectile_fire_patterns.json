@@ -1,0 +1,38 @@
+{
+    "template_id": "projectile_fire_patterns",
+    "template_type": "reference",
+    "display_name": "Projectile Fire & Spawn Patterns",
+
+    "catalog_description": "Spawning projectiles from weapons: muzzle location, aim direction, owner/instigator chain, and projectile movement setup.",
+    "catalog_examples": "",
+
+    "tags": "fire spawn projectile muzzle aim direction rotation controller shoot weapon bullet rocket velocity",
+
+    "patterns": [
+        {
+            "name": "ProjectileActorStructure",
+            "description": "A projectile actor needs three components: a collision primitive as root (SphereComponent with BlockAllDynamic profile), a visible mesh as child (StaticMeshComponent with NoCollision), and a ProjectileMovementComponent for physics.",
+            "notes": "The root SphereComponent handles hit detection (OnComponentHit) and blocking. The StaticMeshComponent provides the visual — use a basic shape (Sphere, Cube) as placeholder if no custom mesh exists. Set the mesh to NoCollision so only the root sphere handles physics. ProjectileMovementComponent reads InitialSpeed on BeginPlay to launch the projectile. Without a mesh component the projectile is invisible."
+        },
+        {
+            "name": "SpawnFromMuzzle",
+            "description": "Spawn a projectile at the MuzzlePoint component's world location, aimed using the owning controller's control rotation.",
+            "notes": "Get the weapon's MuzzlePoint (SceneComponent) world location via GetWorldLocation. For aim direction, use GetControlRotation from the Pawn's Controller — this ensures the projectile goes where the camera crosshair points, not where the barrel faces. Build a SpawnTransform using MakeTransform with MuzzlePoint location + ControlRotation. Pass to SpawnActor."
+        },
+        {
+            "name": "ProjectileOwnerChain",
+            "description": "After spawning, call SetOwner on the projectile with the firing Pawn (not the weapon). This establishes the instigator chain for damage attribution and self-collision prevention.",
+            "notes": "GetInstigator walks the Owner chain, so SetOwner is sufficient — SetInstigator is C++ only, not Blueprint-callable. Call MoveIgnoreActorAdd on the projectile's collision component with the Owner to prevent instant self-hit at the muzzle."
+        },
+        {
+            "name": "ProjectileMovementInit",
+            "description": "ProjectileMovementComponent handles velocity and physics. Key properties: InitialSpeed (launch speed), MaxSpeed (velocity cap), ProjectileGravityScale (0 for straight, 1 for arc), bRotationFollowsVelocity (orient mesh along trajectory).",
+            "notes": "Set these as variable defaults on the projectile Blueprint, not at spawn time — the component reads them on BeginPlay. For homing, set bIsHomingProjectile and assign HomingTargetComponent after spawn. bShouldBounce enables ricochet with OnProjectileBounce event."
+        },
+        {
+            "name": "AimWithLineTrace",
+            "description": "For precise crosshair-to-world aiming, trace from the camera to find the aim target, then calculate direction from muzzle to that point. This handles camera-barrel parallax.",
+            "notes": "LineTraceByChannel from GetPlayerCameraManager location along camera forward. Use the Hit.Location if blocked, otherwise trace end (10000+ units). Aim direction = (AimPoint - MuzzleLocation).GetSafeNormal(). Build rotation from MakeRotFromX(AimDirection). This is more accurate than raw ControlRotation for third-person games."
+        }
+    ]
+}

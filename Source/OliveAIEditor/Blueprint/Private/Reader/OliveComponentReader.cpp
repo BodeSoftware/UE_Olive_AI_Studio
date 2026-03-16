@@ -6,6 +6,10 @@
 #include "Engine/SCS_Node.h"
 #include "Components/ActorComponent.h"
 #include "Components/SceneComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
+#include "Engine/SkeletalMeshSocket.h"
+#include "Animation/Skeleton.h"
 #include "UObject/PropertyPortFlags.h"
 #include "UObject/UnrealType.h"
 #include "GameFramework/Actor.h"
@@ -189,6 +193,68 @@ FOliveIRComponent FOliveComponentReader::ReadComponentNode(const USCS_Node* Node
 
 	// Read modified properties
 	Component.Properties = ReadComponentProperties(Node);
+
+	// Extract skeleton data for SkeletalMeshComponents (sockets and filtered bones)
+	if (Node->ComponentClass && Node->ComponentClass->IsChildOf(USkeletalMeshComponent::StaticClass()))
+	{
+		if (USkeletalMeshComponent* SkelMeshComp = Cast<USkeletalMeshComponent>(Node->ComponentTemplate))
+		{
+			USkeletalMesh* SkelMesh = SkelMeshComp->GetSkeletalMeshAsset();
+			if (SkelMesh)
+			{
+				// --- Sockets ---
+				TArray<USkeletalMeshSocket*> AllSockets = SkelMesh->GetActiveSocketList();
+				for (const USkeletalMeshSocket* Socket : AllSockets)
+				{
+					if (Socket)
+					{
+						Component.Sockets.Add(Socket->SocketName.ToString());
+					}
+				}
+
+				// Also get sockets from the skeleton itself for full coverage
+				if (USkeleton* Skeleton = SkelMesh->GetSkeleton())
+				{
+					for (const USkeletalMeshSocket* Socket : Skeleton->Sockets)
+					{
+						if (Socket)
+						{
+							const FString SocketName = Socket->SocketName.ToString();
+							Component.Sockets.AddUnique(SocketName);
+						}
+					}
+				}
+
+				// --- Bones (filtered to useful attachment points) ---
+				const FReferenceSkeleton& RefSkeleton = SkelMesh->GetRefSkeleton();
+				const int32 NumBones = RefSkeleton.GetNum();
+
+				for (int32 i = 0; i < NumBones; ++i)
+				{
+					const FString BoneName = RefSkeleton.GetBoneName(i).ToString();
+
+					// Filter out noise bones that are rarely useful for attachment.
+					// Keep: major skeletal landmarks (hands, spine, head, limbs, feet, pelvis)
+					// Skip: twist bones, IK helpers, virtual bones, correction/adjustment bones
+					const FString BoneLower = BoneName.ToLower();
+
+					bool bSkip = false;
+					if (BoneLower.Contains(TEXT("twist")))       bSkip = true;
+					if (BoneLower.Contains(TEXT("ik_")))          bSkip = true;
+					if (BoneLower.StartsWith(TEXT("vb ")))        bSkip = true;  // Virtual Bones prefix (space)
+					if (BoneLower.StartsWith(TEXT("vb_")))        bSkip = true;  // Virtual Bones prefix (underscore)
+					if (BoneLower.Contains(TEXT("_adjust")))      bSkip = true;
+					if (BoneLower.Contains(TEXT("_corrective")))  bSkip = true;
+					if (BoneLower.Contains(TEXT("_helper")))      bSkip = true;
+
+					if (!bSkip)
+					{
+						Component.Bones.Add(BoneName);
+					}
+				}
+			}
+		}
+	}
 
 	return Component;
 }

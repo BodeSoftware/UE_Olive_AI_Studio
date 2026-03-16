@@ -16,6 +16,32 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogOlivePinConnector, Log, All);
 
+namespace
+{
+	static void RefreshBlueprintEditorState(UBlueprint* Blueprint, const UEdGraphPin* Pin)
+	{
+		if (const UEdGraphNode* Node = Pin ? Pin->GetOwningNode() : nullptr)
+		{
+			if (UEdGraph* Graph = Node->GetGraph())
+			{
+				Graph->NotifyGraphChanged();
+			}
+		}
+
+		if (Blueprint)
+		{
+			Blueprint->BroadcastChanged();
+		}
+	}
+
+	static void NotifyGraphChangedForPin(const UEdGraphPin* Pin)
+	{
+		RefreshBlueprintEditorState(
+			Pin ? FBlueprintEditorUtils::FindBlueprintForNode(Pin->GetOwningNode()) : nullptr,
+			Pin);
+	}
+}
+
 // ============================================================================
 // FOlivePinConnector Singleton
 // ============================================================================
@@ -148,6 +174,8 @@ FOliveBlueprintWriteResult FOlivePinConnector::Connect(
 			FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
 		}
 
+		RefreshBlueprintEditorState(Blueprint, SourcePin);
+
 		UE_LOG(LogOlivePinConnector, Log, TEXT("Connected pins: %s -> %s%s"),
 			*SourcePin->GetName(), *TargetPin->GetName(),
 			bNeedsConversion ? TEXT(" (with conversion)") : TEXT(""));
@@ -266,6 +294,8 @@ FOliveBlueprintWriteResult FOlivePinConnector::DisconnectAll(UEdGraphPin* Pin)
 		FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
 	}
 
+	RefreshBlueprintEditorState(Blueprint, Pin);
+
 	UE_LOG(LogOlivePinConnector, Log, TEXT("Disconnected %d connections from pin %s"),
 		NumBroken, *Pin->GetName());
 
@@ -317,6 +347,8 @@ FOliveBlueprintWriteResult FOlivePinConnector::Disconnect(
 	{
 		FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
 	}
+
+	RefreshBlueprintEditorState(Blueprint, PinA);
 
 	UE_LOG(LogOlivePinConnector, Log, TEXT("Disconnected pins: %s <-> %s"),
 		*PinA->GetName(), *PinB->GetName());

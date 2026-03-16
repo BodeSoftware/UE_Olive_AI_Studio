@@ -25,7 +25,7 @@
 - **Critical**: `PreResolvedFunction` consumed in `CreateCallFunctionNode()` (curated path), NOT `CreateNodeByClass` (universal fallback). `CreateNode()` dispatches to curated creators for all OliveNodeTypes, only falls through to `CreateNodeByClass` for raw UK2Node class names.
 - `ValidateNodeType()` skips redundant FindFunction when `PreResolvedFunction != nullptr`
 - Executor only sets PreResolvedFunction for `CallFunction` (not `CallDelegate` — delegates use property-based resolution, leaking the pointer would pollute next call)
-- UPROPERTY auto-rewrite: resolver detects `PROPERTY MATCH:` in SearchedLocations, rewrites call→set_var/get_var
+- UPROPERTY auto-rewrite: resolver detects `PROPERTY MATCH:` in SearchedLocations, rewrites call→set_var/get_var. Now checks BOTH original SearchResult AND LastCastSearchResult (from cast-target fallback). External class → `external_class` property → `SetExternalMember()` in node factory.
 - OliveNodeTypes constants: `SetVariable`/`GetVariable` (NOT `VariableSet`/`VariableGet`)
 - **Transaction rollback pitfall**: bOrphanedPin cleanup inside Execute() gets rolled back by Transaction->Cancel(). Post-rollback cleanup must happen AFTER pipeline returns (in tool handler, not executor).
 

@@ -55,6 +55,17 @@
 
 DEFINE_LOG_CATEGORY(LogOlivePlanExecutor);
 
+namespace
+{
+    static void NotifyGraphChangedForNode(UEdGraphNode* Node)
+    {
+        if (UEdGraph* Graph = Node ? Node->GetGraph() : nullptr)
+        {
+            Graph->NotifyGraphChanged();
+        }
+    }
+}
+
 // ============================================================================
 // EnsurePinNotOrphaned — Fix stale bOrphanedPin flags at point of use
 // ============================================================================
@@ -100,6 +111,7 @@ static UEdGraphPin* EnsurePinNotOrphaned(UEdGraphPin* Pin, const FName& PinName)
 
     // ReconstructNode rebuilds the pin array from scratch, clearing orphaned flags
     OwnerNode->ReconstructNode();
+    NotifyGraphChangedForNode(OwnerNode);
 
     // Re-find the pin — the old pointer is now invalid
     UEdGraphPin* NewPin = OwnerNode->FindPin(PinName);
@@ -613,6 +625,19 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::Execute(
     PhaseAutoLayout(Plan, Context);
 
     UE_LOG(LogOlivePlanExecutor, Log, TEXT("Phase 6 complete: layout applied"));
+
+    if (Blueprint)
+    {
+        // Re-broadcast after the full batch so any open Blueprint editor invalidates
+        // cached pin/UI state created during programmatic graph edits.
+        FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+        Blueprint->BroadcastChanged();
+    }
+
+    if (Graph)
+    {
+        Graph->NotifyGraphChanged();
+    }
 
     // Assemble and return result
     const double ElapsedMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
@@ -1814,6 +1839,7 @@ void FOlivePlanExecutor::PhasePreCreateDispatcherPins(
         // parameter function. ReconstructNode materializes them as real pins.
         BestEventNode->SetDelegateSignature(DelegateSig);
         BestEventNode->ReconstructNode();
+        NotifyGraphChangedForNode(BestEventNode);
 
         SignatureSetStepIds.Add(BestStepId);
 
@@ -3136,6 +3162,7 @@ void FOlivePlanExecutor::PhaseWireData(
         if (bNeedsReconstruct)
         {
             Node->ReconstructNode();
+            NotifyGraphChangedForNode(Node);
             UE_LOG(LogOlivePlanExecutor, Verbose,
                 TEXT("  Reconstructed container node for step '%s' (%s)"),
                 *Pair.Key, *Node->GetClass()->GetName());
@@ -3191,6 +3218,7 @@ void FOlivePlanExecutor::PhaseWireData(
 
             // ReconstructNode to update output pin types based on wired class
             TypedSpawn->ReconstructNode();
+            NotifyGraphChangedForNode(TypedSpawn);
         }
         else
         {

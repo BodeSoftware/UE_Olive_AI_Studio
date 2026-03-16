@@ -355,6 +355,34 @@ public:
 		UBlueprint* Blueprint,
 		TArray<FOliveResolverNote>& OutNotes);
 
+	/**
+	 * Post-resolve pass: auto-inject SetCollisionEnabled(NoCollision) after attach-to-component calls.
+	 *
+	 * When the AI builds equip/attach logic, the attached actor's mesh collision
+	 * often blocks the owning character's movement. This pass detects attach calls
+	 * (K2_AttachToComponent, AttachToComponent, K2_AttachToActor, AttachActorToComponent)
+	 * and, if the Blueprint has a mesh component (StaticMesh or SkeletalMesh) but
+	 * no existing collision-disable step, auto-injects a get_var + SetCollisionEnabled
+	 * pair after each attach step.
+	 *
+	 * Narrow trigger: only fires when attach IS present but collision disable IS NOT.
+	 * Only targets mesh components (StaticMesh/SkeletalMesh), not capsules/boxes/spheres.
+	 *
+	 * Must be called AFTER Resolve() (needs ResolvedSteps for function name verification)
+	 * and BEFORE CollapseExecThroughPureSteps.
+	 *
+	 * @param Plan The expanded plan to modify in place (from ResolveResult.ExpandedPlan)
+	 * @param ResolvedSteps The resolved steps from Resolve() (parallel array to Plan.Steps)
+	 * @param Blueprint The target Blueprint (for SCS mesh component lookup)
+	 * @param OutNotes Resolver notes for transparency (appended, not cleared)
+	 * @return True if any collision-disable steps were injected
+	 */
+	static bool ExpandMissingCollisionDisable(
+		FOliveIRBlueprintPlan& Plan,
+		TArray<FOliveResolvedStep>& ResolvedSteps,
+		UBlueprint* Blueprint,
+		TArray<FOliveResolverNote>& OutNotes);
+
 private:
 	/**
 	 * Resolve a single plan step to a concrete node type.
@@ -413,7 +441,8 @@ private:
 		FOliveResolvedStep& Out,
 		TArray<FOliveIRBlueprintPlanError>& Errors,
 		TArray<FString>& Warnings,
-		const FOliveGraphContext& GraphContext);
+		const FOliveGraphContext& GraphContext,
+		const TMap<FString, FString>& CastTargetMap);
 
 	/** Resolve a "set_var" op -- set variable node */
 	static bool ResolveSetVarOp(

@@ -1,0 +1,48 @@
+{
+    "template_id": "pickup_equip_patterns",
+    "template_type": "reference",
+    "display_name": "Pickup & Equip Patterns",
+
+    "catalog_description": "Pickup item architecture, auto-pickup vs interaction, socket attachment, collision handling, equip state, and drop/swap. Covers weapons, ammo, and collectibles.",
+    "catalog_examples": "",
+
+    "tags": "pickup equip weapon attach socket overlap component collision drop swap inventory item collect grab hold",
+
+    "patterns": [
+        {
+            "name": "PickupActorStructure",
+            "description": "A pickup item actor has three key components: a mesh (visual), a pickup sphere (overlap trigger), and optionally a scene root.",
+            "notes": "The PickupSphere (SphereComponent) lives on the ITEM actor, not the character. bGenerateOverlapEvents must be true. CollisionProfileName should be OverlapAllDynamic. The mesh needs collision for world physics (before pickup) but gets disabled on equip."
+        },
+        {
+            "name": "AutoPickupEvent",
+            "description": "The item detects characters entering its pickup radius using OnComponentBeginOverlap on its PickupSphere -- a component-bound event, NOT ActorBeginOverlap.",
+            "notes": "OnComponentBeginOverlap fires only for the specific sphere, not for every collision on the actor. Cast OtherActor to the character class. Check bIsEquipped first to prevent double-pickup. ActorBeginOverlap is wrong here -- it fires for any overlap on the entire actor, including unrelated collisions."
+        },
+        {
+            "name": "AutoPickupVsInteraction",
+            "description": "Auto-pickup (walk into sphere) and interaction pickup (press E) are architecturally different. Auto-pickup: item's sphere detects character, equips immediately. Interaction: character's sphere detects item, stores reference, waits for input, calls interface.",
+            "notes": "Weapons and ammo typically use auto-pickup. Interaction pickup uses BPI_Interactable interface -- see interaction_caller template. Both can coexist: the item has a pickup sphere for auto-collect AND implements BPI_Interactable for manual collect. Choose based on game design, not technical limitation."
+        },
+        {
+            "name": "AttachToSocket",
+            "description": "Weapons attach to the character's skeletal mesh at a bone or socket using K2_AttachToComponent. The character's Mesh component is the Parent, SocketName is the bone/socket name.",
+            "notes": "Read the character Blueprint's components first to see available bones and sockets on the SkeletalMeshComponent. Common bones: hand_r, hand_l, spine_03, head. All three attachment rules (LocationRule, RotationRule, ScaleRule) should be SnapToTarget for weapons. The Target of K2_AttachToComponent is the item actor (the thing being attached), Parent is the character's Mesh."
+        },
+        {
+            "name": "CollisionOnEquip",
+            "description": "On equip, disable collision on the mesh component (prevents clipping with the character) AND disable overlap on the pickup sphere (prevents re-triggering pickup while held).",
+            "notes": "SetCollisionEnabled(NoCollision) on the mesh -- this is the component that physically collides. The pickup sphere is an overlap trigger and doesn't block movement, but disabling its overlap prevents other characters from triggering pickup on an already-equipped weapon. For consumable pickups that disappear, just disable the sphere and hide/destroy the actor."
+        },
+        {
+            "name": "StateVariables",
+            "description": "Two variables track equip state: bIsEquipped (Boolean) on the item actor, and EquippedWeapon (object reference typed to the weapon BP) on the character.",
+            "notes": "bIsEquipped guards against double-pickup -- check it in the overlap event before proceeding. EquippedWeapon lets other systems access the held weapon (ammo pickups read it, UI displays it, fire input calls functions on it). Set both on equip, clear both on drop."
+        },
+        {
+            "name": "DropAndSwap",
+            "description": "Dropping a weapon reverses the equip process: detach from character, re-enable mesh collision and sphere overlap, clear bIsEquipped, clear the character's EquippedWeapon reference.",
+            "notes": "Call DetachFromActor (or K2_DetachFromActor) with KeepWorldTransform to drop at current position. Re-enable SetCollisionEnabled(QueryAndPhysics) on the mesh for world physics. If the character tries to pick up a new weapon while already holding one, check EquippedWeapon validity first -- drop the current weapon before equipping the new one."
+        }
+    ]
+}

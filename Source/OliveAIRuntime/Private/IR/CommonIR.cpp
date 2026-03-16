@@ -780,6 +780,26 @@ TSharedPtr<FJsonObject> FOliveIRComponent::ToJson() const
 		Json->SetObjectField(TEXT("properties"), PropsJson);
 	}
 
+	if (Sockets.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> SocketValues;
+		for (const FString& S : Sockets)
+		{
+			SocketValues.Add(MakeShared<FJsonValueString>(S));
+		}
+		Json->SetArrayField(TEXT("sockets"), SocketValues);
+	}
+
+	if (Bones.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> BoneValues;
+		for (const FString& B : Bones)
+		{
+			BoneValues.Add(MakeShared<FJsonValueString>(B));
+		}
+		Json->SetArrayField(TEXT("bones"), BoneValues);
+	}
+
 	return Json;
 }
 
@@ -810,6 +830,24 @@ FOliveIRComponent FOliveIRComponent::FromJson(const TSharedPtr<FJsonObject>& Jso
 		for (const auto& Pair : (*PropsJson)->Values)
 		{
 			Comp.Properties.Add(Pair.Key, Pair.Value->AsString());
+		}
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* SocketsArray;
+	if (JsonObject->TryGetArrayField(TEXT("sockets"), SocketsArray))
+	{
+		for (const auto& Value : *SocketsArray)
+		{
+			Comp.Sockets.Add(Value->AsString());
+		}
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* BonesArray;
+	if (JsonObject->TryGetArrayField(TEXT("bones"), BonesArray))
+	{
+		for (const auto& Value : *BonesArray)
+		{
+			Comp.Bones.Add(Value->AsString());
 		}
 	}
 

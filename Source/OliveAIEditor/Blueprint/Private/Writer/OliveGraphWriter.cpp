@@ -37,6 +37,27 @@ DEFINE_LOG_CATEGORY(LogOliveGraphWriter);
 
 namespace
 {
+	static void RefreshBlueprintEditorState(UBlueprint* Blueprint, UEdGraph* Graph)
+	{
+		if (Graph)
+		{
+			Graph->NotifyGraphChanged();
+		}
+
+		if (Blueprint)
+		{
+			// Invalidate live Blueprint editor UI state after programmatic graph edits.
+			Blueprint->BroadcastChanged();
+		}
+	}
+
+	static void NotifyGraphChangedForNode(UEdGraphNode* Node)
+	{
+		RefreshBlueprintEditorState(
+			FBlueprintEditorUtils::FindBlueprintForNode(Node),
+			Node ? Node->GetGraph() : nullptr);
+	}
+
 	/**
 	 * Build a compact one-line listing of available pins on a node for a given direction.
 	 * Format: "PinName (Type), PinName (Type), ..."
@@ -188,6 +209,7 @@ FOliveBlueprintWriteResult FOliveGraphWriter::AddNode(
 
 	// Mark the Blueprint as modified
 	FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+	RefreshBlueprintEditorState(Blueprint, Graph);
 
 	UE_LOG(LogOliveGraphWriter, Log, TEXT("Added node '%s' (ID: %s) to graph '%s' in '%s' at (%d, %d)"),
 		*NodeType, *NodeId, *GraphName, *BlueprintPath, PosX, PosY);
@@ -303,6 +325,7 @@ FOliveBlueprintWriteResult FOliveGraphWriter::AddNodes(
 
 	// Mark the Blueprint as modified
 	FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+	RefreshBlueprintEditorState(Blueprint, Graph);
 
 	UE_LOG(LogOliveGraphWriter, Log, TEXT("Added %d/%d nodes to graph '%s' in '%s'"),
 		CreatedNodeIds.Num(), Nodes.Num(), *GraphName, *BlueprintPath);
@@ -381,6 +404,7 @@ FOliveBlueprintWriteResult FOliveGraphWriter::RemoveNode(
 
 	// Mark the Blueprint as modified
 	FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+	RefreshBlueprintEditorState(Blueprint, Graph);
 
 	UE_LOG(LogOliveGraphWriter, Log, TEXT("Removed node '%s' from graph '%s' in '%s'"),
 		*NodeId, *GraphName, *BlueprintPath);
@@ -478,9 +502,11 @@ FOliveBlueprintWriteResult FOliveGraphWriter::SetNodeProperty(
 
 		// Reconstruct the node to apply changes
 		Node->ReconstructNode();
+		NotifyGraphChangedForNode(Node);
 
 		// Mark the Blueprint as modified
 		FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+		RefreshBlueprintEditorState(Blueprint, Graph);
 
 		UE_LOG(LogOliveGraphWriter, Log, TEXT("Set property '%s' = '%s' on node '%s' in '%s'"),
 			*PropertyName, *PropertyValue, *NodeId, *BlueprintPath);
@@ -706,6 +732,7 @@ FOliveBlueprintWriteResult FOliveGraphWriter::ConnectPins(
 			if (Cast<UK2Node_CallArrayFunction>(Node) || Cast<UK2Node_MakeContainer>(Node))
 			{
 				Node->ReconstructNode();
+				NotifyGraphChangedForNode(Node);
 			}
 			else if (UK2Node_CallFunction* CallNode = Cast<UK2Node_CallFunction>(Node))
 			{
@@ -714,12 +741,15 @@ FOliveBlueprintWriteResult FOliveGraphWriter::ConnectPins(
 					if (Func->GetOuterUClass() && Func->GetOuterUClass()->IsChildOf(UKismetArrayLibrary::StaticClass()))
 					{
 						Node->ReconstructNode();
+						NotifyGraphChangedForNode(Node);
 					}
 				}
 			}
 		};
 		ReconstructIfContainer(SourcePin->GetOwningNode());
 		ReconstructIfContainer(TargetPin->GetOwningNode());
+
+		RefreshBlueprintEditorState(Blueprint, Graph);
 	}
 
 	return Result;
@@ -1001,6 +1031,7 @@ FOliveBlueprintWriteResult FOliveGraphWriter::SetPinDefault(
 		{
 			Pin->DefaultObject = ResolveResult.Class;
 			FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+			RefreshBlueprintEditorState(Blueprint, Graph);
 			UE_LOG(LogOliveGraphWriter, Log, TEXT("Set class/interface default '%s' on pin '%s' via ClassResolver (resolved to %s)"),
 				*DefaultValue, *PinRef, *ResolveResult.Class->GetName());
 			return FOliveBlueprintWriteResult::Success(BlueprintPath);
@@ -1022,6 +1053,7 @@ FOliveBlueprintWriteResult FOliveGraphWriter::SetPinDefault(
 
 	// Mark the Blueprint as modified
 	FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+	RefreshBlueprintEditorState(Blueprint, Graph);
 
 	UE_LOG(LogOliveGraphWriter, Log, TEXT("Set default value '%s' on pin '%s' in graph '%s' of '%s'"),
 		*DefaultValue, *PinRef, *GraphName, *BlueprintPath);
