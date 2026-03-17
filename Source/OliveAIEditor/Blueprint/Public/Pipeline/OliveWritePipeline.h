@@ -6,6 +6,7 @@
 #include "Services/OliveValidationEngine.h"
 #include "Services/OliveTransactionManager.h"
 #include "Settings/OliveAISettings.h"
+#include "Brain/OliveBrainState.h"
 #include "IR/OliveCompileIR.h"
 #include "MCP/OliveToolRegistry.h"
 #include "Dom/JsonObject.h"
@@ -18,21 +19,11 @@ DECLARE_LOG_CATEGORY_EXTERN(LogOliveWritePipeline, Log, All);
 enum class EOliveWriteStage : uint8
 {
 	Validate,       // Stage 1: Input validation and precondition checks
-	Confirm,        // Stage 2: Tier routing and confirmation (for built-in chat)
+	ModeGate,       // Stage 2: Chat mode gate (Ask blocks all, Plan blocks writes, Code passes through)
 	Transact,       // Stage 3: Open transaction and mark objects dirty
 	Execute,        // Stage 4: Perform the mutation
 	Verify,         // Stage 5: Structural checks and optional compilation
 	Report          // Stage 6: Generate structured result
-};
-
-/**
- * Confirmation requirement from tier routing
- */
-enum class EOliveConfirmationRequirement : uint8
-{
-	None,           // Tier 1: Auto-execute
-	PlanConfirm,    // Tier 2: Show plan, require confirmation
-	PreviewOnly     // Tier 3: Generate preview, no execution without explicit approval
 };
 
 // Forward declarations
@@ -46,7 +37,7 @@ struct FOliveWriteResult;
  */
 struct OLIVEAIEDITOR_API FOliveWriteRequest
 {
-	/** Tool name for logging and tier lookup */
+	/** Tool name for logging and mode gate checks */
 	FString ToolName;
 
 	/** Tool parameters as JSON */
@@ -61,10 +52,13 @@ struct OLIVEAIEDITOR_API FOliveWriteRequest
 	/** Operation description for transaction naming */
 	FText OperationDescription;
 
-	/** Operation category for tier lookup */
+	/** Operation category for logging */
 	FString OperationCategory;
 
-	/** Whether this request came from MCP (skips confirmation) or built-in chat */
+	/** Whether this request came from MCP or built-in chat.
+	 *  NOTE: This no longer bypasses the mode gate. ChatMode is the single source
+	 *  of truth for mode gating. External MCP agents get ChatMode=Code by default;
+	 *  in-engine autonomous agents inherit the user's mode via MCP server propagation. */
 	bool bFromMCP = false;
 
 	/** Whether to auto-compile after write (from settings) */
@@ -72,6 +66,12 @@ struct OLIVEAIEDITOR_API FOliveWriteRequest
 
 	/** Whether to skip verification (for batch operations) */
 	bool bSkipVerification = false;
+
+	/** Current chat mode -- controls Stage 2 (Mode Gate) behavior.
+	 *  For built-in chat: set directly by ConversationManager.
+	 *  For MCP calls: propagated from FOliveToolCallContext by ExecuteWithOptionalConfirmation.
+	 *  External MCP agents default to Code; in-engine autonomous agents inherit the user's mode. */
+	EOliveChatMode ChatMode = EOliveChatMode::Code;
 };
 
 /**
@@ -84,15 +84,6 @@ struct OLIVEAIEDITOR_API FOliveWriteResult
 
 	/** Which stage completed last (for debugging) */
 	EOliveWriteStage CompletedStage = EOliveWriteStage::Validate;
-
-	/** Confirmation requirement (if stopped at Confirm stage) */
-	EOliveConfirmationRequirement ConfirmationRequired = EOliveConfirmationRequirement::None;
-
-	/** Plan description (if confirmation required) */
-	FString PlanDescription;
-
-	/** Preview data (if Tier 3 preview generated) */
-	TSharedPtr<FJsonObject> PreviewData;
 
 	/** Validation messages */
 	TArray<FOliveIRMessage> ValidationMessages;
@@ -126,14 +117,6 @@ struct OLIVEAIEDITOR_API FOliveWriteResult
 	static FOliveWriteResult ValidationError(const FOliveValidationResult& Result);
 
 	/**
-	 * Create confirmation needed result
-	 * @param Requirement The confirmation requirement tier
-	 * @param Plan Human-readable plan description
-	 * @return Write result indicating confirmation needed
-	 */
-	static FOliveWriteResult ConfirmationNeeded(EOliveConfirmationRequirement Requirement, const FString& Plan);
-
-	/**
 	 * Create execution error result
 	 * @param Code Error code
 	 * @param Message Error message
@@ -162,16 +145,15 @@ DECLARE_DELEGATE_RetVal_TwoParams(FOliveWriteResult, FOliveWriteExecutor, const 
  * Write Pipeline Service
  *
  * Orchestrates the 6-stage write safety pipeline:
- * 1. Validate - Input validation, schema checking, precondition verification
- * 2. Confirm  - Tier routing, generate plan if Tier 2/3, await confirmation
- * 3. Transact - Open FScopedTransaction, call Modify() on target objects
- * 4. Execute  - Run the actual mutation via the provided executor delegate
- * 5. Verify   - Structural checks, optional compilation, consistency validation
- * 6. Report   - Assemble structured result with timing and diagnostics
+ * 1. Validate  - Input validation, schema checking, precondition verification
+ * 2. Mode Gate - Chat mode check (Ask blocks all writes, Plan blocks writes except preview, Code passes through)
+ * 3. Transact  - Open FScopedTransaction, call Modify() on target objects
+ * 4. Execute   - Run the actual mutation via the provided executor delegate
+ * 5. Verify    - Structural checks, optional compilation, consistency validation
+ * 6. Report    - Assemble structured result with timing and diagnostics
  *
- * MCP clients skip stage 2 (Confirm) as they manage their own confirmation UX.
- * Built-in chat clients receive a ConfirmationNeeded result at stage 2 and must
- * re-submit with confirmation token to proceed.
+ * MCP clients (bFromMCP=true) skip Stage 2 entirely -- external agents are always Code mode.
+ * Built-in chat clients have their mode set on FOliveWriteRequest.ChatMode by the ConversationManager.
  *
  * Thread Safety: All methods are game thread only (UE API requirement)
  */
@@ -183,30 +165,11 @@ public:
 
 	/**
 	 * Execute a write operation through the full pipeline
-	 * @param Request The write request with all parameters
+	 * @param Request The write request with all parameters (includes ChatMode for Stage 2)
 	 * @param Executor Delegate that performs the actual mutation
-	 * @return Write result indicating success, failure, or confirmation needed
+	 * @return Write result indicating success or failure
 	 */
 	FOliveWriteResult Execute(const FOliveWriteRequest& Request, FOliveWriteExecutor Executor);
-
-	/**
-	 * Execute with explicit confirmation (after user confirmed Tier 2/3)
-	 * @param Request The original write request
-	 * @param ConfirmationToken Token from previous confirmation response
-	 * @param Executor Delegate that performs the actual mutation
-	 * @return Write result
-	 */
-	FOliveWriteResult ExecuteConfirmed(
-		const FOliveWriteRequest& Request,
-		const FString& ConfirmationToken,
-		FOliveWriteExecutor Executor);
-
-	/**
-	 * Generate a preview without executing (for Tier 3 operations)
-	 * @param Request The write request
-	 * @return Preview result with simulated changes
-	 */
-	FOliveWriteResult GeneratePreview(const FOliveWriteRequest& Request);
 
 private:
 	FOliveWritePipeline() = default;
@@ -227,11 +190,19 @@ private:
 	FOliveWriteResult StageValidate(const FOliveWriteRequest& Request);
 
 	/**
-	 * Stage 2: Route confirmation tier
-	 * @param Request The write request
-	 * @return ConfirmationNeeded result if tier requires confirmation, otherwise empty
+	 * Stage 2: Mode gate -- checks Request.ChatMode to allow or block the write.
+	 *
+	 * Logic:
+	 *   - Ask mode: blocks all writes with ASK_MODE error
+	 *   - Plan mode: allows blueprint.preview_plan_json, blocks all other writes with PLAN_MODE error
+	 *   - Code mode: passes through (destructive ops like delete/reparent noted for future prompt UX)
+	 *
+	 * Only called for non-MCP requests (bFromMCP=false). MCP always bypasses.
+	 *
+	 * @param Request The write request (carries ChatMode)
+	 * @return Set result if mode blocks the operation; empty optional if pass-through
 	 */
-	TOptional<FOliveWriteResult> StageConfirm(const FOliveWriteRequest& Request);
+	TOptional<FOliveWriteResult> StageModeGate(const FOliveWriteRequest& Request);
 
 	/**
 	 * Stage 3: Open transaction (returns transaction wrapper)
@@ -281,31 +252,6 @@ private:
 		double TotalTimeMs);
 
 	// ============================================================================
-	// Tier Routing
-	// ============================================================================
-
-	/**
-	 * Determine confirmation tier for an operation
-	 * @param OperationCategory Category of the operation (e.g., "variable", "function_creation")
-	 * @return Confirmation tier from settings
-	 */
-	EOliveConfirmationTier GetOperationTier(const FString& OperationCategory) const;
-
-	/**
-	 * Convert tier to confirmation requirement
-	 * @param Tier Confirmation tier from settings
-	 * @return Confirmation requirement enum
-	 */
-	EOliveConfirmationRequirement TierToRequirement(EOliveConfirmationTier Tier) const;
-
-	/**
-	 * Generate a human-readable plan description for Tier 2
-	 * @param Request The write request
-	 * @return Plan description string
-	 */
-	FString GeneratePlanDescription(const FOliveWriteRequest& Request) const;
-
-	// ============================================================================
 	// Verification
 	// ============================================================================
 
@@ -352,47 +298,6 @@ private:
 	 * @return True if this is a graph-editing tool
 	 */
 	bool IsGraphEditOperation(const FString& ToolName) const;
-
-	// ============================================================================
-	// Preview Generation Helpers
-	// ============================================================================
-
-	/**
-	 * Build a preview payload describing what the operation would change
-	 * @param Request The write request
-	 * @return JSON object with plan description and change summary
-	 */
-	TSharedPtr<FJsonObject> BuildPreviewPayload(const FOliveWriteRequest& Request) const;
-
-	/**
-	 * Build impact analysis using AssetRegistry dependencies/referencers
-	 * @param Request The write request
-	 * @return JSON object with dependencies, referencers, affected_count
-	 */
-	TSharedPtr<FJsonObject> BuildImpactAnalysis(const FOliveWriteRequest& Request) const;
-
-	/**
-	 * Build structured change descriptors from tool params
-	 * @param Request The write request
-	 * @return JSON array of change descriptor objects
-	 */
-	TArray<TSharedPtr<FJsonValue>> BuildStructuredChanges(const FOliveWriteRequest& Request) const;
-
-	// ============================================================================
-	// State
-	// ============================================================================
-
-	/** Pending confirmations: Token -> Request */
-	TMap<FString, FOliveWriteRequest> PendingConfirmations;
-
-	/** Lock for pending confirmations map */
-	FCriticalSection ConfirmationLock;
-
-	/**
-	 * Generate unique confirmation token
-	 * @return GUID-based token string
-	 */
-	FString GenerateConfirmationToken();
 
 	// ============================================================================
 	// Orphan Detection Baseline (per-run delta tracking)

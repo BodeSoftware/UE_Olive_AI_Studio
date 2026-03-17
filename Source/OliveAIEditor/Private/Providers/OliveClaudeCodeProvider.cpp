@@ -239,10 +239,33 @@ FString FOliveClaudeCodeProvider::GetCLIArgumentsAutonomous() const
 	//   context; tool schemas are discovered via MCP tools/list.
 	// - --max-turns N: crash-only safety ceiling. Loop detection handles stuck runs.
 	//   Each MCP tools/call counts as a turn.
+	// - --session-id / --resume: conversation persistence across process restarts.
+	//   First message uses --session-id <uuid> to pin the session.
+	//   Subsequent messages use --resume <uuid> so the CLI loads prior history.
 	const UOliveAISettings* Settings = UOliveAISettings::Get();
 	const int32 MaxTurns = Settings ? Settings->AutonomousMaxTurns : 500;
 
-	return FString::Printf(TEXT("--print --output-format stream-json --verbose --dangerously-skip-permissions --max-turns %d"), MaxTurns);
+	FString BaseArgs = FString::Printf(
+		TEXT("--print --output-format stream-json --verbose --dangerously-skip-permissions --max-turns %d"),
+		MaxTurns);
+
+	// Append session management flags.
+	// bHasActiveSession is set AFTER GetCLIArgumentsAutonomous() returns in SendMessageAutonomous(),
+	// so on the first message bHasActiveSession is false and we use --session-id.
+	// On subsequent messages bHasActiveSession is true and we use --resume.
+	if (!CLISessionId.IsEmpty())
+	{
+		if (bHasActiveSession)
+		{
+			BaseArgs += FString::Printf(TEXT(" --resume %s"), *CLISessionId);
+		}
+		else
+		{
+			BaseArgs += FString::Printf(TEXT(" --session-id %s"), *CLISessionId);
+		}
+	}
+
+	return BaseArgs;
 }
 
 void FOliveClaudeCodeProvider::ParseOutputLine(const FString& Line)

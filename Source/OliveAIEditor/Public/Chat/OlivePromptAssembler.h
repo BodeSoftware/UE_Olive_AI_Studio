@@ -3,12 +3,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Brain/OliveBrainState.h"
 
 /**
  * Prompt Assembler
  *
  * Assembles system prompts from templates and context.
  * Handles token estimation and context truncation.
+ * Uses EOliveChatMode (Code/Plan/Ask) to append mode-specific behavioral suffixes.
  */
 class OLIVEAIEDITOR_API FOlivePromptAssembler
 {
@@ -25,13 +27,13 @@ public:
 
 	/**
 	 * Assemble the full system prompt
-	 * @param FocusProfileName Active focus profile
+	 * @param Mode Active chat mode (Code, Plan, or Ask)
 	 * @param ContextAssetPaths Assets in context
 	 * @param MaxTokens Maximum tokens for context
 	 * @return Assembled system prompt
 	 */
 	FString AssembleSystemPrompt(
-		const FString& FocusProfileName,
+		EOliveChatMode Mode,
 		const TArray<FString>& ContextAssetPaths,
 		int32 MaxTokens = 4000
 	);
@@ -39,14 +41,14 @@ public:
 	/**
 	 * Assemble full prompt with a base override.
 	 * @param BasePromptOverride Prompt text to use as the base component
-	 * @param FocusProfileName Active focus profile
+	 * @param Mode Active chat mode (Code, Plan, or Ask)
 	 * @param ContextAssetPaths Assets in context
 	 * @param MaxTokens Maximum tokens for context
 	 * @return Assembled system prompt
 	 */
 	FString AssembleSystemPromptWithBase(
 		const FString& BasePromptOverride,
-		const FString& FocusProfileName,
+		EOliveChatMode Mode,
 		const TArray<FString>& ContextAssetPaths,
 		int32 MaxTokens = 4000
 	);
@@ -57,9 +59,6 @@ public:
 
 	/** Get the base system prompt */
 	const FString& GetBasePrompt() const { return BasePromptTemplate; }
-
-	/** Get profile-specific prompt addition */
-	FString GetProfilePromptAddition(const FString& ProfileName) const;
 
 	/** Get project context as string */
 	FString GetProjectContext() const;
@@ -73,8 +72,8 @@ public:
 	/** Get the layer decision policy text for C++/BP hybrid profiles */
 	FString GetLayerDecisionPolicy() const;
 
-	/** Get capability knowledge packs for the active profile */
-	FString GetCapabilityKnowledge(const FString& ProfileName) const;
+	/** Get all capability knowledge packs concatenated */
+	FString GetCapabilityKnowledge() const;
 
 	/**
 	 * Returns shared preamble text that ALL provider paths should include.
@@ -85,10 +84,9 @@ public:
 	 * in sync with the knowledge packs that API providers get automatically
 	 * via AssembleSystemPromptInternal().
 	 *
-	 * @param ProfileName Active focus profile name (e.g., "Blueprint", "Auto")
 	 * @return Assembled preamble text, or empty string if called before Initialize()
 	 */
-	FString BuildSharedSystemPreamble(const FString& ProfileName) const;
+	FString BuildSharedSystemPreamble() const;
 
 	/** Get a single knowledge pack by ID (e.g. "recipe_routing", "blueprint_authoring") */
 	FString GetKnowledgePackById(const FString& PackId) const;
@@ -149,7 +147,7 @@ private:
 	/** Shared internal prompt assembly implementation */
 	FString AssembleSystemPromptInternal(
 		const FString& BasePrompt,
-		const FString& FocusProfileName,
+		EOliveChatMode Mode,
 		const TArray<FString>& ContextAssetPaths,
 		int32 MaxTokens
 	);
@@ -160,11 +158,17 @@ private:
 	/** Substitute variables in template */
 	FString SubstituteVariables(const FString& Template) const;
 
+	/**
+	 * Returns the mode-specific behavioral suffix appended as the last paragraph
+	 * of the system prompt. ~50 tokens per mode.
+	 *
+	 * @param Mode Active chat mode
+	 * @return Mode suffix text
+	 */
+	FString GetModeSuffix(EOliveChatMode Mode) const;
+
 	/** Base system prompt template */
 	FString BasePromptTemplate;
-
-	/** Profile-specific prompts */
-	TMap<FString, FString> ProfilePrompts;
 
 	/** Rough estimate: characters per token */
 	static constexpr float CharsPerToken = 4.0f;
@@ -182,7 +186,4 @@ private:
 
 	/** Capability knowledge pack id -> text */
 	TMap<FString, FString> CapabilityKnowledgePacks;
-
-	/** Focus profile -> capability pack ids */
-	TMap<FString, TArray<FString>> ProfileCapabilityPackIds;
 };

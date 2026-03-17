@@ -8,8 +8,6 @@
 #include "Index/OliveProjectIndex.h"
 #include "Chat/OliveConversationManager.h"
 #include "Chat/OlivePromptAssembler.h"
-#include "Profiles/OliveFocusProfileManager.h"
-// DEPRECATED: #include "Brain/OliveToolPackManager.h" -- no longer initialized at startup
 #include "Services/OliveValidationEngine.h"
 #include "Services/OliveUtilityModel.h"
 #include "Catalog/OliveNodeCatalog.h"
@@ -321,14 +319,7 @@ void FOliveAIEditorModule::OnPostEngineInit()
 	// Initialize template system (scans Content/Templates/ for JSON templates)
 	FOliveTemplateSystem::Get().Initialize();
 
-	// Initialize focus profiles after tool registration so validation has complete category/tool coverage.
-	FOliveFocusProfileManager::Get().Initialize();
-
-	// DEPRECATED: Tool pack filtering removed in AI Freedom update.
-	// FOliveToolPackManager::Get().Initialize();
-	// All tool visibility is now handled by Focus Profiles and the tool registry directly.
-
-	// Initialize prompt assembler after focus profile registration.
+	// Initialize prompt assembler after tool registration.
 	FOlivePromptAssembler::Get().Initialize();
 
 	// Initialize prompt templates

@@ -4,7 +4,6 @@
 #include "Index/OliveProjectIndex.h"
 #include "Services/OliveValidationEngine.h"
 #include "Services/OliveErrorBuilder.h"
-#include "Profiles/OliveFocusProfileManager.h"
 #include "Settings/OliveAISettings.h"
 #include "Brain/OliveToolExecutionContext.h"
 #include "OliveAIEditorModule.h"
@@ -14,41 +13,10 @@
 
 namespace
 {
-	bool IsBlueprintTool(const FString& ToolName)
-	{
-		return ToolName.StartsWith(TEXT("blueprint."));
-	}
-
 	bool IsBlueprintPlanTool(const FString& ToolName)
 	{
 		return ToolName == TEXT("blueprint.preview_plan_json")
 			|| ToolName == TEXT("blueprint.apply_plan_json");
-	}
-
-	bool IsBlueprintGranularGraphTool(const FString& ToolName)
-	{
-		return ToolName == TEXT("blueprint.add_node")
-			|| ToolName == TEXT("blueprint.remove_node")
-			|| ToolName == TEXT("blueprint.connect_pins")
-			|| ToolName == TEXT("blueprint.disconnect_pins")
-			|| ToolName == TEXT("blueprint.set_pin_default")
-			|| ToolName == TEXT("blueprint.set_node_property");
-	}
-
-	FString GetRoutingContextKey()
-	{
-		if (const FOliveToolCallContext* Ctx = FOliveToolExecutionContext::Get())
-		{
-			if (!Ctx->RunId.IsEmpty())
-			{
-				return FString::Printf(TEXT("run:%s"), *Ctx->RunId);
-			}
-			if (!Ctx->SessionId.IsEmpty())
-			{
-				return FString::Printf(TEXT("session:%s"), *Ctx->SessionId);
-			}
-		}
-		return TEXT("global");
 	}
 
 	TSharedPtr<FJsonObject> CloneParams(const TSharedPtr<FJsonObject>& Params)
@@ -306,15 +274,6 @@ namespace
 
 		return Effective;
 	}
-
-	struct FBlueprintRoutingStats
-	{
-		int32 GranularGraphCalls = 0;
-		int32 PlanCalls = 0;
-	};
-
-	FCriticalSection GBlueprintRoutingStatsLock;
-	TMap<FString, FBlueprintRoutingStats> GBlueprintRoutingStatsByContext;
 
 	// ==========================================
 	// Tool Alias Map (Backward Compatibility)
@@ -781,16 +740,42 @@ TOptional<FOliveToolDefinition> FOliveToolRegistry::GetTool(const FString& Name)
 	return TOptional<FOliveToolDefinition>();
 }
 
-TArray<FOliveToolDefinition> FOliveToolRegistry::GetToolsForProfile(const FString& ProfileName) const
+TArray<FOliveToolDefinition> FOliveToolRegistry::GetToolsForMode(EOliveChatMode Mode) const
 {
+	// Code and Plan modes return all tools.
+	// Plan mode blocks writes at the pipeline level (Stage 2 mode gate), not here.
+	// This lets the AI see write tool schemas for planning purposes.
+	if (Mode != EOliveChatMode::Ask)
+	{
+		return GetAllTools();
+	}
+
+	// Ask mode: return only read/discovery tools.
+	// Exclude tools with any write-family tag. Include everything else (safe default).
+	// Write-family tags that cause exclusion:
+	static const TSet<FString> ExcludeTags = {
+		TEXT("write"), TEXT("danger"), TEXT("refactor"),
+		TEXT("create"), TEXT("delete")
+	};
+
 	TArray<FOliveToolDefinition> Result;
-	const FOliveFocusProfileManager& FocusManager = FOliveFocusProfileManager::Get();
 
 	FRWScopeLock ReadLock(ToolsLock, SLT_ReadOnly);
 	for (const auto& Pair : Tools)
 	{
 		const FOliveToolDefinition& Definition = Pair.Value.Definition;
-		if (FocusManager.IsToolAllowedForProfile(ProfileName, Definition.Name, Definition.Category))
+
+		bool bHasExcludeTag = false;
+		for (const FString& Tag : Definition.Tags)
+		{
+			if (ExcludeTags.Contains(Tag))
+			{
+				bHasExcludeTag = true;
+				break;
+			}
+		}
+
+		if (!bHasExcludeTag)
 		{
 			Result.Add(Definition);
 		}
@@ -855,56 +840,6 @@ FOliveToolResult FOliveToolRegistry::ExecuteTool(const FString& Name, const TSha
 	TArray<FString> NormalizedFields;
 	TSharedPtr<FJsonObject> EffectiveParams = NormalizeToolParams(EffectiveName, AliasedParams, NormalizedFields);
 
-	const bool bIsPlanTool = IsBlueprintPlanTool(EffectiveName);
-	const bool bIsGranularGraphTool = IsBlueprintGranularGraphTool(EffectiveName);
-	FString RoutingReasonCode;
-	bool bAttachRoutingReason = false;
-
-	if (IsBlueprintTool(EffectiveName))
-	{
-		if (const UOliveAISettings* Settings = UOliveAISettings::Get())
-		{
-			const bool bPlanRoutingEnabled = Settings->bEnableBlueprintPlanJsonTools && Settings->bEnforcePlanFirstGraphRouting;
-			const int32 Threshold = FMath::Max(1, Settings->PlanFirstGraphRoutingThreshold);
-			if (bPlanRoutingEnabled && (bIsPlanTool || bIsGranularGraphTool))
-			{
-				const FString ContextKey = GetRoutingContextKey();
-				bool bBypassForUnsupported = false;
-				FString RoutingHint;
-				if (EffectiveParams.IsValid() && EffectiveParams->TryGetStringField(TEXT("routing_reason"), RoutingHint))
-				{
-					bBypassForUnsupported = RoutingHint.Equals(TEXT("op_unsupported"), ESearchCase::IgnoreCase);
-				}
-
-				{
-					FScopeLock Lock(&GBlueprintRoutingStatsLock);
-					FBlueprintRoutingStats& Stats = GBlueprintRoutingStatsByContext.FindOrAdd(ContextKey);
-
-					if (bIsPlanTool)
-					{
-						Stats.PlanCalls++;
-					}
-					else
-					{
-						if (bBypassForUnsupported)
-						{
-							Stats.GranularGraphCalls++;
-							RoutingReasonCode = TEXT("ROUTE_OP_UNSUPPORTED");
-							bAttachRoutingReason = true;
-						}
-						else
-						{
-							const int32 NextCount = Stats.GranularGraphCalls + 1;
-							Stats.GranularGraphCalls = NextCount;
-							RoutingReasonCode = TEXT("ROUTE_SMALL_EDIT_ALLOWED");
-							bAttachRoutingReason = true;
-						}
-					}
-				}
-			}
-		}
-	}
-
 	// Find tool
 	FOliveToolHandler Handler;
 	{
@@ -965,7 +900,7 @@ FOliveToolResult FOliveToolRegistry::ExecuteTool(const FString& Name, const TSha
 	UE_LOG(LogOliveAI, Log, TEXT("Tool '%s' executed in %.2fms - %s"),
 		*EffectiveName, Result.ExecutionTimeMs, Result.bSuccess ? TEXT("success") : TEXT("failed"));
 
-	if (NormalizedFields.Num() > 0 || bAttachRoutingReason || bWasAliased)
+	if (NormalizedFields.Num() > 0 || bWasAliased)
 	{
 		if (!Result.Data.IsValid())
 		{
@@ -981,11 +916,6 @@ FOliveToolResult FOliveToolRegistry::ExecuteTool(const FString& Name, const TSha
 				Fields.Add(MakeShared<FJsonValueString>(Field));
 			}
 			Result.Data->SetArrayField(TEXT("normalized_fields"), Fields);
-		}
-
-		if (bAttachRoutingReason)
-		{
-			Result.Data->SetStringField(TEXT("reason_code"), RoutingReasonCode);
 		}
 
 		if (bWasAliased)
@@ -1014,25 +944,18 @@ void FOliveToolRegistry::ExecuteToolAsync(
 	});
 }
 
-void FOliveToolRegistry::ClearBlueprintRoutingStats(const FString& ContextKey)
-{
-	FScopeLock Lock(&GBlueprintRoutingStatsLock);
-	GBlueprintRoutingStatsByContext.Remove(ContextKey);
-}
-
 // ==========================================
 // MCP Format
 // ==========================================
 
-TSharedPtr<FJsonObject> FOliveToolRegistry::GetToolsListMCP(const FString& ProfileFilter) const
+TSharedPtr<FJsonObject> FOliveToolRegistry::GetToolsListMCP() const
 {
 	TSharedPtr<FJsonObject> Response = MakeShared<FJsonObject>();
 
 	TArray<TSharedPtr<FJsonValue>> ToolsArray;
 
-	TArray<FOliveToolDefinition> ToolsList = ProfileFilter.IsEmpty()
-		? GetAllTools()
-		: GetToolsForProfile(ProfileFilter);
+	// MCP always returns all tools -- external agents are always Code mode.
+	TArray<FOliveToolDefinition> ToolsList = GetAllTools();
 
 	for (const FOliveToolDefinition& Tool : ToolsList)
 	{

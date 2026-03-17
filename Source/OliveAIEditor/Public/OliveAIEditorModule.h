@@ -21,7 +21,6 @@ DECLARE_LOG_CATEGORY_EXTERN(LogOliveAI, Log, All);
  * - FOliveToolRegistry::Get()
  * - FOliveMCPServer::Get()
  * - FOliveProjectIndex::Get()
- * - FOliveFocusProfileManager::Get()
  * - FOlivePromptAssembler::Get()
  * - FOliveValidationEngine::Get()
  */

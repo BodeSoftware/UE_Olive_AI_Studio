@@ -1,7 +1,6 @@
 // Copyright Bode Software. All Rights Reserved.
 
 #include "Chat/OliveRunManager.h"
-#include "MCP/OliveToolRegistry.h"
 #include "Settings/OliveAISettings.h"
 #include "OliveSnapshotManager.h"
 
@@ -57,10 +56,6 @@ void FOliveRunManager::CompleteRun()
 		*ActiveRun->Name, ActiveRun->Steps.Num());
 
 	OnRunStatusChanged.Broadcast(ActiveRun.GetValue());
-
-	// Clean up routing stats for this run
-	FOliveToolRegistry::Get().ClearBlueprintRoutingStats(
-		FString::Printf(TEXT("run:%s"), *ActiveRun->RunId.ToString()));
 
 	ActiveRun.Reset();
 }

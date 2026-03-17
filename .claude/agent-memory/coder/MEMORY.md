@@ -54,14 +54,21 @@
 - Stateless static utility class; `ComputeLayout()` -> `TMap<FString, FOliveLayoutEntry>`; `ApplyLayout()` -> void
 - Log category: LogOliveGraphLayout
 
-## CLI Provider Base Class (NeoStack T4 Refactored)
+## CLI Provider Base Class (Persistent Sessions, 2026-03-16)
 - `FOliveCLIProviderBase` at `Public/Providers/OliveCLIProviderBase.h` / `Private/Providers/OliveCLIProviderBase.cpp`
 - Abstract base for CLI providers; inherits IOliveAIProvider
 - Two paths: Orchestrated (SendMessage, per-turn) and Autonomous (SendMessageAutonomous, MCP)
 - `LaunchCLIProcess()`: shared process lifecycle used by both paths
 - `RequestGeneration` counter prevents stale async completions; `AliveGuard` prevents use-after-free
 - Tool filtering: `SetToolFilter()`/`ClearToolFilter()` on MCPServer; `HandleToolsCall` NOT filtered
-- See CLAUDE.md for full details on prompt routing, auto-continue, asset state injection
+- **Session Resume** (2026-03-16): `CLISessionId` + `bHasActiveSession` for persistent conversations
+  - `SupportsSessionResume()` virtual: Claude=true, Codex=false (default)
+  - First message: `--session-id <uuid>`, full sandbox setup, discovery, decomposition
+  - Subsequent messages: `--resume <uuid>`, raw user message only (no sandbox, no discovery)
+  - `ResetSession()`: kills process, clears session ID + sandbox, forces fresh session
+  - `CancelRequest()` preserves session state (CLISessionId, bHasActiveSession stay intact)
+  - **DELETED**: `FAutonomousRunContext`, `LastRunContext`, auto-continue system, `IsContinuationMessage()`, `BuildContinuationPrompt()`, `ScanEmptyFunctionGraphs()`, `FEmptyFunctionInfo`, `FSparseEventGraphInfo`, `bLastRunTimedOut`, `bLastRunWasRuntimeLimit`, `AutoContinueCount`, `bIsAutoContinuation`, `MaxAutoContinues`, `IsWriteOperation()`, `BuildAssetStateSummary()` no-arg overload
+  - `IOliveAIProvider::ResetSession()` added as virtual no-op default
 
 ## UE 5.5 API Quirks
 - **Float/Double PinType**: In UE 5.5, `PC_Float` and `PC_Double` must NOT be used as `PinCategory`. Instead use `PinCategory = PC_Real` with `PinSubCategory = PC_Float` (or `PC_Double`). Using `PC_Float` directly as category causes "Can't parse default value" compile warnings because the engine can't resolve an FProperty from a bare `PC_Float` category.
@@ -160,12 +167,7 @@
 - ResolveCallOp auto-reroute: same TFieldIterator search after NewVariables dispatcher check
 - `blueprint.create` response enrichment: `inherited_variables`, `inherited_dispatchers`, `inherited_components` arrays on success
 
-## Agent Pipeline (REMOVED - Single-Agent Revert 2026-03-09)
-- `OliveAgentPipeline.h`, `OliveAgentPipeline.cpp`, `OliveAgentConfig.h` DELETED
-- Multi-agent pipeline replaced with single-agent flow: discovery pass + decomposition directive
-- Discovery: `FOliveUtilityModel::RunDiscoveryPass()` called directly from `SendMessageAutonomous()`
-- Decomposition: structured prompt injected for write-intent messages (asset listing, research tools, build steps)
-- Reviewer: removed entirely; agent self-corrects via compile errors
-- Settings: `bEnablePostBuildReview`, `bCustomizeAgentModels`, per-agent models all removed
+## Agent Pipeline (REMOVED - Single-Agent Revert 2026-03-09, Session Resume 2026-03-16)
+- Multi-agent pipeline, auto-continue, continuation prompts all DELETED
+- Single-agent flow: first message gets discovery+decomposition, subsequent messages use `--resume`
 - Settings kept: `bEnableTemplateDiscoveryPass`, `bEnableLLMKeywordExpansion`
-- AGENTS.md sandbox now includes Planning/Research/Building/Self-Correction sections

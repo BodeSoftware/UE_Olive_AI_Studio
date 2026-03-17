@@ -26,9 +26,6 @@
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
 #include "EdGraph/EdGraph.h"
-#include "EdGraphSchema_K2.h"
-#include "K2Node_FunctionEntry.h"
-#include "K2Node_FunctionResult.h"
 #include "Index/OliveProjectIndex.h"
 #include "Services/OliveUtilityModel.h"
 
@@ -113,27 +110,6 @@ namespace
 		return Prefixes;
 	}
 
-	/** Check if a tool name represents a write/mutation operation.
-	 *  Auto-continue should only trigger after write ops (genuine stalls after progress),
-	 *  not after reads/recipes (the AI was thinking about what plan to write). */
-	bool IsWriteOperation(const FString& ToolName)
-	{
-		FString OpPart = ToolName;
-		int32 DotIdx;
-		if (ToolName.FindChar(TEXT('.'), DotIdx))
-		{
-			OpPart = ToolName.Mid(DotIdx + 1);
-		}
-
-		return OpPart.StartsWith(TEXT("create")) || OpPart.StartsWith(TEXT("apply"))
-			|| OpPart.StartsWith(TEXT("add")) || OpPart.StartsWith(TEXT("set_"))
-			|| OpPart.StartsWith(TEXT("connect")) || OpPart.StartsWith(TEXT("disconnect"))
-			|| OpPart.StartsWith(TEXT("remove")) || OpPart.StartsWith(TEXT("delete"))
-			|| OpPart.StartsWith(TEXT("rename")) || OpPart.StartsWith(TEXT("reparent"))
-			|| OpPart.StartsWith(TEXT("modify")) || OpPart.StartsWith(TEXT("override"))
-			|| OpPart.Contains(TEXT("compile")) || OpPart.Contains(TEXT("batch_write"));
-	}
-
 	/** Check if a tool call is a scaffolding operation (structural setup before graph logic).
 	 *  When the AI has done scaffolding work in a run, it's about to plan graph logic
 	 *  and needs extended thinking time — the adaptive idle timeout uses this signal. */
@@ -142,150 +118,6 @@ namespace
 		return ToolName.Contains(TEXT("add_component"))
 			|| ToolName.Contains(TEXT("add_variable"))
 			|| ToolName.Contains(TEXT("modify_component"));
-	}
-
-	/** Info about a function graph that has no logic (just entry point). */
-	struct FEmptyFunctionInfo
-	{
-		FString AssetPath;
-		FString FunctionName;
-		int32 NodeCount = 0;
-		TArray<FString> Inputs;   // "ParamName:TypeName" pairs
-		TArray<FString> Outputs;  // "ParamName:TypeName" pairs
-		bool bHasCrossAssetDeps = false;
-	};
-
-	/** Info about an event graph with very sparse logic. */
-	struct FSparseEventGraphInfo
-	{
-		FString AssetPath;
-		FString GraphName;
-		int32 NodeCount = 0;
-	};
-
-	/**
-	 * Extract a human-readable type name from a pin's type info.
-	 * Prefers the sub-category object name (e.g., "Vector", "MyEnum") over
-	 * the raw pin category (e.g., "struct", "byte").
-	 */
-	FString GetPinTypeName(const UEdGraphPin* Pin)
-	{
-		if (UObject* SubCatObj = Pin->PinType.PinSubCategoryObject.Get())
-		{
-			return SubCatObj->GetName();
-		}
-		return Pin->PinType.PinCategory.ToString();
-	}
-
-	/**
-	 * Scan modified assets for empty function graphs and sparse event graphs.
-	 * MUST be called on the game thread (loads UObject packages).
-	 *
-	 * @param AssetPaths            Asset paths to scan
-	 * @param OutEmptyFunctions     Populated with functions that have no logic (<=2 nodes)
-	 * @param OutSparseEventGraphs  Populated with event graphs that have <=3 nodes
-	 */
-	void ScanEmptyFunctionGraphs(
-		const TArray<FString>& AssetPaths,
-		TArray<FEmptyFunctionInfo>& OutEmptyFunctions,
-		TArray<FSparseEventGraphInfo>& OutSparseEventGraphs)
-	{
-		// Collect all modified asset class names for cross-dep detection
-		TSet<FString> ModifiedAssetClassNames;
-
-		for (const FString& AssetPath : AssetPaths)
-		{
-			UBlueprint* BP = LoadObject<UBlueprint>(nullptr, *AssetPath);
-			if (!BP) continue;
-			if (BP->GeneratedClass)
-			{
-				ModifiedAssetClassNames.Add(BP->GeneratedClass->GetName());
-			}
-		}
-
-		for (const FString& AssetPath : AssetPaths)
-		{
-			UBlueprint* BP = LoadObject<UBlueprint>(nullptr, *AssetPath);
-			if (!BP) continue;
-
-			// Scan function graphs
-			for (UEdGraph* Graph : BP->FunctionGraphs)
-			{
-				if (!Graph) continue;
-				if (Graph->Nodes.Num() > 2) continue;  // Has logic beyond entry/result stubs
-
-				FEmptyFunctionInfo Info;
-				Info.AssetPath = AssetPath;
-				Info.FunctionName = Graph->GetName();
-				Info.NodeCount = Graph->Nodes.Num();
-
-				// Extract function signature from FunctionEntry/FunctionResult nodes
-				for (UEdGraphNode* Node : Graph->Nodes)
-				{
-					if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(Node))
-					{
-						for (UEdGraphPin* Pin : Entry->Pins)
-						{
-							if (Pin && !Pin->bHidden && Pin->Direction == EGPD_Output
-								&& Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
-							{
-								FString TypeName = GetPinTypeName(Pin);
-								Info.Inputs.Add(FString::Printf(TEXT("%s:%s"),
-									*Pin->PinName.ToString(), *TypeName));
-
-								// Cross-asset dep check: does this param reference another
-								// modified Blueprint's class?
-								if (UObject* PinClass = Pin->PinType.PinSubCategoryObject.Get())
-								{
-									if (ModifiedAssetClassNames.Contains(PinClass->GetName()))
-									{
-										Info.bHasCrossAssetDeps = true;
-									}
-								}
-							}
-						}
-					}
-					else if (UK2Node_FunctionResult* Result = Cast<UK2Node_FunctionResult>(Node))
-					{
-						for (UEdGraphPin* Pin : Result->Pins)
-						{
-							if (Pin && !Pin->bHidden && Pin->Direction == EGPD_Input
-								&& Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
-							{
-								FString TypeName = GetPinTypeName(Pin);
-								Info.Outputs.Add(FString::Printf(TEXT("%s:%s"),
-									*Pin->PinName.ToString(), *TypeName));
-							}
-						}
-					}
-				}
-
-				OutEmptyFunctions.Add(MoveTemp(Info));
-			}
-
-			// Scan event graphs (UbergraphPages) for sparse logic
-			for (UEdGraph* Graph : BP->UbergraphPages)
-			{
-				if (!Graph) continue;
-				if (Graph->Nodes.Num() <= 3)
-				{
-					FSparseEventGraphInfo EventInfo;
-					EventInfo.AssetPath = AssetPath;
-					EventInfo.GraphName = Graph->GetName();
-					EventInfo.NodeCount = Graph->Nodes.Num();
-					OutSparseEventGraphs.Add(MoveTemp(EventInfo));
-				}
-			}
-		}
-
-		// Sort empty functions: non-cross-asset first (simpler deps), then by
-		// total parameter count ascending (simpler signatures first).
-		OutEmptyFunctions.Sort([](const FEmptyFunctionInfo& A, const FEmptyFunctionInfo& B)
-		{
-			if (A.bHasCrossAssetDeps != B.bHasCrossAssetDeps)
-				return !A.bHasCrossAssetDeps;  // non-cross-asset first
-			return A.Inputs.Num() + A.Outputs.Num() < B.Inputs.Num() + B.Outputs.Num();
-		});
 	}
 
 	/** Quick heuristic for messages that imply write/mutation intent. */
@@ -762,19 +594,6 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 		return;
 	}
 
-	// Capture auto-continue state before consuming the flag.
-	// bIsAutoContinuation is set by HandleResponseCompleteAutonomous before
-	// dispatching an auto-continue. All other entry paths leave it false.
-	const bool bWasAutoContinuation = bIsAutoContinuation;
-	if (bIsAutoContinuation)
-	{
-		bIsAutoContinuation = false; // Consume the flag
-	}
-	else
-	{
-		AutoContinueCount = 0; // User-initiated = fresh budget
-	}
-
 	// Validate
 	FString ValidationError;
 	if (!ValidateConfig(ValidationError))
@@ -796,114 +615,100 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 	++RequestGeneration;
 	AccumulatedResponse.Empty();
 
-	// Set up autonomous sandbox with agent-specific CLAUDE.md and .mcp.json
-	// so the CLI reads the correct role context instead of the developer CLAUDE.md
-	SetupAutonomousSandbox();
+	// Determine whether this is a first message or a subsequent message in an active session.
+	// Session-capable providers (SupportsSessionResume() == true) use --session-id on the first
+	// message and --resume on subsequent messages, preserving conversation context across
+	// process restarts. The CLI manages its own context window, compaction, and history.
+	const bool bIsFirstSessionMessage = !bHasActiveSession && SupportsSessionResume();
+	const bool bIsSessionResume = bHasActiveSession && SupportsSessionResume();
 
-	// Enrich continuation messages with context from the previous run.
-	// This must happen AFTER SetupAutonomousSandbox (which writes CLAUDE.md)
-	// but BEFORE LaunchCLIProcess (which delivers the message via stdin).
-	// bWasAutoContinuation is true when we're auto-continuing (timeout, zero-tool, reviewer) —
-	// those messages are already enriched by BuildContinuationPrompt() at the call site.
-	const bool bIsContinuation = bWasAutoContinuation || IsContinuationMessage(UserMessage);
 	FString EffectiveMessage = UserMessage;
-	if (!bWasAutoContinuation && LastRunContext.bValid && IsContinuationMessage(UserMessage))
-	{
-		EffectiveMessage = BuildContinuationPrompt(UserMessage);
-		UE_LOG(LogOliveCLIProvider, Log,
-			TEXT("Continuation detected: enriched prompt with %d modified assets from previous run"),
-			LastRunContext.ModifiedAssetPaths.Num());
-	}
 
-	// Inject @-mentioned asset state into the initial prompt so the AI
-	// doesn't need to re-read assets it's already been pointed at.
-	// Must run on the game thread (BuildAssetStateSummary loads UObjects).
-	if (InitialContextAssetPaths.Num() > 0 && !bIsContinuation)
+	if (bIsFirstSessionMessage)
 	{
-		FString AssetState = BuildAssetStateSummary(InitialContextAssetPaths);
-		if (!AssetState.IsEmpty())
+		// First message in a new session: full setup
+		CLISessionId = FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphens);
+		UE_LOG(LogOliveCLIProvider, Log, TEXT("Starting new CLI session: %s"), *CLISessionId);
+
+		// Set up autonomous sandbox with agent-specific CLAUDE.md and .mcp.json
+		SetupAutonomousSandbox();
+
+		// Inject @-mentioned asset state into the initial prompt
+		if (InitialContextAssetPaths.Num() > 0)
 		{
-			EffectiveMessage += TEXT("\n\n");
-			EffectiveMessage += AssetState;
-			EffectiveMessage += TEXT("\n**Do NOT re-read these assets** -- their current state is shown above. Focus on making the requested changes.\n");
-
-			UE_LOG(LogOliveCLIProvider, Log,
-				TEXT("Injected @-mention asset state for %d assets into initial prompt"),
-				InitialContextAssetPaths.Num());
-		}
-		InitialContextAssetPaths.Empty(); // Consume -- only inject once per user message
-	}
-
-	// Pre-populate related asset context: extract keywords from the user message
-	// and search the project index for potentially relevant existing assets.
-	// This gives the AI awareness of what already exists without needing a search tool call.
-	if (!bIsContinuation && FOliveProjectIndex::Get().IsReady())
-	{
-		TArray<FString> Keywords = ExtractKeywordsFromMessage(UserMessage);
-		if (Keywords.Num() > 0)
-		{
-			TSet<FString> AlreadySeen;
-			TArray<FOliveAssetInfo> RelatedAssets;
-
-			for (const FString& Keyword : Keywords)
+			FString AssetState = BuildAssetStateSummary(InitialContextAssetPaths);
+			if (!AssetState.IsEmpty())
 			{
-				TArray<FOliveAssetInfo> Results = FOliveProjectIndex::Get().SearchAssets(Keyword, 5);
-				for (const FOliveAssetInfo& Result : Results)
-				{
-					if (!AlreadySeen.Contains(Result.Path))
-					{
-						AlreadySeen.Add(Result.Path);
-						RelatedAssets.Add(Result);
-					}
-				}
-			}
-
-			if (RelatedAssets.Num() > 0)
-			{
-				// Cap at 10 to avoid prompt bloat
-				const int32 MaxRelated = FMath::Min(RelatedAssets.Num(), 10);
-				EffectiveMessage += TEXT("\n\n## Existing Assets That May Be Relevant\n");
-				for (int32 i = 0; i < MaxRelated; ++i)
-				{
-					EffectiveMessage += FString::Printf(TEXT("- %s (%s)\n"),
-						*RelatedAssets[i].Path, *RelatedAssets[i].AssetClass.ToString());
-				}
-				EffectiveMessage += TEXT("Use project.search if you need more details on any of these.\n");
+				EffectiveMessage += TEXT("\n\n");
+				EffectiveMessage += AssetState;
+				EffectiveMessage += TEXT("\n**Do NOT re-read these assets** -- their current state is shown above. Focus on making the requested changes.\n");
 
 				UE_LOG(LogOliveCLIProvider, Log,
-					TEXT("Injected %d related assets from keyword search (keywords: %s)"),
-					MaxRelated, *FString::Join(Keywords, TEXT(", ")));
+					TEXT("Injected @-mention asset state for %d assets into initial prompt"),
+					InitialContextAssetPaths.Num());
+			}
+			InitialContextAssetPaths.Empty();
+		}
+
+		// Pre-populate related asset context from project index
+		if (FOliveProjectIndex::Get().IsReady())
+		{
+			TArray<FString> Keywords = ExtractKeywordsFromMessage(UserMessage);
+			if (Keywords.Num() > 0)
+			{
+				TSet<FString> AlreadySeen;
+				TArray<FOliveAssetInfo> RelatedAssets;
+
+				for (const FString& Keyword : Keywords)
+				{
+					TArray<FOliveAssetInfo> Results = FOliveProjectIndex::Get().SearchAssets(Keyword, 5);
+					for (const FOliveAssetInfo& Result : Results)
+					{
+						if (!AlreadySeen.Contains(Result.Path))
+						{
+							AlreadySeen.Add(Result.Path);
+							RelatedAssets.Add(Result);
+						}
+					}
+				}
+
+				if (RelatedAssets.Num() > 0)
+				{
+					const int32 MaxRelated = FMath::Min(RelatedAssets.Num(), 10);
+					EffectiveMessage += TEXT("\n\n## Existing Assets That May Be Relevant\n");
+					for (int32 i = 0; i < MaxRelated; ++i)
+					{
+						EffectiveMessage += FString::Printf(TEXT("- %s (%s)\n"),
+							*RelatedAssets[i].Path, *RelatedAssets[i].AssetClass.ToString());
+					}
+					EffectiveMessage += TEXT("Use project.search if you need more details on any of these.\n");
+
+					UE_LOG(LogOliveCLIProvider, Log,
+						TEXT("Injected %d related assets from keyword search (keywords: %s)"),
+						MaxRelated, *FString::Join(Keywords, TEXT(", ")));
+				}
 			}
 		}
-	}
 
-	// Helper to emit a status message through the stream callback so the chat UI
-	// shows progress during the discovery phase.
-	auto EmitStatus = [this](const FString& StatusText)
-	{
-		FScopeLock Lock(&CallbackLock);
-		if (CurrentOnChunk.IsBound())
+		// Helper to emit a status message through the stream callback
+		auto EmitStatus = [this](const FString& StatusText)
 		{
-			FOliveStreamChunk StatusChunk;
-			StatusChunk.Text = StatusText + TEXT("\n");
-			CurrentOnChunk.Execute(StatusChunk);
-		}
-	};
+			FScopeLock Lock(&CallbackLock);
+			if (CurrentOnChunk.IsBound())
+			{
+				FOliveStreamChunk StatusChunk;
+				StatusChunk.Text = StatusText + TEXT("\n");
+				CurrentOnChunk.Execute(StatusChunk);
+			}
+		};
 
-	// Template discovery pass -- pre-search library/factory/community templates
-	// using utility model for smart keyword generation.
-	if (!bIsContinuation)
-	{
+		// Template discovery pass
 		const UOliveAISettings* DiscoverySettings = UOliveAISettings::Get();
 		if (DiscoverySettings && DiscoverySettings->bEnableTemplateDiscoveryPass)
 		{
 			EmitStatus(TEXT("*Searching for relevant templates and assets...*"));
 
-			const FString& DiscoveryInput =
-				(LastRunContext.bValid && !LastRunContext.OriginalMessage.IsEmpty())
-				? LastRunContext.OriginalMessage
-				: UserMessage;
-			FOliveDiscoveryResult Discovery = FOliveUtilityModel::RunDiscoveryPass(DiscoveryInput);
+			FOliveDiscoveryResult Discovery = FOliveUtilityModel::RunDiscoveryPass(UserMessage);
 			FString DiscoveryBlock = FOliveUtilityModel::FormatDiscoveryForPrompt(Discovery);
 
 			if (!DiscoveryBlock.IsEmpty())
@@ -919,56 +724,152 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 					*FString::Join(Discovery.SearchQueries, TEXT("; ")));
 			}
 		}
-	}
 
-	// Structured decomposition directive.
-	if (!bIsContinuation && MessageImpliesMutation(UserMessage))
+		// Structured decomposition directive for write-oriented tasks
+		if (MessageImpliesMutation(UserMessage))
+		{
+			EmitStatus(TEXT("*Launching builder...*"));
+
+			EffectiveMessage += TEXT("\n\n## Task Approach\n\n");
+			EffectiveMessage += TEXT("Think through what Blueprints you need:\n");
+			EffectiveMessage += TEXT("- Separate actor for anything with its own transform (weapons, projectiles, etc.)\n");
+			EffectiveMessage += TEXT("- Component for reusable capabilities\n");
+			EffectiveMessage += TEXT("- Variable for simple values on existing actors\n\n");
+			EffectiveMessage += TEXT("Then build each one fully: structure -> graph logic -> compile to 0 errors -> next.\n");
+			EffectiveMessage += TEXT("If unsure whether a UE function exists (e.g., component-specific functions), verify with blueprint.describe_function before writing plan_json.\n");
+
+			EffectiveMessage += TEXT("\n\n## Tool Execution Requirement\n");
+			EffectiveMessage += TEXT("Before any final explanation text, execute at least one MCP tool call that makes concrete progress.\n");
+			EffectiveMessage += TEXT("If no tool call is needed, explicitly explain why in one sentence.\n");
+		}
+	}
+	else if (bIsSessionResume)
 	{
-		EmitStatus(TEXT("*Launching builder...*"));
+		// Subsequent message in an active session: just pipe the user's raw message.
+		// The CLI process has full conversation history via --resume and handles
+		// context window management internally. No sandbox setup, discovery, or
+		// decomposition directives needed.
+		UE_LOG(LogOliveCLIProvider, Log, TEXT("Resuming CLI session: %s"), *CLISessionId);
 
-		EffectiveMessage += TEXT("\n\n## Task Approach\n\n");
-		EffectiveMessage += TEXT("Think through what Blueprints you need:\n");
-		EffectiveMessage += TEXT("- Separate actor for anything with its own transform (weapons, projectiles, etc.)\n");
-		EffectiveMessage += TEXT("- Component for reusable capabilities\n");
-		EffectiveMessage += TEXT("- Variable for simple values on existing actors\n\n");
-		EffectiveMessage += TEXT("Then build each one fully: structure -> graph logic -> compile to 0 errors -> next.\n");
-		EffectiveMessage += TEXT("If unsure whether a UE function exists (e.g., component-specific functions), verify with blueprint.describe_function before writing plan_json.\n");
+		// Still inject @-mentioned asset state if provided (user may @-mention new assets)
+		if (InitialContextAssetPaths.Num() > 0)
+		{
+			FString AssetState = BuildAssetStateSummary(InitialContextAssetPaths);
+			if (!AssetState.IsEmpty())
+			{
+				EffectiveMessage += TEXT("\n\n");
+				EffectiveMessage += AssetState;
+				EffectiveMessage += TEXT("\n**Do NOT re-read these assets** -- their current state is shown above.\n");
+			}
+			InitialContextAssetPaths.Empty();
+		}
 	}
-
-	// Guardrail: for write-oriented tasks, require at least one tool call before final text.
-	if (!bIsContinuation && MessageImpliesMutation(UserMessage))
+	else
 	{
-		EffectiveMessage += TEXT("\n\n## Tool Execution Requirement\n");
-		EffectiveMessage += TEXT("Before any final explanation text, execute at least one MCP tool call that makes concrete progress.\n");
-		EffectiveMessage += TEXT("If no tool call is needed, explicitly explain why in one sentence.\n");
-	}
+		// Non-session provider (e.g., Codex): every message is independent.
+		// Full sandbox setup and context injection on every message.
+		SetupAutonomousSandbox();
 
-	// Initialize run context tracking for this new run
-	LastRunContext.Reset();
-	LastRunContext.OriginalMessage = UserMessage;
-	bLastRunTimedOut = false;
-	bLastRunWasRuntimeLimit = false;
+		// Inject @-mentioned asset state
+		if (InitialContextAssetPaths.Num() > 0)
+		{
+			FString AssetState = BuildAssetStateSummary(InitialContextAssetPaths);
+			if (!AssetState.IsEmpty())
+			{
+				EffectiveMessage += TEXT("\n\n");
+				EffectiveMessage += AssetState;
+				EffectiveMessage += TEXT("\n**Do NOT re-read these assets** -- their current state is shown above. Focus on making the requested changes.\n");
+			}
+			InitialContextAssetPaths.Empty();
+		}
+
+		// Pre-populate related asset context
+		if (FOliveProjectIndex::Get().IsReady())
+		{
+			TArray<FString> Keywords = ExtractKeywordsFromMessage(UserMessage);
+			if (Keywords.Num() > 0)
+			{
+				TSet<FString> AlreadySeen;
+				TArray<FOliveAssetInfo> RelatedAssets;
+
+				for (const FString& Keyword : Keywords)
+				{
+					TArray<FOliveAssetInfo> Results = FOliveProjectIndex::Get().SearchAssets(Keyword, 5);
+					for (const FOliveAssetInfo& Result : Results)
+					{
+						if (!AlreadySeen.Contains(Result.Path))
+						{
+							AlreadySeen.Add(Result.Path);
+							RelatedAssets.Add(Result);
+						}
+					}
+				}
+
+				if (RelatedAssets.Num() > 0)
+				{
+					const int32 MaxRelated = FMath::Min(RelatedAssets.Num(), 10);
+					EffectiveMessage += TEXT("\n\n## Existing Assets That May Be Relevant\n");
+					for (int32 i = 0; i < MaxRelated; ++i)
+					{
+						EffectiveMessage += FString::Printf(TEXT("- %s (%s)\n"),
+							*RelatedAssets[i].Path, *RelatedAssets[i].AssetClass.ToString());
+					}
+					EffectiveMessage += TEXT("Use project.search if you need more details on any of these.\n");
+				}
+			}
+		}
+
+		// Discovery pass
+		const UOliveAISettings* DiscoverySettings = UOliveAISettings::Get();
+		if (DiscoverySettings && DiscoverySettings->bEnableTemplateDiscoveryPass)
+		{
+			FOliveDiscoveryResult Discovery = FOliveUtilityModel::RunDiscoveryPass(UserMessage);
+			FString DiscoveryBlock = FOliveUtilityModel::FormatDiscoveryForPrompt(Discovery);
+			if (!DiscoveryBlock.IsEmpty())
+			{
+				EffectiveMessage += TEXT("\n\n");
+				EffectiveMessage += DiscoveryBlock;
+			}
+		}
+
+		// Decomposition directive
+		if (MessageImpliesMutation(UserMessage))
+		{
+			EffectiveMessage += TEXT("\n\n## Task Approach\n\n");
+			EffectiveMessage += TEXT("Think through what Blueprints you need:\n");
+			EffectiveMessage += TEXT("- Separate actor for anything with its own transform (weapons, projectiles, etc.)\n");
+			EffectiveMessage += TEXT("- Component for reusable capabilities\n");
+			EffectiveMessage += TEXT("- Variable for simple values on existing actors\n\n");
+			EffectiveMessage += TEXT("Then build each one fully: structure -> graph logic -> compile to 0 errors -> next.\n");
+			EffectiveMessage += TEXT("If unsure whether a UE function exists (e.g., component-specific functions), verify with blueprint.describe_function before writing plan_json.\n");
+
+			EffectiveMessage += TEXT("\n\n## Tool Execution Requirement\n");
+			EffectiveMessage += TEXT("Before any final explanation text, execute at least one MCP tool call that makes concrete progress.\n");
+			EffectiveMessage += TEXT("If no tool call is needed, explicitly explain why in one sentence.\n");
+		}
+	}
 
 	// Set tool filter based on message content (autonomous mode only).
-	// Uses the original user message (not continuation prompt) for consistent filtering.
-	TSet<FString> ToolPrefixes = DetermineToolPrefixes(LastRunContext.OriginalMessage);
+	TSet<FString> ToolPrefixes = DetermineToolPrefixes(UserMessage);
 	if (ToolPrefixes.Num() > 0)
 	{
 		FOliveMCPServer::Get().SetToolFilter(ToolPrefixes);
 	}
 	// else: empty set = no filter, show all tools
 
-	// Autonomous mode: no system prompt escaping, no BuildCLISystemPrompt.
-	// The CLI discovers tools via MCP and reads the sandbox CLAUDE.md for domain context.
+	// Get CLI arguments (subclass incorporates session flags via CLISessionId/bHasActiveSession)
 	FString CLIArgs = GetCLIArgumentsAutonomous();
 
 	UE_LOG(LogOliveCLIProvider, Log, TEXT("Launching autonomous CLI with args: %s"), *CLIArgs);
 
-	// Subscribe to MCP tool call events for activity-based timeout tracking
-	// and tool call logging for continuation context.
-	// Uses the AliveGuard pattern to safely update the atomic timestamp from
-	// the game thread (OnToolCalled fires on game thread) while the background
-	// read loop checks it via std::atomic<double>.
+	// Mark session as active AFTER GetCLIArgumentsAutonomous() reads the state.
+	// First message uses --session-id; subsequent messages use --resume.
+	if (bIsFirstSessionMessage)
+	{
+		bHasActiveSession = true;
+	}
+
+	// Subscribe to MCP tool call events for activity-based timeout tracking.
 	LastToolCallTimestamp.store(FPlatformTime::Seconds());
 	ScaffoldingOpCount.store(0);
 	RecipeCallCount.store(0);
@@ -987,49 +888,6 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 				// Track complexity signals for adaptive idle timeout
 				if (IsScaffoldingOperation(ToolName)) { ScaffoldingOpCount.fetch_add(1); }
 				if (ToolName == TEXT("olive.get_recipe")) { RecipeCallCount.fetch_add(1); }
-
-				// Track tool call for continuation context
-				FAutonomousRunContext::FToolCallEntry Entry;
-				Entry.ToolName = ToolName;
-
-				// Extract asset_path from arguments (most tools have this)
-				if (Arguments.IsValid())
-				{
-					FString AssetPath;
-					if (Arguments->TryGetStringField(TEXT("asset_path"), AssetPath) ||
-						Arguments->TryGetStringField(TEXT("path"), AssetPath))
-					{
-						Entry.AssetPath = AssetPath;
-						if (!LastRunContext.ModifiedAssetPaths.Contains(AssetPath))
-						{
-							LastRunContext.ModifiedAssetPaths.Add(AssetPath);
-						}
-					}
-				}
-
-				// Track recipe and template fetches for continuation prompt
-				if (ToolName == TEXT("olive.get_recipe") && Arguments.IsValid())
-				{
-					FString RecipeName;
-					if (Arguments->TryGetStringField(TEXT("name"), RecipeName) && !RecipeName.IsEmpty())
-					{
-						LastRunContext.FetchedRecipeNames.AddUnique(RecipeName);
-					}
-				}
-				else if (ToolName == TEXT("blueprint.get_template") && Arguments.IsValid())
-				{
-					FString TemplateId;
-					if (Arguments->TryGetStringField(TEXT("template_id"), TemplateId) && !TemplateId.IsEmpty())
-					{
-						LastRunContext.FetchedTemplateIds.AddUnique(TemplateId);
-					}
-				}
-
-				// Cap tool call log at 50 entries to keep continuation prompts bounded
-				if (LastRunContext.ToolCallLog.Num() < 50)
-				{
-					LastRunContext.ToolCallLog.Add(MoveTemp(Entry));
-				}
 			}
 		});
 
@@ -1252,7 +1110,6 @@ void FOliveCLIProviderBase::LaunchCLIProcess(
 					UE_LOG(LogOliveCLIProvider, Warning,
 						TEXT("%s process idle for %.0f seconds (limit=%.0fs) - terminating"),
 						*CLIName, FPlatformTime::Seconds() - LastOutputTime, StdoutIdleTimeout);
-					bLastRunTimedOut = true;
 					bStopReading = true;
 					if (*Guard)
 					{
@@ -1268,8 +1125,7 @@ void FOliveCLIProviderBase::LaunchCLIProcess(
 			// doesn't trigger) but no MCP tool calls are being made.
 			//
 			// Tier 1 (nudge-kill): terminates the process after NudgeSeconds of no
-			//   tool call. bLastRunTimedOut triggers auto-continue, which relaunches
-			//   with an enriched continuation prompt.
+			//   tool call. User can send another message to --resume the session.
 			// Tier 2 (hard-kill): if the process is STILL running (shouldn't happen
 			//   normally, but covers edge cases) after CLI_TOOL_IDLE_KILL_SECONDS,
 			//   terminates unconditionally.
@@ -1287,7 +1143,6 @@ void FOliveCLIProviderBase::LaunchCLIProcess(
 					UE_LOG(LogOliveCLIProvider, Warning,
 						TEXT("%s process: no MCP tool call in %.0f seconds (hard limit=%.0fs) - terminating"),
 						*CLIName, TimeSinceLastTool, CLI_TOOL_IDLE_KILL_SECONDS);
-					bLastRunTimedOut = true;
 					bStopReading = true;
 					if (*Guard)
 					{
@@ -1297,13 +1152,12 @@ void FOliveCLIProviderBase::LaunchCLIProcess(
 				}
 				else if (TimeSinceLastTool > NudgeSeconds && !bNudgeKillIssued)
 				{
-					// Tier 1: nudge-kill -- agent thinking too long, relaunch
-					// with enriched prompt via auto-continue
+					// Tier 1: nudge-kill -- agent idle too long, terminate.
+					// User can send another message to --resume the session.
 					UE_LOG(LogOliveCLIProvider, Warning,
-						TEXT("%s process: no MCP tool call in %.0f seconds (nudge limit=%.0fs) - nudge kill (will auto-continue)"),
+						TEXT("%s process: no MCP tool call in %.0f seconds (nudge limit=%.0fs) - terminating"),
 						*CLIName, TimeSinceLastTool, NudgeSeconds);
 					bNudgeKillIssued = true;
-					bLastRunTimedOut = true;
 					bStopReading = true;
 					if (*Guard)
 					{
@@ -1319,8 +1173,6 @@ void FOliveCLIProviderBase::LaunchCLIProcess(
 			if (MaxRuntimeSeconds > 0.0 && (FPlatformTime::Seconds() - ProcessStartTime) > MaxRuntimeSeconds)
 			{
 				UE_LOG(LogOliveCLIProvider, Warning, TEXT("%s process exceeded total runtime limit (%.0f seconds) - terminating"), *CLIName, MaxRuntimeSeconds);
-				bLastRunTimedOut = true;
-				bLastRunWasRuntimeLimit = true;
 				bStopReading = true;
 				if (*Guard)
 				{
@@ -1431,107 +1283,18 @@ void FOliveCLIProviderBase::HandleResponseCompleteAutonomous(int32 ReturnCode)
 		ToolCallDelegateHandle.Reset();
 	}
 
-	// Clear tool filter (must happen before potential auto-continue which re-sets it)
+	// Clear tool filter
 	FOliveMCPServer::Get().ClearToolFilter();
-
-	// Capture run context for potential continuation.
-	// bLastRunTimedOut is set on the background thread before process termination;
-	// we read it here on the game thread after the process has exited.
-	LastRunContext.bValid = true;
-	if (bLastRunTimedOut)
-	{
-		if (bLastRunWasRuntimeLimit)
-			LastRunContext.Outcome = FAutonomousRunContext::EOutcome::RuntimeLimit;
-		else
-			LastRunContext.Outcome = FAutonomousRunContext::EOutcome::IdleTimeout;
-	}
-	// else stays Completed (the default set in Reset())
-
-	// Unified timeout handler: any idle timeout -> decomposition nudge.
-	// One nudge restart is allowed; if it also times out, report to user.
-	if (bLastRunTimedOut && AutoContinueCount < MaxAutoContinues)
-	{
-		AutoContinueCount++;
-
-		UE_LOG(LogOliveCLIProvider, Log,
-			TEXT("Run timed out (attempt %d/%d) — relaunching with decomposition nudge"),
-			AutoContinueCount, MaxAutoContinues);
-
-		bIsBusy = false;
-
-		FOnOliveStreamChunk SavedOnChunk = CurrentOnChunk;
-		FOnOliveComplete SavedOnComplete = CurrentOnComplete;
-		FOnOliveError SavedOnError = CurrentOnError;
-
-		bIsAutoContinuation = true;
-
-		AsyncTask(ENamedThreads::GameThread, [this,
-			SavedOnChunk, SavedOnComplete, SavedOnError]()
-		{
-			if (!(*AliveGuard))
-			{
-				return;
-			}
-
-			FString NudgePrompt = BuildContinuationPrompt(
-				TEXT("The task is too large to plan at once. Break the remaining work into small steps and execute them one at a time. Start with the first step now."));
-			SendMessageAutonomous(NudgePrompt, SavedOnChunk, SavedOnComplete, SavedOnError);
-		});
-
-		return;
-	}
 
 	// Log activity stats for diagnostic purposes
 	const double LastTool = LastToolCallTimestamp.load();
 	UE_LOG(LogOliveCLIProvider, Log,
-		TEXT("Autonomous run complete (exit code %d): last tool call %.1fs ago, accumulated %d chars, %d tool calls logged"),
+		TEXT("Autonomous run complete (exit code %d): last tool call %.1fs ago, accumulated %d chars"),
 		ReturnCode,
 		LastTool > 0.0 ? FPlatformTime::Seconds() - LastTool : -1.0,
-		AccumulatedResponse.Len(),
-		LastRunContext.ToolCallLog.Num());
+		AccumulatedResponse.Len());
 
-	// Guardrail: successful exit with no MCP tool activity is treated as a failed autonomous run.
-	// Retry once with a strict nudge, then report explicit error instead of silent text-only success.
-	if (ReturnCode == 0 && LastRunContext.ToolCallLog.Num() == 0)
-	{
-		if (AutoContinueCount < MaxAutoContinues)
-		{
-			AutoContinueCount++;
-
-			UE_LOG(LogOliveCLIProvider, Warning,
-				TEXT("Autonomous run produced no tool calls (attempt %d/%d) - retrying with strict tool-use nudge"),
-				AutoContinueCount, MaxAutoContinues);
-
-			bIsBusy = false;
-
-			FOnOliveStreamChunk SavedOnChunk = CurrentOnChunk;
-			FOnOliveComplete SavedOnComplete = CurrentOnComplete;
-			FOnOliveError SavedOnError = CurrentOnError;
-
-			bIsAutoContinuation = true;
-
-			AsyncTask(ENamedThreads::GameThread, [this, SavedOnChunk, SavedOnComplete, SavedOnError]()
-			{
-				if (!(*AliveGuard))
-				{
-					return;
-				}
-
-				FString NudgePrompt = BuildContinuationPrompt(
-					TEXT("You made zero MCP tool calls. Make your first tool call immediately. Do not provide explanation-only text."));
-				SendMessageAutonomous(NudgePrompt, SavedOnChunk, SavedOnComplete, SavedOnError);
-			});
-
-			return;
-		}
-
-		bIsBusy = false;
-		CurrentOnError.ExecuteIfBound(FString::Printf(
-			TEXT("%s run completed without MCP tool calls. The task was not executed. Retry with a more explicit actionable request."),
-			*GetCLIName()));
-		return;
-	}
-
+	// Non-zero exit with no output is a crash/spawn failure
 	if (ReturnCode != 0 && AccumulatedResponse.IsEmpty())
 	{
 		bIsBusy = false;
@@ -1595,253 +1358,6 @@ TArray<FString> FOliveCLIProviderBase::ExtractKeywordsFromMessage(const FString&
 	}
 
 	return Keywords;
-}
-
-bool FOliveCLIProviderBase::IsContinuationMessage(const FString& Message) const
-{
-	FString Lower = Message.ToLower().TrimStartAndEnd();
-
-	// Exact match for common continuation phrases
-	if (Lower == TEXT("continue") ||
-		Lower == TEXT("keep going") ||
-		Lower == TEXT("finish") ||
-		Lower == TEXT("finish the task") ||
-		Lower == TEXT("keep working") ||
-		Lower == TEXT("resume"))
-	{
-		return true;
-	}
-
-	// Prefix match for phrases with additional context (e.g., "continue building the gun")
-	if (Lower.StartsWith(TEXT("continue ")) ||
-		Lower.StartsWith(TEXT("keep going")) ||
-		Lower.StartsWith(TEXT("finish ")))
-	{
-		return true;
-	}
-
-	return false;
-}
-
-FString FOliveCLIProviderBase::BuildContinuationPrompt(const FString& UserMessage) const
-{
-	FString Prompt;
-
-	// Header
-	Prompt += TEXT("## Continuation of Previous Task\n\n");
-
-	// Original task
-	Prompt += TEXT("### Original Task\n");
-	Prompt += LastRunContext.OriginalMessage;
-	Prompt += TEXT("\n\n");
-
-	// What was done
-	Prompt += TEXT("### What Was Already Done\n");
-	if (LastRunContext.ToolCallLog.Num() > 0)
-	{
-		// Group by asset for readability
-		TMap<FString, TArray<FString>> ByAsset;
-		for (const FAutonomousRunContext::FToolCallEntry& Entry : LastRunContext.ToolCallLog)
-		{
-			FString Key = Entry.AssetPath.IsEmpty() ? TEXT("(general)") : Entry.AssetPath;
-			ByAsset.FindOrAdd(Key).Add(Entry.ToolName);
-		}
-
-		for (const auto& Pair : ByAsset)
-		{
-			Prompt += FString::Printf(TEXT("- %s: "), *Pair.Key);
-
-			// Deduplicate consecutive identical tool names for brevity
-			TArray<FString> Condensed;
-			FString LastTool;
-			int32 Count = 0;
-			for (const FString& Tool : Pair.Value)
-			{
-				if (Tool == LastTool)
-				{
-					Count++;
-				}
-				else
-				{
-					if (!LastTool.IsEmpty())
-					{
-						Condensed.Add(Count > 1 ?
-							FString::Printf(TEXT("%s x%d"), *LastTool, Count) : LastTool);
-					}
-					LastTool = Tool;
-					Count = 1;
-				}
-			}
-			if (!LastTool.IsEmpty())
-			{
-				Condensed.Add(Count > 1 ?
-					FString::Printf(TEXT("%s x%d"), *LastTool, Count) : LastTool);
-			}
-
-			Prompt += FString::Join(Condensed, TEXT(", "));
-			Prompt += TEXT("\n");
-		}
-	}
-	else
-	{
-		Prompt += TEXT("No tool calls were recorded from the previous run.\n");
-	}
-
-	// Note previously fetched resources for context (not mandated)
-	if (LastRunContext.FetchedRecipeNames.Num() > 0 || LastRunContext.FetchedTemplateIds.Num() > 0)
-	{
-		Prompt += TEXT("\n### Previously Fetched Resources\n");
-		Prompt += TEXT("The previous run read these resources. Re-fetch only if you need them:\n");
-		for (const FString& Name : LastRunContext.FetchedRecipeNames)
-		{
-			Prompt += FString::Printf(TEXT("- `olive.get_recipe` name=\"%s\"\n"), *Name);
-		}
-		for (const FString& Id : LastRunContext.FetchedTemplateIds)
-		{
-			Prompt += FString::Printf(TEXT("- `blueprint.get_template` template_id=\"%s\"\n"), *Id);
-		}
-	}
-
-	// Run outcome
-	Prompt += TEXT("\n### Previous Run Outcome\n");
-	switch (LastRunContext.Outcome)
-	{
-	case FAutonomousRunContext::EOutcome::IdleTimeout:
-		Prompt += TEXT("The previous run TIMED OUT (600s of no output). Break the remaining work into smaller steps and execute them one at a time.\n");
-		break;
-	case FAutonomousRunContext::EOutcome::RuntimeLimit:
-		Prompt += TEXT("The previous run hit the runtime limit. The task is incomplete.\n");
-		break;
-	case FAutonomousRunContext::EOutcome::OutputStall:
-		Prompt += TEXT("The previous run FROZE: you gathered all context and began writing a response, ");
-		Prompt += TEXT("then stopped before calling any tools. Do NOT re-read anything — you already have ");
-		Prompt += TEXT("everything you need. Start your FIRST tool call immediately. No preamble.\n");
-		break;
-	case FAutonomousRunContext::EOutcome::Completed:
-		Prompt += TEXT("The previous run completed normally. ");
-		Prompt += TEXT("The user wants you to continue or finish remaining work.\n");
-		break;
-	}
-
-	// Asset state summary (pre-read on game thread so the AI doesn't need to re-read)
-	FString AssetState = BuildAssetStateSummary();
-	if (!AssetState.IsEmpty())
-	{
-		Prompt += TEXT("\n");
-		Prompt += AssetState;
-	}
-
-	// Scan for empty function graphs and sparse event graphs to build a concrete directive.
-	// This runs on the game thread (same as BuildAssetStateSummary above).
-	TArray<FEmptyFunctionInfo> EmptyGraphs;
-	TArray<FSparseEventGraphInfo> SparseEventGraphs;
-	ScanEmptyFunctionGraphs(LastRunContext.ModifiedAssetPaths, EmptyGraphs, SparseEventGraphs);
-
-	// Empty function graph listing with signatures
-	if (EmptyGraphs.Num() > 0)
-	{
-		Prompt += TEXT("\n### Remaining Work: Empty Function Graphs\n\n");
-		Prompt += TEXT("EMPTY (no logic -- write these with apply_plan_json):\n");
-
-		/** Show full signatures for the first few, names-only for the rest. */
-		constexpr int32 MaxDetailedEntries = 3;
-		int32 CharBudget = 4000;
-
-		for (int32 i = 0; i < EmptyGraphs.Num() && CharBudget > 0; i++)
-		{
-			const FEmptyFunctionInfo& Info = EmptyGraphs[i];
-			FString AssetName = FPaths::GetBaseFilename(Info.AssetPath);
-
-			FString Line;
-			if (i < MaxDetailedEntries)
-			{
-				// Full detail: index, name, signature, cross-dep flag
-				Line = FString::Printf(TEXT("%d. %s::%s"), i + 1, *AssetName, *Info.FunctionName);
-				if (Info.Inputs.Num() > 0)
-				{
-					Line += TEXT(" (") + FString::Join(Info.Inputs, TEXT(", ")) + TEXT(")");
-				}
-				else
-				{
-					Line += TEXT(" (no inputs)");
-				}
-				if (Info.Outputs.Num() > 0)
-				{
-					Line += TEXT(" -> ") + FString::Join(Info.Outputs, TEXT(", "));
-				}
-				if (Info.bHasCrossAssetDeps)
-				{
-					Line += TEXT(" [cross-asset deps]");
-				}
-			}
-			else
-			{
-				// Name only for entries beyond the detailed threshold
-				Line = FString::Printf(TEXT("%d. %s::%s"), i + 1, *AssetName, *Info.FunctionName);
-			}
-
-			Line += TEXT("\n");
-			CharBudget -= Line.Len();
-			if (CharBudget > 0)
-			{
-				Prompt += Line;
-			}
-		}
-	}
-
-	// Sparse event graph note
-	if (SparseEventGraphs.Num() > 0)
-	{
-		Prompt += TEXT("\nSPARSE EVENT GRAPHS (<=3 nodes -- likely need logic):\n");
-		for (const FSparseEventGraphInfo& Info : SparseEventGraphs)
-		{
-			FString AssetName = FPaths::GetBaseFilename(Info.AssetPath);
-			Prompt += FString::Printf(TEXT("- %s::%s (%d nodes)\n"),
-				*AssetName, *Info.GraphName, Info.NodeCount);
-		}
-	}
-
-	// Action directive -- concrete "do THIS first" when empty functions are known
-	Prompt += TEXT("\n### Your Task Now\n\n");
-	if (EmptyGraphs.Num() > 0)
-	{
-		FString FirstAsset = FPaths::GetBaseFilename(EmptyGraphs[0].AssetPath);
-		Prompt += FString::Printf(
-			TEXT("Write the logic for %s::%s FIRST using apply_plan_json.\n"),
-			*FirstAsset, *EmptyGraphs[0].FunctionName);
-		Prompt += TEXT("Then write the next empty function. Compile after each.\n");
-		Prompt += TEXT("Do NOT re-read these assets -- their current state is shown above.\n");
-	}
-	else if (LastRunContext.ModifiedAssetPaths.Num() > 0)
-	{
-		Prompt += TEXT("All functions have graph logic. Compile each Blueprint and verify 0 errors.\n");
-		Prompt += TEXT("If errors exist, fix them. If all clean, the task may be complete.\n");
-		Prompt += TEXT("Do NOT re-read these assets -- their current state is shown above.\n");
-	}
-	else
-	{
-		Prompt += TEXT("1. Determine what still needs to be done to complete the original task.\n");
-		Prompt += TEXT("2. Complete the remaining work.\n");
-	}
-
-	// Include the user's continuation message if it has substantive context.
-	// Skip bare continuation phrases (continue, keep going, etc.) since
-	// the sections above already convey the intent. Always include longer messages
-	// (e.g., decomposition nudges from auto-continue, or user instructions like
-	// "continue building the gun").
-	FString Trimmed = UserMessage.TrimStartAndEnd();
-	if (!Trimmed.IsEmpty() &&
-		!Trimmed.Equals(TEXT("continue"), ESearchCase::IgnoreCase) &&
-		!Trimmed.Equals(TEXT("keep going"), ESearchCase::IgnoreCase) &&
-		!Trimmed.Equals(TEXT("finish"), ESearchCase::IgnoreCase) &&
-		!Trimmed.Equals(TEXT("resume"), ESearchCase::IgnoreCase))
-	{
-		Prompt += TEXT("\n### Additional Instructions\n");
-		Prompt += Trimmed;
-		Prompt += TEXT("\n");
-	}
-
-	return Prompt;
 }
 
 FString FOliveCLIProviderBase::BuildAssetStateSummary(const TArray<FString>& AssetPaths) const
@@ -2178,6 +1694,18 @@ void FOliveCLIProviderBase::CancelRequest()
 	}
 
 	KillProcess();
+
+	// NOTE: CLISessionId and bHasActiveSession are deliberately preserved.
+	// The next message will --resume the same session, picking up where
+	// the cancelled run left off.
+}
+
+void FOliveCLIProviderBase::ResetSession()
+{
+	KillProcess();
+	CLISessionId.Empty();
+	bHasActiveSession = false;
+	AutonomousSandboxDir.Empty(); // Force sandbox re-creation next session
 }
 
 void FOliveCLIProviderBase::KillProcess()

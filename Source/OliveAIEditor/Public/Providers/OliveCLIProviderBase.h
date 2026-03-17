@@ -62,64 +62,6 @@ private:
 };
 
 /**
- * Context from the most recent autonomous run, used to enrich "continue" messages.
- *
- * Tracks the original user message, which assets were modified, and what tools
- * were called during the run. When the user sends a continuation message
- * (e.g., "continue", "keep going"), this context is injected into the prompt
- * so the new CLI process knows what was already done.
- */
-struct FAutonomousRunContext
-{
-	/** The original user message that started the run */
-	FString OriginalMessage;
-
-	/** Asset paths that were modified during the run (extracted from MCP tool calls) */
-	TArray<FString> ModifiedAssetPaths;
-
-	/** Tool call log entry: tool name + asset path (if any). */
-	struct FToolCallEntry
-	{
-		FString ToolName;
-		FString AssetPath;
-	};
-
-	/** Ordered log of tool calls made during the run. Capped at 50 entries. */
-	TArray<FToolCallEntry> ToolCallLog;
-
-	/** Recipe names fetched via olive.get_recipe during the run, for continuation prompt */
-	TArray<FString> FetchedRecipeNames;
-
-	/** Template IDs fetched via blueprint.get_template during the run, for continuation prompt */
-	TArray<FString> FetchedTemplateIds;
-
-	/** Run outcome */
-	enum class EOutcome : uint8
-	{
-		Completed,    // Process exited normally
-		IdleTimeout,  // Killed by idle timeout (no stdout for N seconds)
-		RuntimeLimit, // Killed by total runtime limit
-		OutputStall   // AI started a text response then froze (no chars + no tool calls for 90s)
-	};
-	EOutcome Outcome = EOutcome::Completed;
-
-	/** Whether this context is valid (a run has completed) */
-	bool bValid = false;
-
-	/** Reset to empty state */
-	void Reset()
-	{
-		OriginalMessage.Empty();
-		ModifiedAssetPaths.Empty();
-		ToolCallLog.Empty();
-		FetchedRecipeNames.Empty();
-		FetchedTemplateIds.Empty();
-		Outcome = EOutcome::Completed;
-		bValid = false;
-	}
-};
-
-/**
  * Abstract base class for CLI-based AI providers.
  *
  * Provides the complete IOliveAIProvider implementation for providers that
@@ -171,6 +113,7 @@ public:
 
 	virtual bool SupportsAutonomousMode() const override { return true; }
 	virtual void CancelRequest() override;
+	virtual void ResetSession() override;
 	virtual bool IsBusy() const override { return bIsBusy; }
 	virtual FString GetLastError() const override { return LastError; }
 	virtual const FOliveProviderConfig& GetConfig() const override { return CurrentConfig; }
@@ -245,6 +188,17 @@ protected:
 	 * Default: false (non-Anthropic providers get prescriptive guidance).
 	 */
 	virtual bool IsAnthropicProvider() const { return false; }
+
+	/**
+	 * Whether this provider supports session resume via CLI flags.
+	 * When true, SendMessageAutonomous() uses --session-id on first launch and
+	 * --resume on subsequent messages, preserving conversation context across
+	 * process restarts. When false, each message launches an independent process.
+	 *
+	 * Default: false. Override to return true for providers that support session
+	 * resume (e.g., Claude Code CLI with --resume <session-id>).
+	 */
+	virtual bool SupportsSessionResume() const { return false; }
 
 	// ==========================================
 	// Shared infrastructure (protected, usable by subclasses)
@@ -339,15 +293,6 @@ protected:
 	void HandleResponseCompleteAutonomous(int32 ReturnCode);
 
 	/**
-	 * Check if a user message looks like a continuation request.
-	 * Matches common phrases like "continue", "keep going", "finish", "resume".
-	 *
-	 * @param Message The user's message text
-	 * @return True if the message appears to be a continuation of a previous task
-	 */
-	bool IsContinuationMessage(const FString& Message) const;
-
-	/**
 	 * Extract meaningful keywords from a user message for asset search.
 	 * Splits on spaces, keeps words 4+ chars, filters out common stop words
 	 * and UE jargon that would match too broadly. Caps at 5 keywords.
@@ -356,16 +301,6 @@ protected:
 	 * @return Array of lowercase keyword strings suitable for project index search
 	 */
 	TArray<FString> ExtractKeywordsFromMessage(const FString& Message) const;
-
-	/**
-	 * Build an enriched prompt for a continuation message by injecting context
-	 * from the previous autonomous run. Includes the original task, what was done
-	 * (grouped by asset with deduped tool names), run outcome, and action directive.
-	 *
-	 * @param UserMessage The user's continuation message (e.g., "continue")
-	 * @return Enriched prompt with previous run context
-	 */
-	FString BuildContinuationPrompt(const FString& UserMessage) const;
 
 	/**
 	 * Build a compact summary of current state for each asset in the given set.
@@ -379,16 +314,6 @@ protected:
 	 * @return Formatted summary for injection into prompts
 	 */
 	FString BuildAssetStateSummary(const TArray<FString>& AssetPaths) const;
-
-	/**
-	 * Build a compact summary of current state for each modified asset from the last run.
-	 * Convenience overload that reads from LastRunContext.ModifiedAssetPaths.
-	 *
-	 * MUST be called on the game thread (loads UObject packages).
-	 *
-	 * @return Formatted summary for injection into continuation prompts
-	 */
-	FString BuildAssetStateSummary() const { return BuildAssetStateSummary(LastRunContext.ModifiedAssetPaths); }
 
 	/**
 	 * Build additional prescriptive guidance for non-Anthropic CLI providers.
@@ -503,31 +428,20 @@ protected:
 	/** Delegate handle for MCP tool call subscription (cleaned up on process exit) */
 	FDelegateHandle ToolCallDelegateHandle;
 
-	/** Context from the most recent autonomous run for "continue" enrichment */
-	FAutonomousRunContext LastRunContext;
+	/**
+	 * Session ID for CLI providers that support session resume.
+	 * Set on the first message of a session (via FGuid::NewGuid()), then passed
+	 * to subsequent launches via --resume <CLISessionId> so the CLI reloads
+	 * prior conversation history from its own session store.
+	 */
+	FString CLISessionId;
 
-	/** Whether the last process termination was due to timeout (idle or runtime limit).
-	 *  Set on the background thread in LaunchCLIProcess, read on game thread in HandleResponseCompleteAutonomous. */
-	bool bLastRunTimedOut = false;
-
-	/** Whether the last timeout was specifically a runtime limit (not idle timeout).
-	 *  Set on the background thread alongside bLastRunTimedOut. Used to distinguish
-	 *  idle stalls (auto-continuable) from runtime limit hits (not auto-continuable). */
-	bool bLastRunWasRuntimeLimit = false;
-
-	/** Number of automatic continuations since last user-initiated message.
-	 *  Reset to 0 on each non-continuation SendMessageAutonomous call. */
-	int32 AutoContinueCount = 0;
-
-	/** Whether the current SendMessageAutonomous invocation was triggered internally
-	 *  by the auto-continue mechanism in HandleResponseCompleteAutonomous.
-	 *  Set to true before the auto-continue AsyncTask dispatch, consumed at the top
-	 *  of SendMessageAutonomous. This ensures AutoContinueCount is preserved across
-	 *  auto-continues but reset on any user-initiated input. */
-	bool bIsAutoContinuation = false;
-
-	/** Maximum automatic continuations before giving up and reporting to user */
-	static constexpr int32 MaxAutoContinues = 2;
+	/**
+	 * Whether a session is currently active (first message has been sent).
+	 * When true, subsequent messages use --resume instead of --session-id,
+	 * and skip sandbox setup, discovery pass, and decomposition directives.
+	 */
+	bool bHasActiveSession = false;
 
 	/**
 	 * Asset paths from @-mentions in the chat UI, set before the initial autonomous run.

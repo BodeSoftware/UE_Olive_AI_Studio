@@ -2,7 +2,6 @@
 
 #include "Chat/OlivePromptAssembler.h"
 #include "Index/OliveProjectIndex.h"
-#include "Profiles/OliveFocusProfileManager.h"
 #include "Settings/OliveAISettings.h"
 #include "OliveAIEditorModule.h"
 #include "Misc/FileHelper.h"
@@ -31,37 +30,29 @@ void FOlivePromptAssembler::Initialize()
 // ==========================================
 
 FString FOlivePromptAssembler::AssembleSystemPrompt(
-	const FString& FocusProfileName,
+	EOliveChatMode Mode,
 	const TArray<FString>& ContextAssetPaths,
 	int32 MaxTokens)
 {
-	return AssembleSystemPromptInternal(BasePromptTemplate, FocusProfileName, ContextAssetPaths, MaxTokens);
+	return AssembleSystemPromptInternal(BasePromptTemplate, Mode, ContextAssetPaths, MaxTokens);
 }
 
 FString FOlivePromptAssembler::AssembleSystemPromptWithBase(
 	const FString& BasePromptOverride,
-	const FString& FocusProfileName,
+	EOliveChatMode Mode,
 	const TArray<FString>& ContextAssetPaths,
 	int32 MaxTokens)
 {
-	return AssembleSystemPromptInternal(BasePromptOverride, FocusProfileName, ContextAssetPaths, MaxTokens);
+	return AssembleSystemPromptInternal(BasePromptOverride, Mode, ContextAssetPaths, MaxTokens);
 }
 
 FString FOlivePromptAssembler::AssembleSystemPromptInternal(
 	const FString& BasePrompt,
-	const FString& FocusProfileName,
+	EOliveChatMode Mode,
 	const TArray<FString>& ContextAssetPaths,
 	int32 MaxTokens)
 {
 	FString FullPrompt = SubstituteVariables(BasePrompt);
-
-	// Add profile-specific guidance
-	const FString ProfileAddition = GetProfilePromptAddition(FocusProfileName);
-	if (!ProfileAddition.IsEmpty())
-	{
-		FullPrompt += TEXT("\n\n## Focus Mode\n");
-		FullPrompt += ProfileAddition;
-	}
 
 	// Add project context
 	const FString ProjectContext = GetProjectContext();
@@ -79,19 +70,16 @@ FString FOlivePromptAssembler::AssembleSystemPromptInternal(
 		FullPrompt += PolicyContext;
 	}
 
-	// Add layer decision policy for profiles that include both C++ and BP
-	if (FocusProfileName == TEXT("Auto") || FocusProfileName == TEXT("C++ & Blueprint"))
+	// Add layer decision policy -- always included since all modes can benefit
+	const FString LayerPolicy = GetLayerDecisionPolicy();
+	if (!LayerPolicy.IsEmpty())
 	{
-		const FString LayerPolicy = GetLayerDecisionPolicy();
-		if (!LayerPolicy.IsEmpty())
-		{
-			FullPrompt += TEXT("\n\n");
-			FullPrompt += LayerPolicy;
-		}
+		FullPrompt += TEXT("\n\n");
+		FullPrompt += LayerPolicy;
 	}
 
-	// Add capability knowledge packs (modular, profile-scoped).
-	const FString CapabilityKnowledge = GetCapabilityKnowledge(FocusProfileName);
+	// Add all capability knowledge packs (no per-mode filtering)
+	const FString CapabilityKnowledge = GetCapabilityKnowledge();
 	if (!CapabilityKnowledge.IsEmpty())
 	{
 		FullPrompt += TEXT("\n\n## Capability Knowledge\n");
@@ -113,23 +101,20 @@ FString FOlivePromptAssembler::AssembleSystemPromptInternal(
 		}
 	}
 
+	// Mode suffix is the LAST paragraph -- highest attention position
+	const FString ModeSuffix = GetModeSuffix(Mode);
+	if (!ModeSuffix.IsEmpty())
+	{
+		FullPrompt += TEXT("\n\n## Active Mode\n");
+		FullPrompt += ModeSuffix;
+	}
+
 	return FullPrompt;
 }
 
 // ==========================================
 // Components
 // ==========================================
-
-FString FOlivePromptAssembler::GetProfilePromptAddition(const FString& ProfileName) const
-{
-	const FString* FilePrompt = ProfilePrompts.Find(ProfileName);
-	if (FilePrompt && !FilePrompt->IsEmpty())
-	{
-		return *FilePrompt;
-	}
-
-	return FOliveFocusProfileManager::Get().GetSystemPromptAddition(ProfileName);
-}
 
 FString FOlivePromptAssembler::GetProjectContext() const
 {
@@ -276,24 +261,12 @@ When both C++ and Blueprint can satisfy a request, follow this decision process:
 )");
 }
 
-FString FOlivePromptAssembler::GetCapabilityKnowledge(const FString& ProfileName) const
+FString FOlivePromptAssembler::GetCapabilityKnowledge() const
 {
-	FString NormalizedProfile = FOliveFocusProfileManager::Get().NormalizeProfileName(ProfileName);
-	const TArray<FString>* PackIds = ProfileCapabilityPackIds.Find(NormalizedProfile);
-	if (!PackIds)
-	{
-		PackIds = ProfileCapabilityPackIds.Find(TEXT("Auto"));
-	}
-	if (!PackIds)
-	{
-		return TEXT("");
-	}
-
 	FString Combined;
-	for (const FString& PackId : *PackIds)
+	for (const auto& Pair : CapabilityKnowledgePacks)
 	{
-		const FString* PackText = CapabilityKnowledgePacks.Find(PackId);
-		if (!PackText || PackText->IsEmpty())
+		if (Pair.Value.IsEmpty())
 		{
 			continue;
 		}
@@ -302,27 +275,24 @@ FString FOlivePromptAssembler::GetCapabilityKnowledge(const FString& ProfileName
 		{
 			Combined += TEXT("\n\n");
 		}
-		Combined += *PackText;
+		Combined += Pair.Value;
 	}
 
-	// Append template catalog for Blueprint-relevant profiles
-	if (NormalizedProfile == TEXT("Auto") || NormalizedProfile == TEXT("Blueprint"))
+	// Append template catalog if available
+	if (FOliveTemplateSystem::Get().HasTemplates())
 	{
-		if (FOliveTemplateSystem::Get().HasTemplates())
+		const FString& Catalog = FOliveTemplateSystem::Get().GetCatalogBlock();
+		if (!Catalog.IsEmpty())
 		{
-			const FString& Catalog = FOliveTemplateSystem::Get().GetCatalogBlock();
-			if (!Catalog.IsEmpty())
-			{
-				if (!Combined.IsEmpty()) { Combined += TEXT("\n\n"); }
-				Combined += Catalog;
-			}
+			if (!Combined.IsEmpty()) { Combined += TEXT("\n\n"); }
+			Combined += Catalog;
 		}
 	}
 
 	return Combined;
 }
 
-FString FOlivePromptAssembler::BuildSharedSystemPreamble(const FString& ProfileName) const
+FString FOlivePromptAssembler::BuildSharedSystemPreamble() const
 {
 	if (CapabilityKnowledgePacks.Num() == 0)
 	{
@@ -350,8 +320,8 @@ FString FOlivePromptAssembler::BuildSharedSystemPreamble(const FString& ProfileN
 		Preamble += TEXT("\n");
 	}
 
-	// Capability knowledge — recipes, authoring rules
-	const FString CapabilityKnowledge = GetCapabilityKnowledge(ProfileName);
+	// Capability knowledge -- all packs, no filtering
+	const FString CapabilityKnowledge = GetCapabilityKnowledge();
 	if (!CapabilityKnowledge.IsEmpty())
 	{
 		Preamble += CapabilityKnowledge;
@@ -429,6 +399,35 @@ FString FOlivePromptAssembler::BuildBlueprintContextBlock(const FString& AssetPa
 }
 
 // ==========================================
+// Mode Suffix
+// ==========================================
+
+FString FOlivePromptAssembler::GetModeSuffix(EOliveChatMode Mode) const
+{
+	switch (Mode)
+	{
+	case EOliveChatMode::Code:
+		return TEXT("You are in Code mode. Execute the user's request fully -- research, plan, build, "
+			"compile, and verify. Use whatever tools and approach you judge best. Take a snapshot "
+			"before destructive changes. Do not ask for permission on standard operations.");
+
+	case EOliveChatMode::Plan:
+		return TEXT("You are in Plan mode. Research the codebase and present a structured plan. "
+			"Use read tools freely to understand the current state. Do not execute write operations. "
+			"Present your plan as: 1) what assets to create/modify, 2) what each asset needs "
+			"(components, variables, functions), 3) how assets communicate. "
+			"The user will approve before you build.");
+
+	case EOliveChatMode::Ask:
+		return TEXT("You are in Ask mode. Answer questions about the project using read tools. "
+			"Explain what you find clearly. Do not make any changes to assets.");
+
+	default:
+		return FString();
+	}
+}
+
+// ==========================================
 // Token Estimation
 // ==========================================
 
@@ -459,9 +458,7 @@ void FOlivePromptAssembler::ReloadTemplates()
 
 void FOlivePromptAssembler::LoadPromptTemplates()
 {
-	ProfilePrompts.Empty();
 	CapabilityKnowledgePacks.Empty();
-	ProfileCapabilityPackIds.Empty();
 
 	// Set default base prompt (can be overridden from file)
 	BasePromptTemplate = TEXT(R"(You are Olive AI, an expert AI assistant for Unreal Engine development integrated directly into the editor.
@@ -477,6 +474,9 @@ void FOlivePromptAssembler::LoadPromptTemplates()
 2. **Search first.** Use project.search to find assets before attempting to read them.
 3. **One operation at a time.** Chain operations logically but don't skip steps.
 4. **Self-correct on errors.** If an operation fails, analyze the error and attempt fixes.
+
+## Templates
+Templates are available for common patterns -- use `list_templates` to search if you want reference material.
 
 ## Response Guidelines
 - Be concise. Focus on the task at hand.
@@ -537,36 +537,6 @@ Project Name: {PROJECT_NAME}
 				}
 				return true;
 			});
-		}
-	}
-
-	// Profile -> capability pack mapping. Add packs here without changing assembly flow.
-	ProfileCapabilityPackIds.Add(TEXT("Auto"), { TEXT("blueprint_authoring"), TEXT("recipe_routing"), TEXT("node_routing"), TEXT("blueprint_design_patterns"), TEXT("events_vs_functions") });
-	ProfileCapabilityPackIds.Add(TEXT("Blueprint"), { TEXT("blueprint_authoring"), TEXT("recipe_routing"), TEXT("node_routing"), TEXT("blueprint_design_patterns"), TEXT("events_vs_functions") });
-	// NOTE: C++ profile intentionally omits recipe_routing — current recipes are Blueprint-only.
-	// Add it when C++ recipes exist.
-	ProfileCapabilityPackIds.Add(TEXT("C++"), {});
-
-	// Optional profile-specific prompts sourced from the profile manager.
-	const TArray<FOliveFocusProfile> Profiles = FOliveFocusProfileManager::Get().GetAllProfiles();
-	for (const FOliveFocusProfile& Profile : Profiles)
-	{
-		if (Profile.PromptTemplateFile.IsEmpty())
-		{
-			continue;
-		}
-
-		const FString ProfilePromptPath = FPaths::Combine(PluginDir, TEXT("Content/SystemPrompts"), Profile.PromptTemplateFile);
-		if (!FPaths::FileExists(ProfilePromptPath))
-		{
-			continue;
-		}
-
-		FString FileContent;
-		if (FFileHelper::LoadFileToString(FileContent, *ProfilePromptPath) && !FileContent.IsEmpty())
-		{
-			ProfilePrompts.Add(Profile.Name, FileContent);
-			UE_LOG(LogOliveAI, Verbose, TEXT("Loaded profile prompt: %s"), *Profile.Name);
 		}
 	}
 

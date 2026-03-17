@@ -23,7 +23,7 @@ bool FOliveBrainLayerRunLifecycleTest::RunTest(const FString& Parameters)
 
 	const FString RunId = Brain.BeginRun();
 	TestTrue(TEXT("RunId should be non-empty"), !RunId.IsEmpty());
-	TestEqual(TEXT("BeginRun should enter WorkerActive"), Brain.GetState(), EOliveBrainState::WorkerActive);
+	TestEqual(TEXT("BeginRun should enter Active"), Brain.GetState(), EOliveBrainState::Active);
 	TestEqual(TEXT("Worker phase should reset to Streaming"), Brain.GetWorkerPhase(), EOliveWorkerPhase::Streaming);
 
 	bool bPhaseChanged = false;
@@ -36,10 +36,9 @@ bool FOliveBrainLayerRunLifecycleTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Worker phase should be ExecutingTools"), Brain.GetWorkerPhase(), EOliveWorkerPhase::ExecutingTools);
 
 	Brain.CompleteRun(EOliveRunOutcome::Completed);
-	TestEqual(TEXT("Completed outcome should enter Completed state"), Brain.GetState(), EOliveBrainState::Completed);
-
-	Brain.ResetToIdle();
-	TestEqual(TEXT("Reset should return to Idle"), Brain.GetState(), EOliveBrainState::Idle);
+	// 3-state model: CompleteRun transitions Active->Idle directly
+	TestEqual(TEXT("Completed outcome should return to Idle"), Brain.GetState(), EOliveBrainState::Idle);
+	TestEqual(TEXT("Last outcome should be Completed"), Brain.GetLastOutcome(), EOliveRunOutcome::Completed);
 
 	return true;
 }
@@ -76,18 +75,18 @@ bool FOliveBrainLayerInvalidTransitionTest::RunTest(const FString& Parameters)
 	Brain.BeginRun();
 	Brain.CompleteRun(EOliveRunOutcome::Completed);
 
-	TestEqual(TEXT("Should be in Completed state"), Brain.GetState(), EOliveBrainState::Completed);
+	// 3-state model: Active->Idle after CompleteRun
+	TestEqual(TEXT("Should be in Idle state after CompleteRun"), Brain.GetState(), EOliveBrainState::Idle);
 
-	const bool bTransitionAllowed = Brain.TransitionTo(EOliveBrainState::WorkerActive);
-	TestFalse(TEXT("Completed -> WorkerActive should be invalid"), bTransitionAllowed);
-	TestEqual(TEXT("State should remain Completed"), Brain.GetState(), EOliveBrainState::Completed);
+	// Idle -> Active is the only valid transition from Idle
+	const bool bTransitionAllowed = Brain.TransitionTo(EOliveBrainState::Cancelling);
+	TestFalse(TEXT("Idle -> Cancelling should be invalid"), bTransitionAllowed);
+	TestEqual(TEXT("State should remain Idle"), Brain.GetState(), EOliveBrainState::Idle);
 
-	// Must go through Idle
-	Brain.ResetToIdle();
-	const bool bNowAllowed = Brain.TransitionTo(EOliveBrainState::WorkerActive);
-	TestTrue(TEXT("Idle -> WorkerActive should be valid"), bNowAllowed);
-	TestEqual(TEXT("State should be WorkerActive"), Brain.GetState(), EOliveBrainState::WorkerActive);
+	// Idle -> Active should work
+	const bool bNowAllowed = Brain.TransitionTo(EOliveBrainState::Active);
+	TestTrue(TEXT("Idle -> Active should be valid"), bNowAllowed);
+	TestEqual(TEXT("State should be Active"), Brain.GetState(), EOliveBrainState::Active);
 
 	return true;
 }
-

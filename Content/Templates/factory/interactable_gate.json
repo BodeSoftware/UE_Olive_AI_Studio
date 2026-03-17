@@ -3,7 +3,7 @@
     "template_type": "factory",
     "display_name": "Interactable Gate",
 
-    "catalog_description": "Actor with slider-based gate, smooth linear movement via Timeline, bIsOpen toggle, configurable distance. Use blueprint.create_timeline to add GateTimeline after creation.",
+    "catalog_description": "Actor with slider-based gate, smooth linear movement via Timeline, bIsOpen toggle, configurable distance. Needs a Timeline for smooth animation after structure is created.",
     "catalog_examples": "Gate, Portcullis, SlidingDoor, Elevator, Platform, Barrier",
 
     "parameters": {
@@ -101,7 +101,7 @@
         "functions": [
             {
                 "name": "ToggleGate",
-                "description": "Custom Event that toggles open/closed state. Flips bIsOpen and plays GateTimeline forward (Play) or backward (Reverse). Must be a Custom Event (not a function) because Timeline nodes require EventGraph. If this Blueprint implements an interface like BPI_Interactable, the interface event (Interact) can call this directly since both live in EventGraph. After creating the timeline with blueprint.create_timeline, wire this event's exec to the timeline's Play or Reverse pin, and wire the track output through a Lerp into SetRelativeLocation -- using connect_pins or plan_json @references.",
+                "description": "Custom Event that toggles open/closed state. Flips bIsOpen and plays a GateTimeline forward or backward. Must be a Custom Event (not a function) because Timeline nodes require EventGraph. The Timeline's track output feeds through a Lerp into SetRelativeLocation on the slider component. If this Blueprint implements an interface like BPI_Interactable, the interface event (Interact) can call ToggleGate directly since both live in EventGraph.",
                 "inputs": [],
                 "outputs": []
             }

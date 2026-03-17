@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - UBT log: `C:/Users/<User>/AppData/Local/UnrealBuildTool/Log.txt`
 
 **Tests:** UE Automation Framework, filter by `OliveAI.*` in Session Frontend > Automation.
-Tests live in `Source/OliveAIEditor/Private/Tests/` (subdirs: `Brain/`, `Conversation/`, `FocusProfiles/`, `Providers/`).
+Tests live in `Source/OliveAIEditor/Private/Tests/` (subdirs: `Brain/`, `Conversation/`, `Providers/`).
 
 ---
 
@@ -68,7 +68,6 @@ Source/
     ├── MCP/                 # MCP server, JSON-RPC, tool registry
     ├── Services/            # Validation engine, transactions, asset resolver
     ├── Index/               # Project index (asset search, class hierarchy)
-    ├── Profiles/            # Focus profiles + tool packs
     ├── Settings/            # UDeveloperSettings (UOliveAISettings)
     ├── Blueprint/           # Blueprint read/write/catalog/plan/template
     │   ├── Public/Template/ # FOliveTemplateSystem (factory + reference templates)
@@ -102,10 +101,8 @@ Source/
 10. `FOliveCrossSystemToolHandlers::Get().RegisterAllTools()` → `RegisterCrossSystemRules()`
 11. `FOlivePythonToolHandlers::Get().RegisterAllTools()` (editor Python scripting, guarded by `IPythonScriptPlugin` availability)
 12. `FOliveTemplateSystem::Get().Initialize()` (scans `Content/Templates/` for factory + reference templates, initializes `FOliveLibraryIndex` for library templates with lazy loading + search)
-13. `FOliveFocusProfileManager::Get().Initialize()` (must come after all tool registration)
-14. `FOliveToolPackManager::Get().Initialize()`
-15. `FOlivePromptAssembler::Get().Initialize()` + `FOliveMCPPromptTemplates::Get().Initialize()`
-16. `FOliveMCPServer::Get().Start()` (if `bAutoStartMCPServer`)
+13. `FOlivePromptAssembler::Get().Initialize()` + `FOliveMCPPromptTemplates::Get().Initialize()`
+14. `FOliveMCPServer::Get().Start()` (if `bAutoStartMCPServer`)
 
 ### Key Singletons (all `static Foo& Get()`)
 
@@ -118,8 +115,6 @@ Source/
 | `FOliveWritePipeline` | 6-stage write safety pipeline |
 | `FOliveValidationEngine` | Validation rule registry |
 | `FOliveTransactionManager` | `FScopedTransaction` wrapper |
-| `FOliveFocusProfileManager` | Focus profile filtering |
-| `FOliveToolPackManager` | Dynamic tool pack gating per turn |
 | `FOliveEditorChatSession` | Editor-lifetime session (owns ConversationManager, MessageQueue, RetryManager) |
 | `FOliveRunManager` | Multi-step agentic run orchestration |
 | `FOliveCompileManager` | Blueprint compilation management |
@@ -133,17 +128,17 @@ Source/
 ### Write Pipeline (6 Stages)
 
 1. **Validate** — input validation, preconditions
-2. **Confirm** — tier routing (Tier 1: auto, Tier 2: plan+confirm, Tier 3: preview). MCP clients skip this.
+2. **Mode Gate** — mode-based access control (Ask: all writes blocked, Plan: writes blocked except preview, Code: destructive ops checked). MCP clients bypass this stage entirely.
 3. **Transact** — `FScopedTransaction` + `Modify()`
 4. **Execute** — actual mutation via `FOliveWriteExecutor` delegate
 5. **Verify** — structural checks + optional compile (`bAutoCompile`) + orphaned exec-flow detection
 6. **Report** — structured result with timing
 
-Result chain: `FOliveWriteResult` → `.ToToolResult()` → `FOliveToolResult`. Factory methods: `Success()`, `ValidationError()`, `ExecutionError()`, `ConfirmationNeeded()`.
+Result chain: `FOliveWriteResult` → `.ToToolResult()` → `FOliveToolResult`. Factory methods: `Success()`, `ValidationError()`, `ExecutionError()`.
 
 ### Brain Layer
 
-`FOliveBrainLayer` is a state machine: `Idle` → `Planning` → `WorkerActive` → `AwaitingConfirmation` → `Cancelling` → `Completed` / `Error`. Worker phases: `Streaming`, `ExecutingTools`, `Compiling`, `SelfCorrecting`, `Complete`. Run outcomes: `Completed`, `PartialSuccess`, `Failed`, `Cancelled`.
+`FOliveBrainLayer` is a 3-state machine: `Idle` → `Active` → `Cancelling` → `Idle`. `BeginRun()` transitions `Idle → Active`. `CompleteRun()` transitions `Active → Idle` (stores last outcome). `RequestCancel()` transitions `Active → Cancelling`; draining completes the `Cancelling → Idle` transition. Worker phases (telemetry only, not states): `Streaming`, `ExecutingTools`, `Compiling`, `SelfCorrecting`, `Complete`. Run outcomes: `Completed`, `PartialSuccess`, `Failed`, `Cancelled`.
 
 Related Brain subsystems (in `Public/Brain/`):
 - `FOliveLoopDetector` (in `OliveRetryPolicy.h`) — infinite loop detection, owned by `FOliveConversationManager`
@@ -199,13 +194,17 @@ Note: `OliveBlueprintToolHandlers.cpp` is 7000+ lines with anonymous namespace h
 
 ## Key Design Decisions
 
-### Confirmation Tiers
+### Chat Modes
 
-| Tier | Risk | Operations | UX |
-|------|------|------------|-----|
-| 1 | Low | Add variable, add component, create empty BP | Auto-execute |
-| 2 | Medium | Create function with logic, wire event graph | Plan → Confirm |
-| 3 | High | Refactor, delete, reparent | Non-destructive preview |
+The active chat mode is set per-conversation via `/code`, `/plan`, `/ask` slash commands or the mode badge in the chat panel. The default is controlled by `DefaultChatMode` in settings.
+
+| Mode | Tool Access | Write Behavior |
+|------|-------------|----------------|
+| `Code` | All tools | Full autonomous execution. Destructive ops (delete, reparent) are the only operations that require explicit acknowledgment. |
+| `Plan` | All tools | Read + plan only. Write tools return `PLAN_MODE` error. `blueprint.preview_plan_json` is allowed (preview, no mutation). |
+| `Ask` | Read/discovery tools only | Read-only. All write tools return `ASK_MODE` error. |
+
+MCP clients (external agents like Claude Code CLI) always operate in Code mode and bypass the mode gate entirely.
 
 ### Providers (8 implemented)
 
@@ -231,17 +230,6 @@ To avoid CLI regressions (search loops, text-only stops), keep these rules:
   - batch independent calls
   - never batch `blueprint.preview_plan_json` and `blueprint.apply_plan_json` in the same response
 
-### Focus Profiles + Tool Packs
-
-Focus profiles filter tool visibility (3 profiles since Phase E migration):
-- **Auto** — all tools visible
-- **Blueprint** — blueprint, BT, blackboard, PCG, project, cross-system tools
-- **C++** — C++ tools only
-
-Legacy profiles ("AI & Behavior", "Level & PCG", "C++ & Blueprint") are auto-migrated via `MigrateToPhaseEProfile()`.
-
-Tool packs (`Config/OliveToolPacks.json`) define named sets: `read_pack`, `write_pack_basic`, `write_pack_graph`, `danger_pack`. `FOliveToolPackManager` gates packs per turn based on intent flags (`bTurnHasExplicitWriteIntent`, `bTurnHasDangerIntent`).
-
 ### Blueprint Plan JSON
 
 Intent-level graph editing system where the AI describes "what" it wants (e.g., "call SetActorLocation") and the plan resolver translates to concrete Blueprint nodes. Has its own preview/apply cycle with fingerprint verification.
@@ -249,7 +237,7 @@ Intent-level graph editing system where the AI describes "what" it wants (e.g., 
 - **IR:** `BlueprintPlanIR.h` defines `OlivePlanOps` namespace with closed vocabulary (`call`, `get_var`, `set_var`, `branch`, `sequence`, `cast`, `event`, `custom_event`, `for_loop`, `for_each_loop`, `while_loop`, `do_once`, `flip_flop`, `gate`, `delay`, `is_valid`, `print_string`, `spawn_actor`, `make_struct`, `break_struct`, `return`, `comment`, `call_delegate`, `call_dispatcher`, `bind_dispatcher`)
 - **Tools:** `blueprint.preview_plan_json` (preview) → `blueprint.apply_plan_json` (apply with fingerprint)
 - **Code:** `Blueprint/Public/Plan/` and `Blueprint/Private/Plan/`
-- **Settings:** `bEnableBlueprintPlanJsonTools`, `PlanJsonMaxSteps = 128`, `bPlanJsonRequirePreviewForApply`, `bEnforcePlanFirstGraphRouting`, `PlanFirstGraphRoutingThreshold = 3`
+- **Settings:** `bEnableBlueprintPlanJsonTools`, `PlanJsonMaxSteps = 128`, `bPlanJsonRequirePreviewForApply`
 
 **Plan Pipeline (resolver → validator → executor):**
 1. `FOliveBlueprintPlanResolver::Resolve()` — alias resolution, SCS component variable recognition (`BlueprintHasVariable` checks both `NewVariables` and SCS nodes — components ARE variables), pure-node collapse, `ExpandPlanInputs()` for auto-synthesis, `ExpandMissingComponentTargets()` for auto-injecting get_var steps when Target is unambiguous. Auto-reroutes: `call` op auto-detects event dispatchers in `NewVariables` and reroutes to `call_delegate`; `event` op auto-detects component delegate events via SCS inspection (creates `UK2Node_ComponentBoundEvent`).
@@ -321,9 +309,9 @@ Three template types, all managed by `FOliveTemplateSystem` and `FOliveLibraryIn
 4. **Prepare**: `tools/prepare_library.py` → copies to `Content/Templates/library/{project}/`, injects metadata
 5. **Tag**: `tools/auto_tagger.py` → adds tags, descriptions, entry_points per function/event/dispatcher (processes in dependency order, parent-aware)
 
-### Safety Presets
+### Settings
 
-`UOliveAISettings` exposes presets: `Careful`, `Fast`, `YOLO` — with per-operation tier overrides. Rate limit: `MaxWriteOpsPerMinute = 30`. Brain layer settings: batch write max ops, context window, correction cycles. Checkpoint interval: every 5 steps.
+`UOliveAISettings` (project settings, `DefaultOliveAI.ini`) exposes: `DefaultChatMode` (`Code`/`Plan`/`Ask`), rate limit `MaxWriteOpsPerMinute = 30`, brain layer settings (batch write max ops, context window, correction cycles), and checkpoint interval (every 5 steps).
 
 ### AI Autonomy Philosophy
 
@@ -442,7 +430,6 @@ This project uses specialized subagents. USE THEM — do not try to do everythin
 | Asset resolver | `Source/OliveAIEditor/Public/Services/OliveAssetResolver.h` |
 | Python tool handlers | `Source/OliveAIEditor/Python/Private/MCP/OlivePythonToolHandlers.cpp` |
 | IR types | `Source/OliveAIRuntime/Public/IR/OliveIRTypes.h` |
-| Tool packs config | `Config/OliveToolPacks.json` |
 | System prompts | `Content/SystemPrompts/` |
 | MCP bridge | `mcp-bridge.js`, `.mcp.json` |
 | Agent prompts | `.claude/agents/*.md` |

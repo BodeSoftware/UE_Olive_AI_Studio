@@ -219,7 +219,7 @@ DECLARE_DELEGATE_OneParam(FOnOliveError, const FString& /* ErrorMessage */);
  *
  * IMPORTANT: If your provider builds its own system prompt instead of using
  * ConversationManager::BuildSystemMessage(), you MUST call
- * FOlivePromptAssembler::Get().BuildSharedSystemPreamble(ProfileName)
+ * FOlivePromptAssembler::Get().BuildSharedSystemPreamble()
  * and include its output in your system prompt. This ensures your provider
  * gets recipe routing, knowledge packs, and other cross-cutting context
  * that API providers receive automatically via AssembleSystemPromptInternal().
@@ -304,6 +304,16 @@ public:
 	 * Cancel any in-flight request
 	 */
 	virtual void CancelRequest() = 0;
+
+	/**
+	 * Reset the provider's session state. For CLI providers that support session
+	 * resume (e.g., Claude Code with --resume), this kills the current process,
+	 * clears the session ID, and forces a fresh session on the next message.
+	 * Called by ConversationManager when the user starts a new conversation.
+	 *
+	 * Default: no-op (stateless providers don't need this).
+	 */
+	virtual void ResetSession() {}
 
 	// ==========================================
 	// Status

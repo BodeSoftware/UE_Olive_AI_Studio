@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Brain/OliveBrainState.h"
 
 /**
  * Origin of a tool call
@@ -21,7 +22,7 @@ struct FOliveToolCallContext
 	EOliveToolCallOrigin Origin = EOliveToolCallOrigin::EditorChat;
 	FString SessionId;
 	FString RunId;
-	FName ActiveFocusProfile;
+	EOliveChatMode ChatMode = EOliveChatMode::Code;
 	FName ActiveWorkerDomain;
 	bool bRunModeActive = false;
 };

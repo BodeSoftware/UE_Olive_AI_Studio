@@ -49,9 +49,6 @@ struct OLIVEAIEDITOR_API FOliveOperationRecord
 	/** Error message if failed */
 	FString ErrorMessage;
 
-	/** Confirmation tier that was applied (1, 2, or 3) */
-	int32 ConfirmationTier = 1;
-
 	/** When the operation was executed */
 	FDateTime Timestamp;
 

@@ -198,7 +198,10 @@
 
 ### Run Regression Fixes - Mar 2026
 - `plans/run-regression-fixes-design.md` -- 6 issues from test runs (3 tool bugs, 3 template/knowledge)
-- **Issue 1 (P0)**: `AddEventDispatcher` + resolver + auto-reroute all only check `NewVariables` for dispatchers, missing C++ parent `FMulticastDelegateProperty`. Fix: `TFieldIterator<FMulticastDelegateProperty>` on parent class in 4 locations (Writer, ResolveCallDelegateOp, ResolveBindDelegateOp, ResolveCallOp auto-reroute).
-- **Issue 2 (P1)**: `blueprint.create` response lacks inherited members. Fix: enumerate parent class properties after pipeline returns, add `inherited_variables`, `inherited_dispatchers`, `inherited_components` to success response. Cap at 30 entries.
-- **Issue 4 (P2)**: `SetInstigator` not Blueprint-callable. Fix: alias to `SetOwner` + knowledge pack entries.
-- **Issue 6 (P2)**: Retry plans drop working steps. Fix: add "only fix failing step, keep all others" to `BuildRollbackAwareMessage` + `BuildToolErrorMessage`.
+
+### CLI Chat Modes - Mar 2026
+- See `chat-modes-design.md` for full details.
+- Code/Plan/Ask replaces confirmation tiers + focus profiles + tool packs
+- `plans/cli-chat-modes-architecture.md` -- 12-task implementation plan
+- Brain state: 7->3 (Idle, Active, Cancelling). Mode gate in pipeline Stage 2. MCP unchanged.
+- **Deletions**: FOliveFocusProfileManager, FOliveToolPackManager, 13 settings UPROPERTYs, entire confirmation flow

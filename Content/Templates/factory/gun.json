@@ -5,7 +5,7 @@
 
     "catalog_description": "Actor with mesh, muzzle point, fire/reload functions with full graph logic, ammo tracking, cooldown timer, and event dispatchers. Pair with the projectile template for a complete weapon system.",
     "catalog_examples": "Pistol, Rifle, Shotgun, SMG, Sniper, Launcher",
-    "usage_notes": "Equipping: 1) Cast overlapping actor to Character. 2) get_var Mesh on the character with Target: {\"op\":\"get_var\",\"target\":\"Mesh\",\"inputs\":{\"Target\":\"@cast.auto\"}}. 3) Call K2_AttachToComponent with Parent=@get_mesh.auto, SocketName='hand_r' (or 'weapon_r'), all rules=SnapToTarget. 4) SetCollisionEnabled(NoCollision) on the GunMesh (NOT the PickupSphere — the mesh is what collides, the sphere is just the overlap trigger). 5) Optionally disable PickupSphere overlap. Self-collision: After SpawnActor for the projectile, call SetOwner(self) on it. The projectile's BeginPlay should then call IgnoreActorWhenMoving(GetOwner(), true) on its collision component to prevent self-collision.",
+    "usage_notes": "Equipping: Cast overlapping actor to Character, get the character's Mesh (SkeletalMeshComponent), attach the weapon via K2_AttachToComponent with SocketName (hand_r or weapon_r) and all rules set to SnapToTarget, then disable collision on the weapon mesh (NOT the PickupSphere). Self-collision prevention: After SpawnActor for the projectile, call SetOwner(self) on it. The projectile's BeginPlay should then call IgnoreActorWhenMoving(GetOwner(), true) on its collision component.",
 
     "parameters": {
         "weapon_name": {

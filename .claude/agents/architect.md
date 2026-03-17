@@ -20,11 +20,10 @@ The plugin follows a Model B architecture: built-in Slate chat panel + MCP serve
 - **Conversation Manager** — Session state, streaming, multi-provider support (OpenRouter, Anthropic, OpenAI, Google, Ollama)
 - **MCP Server** — Streamable HTTP on localhost, JSON-RPC 2.0, tool/resource registry
 - **Brain Layer** — Agentic loop (plan → execute → check → self-correct), context assembly, operation planning
-- **Confirmation Manager** — 3-tier system (auto-execute / plan-confirm / non-destructive)
-- **Control Layer** — 7-stage validation pipeline, type constraints, structural rules, dependency checks
+- **Chat Modes** — `/code` (full autonomous), `/plan` (read + plan, writes blocked), `/ask` (read-only). Mode gate is Stage 2 of the write pipeline.
+- **Control Layer** — 6-stage write pipeline (validate → mode gate → transact → execute → verify → report)
 - **Tool Router** — Routes validated calls to subsystem modules (Blueprint, BT, PCG, C++)
 - **Shared Services** — Transaction Manager, Asset Resolver, IR Serializer, Project Index, Compile Manager
-- **Focus Profiles** — Tool-set filters with domain-specific system prompts
 
 Module structure: `AIAgentRuntime` (minimal, IR structs) + `AIAgentEditor` (everything else, editor-only).
 

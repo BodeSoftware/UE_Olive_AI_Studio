@@ -9,7 +9,7 @@
 #include "MCP/OliveMCPServer.h"
 #include "Index/OliveProjectIndex.h"
 #include "Settings/OliveAISettings.h"
-#include "Profiles/OliveFocusProfileManager.h"
+// Focus profile system removed -- replaced by EOliveChatMode (Code/Plan/Ask)
 #include "OliveAIEditorModule.h"
 #include "Brain/OliveToolExecutionContext.h"
 #include "Chat/OliveRunManager.h"
@@ -73,20 +73,6 @@ bool IsFoundationalTool(const FString& ToolName)
 		|| ToolName == TEXT("pcg.create_graph")
 		|| ToolName == TEXT("cpp.create_class")
 		|| ToolName == TEXT("blueprint.preview_plan_json");
-}
-
-bool DetectDangerIntent(const FString& UserMessage)
-{
-	static const TArray<FString> DangerKeywords = {
-		TEXT("delete"),
-		TEXT("remove"),
-		TEXT("destroy"),
-		TEXT("reparent"),
-		TEXT("replace"),
-		TEXT("bulk"),
-		TEXT("refactor")
-	};
-	return MessageContainsAnyKeyword(UserMessage, DangerKeywords);
 }
 
 bool DetectMultiAssetIntent(const FString& UserMessage)
@@ -173,7 +159,25 @@ void FOliveConversationManager::StartNewSession()
 	CurrentToolIteration = 0;
 	TotalTokensUsed = 0;
 
-	UE_LOG(LogOliveAI, Log, TEXT("Started new conversation session: %s"), *SessionId.ToString());
+	// Initialize chat mode from settings
+	if (const UOliveAISettings* Settings = UOliveAISettings::Get())
+	{
+		ActiveChatMode = ChatModeFromConfig(Settings->DefaultChatMode);
+	}
+	else
+	{
+		ActiveChatMode = EOliveChatMode::Code;
+	}
+	DeferredChatMode.Reset();
+
+	// Reset provider session so the next message starts a fresh CLI session
+	if (Provider.IsValid())
+	{
+		Provider->ResetSession();
+	}
+
+	UE_LOG(LogOliveAI, Log, TEXT("Started new conversation session: %s (mode: %s)"),
+		*SessionId.ToString(), LexToString(ActiveChatMode));
 }
 
 void FOliveConversationManager::ClearHistory()
@@ -185,10 +189,7 @@ void FOliveConversationManager::ClearHistory()
 	ActiveToolCallArgs.Reset();
 	CurrentStreamingContent.Empty();
 	bTurnHasExplicitWriteIntent = false;
-	bTurnHasDangerIntent = false;
 	bStopAfterToolResults = false;
-	PendingConfirmationToken.Empty();
-	PendingConfirmationQueue.Empty();
 	CurrentBatchFailureCount = 0;
 	CurrentBatchCorrectionSummary.Empty();
 	bHasPendingCorrections = false;
@@ -200,8 +201,8 @@ void FOliveConversationManager::ClearHistory()
 		Queue->Clear();
 	}
 
-	// Clear any deferred profile switch
-	DeferredFocusProfile.Empty();
+	// Clear any deferred mode switch
+	DeferredChatMode.Reset();
 }
 
 // ==========================================
@@ -265,7 +266,11 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 		UE_LOG(LogOliveAI, Log, TEXT("Skipping auto-snapshot: no active context paths"));
 	}
 
-	// 5. Begin a Brain run
+	// 5. Propagate the current chat mode to the MCP server so that tool calls
+	//    from the internal autonomous agent respect Plan/Ask mode gating.
+	FOliveMCPServer::Get().SetChatModeForInternalAgent(ActiveChatMode);
+
+	// 6. Begin a Brain run
 	if (Brain.IsValid())
 	{
 		Brain->BeginRun();
@@ -275,7 +280,7 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 	FOliveWritePipeline::Get().ClearOrphanBaselines();
 	FOliveWritePipeline::Get().bRunActive = true;
 
-	// 6. Set up callbacks with WeakSelf pattern (matches existing orchestrated path)
+	// 7. Set up callbacks with WeakSelf pattern (matches existing orchestrated path)
 	TWeakPtr<FOliveConversationManager> WeakSelf = AsShared();
 
 	FOnOliveStreamChunk OnChunk;
@@ -294,6 +299,9 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 	FOnOliveComplete OnComplete;
 	OnComplete.BindLambda([WeakSelf](const FString& FullResponse, const FOliveProviderUsage& Usage)
 	{
+		// Clear internal agent mode so subsequent external MCP calls default to Code
+		FOliveMCPServer::Get().ClearChatModeForInternalAgent();
+
 		if (TSharedPtr<FOliveConversationManager> This = WeakSelf.Pin())
 		{
 			// Update token usage
@@ -306,25 +314,23 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 			AssistantMessage.Timestamp = FDateTime::UtcNow();
 			This->AddMessage(AssistantMessage);
 
-			// Brain: complete run
+			// Brain: complete run (CompleteRun already transitions to Idle)
 			if (This->Brain.IsValid() && This->Brain->GetState() != EOliveBrainState::Idle)
 			{
 				This->Brain->CompleteRun(EOliveRunOutcome::Completed);
-				This->Brain->ResetToIdle();
 			}
 
 			This->bIsProcessing = false;
 			This->CurrentStreamingContent.Empty();
 			This->OnProcessingComplete.Broadcast();
 
-			// Apply deferred focus profile switch if one was requested during processing
-			if (!This->DeferredFocusProfile.IsEmpty())
+			// Apply deferred mode switch if pending
+			if (This->DeferredChatMode.IsSet())
 			{
-				const FString ProfileToApply = This->DeferredFocusProfile;
-				This->DeferredFocusProfile.Empty();
-				This->ActiveFocusProfile = ProfileToApply;
-				UE_LOG(LogOliveAI, Log, TEXT("Deferred focus profile applied after autonomous run: %s"), *ProfileToApply);
-				This->OnDeferredProfileApplied.Broadcast(ProfileToApply);
+				This->ActiveChatMode = This->DeferredChatMode.GetValue();
+				This->DeferredChatMode.Reset();
+				This->OnModeChanged.Broadcast(This->ActiveChatMode);
+				UE_LOG(LogOliveAI, Log, TEXT("Applied deferred mode switch to %s"), LexToString(This->ActiveChatMode));
 			}
 
 			// Drain the next queued message if any are waiting
@@ -335,15 +341,17 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 	FOnOliveError OnErr;
 	OnErr.BindLambda([WeakSelf](const FString& ErrorMessage)
 	{
+		// Clear internal agent mode so subsequent external MCP calls default to Code
+		FOliveMCPServer::Get().ClearChatModeForInternalAgent();
+
 		if (TSharedPtr<FOliveConversationManager> This = WeakSelf.Pin())
 		{
 			UE_LOG(LogOliveAI, Error, TEXT("Autonomous run error: %s"), *ErrorMessage);
 
-			// Brain: error state
+			// Brain: error state (CompleteRun already transitions to Idle)
 			if (This->Brain.IsValid() && This->Brain->IsActive())
 			{
 				This->Brain->CompleteRun(EOliveRunOutcome::Failed);
-				This->Brain->ResetToIdle();
 			}
 
 			This->bIsProcessing = false;
@@ -352,14 +360,13 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 			This->OnError.Broadcast(ErrorMessage);
 			This->OnProcessingComplete.Broadcast();
 
-			// Apply deferred focus profile switch if one was requested during processing
-			if (!This->DeferredFocusProfile.IsEmpty())
+			// Apply deferred mode switch if pending
+			if (This->DeferredChatMode.IsSet())
 			{
-				const FString ProfileToApply = This->DeferredFocusProfile;
-				This->DeferredFocusProfile.Empty();
-				This->ActiveFocusProfile = ProfileToApply;
-				UE_LOG(LogOliveAI, Log, TEXT("Deferred focus profile applied after autonomous error: %s"), *ProfileToApply);
-				This->OnDeferredProfileApplied.Broadcast(ProfileToApply);
+				This->ActiveChatMode = This->DeferredChatMode.GetValue();
+				This->DeferredChatMode.Reset();
+				This->OnModeChanged.Broadcast(This->ActiveChatMode);
+				UE_LOG(LogOliveAI, Log, TEXT("Applied deferred mode switch to %s"), LexToString(This->ActiveChatMode));
 			}
 
 			// Drain the next queued message if any are waiting
@@ -367,7 +374,7 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 		}
 	});
 
-	// 7. Pass @-mentioned asset context to the CLI provider for initial prompt enrichment.
+	// 8. Pass @-mentioned asset context to the CLI provider for initial prompt enrichment.
 	//    This injects a pre-read asset state summary so the AI doesn't waste turns
 	//    re-reading assets the user has already pointed at via @-mentions.
 	if (ActiveContextPaths.Num() > 0)
@@ -378,7 +385,7 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 		CLIProvider->SetInitialContextAssets(ActiveContextPaths);
 	}
 
-	// 8. Launch autonomous provider -- tools are discovered via MCP, no orchestration
+	// 9. Launch autonomous provider -- tools are discovered via MCP, no orchestration
 	const FString ProviderName = Provider->GetProviderName();
 	UE_LOG(LogOliveAI, Log, TEXT("Launching autonomous run (%s) for message: %.80s%s"),
 		*ProviderName, *Message.Left(80), Message.Len() > 80 ? TEXT("...") : TEXT(""));
@@ -432,6 +439,13 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 	// and manages its own agentic loop.
 	if (IsAutonomousProvider())
 	{
+		// Ask mode blocks autonomous execution entirely
+		if (ActiveChatMode == EOliveChatMode::Ask)
+		{
+			OnError.Broadcast(TEXT("Ask mode is read-only. Switch to Code or Plan mode to run autonomous operations."));
+			return;
+		}
+
 		SendUserMessageAutonomous(Message);
 		return;
 	}
@@ -448,7 +462,6 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 	LoopDetector.Reset();
 	SelfCorrectionPolicy.Reset();
 	bTurnHasExplicitWriteIntent = DetectWriteIntent(Message);
-	bTurnHasDangerIntent = DetectDangerIntent(Message);
 
 	// Dynamic iteration budget for multi-asset tasks
 	if (bTurnHasExplicitWriteIntent && DetectMultiAssetIntent(Message))
@@ -490,6 +503,9 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 
 void FOliveConversationManager::CancelCurrentRequest()
 {
+	// Clear internal agent mode so MCP calls revert to Code default
+	FOliveMCPServer::Get().ClearChatModeForInternalAgent();
+
 	// Cancel any pending retry before cancelling the provider request
 	if (RetryManager)
 	{
@@ -509,24 +525,26 @@ void FOliveConversationManager::CancelCurrentRequest()
 	}
 
 	bIsProcessing = false;
-	bWaitingForConfirmation = false;
 	PendingToolCalls.Empty();
 	PendingToolResults.Empty();
 	PendingToolExecutions = 0;
 	ActiveToolCallArgs.Reset();
 	CurrentStreamingContent.Empty();
-	PendingConfirmationToolCallId.Empty();
-	PendingConfirmationToolName.Empty();
-	PendingConfirmationArguments.Reset();
-	PendingConfirmationToken.Empty();
-	PendingConfirmationQueue.Empty();
 	bTurnHasExplicitWriteIntent = false;
-	bTurnHasDangerIntent = false;
 	bStopAfterToolResults = false;
 	CurrentBatchFailureCount = 0;
 	CurrentBatchCorrectionSummary.Empty();
 	bHasPendingCorrections = false;
 	CorrectionRepromptCount = 0;
+
+	// Apply deferred mode switch if pending
+	if (DeferredChatMode.IsSet())
+	{
+		ActiveChatMode = DeferredChatMode.GetValue();
+		DeferredChatMode.Reset();
+		OnModeChanged.Broadcast(ActiveChatMode);
+		UE_LOG(LogOliveAI, Log, TEXT("Applied deferred mode switch to %s"), LexToString(ActiveChatMode));
+	}
 }
 
 // ==========================================
@@ -538,29 +556,23 @@ void FOliveConversationManager::SetActiveContext(const TArray<FString>& AssetPat
 	ActiveContextPaths = AssetPaths;
 }
 
-void FOliveConversationManager::SetFocusProfile(const FString& ProfileName)
+void FOliveConversationManager::SetChatMode(EOliveChatMode NewMode)
 {
-	const FString NormalizedName = FOliveFocusProfileManager::Get().NormalizeProfileName(ProfileName);
-
 	if (bIsProcessing)
 	{
-		// Defer the profile switch until the current operation completes.
-		// Changing the tool set mid-operation would cause inconsistent tool availability.
-		DeferredFocusProfile = NormalizedName;
-		UE_LOG(LogOliveAI, Warning,
-			TEXT("Focus profile switch to '%s' deferred -- operation in progress"), *NormalizedName);
+		DeferredChatMode = NewMode;
+		UE_LOG(LogOliveAI, Log, TEXT("Mode switch to %s deferred until processing completes"),
+			LexToString(NewMode));
+		// Fire delegate so UI can show "Mode will switch after current operation"
+		OnModeSwitchDeferred.Broadcast(NewMode);
 		return;
 	}
 
-	ActiveFocusProfile = NormalizedName;
-	DeferredFocusProfile.Empty();
-}
-
-void FOliveConversationManager::SetDeferredFocusProfile(const FString& ProfileName)
-{
-	DeferredFocusProfile = ProfileName.IsEmpty()
-		? FString()
-		: FOliveFocusProfileManager::Get().NormalizeProfileName(ProfileName);
+	const EOliveChatMode OldMode = ActiveChatMode;
+	ActiveChatMode = NewMode;
+	DeferredChatMode.Reset();
+	UE_LOG(LogOliveAI, Log, TEXT("Chat mode: %s -> %s"), LexToString(OldMode), LexToString(NewMode));
+	OnModeChanged.Broadcast(NewMode);
 }
 
 // ==========================================
@@ -612,7 +624,7 @@ FOliveChatMessage FOliveConversationManager::BuildSystemMessage()
 	if (SystemPrompt.IsEmpty())
 	{
 		SystemMessage.Content = PromptAssembler.AssembleSystemPrompt(
-			ActiveFocusProfile,
+			ActiveChatMode,
 			ActiveContextPaths,
 			MaxPromptTokens);
 	}
@@ -620,7 +632,7 @@ FOliveChatMessage FOliveConversationManager::BuildSystemMessage()
 	{
 		SystemMessage.Content = PromptAssembler.AssembleSystemPromptWithBase(
 			SystemPrompt,
-			ActiveFocusProfile,
+			ActiveChatMode,
 			ActiveContextPaths,
 			MaxPromptTokens);
 	}
@@ -637,7 +649,7 @@ FOliveChatMessage FOliveConversationManager::BuildSystemMessage()
 
 TArray<FOliveToolDefinition> FOliveConversationManager::GetAvailableTools()
 {
-	return FOliveToolRegistry::Get().GetToolsForProfile(ActiveFocusProfile);
+	return FOliveToolRegistry::Get().GetToolsForMode(ActiveChatMode);
 }
 
 void FOliveConversationManager::SendToProvider()
@@ -827,7 +839,7 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 	TotalTokensUsed += Usage.TotalTokens;
 
 	// Update Brain worker phase
-	if (Brain.IsValid() && Brain->GetState() == EOliveBrainState::WorkerActive)
+	if (Brain.IsValid() && Brain->GetState() == EOliveBrainState::Active)
 	{
 		Brain->SetWorkerPhase(PendingToolCalls.Num() > 0
 			? EOliveWorkerPhase::ExecutingTools
@@ -945,11 +957,10 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 			FOliveRunManager::Get().CompleteRun();
 			bRunModeActive = false;
 		}
-		// Brain: transition to Completed/PartialSuccess -> Idle
+		// Brain: transition to Completed/PartialSuccess -> Idle (CompleteRun already transitions)
 		if (Brain.IsValid() && Brain->GetState() != EOliveBrainState::Idle)
 		{
 			Brain->CompleteRun(FinalOutcome);
-			Brain->ResetToIdle();
 		}
 
 		// Reset correction state
@@ -960,14 +971,13 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 		bIsProcessing = false;
 		OnProcessingComplete.Broadcast();
 
-		// Apply deferred focus profile switch if one was requested during processing
-		if (!DeferredFocusProfile.IsEmpty())
+		// Apply deferred mode switch if pending
+		if (DeferredChatMode.IsSet())
 		{
-			const FString ProfileToApply = DeferredFocusProfile;
-			DeferredFocusProfile.Empty();
-			ActiveFocusProfile = ProfileToApply;
-			UE_LOG(LogOliveAI, Log, TEXT("Deferred focus profile applied: %s"), *ProfileToApply);
-			OnDeferredProfileApplied.Broadcast(ProfileToApply);
+			ActiveChatMode = DeferredChatMode.GetValue();
+			DeferredChatMode.Reset();
+			OnModeChanged.Broadcast(ActiveChatMode);
+			UE_LOG(LogOliveAI, Log, TEXT("Applied deferred mode switch to %s"), LexToString(ActiveChatMode));
 		}
 
 		// Drain the next queued message if any are waiting
@@ -981,30 +991,26 @@ void FOliveConversationManager::HandleError(const FString& ErrorMessage)
 
 	bIsProcessing = false;
 
-	// Brain: error state
+	// Brain: error state (CompleteRun already transitions to Idle)
 	if (Brain.IsValid() && Brain->IsActive())
 	{
 		Brain->CompleteRun(EOliveRunOutcome::Failed);
-		Brain->ResetToIdle();
 	}
 
 	PendingToolCalls.Empty();
 	PendingToolResults.Empty();
-	PendingConfirmationToken.Empty();
-	PendingConfirmationQueue.Empty();
 	bStopAfterToolResults = false;
 
 	OnError.Broadcast(ErrorMessage);
 	OnProcessingComplete.Broadcast();
 
-	// Apply deferred focus profile switch if one was requested during processing
-	if (!DeferredFocusProfile.IsEmpty())
+	// Apply deferred mode switch if pending
+	if (DeferredChatMode.IsSet())
 	{
-		const FString ProfileToApply = DeferredFocusProfile;
-		DeferredFocusProfile.Empty();
-		ActiveFocusProfile = ProfileToApply;
-		UE_LOG(LogOliveAI, Log, TEXT("Deferred focus profile applied after error: %s"), *ProfileToApply);
-		OnDeferredProfileApplied.Broadcast(ProfileToApply);
+		ActiveChatMode = DeferredChatMode.GetValue();
+		DeferredChatMode.Reset();
+		OnModeChanged.Broadcast(ActiveChatMode);
+		UE_LOG(LogOliveAI, Log, TEXT("Applied deferred mode switch to %s"), LexToString(ActiveChatMode));
 	}
 
 	// Drain the next queued message if any are waiting
@@ -1047,7 +1053,6 @@ void FOliveConversationManager::ProcessPendingToolCalls()
 	bSkipRemainingBatch = false;
 	FailedFoundationalTool.Empty();
 	FailedAssetPaths.Empty();
-	PendingConfirmationQueue.Empty();
 	CurrentBatchFailureCount = 0;
 	CurrentBatchCorrectionSummary.Empty();
 
@@ -1190,7 +1195,7 @@ void FOliveConversationManager::ExecuteToolCall(const FOliveStreamChunk& ToolCal
 	ToolContext.Origin = EOliveToolCallOrigin::EditorChat;
 	ToolContext.SessionId = SessionId.ToString();
 	ToolContext.RunId = Brain.IsValid() ? Brain->GetCurrentRunId() : TEXT("");
-	ToolContext.ActiveFocusProfile = FName(*ActiveFocusProfile);
+	ToolContext.ChatMode = ActiveChatMode;
 	ToolContext.bRunModeActive = bRunModeActive;
 	FOliveToolExecutionContextScope ContextScope(ToolContext);
 
@@ -1245,50 +1250,6 @@ void FOliveConversationManager::HandleToolResult(
 		FOliveRunManager::Get().RecordToolCall(ToolName, ToolCallId, Result.bSuccess,
 			Result.bSuccess ? TEXT("Success") : TEXT("Failed"),
 			0.0, Result.Data);
-	}
-
-	// Check if this result requires user confirmation
-	if (Result.bSuccess && Result.Data.IsValid() && Result.Data->HasField(TEXT("requires_confirmation")))
-	{
-		bool bRequiresConfirmation = Result.Data->GetBoolField(TEXT("requires_confirmation"));
-		if (bRequiresConfirmation)
-		{
-			FString Plan = Result.Data->HasField(TEXT("plan"))
-				? Result.Data->GetStringField(TEXT("plan"))
-				: TEXT("This operation requires confirmation.");
-
-			FPendingConfirmationRequest Request;
-			Request.ToolCallId = ToolCallId;
-			Request.ToolName = ToolName;
-			Request.Plan = Plan;
-			Result.Data->TryGetStringField(TEXT("confirmation_token"), Request.ConfirmationToken);
-
-			// Find the matching tool call arguments for re-execution.
-			if (const TSharedPtr<FJsonObject>* FoundArgs = ActiveToolCallArgs.Find(ToolCallId))
-			{
-				Request.Arguments = *FoundArgs;
-			}
-
-			if (!bWaitingForConfirmation)
-			{
-				bWaitingForConfirmation = true;
-				PendingConfirmationToolCallId = Request.ToolCallId;
-				PendingConfirmationToolName = Request.ToolName;
-				PendingConfirmationArguments = Request.Arguments;
-				PendingConfirmationToken = Request.ConfirmationToken;
-
-				// Fire confirmation delegate for UI.
-				OnConfirmationRequired.Broadcast(PendingConfirmationToolCallId, PendingConfirmationToolName, Request.Plan);
-			}
-			else
-			{
-				PendingConfirmationQueue.Add(MoveTemp(Request));
-			}
-
-			UE_LOG(LogOliveAI, Log, TEXT("Confirmation required for tool '%s' (id: %s). queued=%d"),
-				*ToolName, *ToolCallId, PendingConfirmationQueue.Num());
-			return; // Wait for confirmation; PendingToolExecutions decremented on confirm/deny.
-		}
 	}
 
 	// Use SelfCorrectionPolicy to evaluate the result
@@ -1433,161 +1394,6 @@ void FOliveConversationManager::HandleToolResult(
 	}
 }
 
-void FOliveConversationManager::ConfirmPendingOperation()
-{
-	if (!bWaitingForConfirmation)
-	{
-		return;
-	}
-
-	UE_LOG(LogOliveAI, Log, TEXT("User confirmed operation '%s' (id: %s)"),
-		*PendingConfirmationToolName, *PendingConfirmationToolCallId);
-
-	bWaitingForConfirmation = false;
-	const FString CompletedToolCallId = PendingConfirmationToolCallId;
-	const FString CompletedToolName = PendingConfirmationToolName;
-
-	// Re-execute the tool with confirmation token from write pipeline
-	TSharedPtr<FJsonObject> ConfirmedArgs = PendingConfirmationArguments.IsValid()
-		? MakeShared<FJsonObject>(*PendingConfirmationArguments)
-		: MakeShared<FJsonObject>();
-	if (PendingConfirmationToken.IsEmpty())
-	{
-		FOliveToolResult MissingTokenResult = FOliveToolResult::Error(
-			TEXT("PIPELINE_MISSING_TOKEN"),
-			TEXT("Missing confirmation token for pending operation"),
-			TEXT("Retry the operation so a fresh confirmation token can be generated"));
-
-		FOliveChatMessage ToolResultMessage;
-		ToolResultMessage.Role = EOliveChatRole::Tool;
-		ToolResultMessage.ToolCallId = CompletedToolCallId;
-		ToolResultMessage.ToolName = CompletedToolName;
-		ToolResultMessage.Content = MissingTokenResult.ToJsonString();
-		ToolResultMessage.Timestamp = FDateTime::UtcNow();
-
-		PendingConfirmationToolCallId.Empty();
-		PendingConfirmationToolName.Empty();
-		PendingConfirmationArguments.Reset();
-		PendingConfirmationToken.Empty();
-
-		PendingToolResults.Add(ToolResultMessage);
-		OnToolCallCompleted.Broadcast(ToolResultMessage.ToolName, ToolResultMessage.ToolCallId, MissingTokenResult);
-		PendingToolExecutions--;
-		ActivateNextPendingConfirmation();
-		if (bWaitingForConfirmation)
-		{
-			return;
-		}
-		if (PendingToolExecutions <= 0)
-		{
-			ContinueAfterToolResults();
-		}
-		return;
-	}
-	ConfirmedArgs->SetStringField(TEXT("confirmation_token"), PendingConfirmationToken);
-
-	FOliveToolCallContext ToolContext;
-	ToolContext.Origin = EOliveToolCallOrigin::EditorChat;
-	ToolContext.SessionId = SessionId.ToString();
-	ToolContext.ActiveFocusProfile = FName(*ActiveFocusProfile);
-	FOliveToolExecutionContextScope ContextScope(ToolContext);
-
-	FOliveToolResult Result = FOliveToolRegistry::Get().ExecuteTool(CompletedToolName, ConfirmedArgs);
-
-	// Create result message
-	FOliveChatMessage ToolResultMessage;
-	ToolResultMessage.Role = EOliveChatRole::Tool;
-	ToolResultMessage.ToolCallId = CompletedToolCallId;
-	ToolResultMessage.ToolName = CompletedToolName;
-	ToolResultMessage.Content = Result.ToJsonString();
-	ToolResultMessage.Timestamp = FDateTime::UtcNow();
-
-	// Clear pending state
-	PendingConfirmationToolCallId.Empty();
-	PendingConfirmationToolName.Empty();
-	PendingConfirmationArguments.Reset();
-	PendingConfirmationToken.Empty();
-
-	// Add result and continue
-	PendingToolResults.Add(ToolResultMessage);
-	OnToolCallCompleted.Broadcast(ToolResultMessage.ToolName, ToolResultMessage.ToolCallId, Result);
-
-	PendingToolExecutions--;
-	ActivateNextPendingConfirmation();
-	if (bWaitingForConfirmation)
-	{
-		return;
-	}
-	if (PendingToolExecutions <= 0)
-	{
-		ContinueAfterToolResults();
-	}
-}
-
-void FOliveConversationManager::DenyPendingOperation()
-{
-	if (!bWaitingForConfirmation)
-	{
-		return;
-	}
-
-	UE_LOG(LogOliveAI, Log, TEXT("User denied operation '%s' (id: %s)"),
-		*PendingConfirmationToolName, *PendingConfirmationToolCallId);
-
-	bWaitingForConfirmation = false;
-	const FString CompletedToolCallId = PendingConfirmationToolCallId;
-	const FString CompletedToolName = PendingConfirmationToolName;
-
-	// Create denial result message
-	FOliveChatMessage ToolResultMessage;
-	ToolResultMessage.Role = EOliveChatRole::Tool;
-	ToolResultMessage.ToolCallId = CompletedToolCallId;
-	ToolResultMessage.ToolName = CompletedToolName;
-	ToolResultMessage.Content = TEXT("{\"success\":false,\"error\":{\"code\":\"USER_DENIED\",\"message\":\"User denied this operation. Please ask the user how they would like to proceed.\"}}");
-	ToolResultMessage.Timestamp = FDateTime::UtcNow();
-
-	// Clear pending state
-	PendingConfirmationToolCallId.Empty();
-	PendingConfirmationToolName.Empty();
-	PendingConfirmationArguments.Reset();
-	PendingConfirmationToken.Empty();
-
-	// Add result and continue
-	PendingToolResults.Add(ToolResultMessage);
-
-	PendingToolExecutions--;
-	ActivateNextPendingConfirmation();
-	if (bWaitingForConfirmation)
-	{
-		return;
-	}
-	if (PendingToolExecutions <= 0)
-	{
-		ContinueAfterToolResults();
-	}
-}
-
-void FOliveConversationManager::ActivateNextPendingConfirmation()
-{
-	if (PendingConfirmationQueue.Num() <= 0)
-	{
-		return;
-	}
-
-	FPendingConfirmationRequest Next = PendingConfirmationQueue[0];
-	PendingConfirmationQueue.RemoveAt(0);
-
-	bWaitingForConfirmation = true;
-	PendingConfirmationToolCallId = Next.ToolCallId;
-	PendingConfirmationToolName = Next.ToolName;
-	PendingConfirmationArguments = Next.Arguments;
-	PendingConfirmationToken = Next.ConfirmationToken;
-
-	OnConfirmationRequired.Broadcast(Next.ToolCallId, Next.ToolName, Next.Plan);
-	UE_LOG(LogOliveAI, Log, TEXT("Activated queued confirmation for tool '%s' (id: %s). remaining_queue=%d"),
-		*Next.ToolName, *Next.ToolCallId, PendingConfirmationQueue.Num());
-}
-
 void FOliveConversationManager::ContinueAfterToolResults()
 {
 	// Add all tool results to history
@@ -1599,14 +1405,6 @@ void FOliveConversationManager::ContinueAfterToolResults()
 	// Clear pending state
 	PendingToolCalls.Empty();
 	PendingToolResults.Empty();
-
-	// Pause the loop while waiting on user confirmation.
-	if (bWaitingForConfirmation)
-	{
-		UE_LOG(LogOliveAI, Log, TEXT("Pausing agentic loop: waiting for confirmation '%s' (id: %s), queued=%d"),
-			*PendingConfirmationToolName, *PendingConfirmationToolCallId, PendingConfirmationQueue.Num());
-		return;
-	}
 
 	// Complete current run step
 	if (bRunModeActive && FOliveRunManager::Get().HasActiveRun())
@@ -1666,19 +1464,17 @@ void FOliveConversationManager::ContinueAfterToolResults()
 		bIsProcessing = false;
 		if (Brain.IsValid() && Brain->GetState() != EOliveBrainState::Idle)
 		{
-			Brain->CompleteRun(EOliveRunOutcome::Failed);
-			Brain->ResetToIdle();
+			Brain->CompleteRun(EOliveRunOutcome::Failed); // Already transitions to Idle
 		}
 		OnProcessingComplete.Broadcast();
 
-		// Apply deferred focus profile switch if one was requested during processing
-		if (!DeferredFocusProfile.IsEmpty())
+		// Apply deferred mode switch if pending
+		if (DeferredChatMode.IsSet())
 		{
-			const FString ProfileToApply = DeferredFocusProfile;
-			DeferredFocusProfile.Empty();
-			ActiveFocusProfile = ProfileToApply;
-			UE_LOG(LogOliveAI, Log, TEXT("Deferred focus profile applied after stop: %s"), *ProfileToApply);
-			OnDeferredProfileApplied.Broadcast(ProfileToApply);
+			ActiveChatMode = DeferredChatMode.GetValue();
+			DeferredChatMode.Reset();
+			OnModeChanged.Broadcast(ActiveChatMode);
+			UE_LOG(LogOliveAI, Log, TEXT("Applied deferred mode switch to %s"), LexToString(ActiveChatMode));
 		}
 
 		// Drain the next queued message if any are waiting

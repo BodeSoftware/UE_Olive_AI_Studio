@@ -11,28 +11,28 @@
     "patterns": [
         {
             "name": "CrossBlueprint_DispatchAndBind",
-            "description": "The publisher-subscriber pattern across Blueprints. The source Blueprint declares a dispatcher and broadcasts it via call_delegate when state changes. The listener Blueprint stores an object reference variable typed to the source, binds in Construct or BeginPlay via bind_dispatcher with a Target input pointing to that reference, and handles the event with a custom_event whose parameters match the dispatcher signature.",
-            "notes": "Bind in Construct or BeginPlay, never Tick. The handler must be a custom_event (not a function) because dispatchers are delegate-based. Handler parameter names must match dispatcher parameter names exactly. The bind node's delegate pin auto-wires to the nearest compatible custom_event in the same plan. For explicit control, wire \"Delegate\": \"@handler.OutputDelegate\" in the bind step's inputs."
+            "description": "The publisher-subscriber pattern across Blueprints. The source Blueprint declares a dispatcher and broadcasts it when state changes. The listener Blueprint stores an object reference variable typed to the source, binds to the dispatcher in Construct or BeginPlay using that reference as Target, and handles the event with a Custom Event whose parameters match the dispatcher signature.",
+            "notes": "Bind in Construct or BeginPlay, never Tick. The handler must be a Custom Event (not a function) because dispatchers are delegate-based. Handler parameter names must match dispatcher parameter names exactly. The bind node's delegate pin auto-wires to the nearest compatible Custom Event."
         },
         {
             "name": "SameBlueprint_Dispatch",
-            "description": "Declare and broadcast a dispatcher on the same Blueprint. Create the dispatcher with blueprint.add_event_dispatcher, then use call_delegate (or call_dispatcher -- they are interchangeable aliases) in plan_json to broadcast it.",
-            "notes": "The dispatcher must exist before the plan runs. Broadcast passes parameter values to all bound listeners. This is the simplest dispatcher use case -- no Target input needed since the dispatcher lives on self."
+            "description": "Declare and broadcast a dispatcher on the same Blueprint. Create the dispatcher first, then broadcast it from any exec chain. Broadcast passes parameter values to all bound listeners.",
+            "notes": "The dispatcher must exist before any plan that broadcasts it runs. This is the simplest dispatcher use case -- no Target input needed since the dispatcher lives on self."
         },
         {
             "name": "SameBlueprint_Bind",
-            "description": "Bind to a dispatcher on the same Blueprint, splitting handler logic into a separate entry point. Use bind_dispatcher with no Target input (self-context is implied) and a custom_event as the handler.",
-            "notes": "Omit the Target input for self-context binding. This pattern is useful when the same Blueprint both dispatches and handles the event (e.g., a manager that reacts to its own state changes in a separate execution chain)."
+            "description": "Bind to a dispatcher on the same Blueprint, splitting handler logic into a separate entry point. Omit the Target input for self-context (self is implied). The handler is a Custom Event.",
+            "notes": "This pattern is useful when the same Blueprint both dispatches and handles the event (e.g., a manager that reacts to its own state changes in a separate execution chain)."
         },
         {
             "name": "ComponentDelegate_vs_Dispatcher",
-            "description": "Built-in component delegates (OnComponentBeginOverlap, OnComponentHit, OnComponentEndOverlap) are NOT event dispatchers. They use the event op with a component_name property, which resolves to UK2Node_ComponentBoundEvent via SCS inspection. bind_dispatcher is only for user-created event dispatchers.",
-            "notes": "Do not use bind_dispatcher for component delegates -- it will fail to find them. Component delegates: {\"op\":\"event\",\"target\":\"OnComponentBeginOverlap\",\"properties\":{\"component_name\":\"CollisionComp\"}}. User dispatchers: {\"op\":\"bind_dispatcher\",\"target\":\"OnHealthChanged\"}. The distinction is automatic if you use the correct op."
+            "description": "Built-in component delegates (OnComponentBeginOverlap, OnComponentHit, OnComponentEndOverlap) are NOT event dispatchers. They are component-bound events that require specifying which component they belong to. User-created event dispatchers use a different mechanism (bind/broadcast). Do not confuse the two.",
+            "notes": "Component delegates: specify the component name and target the delegate event name. User dispatchers: bind to the dispatcher name, optionally with a Target for cross-Blueprint binding. The distinction is important -- using the wrong mechanism will fail."
         },
         {
             "name": "Gameplay_To_UI_Dispatcher",
-            "description": "The preferred pattern for gameplay actors updating UI widgets. The gameplay actor declares a dispatcher and broadcasts when state changes. The widget binds in Construct using a reference to the gameplay actor and updates its TextBlock/ProgressBar/etc. in the custom_event handler via SetText or SetPercent. This decouples gameplay from presentation and allows multiple widgets to independently react to the same state change.",
-            "notes": "The widget's Construct event is the correct bind point (not BeginPlay, which fires too early for widgets). The handler custom_event receives dispatcher params and calls SetText/SetPercent/SetVisibility on the widget's own components. Direct function calls from gameplay to widgets work but create tight coupling — prefer dispatchers when multiple consumers might need the data or when the widget should be independently swappable."
+            "description": "The preferred pattern for gameplay actors updating UI widgets. The gameplay actor declares a dispatcher and broadcasts when state changes. The widget binds in Construct using a reference to the gameplay actor, and updates its visual elements (TextBlock, ProgressBar, etc.) in the Custom Event handler.",
+            "notes": "The widget's Construct event is the correct bind point (not BeginPlay, which fires too early for widgets). Direct function calls from gameplay to widgets work but create tight coupling -- prefer dispatchers when multiple consumers might need the data or when the widget should be independently swappable."
         }
     ]
 }

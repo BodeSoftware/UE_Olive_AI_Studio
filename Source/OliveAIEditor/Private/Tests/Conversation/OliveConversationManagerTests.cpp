@@ -4,7 +4,7 @@
 
 #include "Chat/OliveConversationManager.h"
 #include "MCP/OliveToolRegistry.h"
-#include "Profiles/OliveFocusProfileManager.h"
+// Focus profile system removed -- replaced by chat modes
 
 namespace OliveConversationManagerTests
 {
@@ -89,94 +89,26 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FOliveConversationConfirmationReplayTest::RunTest(const FString& Parameters)
 {
-	using namespace OliveConversationManagerTests;
-
-	// Ensure profiles initialized.
-	FOliveFocusProfileManager::Get().Initialize();
-
-	// Register a temporary tool that requires confirmation unless confirmation_token is present.
-	static const FString ToolName = TEXT("test.requires_confirm");
-	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
-
-	int32 ToolExecCount = 0;
-	FString LastSeenToken;
-	Registry.RegisterTool(
-		ToolName,
-		TEXT("Test tool for confirmation replay"),
-		MakeShared<FJsonObject>(),
-		FOliveToolHandler::CreateLambda([&ToolExecCount, &LastSeenToken](const TSharedPtr<FJsonObject>& Params) -> FOliveToolResult
-		{
-			ToolExecCount++;
-
-			FString Token;
-			if (Params.IsValid())
-			{
-				Params->TryGetStringField(TEXT("confirmation_token"), Token);
-			}
-			LastSeenToken = Token;
-
-			TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
-			if (Token.IsEmpty())
-			{
-				Data->SetBoolField(TEXT("requires_confirmation"), true);
-				Data->SetStringField(TEXT("plan"), TEXT("Test plan"));
-				Data->SetStringField(TEXT("confirmation_token"), TEXT("tok_test_1"));
-				return FOliveToolResult::Success(Data);
-			}
-
-			Data->SetBoolField(TEXT("success"), true);
-			Data->SetStringField(TEXT("seen_token"), Token);
-			return FOliveToolResult::Success(Data);
-		}),
-		{ TEXT("test") },
-		TEXT("test"));
+	// Confirmation flow removed -- replaced by mode gate in write pipeline.
+	// This test now verifies basic chat mode switching instead.
 
 	TSharedPtr<FOliveConversationManager> Manager = MakeShared<FOliveConversationManager>();
-	TSharedPtr<FFakeProvider> Provider = MakeShared<FFakeProvider>();
-	Manager->SetProvider(Provider);
 
-	bool bConfirmEventFired = false;
-	Manager->OnConfirmationRequired.AddLambda([&bConfirmEventFired](const FString&, const FString&, const FString&)
-	{
-		bConfirmEventFired = true;
-	});
+	// Default mode should be Code (from settings default)
+	TestEqual(TEXT("Default mode should be Code"), Manager->GetChatMode(), EOliveChatMode::Code);
 
-	// Provider script: ask model to call our tool only on the first SendMessage.
-	Provider->Script.BindLambda([&](FOnOliveStreamChunk OnChunk, FOnOliveToolCall OnToolCall, FOnOliveComplete OnComplete, FOnOliveError OnError)
-	{
-		if (Provider->SendCount > 1)
-		{
-			FOliveProviderUsage Usage;
-			Usage.TotalTokens = 1;
-			OnComplete.ExecuteIfBound(TEXT(""), Usage);
-			return;
-		}
+	// Switch to Plan
+	Manager->SetChatMode(EOliveChatMode::Plan);
+	TestEqual(TEXT("Mode should be Plan after SetChatMode"), Manager->GetChatMode(), EOliveChatMode::Plan);
 
-		FOliveStreamChunk ToolCall;
-		ToolCall.bIsToolCall = true;
-		ToolCall.ToolCallId = TEXT("call_1");
-		ToolCall.ToolName = ToolName;
-		ToolCall.ToolArguments = MakeArgs({ {TEXT("x"), TEXT("y")} });
-		OnToolCall.ExecuteIfBound(ToolCall);
+	// Switch to Ask
+	Manager->SetChatMode(EOliveChatMode::Ask);
+	TestEqual(TEXT("Mode should be Ask after SetChatMode"), Manager->GetChatMode(), EOliveChatMode::Ask);
 
-		FOliveProviderUsage Usage;
-		Usage.TotalTokens = 1;
-		OnComplete.ExecuteIfBound(TEXT(""), Usage);
-	});
+	// Switch back to Code
+	Manager->SetChatMode(EOliveChatMode::Code);
+	TestEqual(TEXT("Mode should be Code after switching back"), Manager->GetChatMode(), EOliveChatMode::Code);
 
-	Manager->SendUserMessage(TEXT("add something"));
-
-	TestTrue(TEXT("Tool should have been executed at least once (initial)"), ToolExecCount >= 1);
-	TestTrue(TEXT("Confirmation event should fire"), bConfirmEventFired);
-	TestTrue(TEXT("Manager should be waiting for confirmation"), Manager->IsWaitingForConfirmation());
-
-	// Confirm should replay with token (not confirmed=true).
-	Manager->ConfirmPendingOperation();
-
-	TestTrue(TEXT("Tool should have been executed at least twice (replay)"), ToolExecCount >= 2);
-	TestTrue(TEXT("Replay should include confirmation_token"), LastSeenToken == TEXT("tok_test_1"));
-
-	Registry.UnregisterTool(ToolName);
 	return true;
 }
 
@@ -188,8 +120,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FOliveConversationToolPackPolicyTest::RunTest(const FString& Parameters)
 {
 	using namespace OliveConversationManagerTests;
-
-	FOliveFocusProfileManager::Get().Initialize();
 
 	TSharedPtr<FOliveConversationManager> Manager = MakeShared<FOliveConversationManager>();
 	TSharedPtr<FFakeProvider> Provider = MakeShared<FFakeProvider>();

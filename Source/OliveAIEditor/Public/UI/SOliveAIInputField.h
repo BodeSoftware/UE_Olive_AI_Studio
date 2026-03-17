@@ -22,6 +22,16 @@ DECLARE_DELEGATE_OneParam(FOnOliveMessageSubmit, const FString& /* Message */);
 DECLARE_DELEGATE_OneParam(FOnOliveAssetMentioned, const FString& /* AssetPath */);
 
 /**
+ * Slash Command Delegate
+ *
+ * Fired instead of OnMessageSubmit when the user types a recognized slash command
+ * (e.g. /code, /plan, /ask, /mode, /status) and presses Enter. The command string
+ * is passed verbatim (e.g. "/code"). Unrecognized slash commands pass through as
+ * normal messages — this delegate is NOT fired for them.
+ */
+DECLARE_DELEGATE_OneParam(FOnOliveSlashCommand, const FString& /* Command */);
+
+/**
  * Input Field Widget
  *
  * Multi-line text input with @mention autocomplete for assets.
@@ -33,6 +43,7 @@ public:
 	SLATE_BEGIN_ARGS(SOliveAIInputField) {}
 		SLATE_EVENT(FOnOliveMessageSubmit, OnMessageSubmit)
 		SLATE_EVENT(FOnOliveAssetMentioned, OnAssetMentioned)
+		SLATE_EVENT(FOnOliveSlashCommand, OnSlashCommand)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
@@ -125,4 +136,5 @@ private:
 
 	FOnOliveMessageSubmit OnMessageSubmit;
 	FOnOliveAssetMentioned OnAssetMentioned;
+	FOnOliveSlashCommand OnSlashCommand;
 };

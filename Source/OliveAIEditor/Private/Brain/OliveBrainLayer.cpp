@@ -1,13 +1,12 @@
 // Copyright Bode Software. All Rights Reserved.
 
 #include "Brain/OliveBrainLayer.h"
-#include "MCP/OliveToolRegistry.h"
 #include "OliveAIEditorModule.h"
 #include "Misc/Guid.h"
 
 FOliveBrainLayer::FOliveBrainLayer()
 {
-	UE_LOG(LogOliveAI, Log, TEXT("Brain Layer initialized"));
+	UE_LOG(LogOliveAI, Log, TEXT("Brain Layer initialized (3-state model)"));
 }
 
 FOliveBrainLayer::~FOliveBrainLayer()
@@ -20,9 +19,7 @@ FOliveBrainLayer::~FOliveBrainLayer()
 
 bool FOliveBrainLayer::IsActive() const
 {
-	return CurrentState != EOliveBrainState::Idle
-		&& CurrentState != EOliveBrainState::Completed
-		&& CurrentState != EOliveBrainState::Error;
+	return CurrentState != EOliveBrainState::Idle;
 }
 
 // ==========================================
@@ -31,10 +28,18 @@ bool FOliveBrainLayer::IsActive() const
 
 void FOliveBrainLayer::RequestCancel()
 {
-	if (IsActive())
+	if (CurrentState == EOliveBrainState::Active)
 	{
-		UE_LOG(LogOliveAI, Log, TEXT("Brain: Cancel requested from state %s"), LexToString(CurrentState));
+		UE_LOG(LogOliveAI, Log, TEXT("Brain: Cancel requested from Active state"));
 		TransitionTo(EOliveBrainState::Cancelling);
+	}
+	else if (CurrentState == EOliveBrainState::Cancelling)
+	{
+		UE_LOG(LogOliveAI, Verbose, TEXT("Brain: Cancel requested but already Cancelling"));
+	}
+	else
+	{
+		UE_LOG(LogOliveAI, Verbose, TEXT("Brain: Cancel requested but state is Idle -- nothing to cancel"));
 	}
 }
 
@@ -42,8 +47,13 @@ void FOliveBrainLayer::ResetToIdle()
 {
 	if (CurrentState != EOliveBrainState::Idle)
 	{
-		UE_LOG(LogOliveAI, Log, TEXT("Brain: Reset to Idle from state %s"), LexToString(CurrentState));
-		TransitionTo(EOliveBrainState::Idle);
+		UE_LOG(LogOliveAI, Log, TEXT("Brain: Safety reset to Idle from state %s"), LexToString(CurrentState));
+
+		const EOliveBrainState OldState = CurrentState;
+		CurrentState = EOliveBrainState::Idle;
+
+		// Bypass IsValidTransition -- ResetToIdle is an unconditional safety escape
+		OnStateChanged.Broadcast(OldState, EOliveBrainState::Idle);
 	}
 }
 
@@ -68,8 +78,8 @@ bool FOliveBrainLayer::TransitionTo(EOliveBrainState NewState)
 
 	OnStateChanged.Broadcast(OldState, NewState);
 
-	// Reset worker phase when entering WorkerActive
-	if (NewState == EOliveBrainState::WorkerActive)
+	// Reset worker phase when entering Active
+	if (NewState == EOliveBrainState::Active)
 	{
 		SetWorkerPhase(EOliveWorkerPhase::Streaming);
 	}
@@ -79,7 +89,7 @@ bool FOliveBrainLayer::TransitionTo(EOliveBrainState NewState)
 
 void FOliveBrainLayer::SetWorkerPhase(EOliveWorkerPhase NewPhase)
 {
-	if (CurrentState != EOliveBrainState::WorkerActive)
+	if (CurrentState != EOliveBrainState::Active)
 	{
 		return;
 	}
@@ -98,7 +108,7 @@ void FOliveBrainLayer::SetWorkerPhase(EOliveWorkerPhase NewPhase)
 FString FOliveBrainLayer::BeginRun()
 {
 	CurrentRunId = FGuid::NewGuid().ToString();
-	TransitionTo(EOliveBrainState::WorkerActive);
+	TransitionTo(EOliveBrainState::Active);
 	UE_LOG(LogOliveAI, Log, TEXT("Brain: Run started [%s]"), *CurrentRunId);
 	return CurrentRunId;
 }
@@ -106,25 +116,11 @@ FString FOliveBrainLayer::BeginRun()
 void FOliveBrainLayer::CompleteRun(EOliveRunOutcome Outcome)
 {
 	LastOutcome = Outcome;
-	UE_LOG(LogOliveAI, Log, TEXT("Brain: Run completed [%s] outcome=%d"),
-		*CurrentRunId, static_cast<int32>(Outcome));
+	UE_LOG(LogOliveAI, Log, TEXT("Brain: Run completed [%s] outcome=%s"),
+		*CurrentRunId, LexToString(Outcome));
 
-	// Clean up routing stats for this run
-	FOliveToolRegistry::Get().ClearBlueprintRoutingStats(
-		FString::Printf(TEXT("run:%s"), *CurrentRunId));
-
-	if (Outcome == EOliveRunOutcome::Failed)
-	{
-		TransitionTo(EOliveBrainState::Error);
-	}
-	else if (Outcome == EOliveRunOutcome::Cancelled)
-	{
-		TransitionTo(EOliveBrainState::Idle);
-	}
-	else
-	{
-		TransitionTo(EOliveBrainState::Completed);
-	}
+	// All outcomes transition to Idle -- no terminal states
+	TransitionTo(EOliveBrainState::Idle);
 }
 
 // ==========================================
@@ -133,45 +129,17 @@ void FOliveBrainLayer::CompleteRun(EOliveRunOutcome Outcome)
 
 bool FOliveBrainLayer::IsValidTransition(EOliveBrainState From, EOliveBrainState To) const
 {
-	// Cancelling is allowed from any active state
-	if (To == EOliveBrainState::Cancelling)
-	{
-		return From == EOliveBrainState::Planning
-			|| From == EOliveBrainState::WorkerActive
-			|| From == EOliveBrainState::AwaitingConfirmation;
-	}
-
-	// Idle is the reset state — allowed from terminal states and Cancelling
-	if (To == EOliveBrainState::Idle)
-	{
-		return From == EOliveBrainState::Completed
-			|| From == EOliveBrainState::Error
-			|| From == EOliveBrainState::Cancelling
-			|| From == EOliveBrainState::AwaitingConfirmation;
-	}
-
 	switch (From)
 	{
 	case EOliveBrainState::Idle:
-		return To == EOliveBrainState::Planning
-			|| To == EOliveBrainState::WorkerActive;
+		return To == EOliveBrainState::Active;
 
-	case EOliveBrainState::Planning:
-		return To == EOliveBrainState::WorkerActive
-			|| To == EOliveBrainState::Error;
+	case EOliveBrainState::Active:
+		return To == EOliveBrainState::Idle
+			|| To == EOliveBrainState::Cancelling;
 
-	case EOliveBrainState::WorkerActive:
-		return To == EOliveBrainState::WorkerActive  // next step
-			|| To == EOliveBrainState::AwaitingConfirmation
-			|| To == EOliveBrainState::Completed
-			|| To == EOliveBrainState::Error;
-
-	case EOliveBrainState::AwaitingConfirmation:
-		return To == EOliveBrainState::WorkerActive;
-
-	case EOliveBrainState::Completed:
-	case EOliveBrainState::Error:
-		return false; // Must go through Idle
+	case EOliveBrainState::Cancelling:
+		return To == EOliveBrainState::Idle;
 
 	default:
 		return false;

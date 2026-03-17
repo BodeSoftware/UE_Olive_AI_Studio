@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Services/OliveValidationEngine.h"
+#include "Brain/OliveBrainState.h"
 #include "OliveToolRegistry.generated.h"
 
 /**
@@ -27,7 +28,7 @@ struct OLIVEAIEDITOR_API FOliveToolDefinition
 	/** JSON Schema for input parameters */
 	TSharedPtr<FJsonObject> InputSchema;
 
-	/** Tags for filtering by Focus Profile */
+	/** Tags for filtering by chat mode (e.g., "read", "write", "danger") */
 	UPROPERTY()
 	TArray<FString> Tags;
 
@@ -108,7 +109,7 @@ struct FOliveToolAlias
  * Tool Registry
  *
  * Central registry for all available tools. Handles registration,
- * lookup, execution, and filtering for Focus Profiles.
+ * lookup, execution, and mode-based filtering (Code/Plan/Ask).
  *
  * Supports tool aliases for backward compatibility: deprecated tool names
  * are transparently redirected to their new consolidated names with
@@ -131,7 +132,7 @@ public:
 	 * @param Description Human-readable description
 	 * @param InputSchema JSON Schema for parameters
 	 * @param Handler Function to execute
-	 * @param Tags Tags for profile filtering
+	 * @param Tags Tags for mode-based filtering (e.g., "read", "write", "danger")
 	 * @param Category Tool category
 	 */
 	void RegisterTool(
@@ -173,11 +174,13 @@ public:
 	TOptional<FOliveToolDefinition> GetTool(const FString& Name) const;
 
 	/**
-	 * Get tools filtered by Focus Profile
-	 * @param ProfileName Profile to filter by
-	 * @return Tools available for that profile
+	 * Get tools filtered by chat mode.
+	 * Code/Plan: returns all tools (Plan blocks writes at the pipeline, not here).
+	 * Ask: returns only read/discovery tools (excludes write/danger tags).
+	 * @param Mode The active chat mode
+	 * @return Tools available for that mode
 	 */
-	TArray<FOliveToolDefinition> GetToolsForProfile(const FString& ProfileName) const;
+	TArray<FOliveToolDefinition> GetToolsForMode(EOliveChatMode Mode) const;
 
 	/**
 	 * Get tools by category
@@ -239,19 +242,16 @@ public:
 		TFunction<void(FOliveToolResult)> Callback
 	);
 
-	/** Clear blueprint routing stats for a given context key (called when run/session ends) */
-	void ClearBlueprintRoutingStats(const FString& ContextKey);
-
 	// ==========================================
 	// MCP Format
 	// ==========================================
 
 	/**
-	 * Get tools list in MCP protocol format
-	 * @param ProfileFilter Optional profile to filter by
-	 * @return JSON array of tools in MCP format
+	 * Get tools list in MCP protocol format.
+	 * MCP always returns all tools (external agents are always Code mode).
+	 * @return JSON object with "tools" array in MCP format
 	 */
-	TSharedPtr<FJsonObject> GetToolsListMCP(const FString& ProfileFilter = TEXT("")) const;
+	TSharedPtr<FJsonObject> GetToolsListMCP() const;
 
 	// ==========================================
 	// Lifecycle

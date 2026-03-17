@@ -24,26 +24,15 @@ enum class EOliveAIProvider : uint8
 };
 
 /**
- * Confirmation tier overrides
+ * Default chat mode for the built-in chat panel.
+ * Mirrors EOliveChatMode (runtime enum in OliveBrainState.h) for Config serialization.
  */
 UENUM(BlueprintType)
-enum class EOliveConfirmationTier : uint8
+enum class EOliveChatModeConfig : uint8
 {
-	Tier1_AutoExecute UMETA(DisplayName = "Auto-Execute"),
-	Tier2_PlanConfirm UMETA(DisplayName = "Plan and Confirm"),
-	Tier3_Preview UMETA(DisplayName = "Non-Destructive Preview")
-};
-
-/**
- * Safety preset that adjusts confirmation tiers globally.
- * Careful: All tiers as configured. Fast: Tier3 downgraded to Tier2. YOLO: Everything auto-executes.
- */
-UENUM(BlueprintType)
-enum class EOliveSafetyPreset : uint8
-{
-	Careful UMETA(DisplayName = "Careful"),
-	Fast    UMETA(DisplayName = "Fast"),
-	YOLO    UMETA(DisplayName = "YOLO")
+	Code UMETA(DisplayName = "Code (Autonomous)"),
+	Plan UMETA(DisplayName = "Plan (Review First)"),
+	Ask  UMETA(DisplayName = "Ask (Read-Only)")
 };
 
 /**
@@ -59,6 +48,10 @@ class OLIVEAIEDITOR_API UOliveAISettings : public UDeveloperSettings
 
 public:
 	UOliveAISettings();
+
+	//~ Begin UObject Interface
+	virtual void PostInitProperties() override;
+	//~ End UObject Interface
 
 	//~ Begin UDeveloperSettings Interface
 	virtual FName GetContainerName() const override { return TEXT("Project"); }
@@ -233,71 +226,11 @@ public:
 		meta=(DisplayName="Auto-Scroll Chat"))
 	bool bAutoScrollChat = true;
 
-	/** Default focus profile when opening the chat */
-	UPROPERTY(Config, EditAnywhere, Category="User Interface",
-		meta=(DisplayName="Default Focus Profile"))
-	FString DefaultFocusProfile = TEXT("Auto");
-
-	/** Internal JSON storage for custom focus profiles (managed by FocusProfileManager) */
-	UPROPERTY(Config)
-	FString CustomFocusProfilesJson;
-
-	/** Internal schema version for custom focus profile payload */
-	UPROPERTY(Config)
-	int32 CustomFocusProfilesSchemaVersion = 1;
-
-	// ==========================================
-	// Confirmation Settings
-	// ==========================================
-
-	/** Override tier for variable operations */
-	UPROPERTY(Config, EditAnywhere, Category="Confirmation",
-		meta=(DisplayName="Variable Operations"))
-	EOliveConfirmationTier VariableOperationsTier = EOliveConfirmationTier::Tier1_AutoExecute;
-
-	/** Override tier for component operations */
-	UPROPERTY(Config, EditAnywhere, Category="Confirmation",
-		meta=(DisplayName="Component Operations"))
-	EOliveConfirmationTier ComponentOperationsTier = EOliveConfirmationTier::Tier1_AutoExecute;
-
-	/** Override tier for create operations (new Blueprints, new assets) */
-	UPROPERTY(Config, EditAnywhere, Category="Confirmation",
-		meta=(DisplayName="Create Operations"))
-	EOliveConfirmationTier CreateOperationsTier = EOliveConfirmationTier::Tier1_AutoExecute;
-
-	/** Override tier for function creation */
-	UPROPERTY(Config, EditAnywhere, Category="Confirmation",
-		meta=(DisplayName="Function Creation"))
-	EOliveConfirmationTier FunctionCreationTier = EOliveConfirmationTier::Tier2_PlanConfirm;
-
-	/** Override tier for graph editing */
-	UPROPERTY(Config, EditAnywhere, Category="Confirmation",
-		meta=(DisplayName="Graph Editing"))
-	EOliveConfirmationTier GraphEditingTier = EOliveConfirmationTier::Tier2_PlanConfirm;
-
-	/** Override tier for refactoring operations */
-	UPROPERTY(Config, EditAnywhere, Category="Confirmation",
-		meta=(DisplayName="Refactoring"))
-	EOliveConfirmationTier RefactoringTier = EOliveConfirmationTier::Tier3_Preview;
-
-	/** Override tier for delete operations */
-	UPROPERTY(Config, EditAnywhere, Category="Confirmation",
-		meta=(DisplayName="Delete Operations"))
-	EOliveConfirmationTier DeleteOperationsTier = EOliveConfirmationTier::Tier3_Preview;
-
-	/** Safety preset: adjusts all confirmation tiers globally */
-	UPROPERTY(Config, EditAnywhere, Category="Confirmation",
-		meta=(DisplayName="Safety Preset"))
-	EOliveSafetyPreset SafetyPreset = EOliveSafetyPreset::Careful;
-
-	/** Get effective tier after applying safety preset adjustment */
-	EOliveConfirmationTier GetEffectiveTier(const FString& OperationCategory) const;
-
-	/** Set preset and broadcast change */
-	void SetSafetyPreset(EOliveSafetyPreset NewPreset);
-
-	DECLARE_MULTICAST_DELEGATE_OneParam(FOnSafetyPresetChanged, EOliveSafetyPreset);
-	static FOnSafetyPresetChanged OnSafetyPresetChanged;
+	/** Default chat mode when opening the chat panel.
+	 *  Code: full autonomous execution. Plan: read + plan, writes require confirmation. Ask: read-only. */
+	UPROPERTY(Config, EditAnywhere, Category="Chat",
+		meta=(DisplayName="Default Chat Mode"))
+	EOliveChatModeConfig DefaultChatMode = EOliveChatModeConfig::Code;
 
 	// ==========================================
 	// Policy Settings
@@ -371,16 +304,6 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category="Blueprint Plan",
 		meta=(DisplayName="Require Preview Before Apply"))
 	bool bPlanJsonRequirePreviewForApply = true;
-
-	/** Enforce plan-first routing for granular graph-edit tools after threshold calls in a run/session */
-	UPROPERTY(Config, EditAnywhere, Category="Blueprint Plan",
-		meta=(DisplayName="Enforce Plan-First Graph Routing"))
-	bool bEnforcePlanFirstGraphRouting = true;
-
-	/** Number of granular graph-edit calls allowed before requiring plan preview/apply */
-	UPROPERTY(Config, EditAnywhere, Category="Blueprint Plan",
-		meta=(DisplayName="Plan Routing Threshold", ClampMin=1, ClampMax=50))
-	int32 PlanFirstGraphRoutingThreshold = 3;
 
 	// ==========================================
 	// Utility Model Settings

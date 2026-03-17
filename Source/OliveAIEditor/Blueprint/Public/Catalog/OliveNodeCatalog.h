@@ -297,13 +297,6 @@ public:
 	FString ToJson() const;
 
 	/**
-	 * Export a filtered catalog for a specific profile
-	 * @param ProfileName Focus profile to filter by
-	 * @return JSON string containing filtered node types
-	 */
-	FString ToJsonForProfile(const FString& ProfileName) const;
-
-	/**
 	 * Export search results as JSON
 	 * @param Query Search query
 	 * @param MaxResults Maximum results

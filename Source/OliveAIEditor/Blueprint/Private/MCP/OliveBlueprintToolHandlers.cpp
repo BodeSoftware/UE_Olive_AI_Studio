@@ -260,18 +260,16 @@ FOliveToolResult HandleGraphReadWithPaging(
 
 FOliveWriteResult ExecuteWithOptionalConfirmation(
 	FOliveWritePipeline& Pipeline,
-	const FOliveWriteRequest& Request,
+	FOliveWriteRequest& Request,
 	FOliveWriteExecutor Executor)
 {
-	FString ConfirmationToken;
-	if (Request.Params.IsValid())
+	// Propagate ChatMode from the tool execution context so the mode gate
+	// works correctly for both MCP and built-in chat paths.
+	// External MCP agents default to Code; in-engine autonomous agents inherit
+	// the user's mode via MCP server -> FOliveToolCallContext propagation.
+	if (const FOliveToolCallContext* Ctx = FOliveToolExecutionContext::Get())
 	{
-		Request.Params->TryGetStringField(TEXT("confirmation_token"), ConfirmationToken);
-	}
-
-	if (!ConfirmationToken.IsEmpty())
-	{
-		return Pipeline.ExecuteConfirmed(Request, ConfirmationToken, Executor);
+		Request.ChatMode = Ctx->ChatMode;
 	}
 
 	return Pipeline.Execute(Request, Executor);
@@ -9153,6 +9151,12 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 	// ------------------------------------------------------------------
 	// 11. Execute through write pipeline
 	// ------------------------------------------------------------------
+	// Propagate ChatMode from execution context (same as ExecuteWithOptionalConfirmation)
+	if (const FOliveToolCallContext* Ctx = FOliveToolExecutionContext::Get())
+	{
+		Request.ChatMode = Ctx->ChatMode;
+	}
+
 	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
 	FOliveWriteResult PipelineResult = Pipeline.Execute(Request, Executor);
 

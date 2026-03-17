@@ -2,7 +2,6 @@
 
 #include "OliveNodeCatalog.h"
 #include "OliveAIEditorModule.h"
-#include "Profiles/OliveFocusProfileManager.h"
 
 // UE includes
 #include "K2Node.h"
@@ -670,61 +669,6 @@ FString FOliveNodeCatalog::ToJson() const
 		CategoriesArray.Add(MakeShared<FJsonValueObject>(CatObj));
 	}
 	Json->SetArrayField(TEXT("categories"), CategoriesArray);
-
-	FString OutputString;
-	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
-	FJsonSerializer::Serialize(Json.ToSharedRef(), Writer);
-
-	return OutputString;
-}
-
-FString FOliveNodeCatalog::ToJsonForProfile(const FString& ProfileName) const
-{
-	FScopeLock Lock(&CatalogLock);
-
-	// Get profile filtering
-	TArray<FString> AllowedCategories = FOliveFocusProfileManager::Get().GetToolCategoriesForProfile(ProfileName);
-	TArray<FString> ExcludedTools = FOliveFocusProfileManager::Get().GetExcludedToolsForProfile(ProfileName);
-
-	TSharedPtr<FJsonObject> Json = MakeShared<FJsonObject>();
-	Json->SetStringField(TEXT("profile"), ProfileName);
-
-	TArray<TSharedPtr<FJsonValue>> NodesArray;
-	int32 IncludedCount = 0;
-
-	for (const auto& Pair : NodeTypes)
-	{
-		const FOliveNodeTypeInfo& Info = Pair.Value;
-
-		// Check if excluded
-		if (ExcludedTools.Contains(Info.TypeId))
-		{
-			continue;
-		}
-
-		// Check category filter (empty = all allowed)
-		bool bCategoryAllowed = AllowedCategories.Num() == 0;
-		if (!bCategoryAllowed)
-		{
-			for (const FString& AllowedCat : AllowedCategories)
-			{
-				if (Info.Category.Contains(AllowedCat) || Info.Tags.Contains(AllowedCat))
-				{
-					bCategoryAllowed = true;
-					break;
-				}
-			}
-		}
-
-		if (bCategoryAllowed)
-		{
-			NodesArray.Add(MakeShared<FJsonValueObject>(Info.ToJson()));
-			IncludedCount++;
-		}
-	}
-
-	Json->SetNumberField(TEXT("total_nodes"), IncludedCount);
-	Json->SetArrayField(TEXT("nodes"), NodesArray);
 
 	FString OutputString;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);

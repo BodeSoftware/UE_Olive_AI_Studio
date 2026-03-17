@@ -11,8 +11,6 @@
 #include "Brain/OlivePromptDistiller.h"
 #include "Brain/OliveRetryPolicy.h"
 #include "Brain/OliveSelfCorrectionPolicy.h"
-// DEPRECATED: Tool pack filtering removed in AI Freedom update.
-// #include "Brain/OliveToolPackManager.h"
 
 class FOliveMessageQueue;
 class FOliveProviderRetryManager;
@@ -27,15 +25,21 @@ DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnOliveChatToolCallCompleted, const FStr
 DECLARE_MULTICAST_DELEGATE(FOnOliveChatProcessingStarted);
 DECLARE_MULTICAST_DELEGATE(FOnOliveChatProcessingComplete);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnOliveChatError, const FString&);
-DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnOliveChatConfirmationRequired, const FString& /* ToolCallId */, const FString& /* ToolName */, const FString& /* Plan */);
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnOliveChatDeferredProfileApplied, const FString& /* ProfileName */);
+
+/** Fired when the active chat mode changes (Code/Plan/Ask) */
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnOliveChatModeChanged, EOliveChatMode /* NewMode */);
+
+/** Fired when a mode switch is deferred because processing is active */
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnOliveChatModeSwitchDeferred, EOliveChatMode /* PendingMode */);
 
 /**
  * Conversation Manager
  *
  * Manages the conversation state, message history, and coordinates
  * between the provider and tool execution. Handles the agentic loop
- * for tool calling.
+ * for tool calling. Owns the active chat mode (Code/Plan/Ask).
+ * Mode switches during processing are deferred until the current
+ * operation completes.
  */
 class OLIVEAIEDITOR_API FOliveConversationManager : public TSharedFromThis<FOliveConversationManager>
 {
@@ -101,31 +105,22 @@ public:
 	 */
 	const TArray<FString>& GetActiveContext() const { return ActiveContextPaths; }
 
-	/**
-	 * Set focus profile for tool filtering.
-	 * If the manager is currently processing, the switch is deferred until
-	 * the current operation completes (stored in DeferredFocusProfile).
-	 * @param ProfileName Profile name
-	 */
-	void SetFocusProfile(const FString& ProfileName);
+	// ==========================================
+	// Chat Mode
+	// ==========================================
 
 	/**
-	 * Get current focus profile
+	 * Set the active chat mode. If the manager is currently processing,
+	 * the switch is deferred until the current operation completes.
+	 * @param NewMode The mode to switch to
 	 */
-	const FString& GetFocusProfile() const { return ActiveFocusProfile; }
+	void SetChatMode(EOliveChatMode NewMode);
 
 	/**
-	 * Explicitly set a deferred focus profile to be applied when processing completes.
-	 * Callers that want to inspect or override the deferred value can use this.
-	 * @param ProfileName The profile name to apply later (empty to cancel deferral)
+	 * Get the current active chat mode
+	 * @return Active chat mode (Code, Plan, or Ask)
 	 */
-	void SetDeferredFocusProfile(const FString& ProfileName);
-
-	/**
-	 * Get the deferred focus profile name.
-	 * @return The deferred profile name, or empty string if no deferral is pending
-	 */
-	const FString& GetDeferredFocusProfile() const { return DeferredFocusProfile; }
+	EOliveChatMode GetChatMode() const { return ActiveChatMode; }
 
 	// ==========================================
 	// Provider Management
@@ -167,27 +162,11 @@ public:
 	/** Fired on error */
 	FOnOliveChatError OnError;
 
-	/** Fired when a tool call requires user confirmation */
-	FOnOliveChatConfirmationRequired OnConfirmationRequired;
+	/** Fired when the active chat mode changes */
+	FOnOliveChatModeChanged OnModeChanged;
 
-	/** Fired when a deferred focus profile switch is applied after processing completes */
-	FOnOliveChatDeferredProfileApplied OnDeferredProfileApplied;
-
-	// ==========================================
-	// Confirmation Flow
-	// ==========================================
-
-	/** Confirm pending operation and resume agentic loop */
-	void ConfirmPendingOperation();
-
-	/** Deny pending operation and resume agentic loop with denial result */
-	void DenyPendingOperation();
-
-	/** Check if waiting for user confirmation */
-	bool IsWaitingForConfirmation() const { return bWaitingForConfirmation; }
-
-	/** Queue the next pending confirmation (if any) and notify UI. */
-	void ActivateNextPendingConfirmation();
+	/** Fired when a mode switch is deferred because processing is active */
+	FOnOliveChatModeSwitchDeferred OnModeSwitchDeferred;
 
 	// ==========================================
 	// Run Mode
@@ -268,7 +247,7 @@ private:
 	/** Build the system message with context */
 	FOliveChatMessage BuildSystemMessage();
 
-	/** Get tools for current focus profile */
+	/** Get tools filtered by current chat mode */
 	TArray<FOliveToolDefinition> GetAvailableTools();
 
 	/** Send request to provider */
@@ -315,12 +294,6 @@ private:
 	/** System prompt */
 	FString SystemPrompt;
 
-	/** Active focus profile */
-	FString ActiveFocusProfile = TEXT("Auto");
-
-	/** Deferred focus profile change — applied when processing completes */
-	FString DeferredFocusProfile;
-
 	/** Active context paths */
 	TArray<FString> ActiveContextPaths;
 
@@ -336,8 +309,18 @@ private:
 	/** Whether run mode is active */
 	bool bRunModeActive = false;
 
-	/** Brain Layer — owns state machine, loop detection, operation history */
+	/** Brain Layer -- owns state machine, loop detection, operation history */
 	TSharedPtr<FOliveBrainLayer> Brain;
+
+	// ==========================================
+	// Chat Mode State
+	// ==========================================
+
+	/** Current chat mode (Code/Plan/Ask). Initialized from DefaultChatMode setting. */
+	EOliveChatMode ActiveChatMode = EOliveChatMode::Code;
+
+	/** Deferred mode switch -- applied when processing completes */
+	TOptional<EOliveChatMode> DeferredChatMode;
 
 	// ==========================================
 	// Streaming State
@@ -362,7 +345,7 @@ private:
 	int32 PendingToolExecutions = 0;
 
 	/** Snapshot of tool call arguments by ID, built in ProcessPendingToolCalls.
-	 *  Used by HandleToolResult confirmation flow after PendingToolCalls is moved to a local. */
+	 *  Used by HandleToolResult after PendingToolCalls is moved to a local. */
 	TMap<FString, TSharedPtr<FJsonObject>> ActiveToolCallArgs;
 
 	/** Count of failed tool results in the current batch (for correction directive) */
@@ -380,44 +363,8 @@ private:
 	/** Maximum re-prompts for unresolved corrections per turn */
 	static constexpr int32 MaxCorrectionReprompts = 2;
 
-	// ==========================================
-	// Confirmation State
-	// ==========================================
-
-	/** Whether we are waiting for user confirmation */
-	bool bWaitingForConfirmation = false;
-
-	/** Pending confirmation tool call ID */
-	FString PendingConfirmationToolCallId;
-
-	/** Pending confirmation tool name */
-	FString PendingConfirmationToolName;
-
-	/** Pending confirmation tool arguments */
-	TSharedPtr<FJsonObject> PendingConfirmationArguments;
-
-	/** Pending confirmation token issued by write pipeline */
-	FString PendingConfirmationToken;
-
-	/** Queued confirmation requests when multiple tools require confirmation in one batch. */
-	struct FPendingConfirmationRequest
-	{
-		FString ToolCallId;
-		FString ToolName;
-		TSharedPtr<FJsonObject> Arguments;
-		FString ConfirmationToken;
-		FString Plan;
-	};
-	TArray<FPendingConfirmationRequest> PendingConfirmationQueue;
-
-	/** Turn-level intent flag: used for multi-asset iteration budget and zero-tool re-prompt guard.
-	 *  Previously also used for tool-pack gating (removed in AI Freedom update). */
+	/** Turn-level intent flag: used for multi-asset iteration budget and zero-tool re-prompt guard. */
 	bool bTurnHasExplicitWriteIntent = false;
-
-	/** Turn-level intent flag: tracks whether the user message contains destructive keywords.
-	 *  Previously used for tool-pack gating (removed in AI Freedom update). Retained for
-	 *  potential future use by confirmation tier escalation. */
-	bool bTurnHasDangerIntent = false;
 
 	/** Zero-tool-call re-prompt counter for write-intent tasks.
 	 * Fires on ANY iteration where the AI responds text-only, not just the first.
@@ -434,7 +381,7 @@ private:
 	/** Name of the failed foundational tool (for skip messages) */
 	FString FailedFoundationalTool;
 
-	/** Asset paths that failed with ASSET_NOT_FOUND in current batch — used to skip subsequent tools targeting the same dead path */
+	/** Asset paths that failed with ASSET_NOT_FOUND in current batch -- used to skip subsequent tools targeting the same dead path */
 	TSet<FString> FailedAssetPaths;
 
 	// ==========================================

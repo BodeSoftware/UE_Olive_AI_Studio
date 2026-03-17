@@ -7,6 +7,7 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Chat/OliveConversationManager.h"
 #include "Chat/OliveRunManager.h"
+#include "Brain/OliveBrainState.h"
 
 class SOliveAIMessageList;
 class SOliveAIContextBar;
@@ -42,6 +43,9 @@ public:
 	/** Destructor */
 	virtual ~SOliveAIChatPanel();
 
+	// SWidget interface
+	virtual FReply OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent) override;
+
 private:
 	// ==========================================
 	// Widget Construction
@@ -62,11 +66,12 @@ private:
 	/** Build the status bar */
 	TSharedRef<SWidget> BuildStatusBar();
 
-	/** Build the focus profile dropdown */
-	TSharedRef<SWidget> BuildFocusDropdown();
-
-	/** Build the safety preset toggle */
-	TSharedRef<SWidget> BuildSafetyPresetToggle();
+	/**
+	 * Build the compact mode badge widget.
+	 * Shows "CODE", "PLAN", or "ASK" with color coding.
+	 * Clickable to cycle through modes.
+	 */
+	TSharedRef<SWidget> BuildModeBadge();
 
 	/** Build provider selector */
 	TSharedRef<SWidget> BuildProviderSelector();
@@ -84,20 +89,38 @@ private:
 	/** Handle message submitted from input field */
 	void OnMessageSubmitted(const FString& Message);
 
-	/** Handle focus profile changed (from menu selection) */
-	void OnFocusProfileSelected(const FString& ProfileName);
+	/** Handle mode badge click -- cycles through Code/Plan/Ask */
+	FReply OnModeBadgeClicked();
 
-	/** Build the focus profile menu content (primary + advanced sections) */
-	TSharedRef<SWidget> BuildFocusProfileMenuContent();
+	/** Cycle through modes: Code -> Plan -> Ask -> Code */
+	void CycleMode();
+
+	/** Get the display text for the mode badge (e.g. "CODE") */
+	FText GetModeBadgeText() const;
+
+	/** Get the color for the mode badge text */
+	FSlateColor GetModeBadgeColor() const;
+
+	/** Get the background color for the mode badge */
+	FLinearColor GetModeBadgeBackgroundColor() const;
+
+	/** Handle slash command from input field (e.g. /code, /plan, /ask) */
+	void HandleSlashCommand(const FString& Command);
+
+	/** Handle mode changed from ConversationManager (update badge + system message) */
+	void HandleModeChanged(EOliveChatMode NewMode);
+
+	/** Handle deferred mode switch notification */
+	void HandleModeSwitchDeferred(EOliveChatMode PendingMode);
+
+	/** Insert a system message into the message list */
+	void AddSystemMessage(const FString& Message);
 
 	/** Handle settings button clicked */
 	FReply OnSettingsClicked();
 
 	/** Handle new chat button clicked */
 	FReply OnNewChatClicked();
-
-	/** Handle safety preset selection changed */
-	void OnSafetyPresetChanged(TSharedPtr<FString> NewPreset, ESelectInfo::Type SelectInfo);
 
 	/** Handle provider selection changed */
 	void OnProviderChanged(TSharedPtr<FString> NewProvider, ESelectInfo::Type SelectInfo);
@@ -107,9 +130,6 @@ private:
 
 	/** Handle model text committed */
 	void OnModelCommitted(const FText& NewText, ETextCommit::Type CommitType);
-
-	/** Get color for current safety preset */
-	FSlateColor GetSafetyPresetColor() const;
 
 	/** Refresh available provider list */
 	void RefreshProviderOptions();
@@ -131,8 +151,6 @@ private:
 	void HandleProcessingStarted();
 	void HandleProcessingComplete();
 	void HandleError(const FString& ErrorMessage);
-	void HandleConfirmationRequired(const FString& ToolCallId, const FString& ToolName, const FString& Plan);
-
 	// ==========================================
 	// Message Queue Callbacks
 	// ==========================================
@@ -142,13 +160,6 @@ private:
 
 	/** Handle the queue becoming empty after draining */
 	void HandleQueueDrained();
-
-	// ==========================================
-	// Deferred Profile Callbacks
-	// ==========================================
-
-	/** Handle a deferred focus profile being applied after processing completes */
-	void HandleDeferredProfileApplied(const FString& ProfileName);
 
 	// ==========================================
 	// Retry Manager Callbacks
@@ -221,16 +232,6 @@ private:
 	 */
 	TSharedPtr<FOliveConversationManager> ConversationManager;
 
-	/** Focus profile options */
-	TArray<TSharedPtr<FString>> FocusProfiles;
-
-	/** Currently selected profile */
-	TSharedPtr<FString> CurrentFocusProfile;
-
-	/** Safety preset options */
-	TArray<TSharedPtr<FString>> SafetyPresetOptions;
-	TSharedPtr<FString> CurrentSafetyPreset;
-
 	/** Provider options */
 	TArray<TSharedPtr<FString>> ProviderOptions;
 	TSharedPtr<FString> CurrentProviderOption;
@@ -246,7 +247,6 @@ private:
 	TSharedPtr<SOliveAIMessageList> MessageList;
 	TSharedPtr<SOliveAIContextBar> ContextBar;
 	TSharedPtr<SOliveAIInputField> InputField;
-	TSharedPtr<SComboButton> FocusDropdown;
 	TSharedPtr<SComboBox<TSharedPtr<FString>>> ProviderComboBox;
 	TSharedPtr<SComboBox<TSharedPtr<FString>>> ModelComboBox;
 	TSharedPtr<SEditableTextBox> ModelTextBox;
@@ -281,9 +281,6 @@ private:
 
 	/** Whether the current retry is due to rate limiting (changes display text) */
 	bool bIsRateLimited = false;
-
-	/** Warning message shown when a focus profile switch is deferred (empty = no warning) */
-	FString DeferredProfileWarning;
 
 	/** Whether a connection validation is in progress */
 	bool bIsValidating = false;

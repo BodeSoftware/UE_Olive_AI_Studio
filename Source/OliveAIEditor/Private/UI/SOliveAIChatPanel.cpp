@@ -10,7 +10,6 @@
 #include "Providers/IOliveAIProvider.h"
 #include "Settings/OliveAISettings.h"
 #include "OliveAIEditorModule.h"
-#include "Profiles/OliveFocusProfileManager.h"
 
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SBorder.h"
@@ -147,16 +146,6 @@ TSharedRef<SDockTab> SOliveAIChatPanel::SpawnTab(const FSpawnTabArgs& Args)
 
 void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 {
-	// Phase E: Fixed 3-option focus profile list
-	{
-		FocusProfiles.Add(MakeShared<FString>(TEXT("Auto")));
-		FocusProfiles.Add(MakeShared<FString>(TEXT("Blueprint")));
-		FocusProfiles.Add(MakeShared<FString>(TEXT("C++")));
-
-		// Default to Auto
-		CurrentFocusProfile = FocusProfiles[0];
-	}
-
 	// Borrow ConversationManager from the editor-lifetime session singleton.
 	// The session owns the lifecycle; the panel holds a shared reference.
 	FOliveEditorChatSession& Session = FOliveEditorChatSession::Get();
@@ -177,46 +166,8 @@ void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 		UE_LOG(LogOliveAI, Log, TEXT("Panel reopened with background completion: %s"), *Summary);
 	}
 
-	// Set up provider and profile from settings
-	UOliveAISettings* Settings = UOliveAISettings::Get();
-	if (Settings)
-	{
-		const FString NormalizedDefaultProfile = FOliveFocusProfileManager::Get().NormalizeProfileName(Settings->DefaultFocusProfile);
-		bool bMatchedConfiguredDefault = false;
-		for (const TSharedPtr<FString>& ProfileOption : FocusProfiles)
-		{
-			if (ProfileOption.IsValid() && ProfileOption->Equals(NormalizedDefaultProfile, ESearchCase::IgnoreCase))
-			{
-				CurrentFocusProfile = ProfileOption;
-				bMatchedConfiguredDefault = true;
-				break;
-			}
-		}
-
-		bool bSettingsChanged = false;
-		if (!Settings->DefaultFocusProfile.Equals(NormalizedDefaultProfile, ESearchCase::CaseSensitive))
-		{
-			Settings->DefaultFocusProfile = NormalizedDefaultProfile;
-			bSettingsChanged = true;
-		}
-
-		if (!bMatchedConfiguredDefault && !Settings->DefaultFocusProfile.Equals(TEXT("Auto"), ESearchCase::CaseSensitive))
-		{
-			Settings->DefaultFocusProfile = TEXT("Auto");
-			bSettingsChanged = true;
-		}
-
-		if (bSettingsChanged)
-		{
-			Settings->SaveConfig();
-		}
-	}
-
-	// Initialize safety preset options
-	SafetyPresetOptions.Add(MakeShared<FString>(TEXT("Careful")));
-	SafetyPresetOptions.Add(MakeShared<FString>(TEXT("Fast")));
-	SafetyPresetOptions.Add(MakeShared<FString>(TEXT("YOLO")));
-	CurrentSafetyPreset = SafetyPresetOptions[static_cast<int32>(UOliveAISettings::Get()->SafetyPreset)];
+	// Chat mode is initialized from settings by ConversationManager::StartNewSession()
+	// (no focus profile or safety preset initialization needed)
 
 	RefreshProviderOptions();
 	if (UOliveAISettings* CurrentSettings = UOliveAISettings::Get())
@@ -235,11 +186,6 @@ void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 	if (!ConfigureProviderFromSettings(ProviderError))
 	{
 		CurrentErrorMessage = ProviderError;
-	}
-
-	if (ConversationManager.IsValid() && CurrentFocusProfile.IsValid())
-	{
-		ConversationManager->SetFocusProfile(*CurrentFocusProfile);
 	}
 
 	// Bind message queue events for queue depth indicator
@@ -262,8 +208,8 @@ void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 	ConversationManager->OnProcessingStarted.AddSP(this, &SOliveAIChatPanel::HandleProcessingStarted);
 	ConversationManager->OnProcessingComplete.AddSP(this, &SOliveAIChatPanel::HandleProcessingComplete);
 	ConversationManager->OnError.AddSP(this, &SOliveAIChatPanel::HandleError);
-	ConversationManager->OnConfirmationRequired.AddSP(this, &SOliveAIChatPanel::HandleConfirmationRequired);
-	ConversationManager->OnDeferredProfileApplied.AddSP(this, &SOliveAIChatPanel::HandleDeferredProfileApplied);
+	ConversationManager->OnModeChanged.AddSP(this, &SOliveAIChatPanel::HandleModeChanged);
+	ConversationManager->OnModeSwitchDeferred.AddSP(this, &SOliveAIChatPanel::HandleModeSwitchDeferred);
 
 	// Subscribe to editor events for auto-context
 	SubscribeToEditorEvents();
@@ -358,6 +304,21 @@ void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 	}
 }
 
+FReply SOliveAIChatPanel::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
+{
+	// Ctrl+Shift+M cycles through chat modes
+	if (InKeyEvent.GetKey() == EKeys::M
+		&& InKeyEvent.IsControlDown()
+		&& InKeyEvent.IsShiftDown()
+		&& !InKeyEvent.IsAltDown())
+	{
+		CycleMode();
+		return FReply::Handled();
+	}
+
+	return SCompoundWidget::OnKeyDown(MyGeometry, InKeyEvent);
+}
+
 SOliveAIChatPanel::~SOliveAIChatPanel()
 {
 	UnsubscribeFromEditorEvents();
@@ -385,8 +346,8 @@ SOliveAIChatPanel::~SOliveAIChatPanel()
 		ConversationManager->OnProcessingStarted.RemoveAll(this);
 		ConversationManager->OnProcessingComplete.RemoveAll(this);
 		ConversationManager->OnError.RemoveAll(this);
-		ConversationManager->OnConfirmationRequired.RemoveAll(this);
-		ConversationManager->OnDeferredProfileApplied.RemoveAll(this);
+		ConversationManager->OnModeChanged.RemoveAll(this);
+		ConversationManager->OnModeSwitchDeferred.RemoveAll(this);
 	}
 
 	// Notify the session that the panel is closed. Operations in flight
@@ -428,22 +389,6 @@ TSharedRef<SWidget> SOliveAIChatPanel::BuildHeader()
 			BuildModelSelector()
 		]
 
-		// Focus Profile Dropdown
-		+ SHorizontalBox::Slot()
-		.AutoWidth()
-		.Padding(4, 0)
-		[
-			BuildFocusDropdown()
-		]
-
-		// Safety Preset
-		+ SHorizontalBox::Slot()
-		.AutoWidth()
-		.Padding(4, 0)
-		[
-			BuildSafetyPresetToggle()
-		]
-
 		// New Chat Button
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
@@ -467,28 +412,6 @@ TSharedRef<SWidget> SOliveAIChatPanel::BuildHeader()
 				.Image(FAppStyle::GetBrush("Icons.Settings"))
 			]
 		];
-}
-
-TSharedRef<SWidget> SOliveAIChatPanel::BuildFocusDropdown()
-{
-	return SAssignNew(FocusDropdown, SComboButton)
-		.ContentPadding(FMargin(4, 2))
-		.HasDownArrow(true)
-		.ButtonContent()
-		[
-			SNew(STextBlock)
-			.Text_Lambda([this]()
-			{
-				if (!CurrentFocusProfile.IsValid())
-				{
-					return FText::GetEmpty();
-				}
-
-				const TOptional<FOliveFocusProfile> Profile = FOliveFocusProfileManager::Get().GetProfile(*CurrentFocusProfile);
-				return Profile.IsSet() ? Profile->DisplayName : FText::FromString(*CurrentFocusProfile);
-			})
-		]
-		.OnGetMenuContent(FOnGetContent::CreateSP(this, &SOliveAIChatPanel::BuildFocusProfileMenuContent));
 }
 
 TSharedRef<SWidget> SOliveAIChatPanel::BuildProviderSelector()
@@ -550,92 +473,6 @@ TSharedRef<SWidget> SOliveAIChatPanel::BuildModelSelector()
 		];
 }
 
-TSharedRef<SWidget> SOliveAIChatPanel::BuildFocusProfileMenuContent()
-{
-	// Primary profiles shown at the top level
-	const TArray<FString> PrimaryProfileNames = { TEXT("Auto"), TEXT("Blueprint"), TEXT("C++") };
-
-	// Gather advanced profiles (custom / non-primary)
-	TArray<FOliveFocusProfile> AllProfiles = FOliveFocusProfileManager::Get().GetAllProfiles();
-	TArray<FOliveFocusProfile> AdvancedProfiles;
-	for (const FOliveFocusProfile& Profile : AllProfiles)
-	{
-		bool bIsPrimary = false;
-		for (const FString& PrimaryName : PrimaryProfileNames)
-		{
-			if (Profile.Name.Equals(PrimaryName, ESearchCase::IgnoreCase))
-			{
-				bIsPrimary = true;
-				break;
-			}
-		}
-		if (!bIsPrimary)
-		{
-			AdvancedProfiles.Add(Profile);
-		}
-	}
-
-	FMenuBuilder MenuBuilder(/*bInShouldCloseWindowAfterMenuSelection=*/ true, nullptr);
-
-	// Primary section
-	MenuBuilder.BeginSection(TEXT("PrimaryProfiles"), LOCTEXT("PrimaryProfilesHeading", "Profiles"));
-	{
-		for (const FString& PrimaryName : PrimaryProfileNames)
-		{
-			const TOptional<FOliveFocusProfile> Profile = FOliveFocusProfileManager::Get().GetProfile(PrimaryName);
-			const FText DisplayName = Profile.IsSet() ? Profile->DisplayName : FText::FromString(PrimaryName);
-			const FText Tooltip = Profile.IsSet() ? Profile->Description : FText::GetEmpty();
-
-			MenuBuilder.AddMenuEntry(
-				DisplayName,
-				Tooltip,
-				FSlateIcon(),
-				FUIAction(
-					FExecuteAction::CreateLambda([this, PrimaryName]() { OnFocusProfileSelected(PrimaryName); }),
-					FCanExecuteAction(),
-					FIsActionChecked::CreateLambda([this, PrimaryName]()
-					{
-						return CurrentFocusProfile.IsValid() && CurrentFocusProfile->Equals(PrimaryName, ESearchCase::IgnoreCase);
-					})
-				),
-				NAME_None,
-				EUserInterfaceActionType::RadioButton
-			);
-		}
-	}
-	MenuBuilder.EndSection();
-
-	// Advanced section (only if there are non-primary profiles)
-	if (AdvancedProfiles.Num() > 0)
-	{
-		MenuBuilder.BeginSection(TEXT("AdvancedProfiles"), LOCTEXT("AdvancedProfilesHeading", "Advanced"));
-		{
-			for (const FOliveFocusProfile& AdvProfile : AdvancedProfiles)
-			{
-				const FString ProfileName = AdvProfile.Name;
-				MenuBuilder.AddMenuEntry(
-					AdvProfile.DisplayName,
-					AdvProfile.Description,
-					FSlateIcon(),
-					FUIAction(
-						FExecuteAction::CreateLambda([this, ProfileName]() { OnFocusProfileSelected(ProfileName); }),
-						FCanExecuteAction(),
-						FIsActionChecked::CreateLambda([this, ProfileName]()
-						{
-							return CurrentFocusProfile.IsValid() && CurrentFocusProfile->Equals(ProfileName, ESearchCase::IgnoreCase);
-						})
-					),
-					NAME_None,
-					EUserInterfaceActionType::RadioButton
-				);
-			}
-		}
-		MenuBuilder.EndSection();
-	}
-
-	return MenuBuilder.MakeWidget();
-}
-
 TSharedRef<SWidget> SOliveAIChatPanel::BuildContextBar()
 {
 	return SAssignNew(ContextBar, SOliveAIContextBar)
@@ -658,12 +495,22 @@ TSharedRef<SWidget> SOliveAIChatPanel::BuildInputArea()
 {
 	return SNew(SHorizontalBox)
 
+		// Mode Badge
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		.Padding(0, 0, 4, 0)
+		[
+			BuildModeBadge()
+		]
+
 		// Input Field
 		+ SHorizontalBox::Slot()
 		.FillWidth(1.0f)
 		[
 			SAssignNew(InputField, SOliveAIInputField)
 			.OnMessageSubmit(this, &SOliveAIChatPanel::OnMessageSubmitted)
+			.OnSlashCommand(this, &SOliveAIChatPanel::HandleSlashCommand)
 			.OnAssetMentioned_Lambda([this](const FString& AssetPath)
 			{
 				// Add mentioned asset to context
@@ -804,61 +651,6 @@ void SOliveAIChatPanel::OnMessageSubmitted(const FString& Message)
 	if (InputField.IsValid())
 	{
 		InputField->Clear();
-	}
-}
-
-void SOliveAIChatPanel::OnFocusProfileSelected(const FString& ProfileName)
-{
-	const FString NormalizedProfile = FOliveFocusProfileManager::Get().NormalizeProfileName(ProfileName);
-
-	// If the conversation manager is currently processing, the profile switch
-	// will be deferred by SetFocusProfile(). Show a warning in the status area.
-	if (ConversationManager.IsValid() && ConversationManager->IsProcessing())
-	{
-		ConversationManager->SetFocusProfile(NormalizedProfile);
-		DeferredProfileWarning = FString::Printf(
-			TEXT("Profile switch to '%s' deferred until operation completes"), *NormalizedProfile);
-		UE_LOG(LogOliveAI, Log, TEXT("%s"), *DeferredProfileWarning);
-
-		// Close the combo dropdown
-		if (FocusDropdown.IsValid())
-		{
-			FocusDropdown->SetIsOpen(false);
-		}
-		return;
-	}
-
-	// Check if this profile is already in our options list
-	bool bFound = false;
-	for (const TSharedPtr<FString>& ProfileOption : FocusProfiles)
-	{
-		if (ProfileOption.IsValid() && ProfileOption->Equals(NormalizedProfile, ESearchCase::IgnoreCase))
-		{
-			CurrentFocusProfile = ProfileOption;
-			bFound = true;
-			break;
-		}
-	}
-
-	// If it is an advanced/custom profile not in the primary list, add it dynamically
-	if (!bFound)
-	{
-		TSharedPtr<FString> NewEntry = MakeShared<FString>(NormalizedProfile);
-		FocusProfiles.Add(NewEntry);
-		CurrentFocusProfile = NewEntry;
-	}
-
-	DeferredProfileWarning.Empty();
-
-	if (ConversationManager.IsValid())
-	{
-		ConversationManager->SetFocusProfile(NormalizedProfile);
-	}
-
-	// Close the combo dropdown
-	if (FocusDropdown.IsValid())
-	{
-		FocusDropdown->SetIsOpen(false);
 	}
 }
 
@@ -1055,35 +847,6 @@ void SOliveAIChatPanel::HandleError(const FString& ErrorMessage)
 	}
 }
 
-void SOliveAIChatPanel::HandleConfirmationRequired(const FString& ToolCallId, const FString& ToolName, const FString& Plan)
-{
-	if (!MessageList.IsValid() || !ConversationManager.IsValid())
-	{
-		return;
-	}
-
-	TWeakPtr<FOliveConversationManager> WeakManager = ConversationManager;
-
-	SOliveAIMessageList::FOnConfirmationAction OnAction;
-	OnAction.BindLambda([WeakManager](bool bConfirmed)
-	{
-		if (TSharedPtr<FOliveConversationManager> Manager = WeakManager.Pin())
-		{
-			if (bConfirmed)
-			{
-				Manager->ConfirmPendingOperation();
-			}
-			else
-			{
-				Manager->DenyPendingOperation();
-			}
-		}
-	});
-
-	FString DisplayPlan = FString::Printf(TEXT("[%s] %s"), *ToolName, *Plan);
-	MessageList->AddConfirmationWidget(ToolCallId, DisplayPlan, OnAction);
-}
-
 // ==========================================
 // Message Queue Callbacks
 // ==========================================
@@ -1128,37 +891,6 @@ void SOliveAIChatPanel::HandleRetryAttemptStarted()
 	bIsRetryPending = false;
 	RetryCountdownSeconds = 0.0f;
 	// The processing state is still active; status returns to "Processing..."
-}
-
-// ==========================================
-// Deferred Profile Callbacks
-// ==========================================
-
-void SOliveAIChatPanel::HandleDeferredProfileApplied(const FString& ProfileName)
-{
-	// Update the UI dropdown to reflect the newly applied profile
-	bool bFound = false;
-	for (const TSharedPtr<FString>& ProfileOption : FocusProfiles)
-	{
-		if (ProfileOption.IsValid() && ProfileOption->Equals(ProfileName, ESearchCase::IgnoreCase))
-		{
-			CurrentFocusProfile = ProfileOption;
-			bFound = true;
-			break;
-		}
-	}
-
-	if (!bFound)
-	{
-		TSharedPtr<FString> NewEntry = MakeShared<FString>(ProfileName);
-		FocusProfiles.Add(NewEntry);
-		CurrentFocusProfile = NewEntry;
-	}
-
-	// Clear the deferred warning from the status area
-	DeferredProfileWarning.Empty();
-
-	UE_LOG(LogOliveAI, Log, TEXT("Focus profile switch applied in UI: %s"), *ProfileName);
 }
 
 // ==========================================
@@ -1299,21 +1031,6 @@ FText SOliveAIChatPanel::GetStatusText() const
 			}
 		}
 
-		// Show deferred profile warning alongside processing status
-		if (!DeferredProfileWarning.IsEmpty())
-		{
-			if (QueuedMessageCount > 0)
-			{
-				return FText::Format(
-					LOCTEXT("StatusProcessingQueuedDeferred", "Processing... ({0} queued) | {1}"),
-					FText::AsNumber(QueuedMessageCount),
-					FText::FromString(DeferredProfileWarning));
-			}
-			return FText::Format(
-				LOCTEXT("StatusProcessingDeferred", "Processing... | {0}"),
-				FText::FromString(DeferredProfileWarning));
-		}
-
 		if (QueuedMessageCount > 0)
 		{
 			return FText::Format(
@@ -1411,45 +1128,181 @@ bool SOliveAIChatPanel::IsSendEnabled() const
 }
 
 // ==========================================
-// Safety Preset Toggle
+// Mode Badge
 // ==========================================
 
-TSharedRef<SWidget> SOliveAIChatPanel::BuildSafetyPresetToggle()
+TSharedRef<SWidget> SOliveAIChatPanel::BuildModeBadge()
 {
-	return SNew(SComboBox<TSharedPtr<FString>>)
-		.OptionsSource(&SafetyPresetOptions)
-		.InitiallySelectedItem(CurrentSafetyPreset)
-		.OnSelectionChanged(this, &SOliveAIChatPanel::OnSafetyPresetChanged)
-		.OnGenerateWidget_Lambda([](TSharedPtr<FString> Item)
-		{
-			return SNew(STextBlock).Text(FText::FromString(*Item));
-		})
-		.ToolTipText(LOCTEXT("SafetyTooltip", "Safety Preset: Controls confirmation requirements for write operations"))
+	return SNew(SButton)
+		.ButtonStyle(&FAppStyle::Get().GetWidgetStyle<FButtonStyle>("FlatButton"))
+		.OnClicked(this, &SOliveAIChatPanel::OnModeBadgeClicked)
+		.ToolTipText(LOCTEXT("ModeBadgeTooltip", "Click to cycle mode (Code/Plan/Ask), or type /code /plan /ask.\nCtrl+Shift+M to cycle."))
+		.ContentPadding(FMargin(8, 2))
 		[
-			SNew(STextBlock)
-			.Text_Lambda([this]()
+			SNew(SBorder)
+			.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
+			.BorderBackgroundColor_Lambda([this]() -> FSlateColor
 			{
-				return CurrentSafetyPreset.IsValid() ? FText::FromString(*CurrentSafetyPreset) : FText::GetEmpty();
+				return FSlateColor(GetModeBadgeBackgroundColor());
 			})
-			.ColorAndOpacity(this, &SOliveAIChatPanel::GetSafetyPresetColor)
+			.Padding(FMargin(6, 2))
+			[
+				SNew(STextBlock)
+				.Text(this, &SOliveAIChatPanel::GetModeBadgeText)
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+				.ColorAndOpacity(this, &SOliveAIChatPanel::GetModeBadgeColor)
+			]
 		];
 }
 
-void SOliveAIChatPanel::OnSafetyPresetChanged(TSharedPtr<FString> NewPreset, ESelectInfo::Type SelectInfo)
+FReply SOliveAIChatPanel::OnModeBadgeClicked()
 {
-	CurrentSafetyPreset = NewPreset;
-	if (NewPreset.IsValid())
+	CycleMode();
+	return FReply::Handled();
+}
+
+void SOliveAIChatPanel::CycleMode()
+{
+	if (!ConversationManager.IsValid())
 	{
-		EOliveSafetyPreset Preset = EOliveSafetyPreset::Careful;
-		if (*NewPreset == TEXT("Fast"))
-		{
-			Preset = EOliveSafetyPreset::Fast;
-		}
-		else if (*NewPreset == TEXT("YOLO"))
-		{
-			Preset = EOliveSafetyPreset::YOLO;
-		}
-		UOliveAISettings::Get()->SetSafetyPreset(Preset);
+		return;
+	}
+
+	const EOliveChatMode Current = ConversationManager->GetChatMode();
+	EOliveChatMode Next;
+	switch (Current)
+	{
+	case EOliveChatMode::Code: Next = EOliveChatMode::Plan; break;
+	case EOliveChatMode::Plan: Next = EOliveChatMode::Ask;  break;
+	case EOliveChatMode::Ask:  Next = EOliveChatMode::Code; break;
+	default:                   Next = EOliveChatMode::Code; break;
+	}
+
+	ConversationManager->SetChatMode(Next);
+}
+
+FText SOliveAIChatPanel::GetModeBadgeText() const
+{
+	if (!ConversationManager.IsValid())
+	{
+		return LOCTEXT("ModeBadgeCode", "CODE");
+	}
+
+	switch (ConversationManager->GetChatMode())
+	{
+	case EOliveChatMode::Code: return LOCTEXT("ModeBadgeCode", "CODE");
+	case EOliveChatMode::Plan: return LOCTEXT("ModeBadgePlan", "PLAN");
+	case EOliveChatMode::Ask:  return LOCTEXT("ModeBadgeAsk", "ASK");
+	default:                   return LOCTEXT("ModeBadgeCode", "CODE");
+	}
+}
+
+FSlateColor SOliveAIChatPanel::GetModeBadgeColor() const
+{
+	if (!ConversationManager.IsValid())
+	{
+		return FSlateColor(FLinearColor(0.298f, 0.686f, 0.314f)); // Green
+	}
+
+	switch (ConversationManager->GetChatMode())
+	{
+	case EOliveChatMode::Code: return FSlateColor(FLinearColor(0.298f, 0.686f, 0.314f)); // #4CAF50
+	case EOliveChatMode::Plan: return FSlateColor(FLinearColor(1.0f, 0.757f, 0.027f));   // #FFC107
+	case EOliveChatMode::Ask:  return FSlateColor(FLinearColor(0.129f, 0.588f, 0.953f)); // #2196F3
+	default:                   return FSlateColor(FLinearColor(0.298f, 0.686f, 0.314f));
+	}
+}
+
+FLinearColor SOliveAIChatPanel::GetModeBadgeBackgroundColor() const
+{
+	if (!ConversationManager.IsValid())
+	{
+		return FLinearColor(0.298f, 0.686f, 0.314f, 0.2f);
+	}
+
+	switch (ConversationManager->GetChatMode())
+	{
+	case EOliveChatMode::Code: return FLinearColor(0.298f, 0.686f, 0.314f, 0.2f); // Green at 20%
+	case EOliveChatMode::Plan: return FLinearColor(1.0f, 0.596f, 0.0f, 0.2f);     // Amber at 20%
+	case EOliveChatMode::Ask:  return FLinearColor(0.129f, 0.588f, 0.953f, 0.2f); // Blue at 20%
+	default:                   return FLinearColor(0.298f, 0.686f, 0.314f, 0.2f);
+	}
+}
+
+// ==========================================
+// Slash Commands
+// ==========================================
+
+void SOliveAIChatPanel::HandleSlashCommand(const FString& Command)
+{
+	if (!ConversationManager.IsValid())
+	{
+		return;
+	}
+
+	FString Cmd = Command.ToLower().TrimStartAndEnd();
+
+	if (Cmd == TEXT("/code"))
+	{
+		ConversationManager->SetChatMode(EOliveChatMode::Code);
+	}
+	else if (Cmd == TEXT("/plan"))
+	{
+		ConversationManager->SetChatMode(EOliveChatMode::Plan);
+	}
+	else if (Cmd == TEXT("/ask"))
+	{
+		ConversationManager->SetChatMode(EOliveChatMode::Ask);
+	}
+	else if (Cmd == TEXT("/mode"))
+	{
+		AddSystemMessage(FString::Printf(TEXT("Current mode: %s"), LexToString(ConversationManager->GetChatMode())));
+	}
+	else if (Cmd == TEXT("/status"))
+	{
+		const int32 ToolCount = FOliveToolRegistry::Get().GetToolsForMode(ConversationManager->GetChatMode()).Num();
+		const bool bProcessing = ConversationManager->IsProcessing();
+		AddSystemMessage(FString::Printf(TEXT("Mode: %s | Processing: %s | Tools: %d"),
+			LexToString(ConversationManager->GetChatMode()),
+			bProcessing ? TEXT("Yes") : TEXT("No"),
+			ToolCount));
+	}
+}
+
+// ==========================================
+// Mode Change Handlers
+// ==========================================
+
+void SOliveAIChatPanel::HandleModeChanged(EOliveChatMode NewMode)
+{
+	// Insert a system message describing the new mode
+	switch (NewMode)
+	{
+	case EOliveChatMode::Code:
+		AddSystemMessage(TEXT("Switched to Code mode. All tools active. Executing autonomously."));
+		break;
+	case EOliveChatMode::Plan:
+		AddSystemMessage(TEXT("Switched to Plan mode. Read tools active. Write tools blocked until you approve."));
+		break;
+	case EOliveChatMode::Ask:
+		AddSystemMessage(TEXT("Switched to Ask mode. Read-only. No changes will be made."));
+		break;
+	}
+
+	// Badge auto-updates via polling lambdas -- no explicit invalidation needed
+}
+
+void SOliveAIChatPanel::HandleModeSwitchDeferred(EOliveChatMode PendingMode)
+{
+	AddSystemMessage(FString::Printf(TEXT("Mode will switch to %s after the current operation finishes."),
+		LexToString(PendingMode)));
+}
+
+void SOliveAIChatPanel::AddSystemMessage(const FString& Message)
+{
+	if (MessageList.IsValid())
+	{
+		MessageList->AddSystemMessage(Message);
 	}
 }
 
@@ -1671,29 +1524,6 @@ void SOliveAIChatPanel::ApplyProviderAndModelSelection(EOliveAIProvider Provider
 	{
 		CurrentErrorMessage.Empty();
 	}
-}
-
-FSlateColor SOliveAIChatPanel::GetSafetyPresetColor() const
-{
-	if (!CurrentSafetyPreset.IsValid())
-	{
-		return FLinearColor::White;
-	}
-
-	if (*CurrentSafetyPreset == TEXT("Careful"))
-	{
-		return FLinearColor(0.2f, 0.8f, 0.2f);
-	}
-	else if (*CurrentSafetyPreset == TEXT("Fast"))
-	{
-		return FLinearColor(0.9f, 0.8f, 0.1f);
-	}
-	else if (*CurrentSafetyPreset == TEXT("YOLO"))
-	{
-		return FLinearColor(0.9f, 0.2f, 0.2f);
-	}
-
-	return FLinearColor::White;
 }
 
 // ==========================================

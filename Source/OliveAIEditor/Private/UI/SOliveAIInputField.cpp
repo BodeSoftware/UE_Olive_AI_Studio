@@ -18,6 +18,7 @@ void SOliveAIInputField::Construct(const FArguments& InArgs)
 {
 	OnMessageSubmit = InArgs._OnMessageSubmit;
 	OnAssetMentioned = InArgs._OnAssetMentioned;
+	OnSlashCommand = InArgs._OnSlashCommand;
 
 	ChildSlot
 	[
@@ -198,11 +199,31 @@ void SOliveAIInputField::SubmitMessage()
 		return;
 	}
 
-	FString Text = GetText();
-	if (!Text.IsEmpty())
+	FString Text = GetText().TrimStartAndEnd();
+	if (Text.IsEmpty())
 	{
-		OnMessageSubmit.ExecuteIfBound(Text);
+		return;
 	}
+
+	// Slash command interception — recognized commands are routed to OnSlashCommand
+	// instead of OnMessageSubmit. Unrecognized slash commands pass through normally.
+	if (Text.StartsWith(TEXT("/")))
+	{
+		const FString Command = Text.ToLower();
+		static const TArray<FString> KnownCommands = {
+			TEXT("/code"), TEXT("/plan"), TEXT("/ask"), TEXT("/mode"), TEXT("/status")
+		};
+
+		if (KnownCommands.Contains(Command))
+		{
+			OnSlashCommand.ExecuteIfBound(Text);
+			Clear();
+			return;
+		}
+		// Unrecognized slash command — fall through to normal message dispatch
+	}
+
+	OnMessageSubmit.ExecuteIfBound(Text);
 }
 
 // ==========================================

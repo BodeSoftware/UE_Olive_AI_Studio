@@ -12,31 +12,31 @@
         {
             "name": "OverlapDetection",
             "description": "A SphereComponent (or BoxComponent) on the character detects interactable actors entering range. OnComponentBeginOverlap and OnComponentEndOverlap maintain a reference to the nearest valid interactable.",
-            "notes": "The overlap component should be a child of the root. Set its radius to interaction range (typically 150-300 units). Store the overlapping actor in a variable (e.g., NearestInteractable, type Actor, as object reference). Clear the variable on EndOverlap. For multiple overlapping actors, store a TArray and pick the closest on input."
+            "notes": "The overlap component should be a child of the root. Set its radius to interaction range (typically 150-300 units). Store the overlapping actor in a variable (e.g., NearestInteractable, type Actor object reference). Clear the variable on EndOverlap. For multiple overlapping actors, store a TArray and pick the closest on input."
         },
         {
             "name": "InputDiscovery",
-            "description": "Before choosing an input approach, check what the project already uses. Use project.search for InputAction assets (type UInputAction). If results exist, use Enhanced Input Actions. If none exist, InputKey is acceptable.",
-            "notes": "Enhanced Input is the standard for UE 5.x projects and is preferred when the project already has IA/IMC assets. InputKey still works and is simpler for quick prototyping. The AI should check, not assume."
+            "description": "Before choosing an input approach, check what the project already uses. Look for existing InputAction assets (UInputAction). If the project uses Enhanced Input, follow that convention. If not, InputKey is acceptable.",
+            "notes": "Enhanced Input is the standard for UE 5.x projects and is preferred when the project already has IA/IMC assets. InputKey still works and is simpler for quick prototyping. Check the project first, do not assume."
         },
         {
             "name": "EnhancedInputActions",
-            "description": "Enhanced Input uses separate UAsset files: InputAction (IA) for the action definition and InputMappingContext (IMC) for key bindings. These are NOT Blueprint variables -- they are standalone assets created with editor.run_python. The Blueprint then wires an EnhancedInputAction event node (plan_json) and adds the IMC in BeginPlay (plan_json).",
-            "notes": "Tool split is critical: editor.run_python creates the IA and IMC assets (Python: unreal.AssetToolsHelpers.get_asset_tools().create_asset(...)). plan_json wires the EnhancedInputAction event node referencing the IA, and wires BeginPlay to call AddMappingContext with the IMC. Do NOT try to create IA/IMC assets via plan_json -- it cannot create non-Blueprint assets."
+            "description": "Enhanced Input uses separate UAsset files: InputAction (IA) for the action definition and InputMappingContext (IMC) for key bindings. These are standalone assets, not Blueprint variables. The Blueprint wires an EnhancedInputAction event node referencing the IA, and BeginPlay calls AddMappingContext with the IMC.",
+            "notes": "IA and IMC assets must be created as standalone UAssets (they are not Blueprint constructs). The Blueprint's EventGraph then uses an EnhancedInputAction event node that references the IA, and BeginPlay wires AddMappingContext to register the IMC with the player controller's Enhanced Input subsystem."
         },
         {
             "name": "InputKeyFallback",
-            "description": "InputKey nodes bind directly to a key (E, F, etc.) without external assets. Everything lives in one Blueprint, all wirable via plan_json. Simpler but less flexible -- no rebinding, no per-context priority.",
-            "notes": "Use when the project has no Enhanced Input setup, or for quick prototypes. The InputKey event node has a Key property set to the desired key name. Fully expressible in plan_json: event node with key property, exec chain to validity check and interface call."
+            "description": "InputKey nodes bind directly to a key (E, F, etc.) without external assets. Everything lives in one Blueprint. Simpler but less flexible -- no rebinding, no per-context priority.",
+            "notes": "Use when the project has no Enhanced Input setup, or for quick prototypes. The InputKey event node has a Key property set to the desired key name (e.g., E, F). The event fires on press, feeding into the validity check and interface call chain."
         },
         {
             "name": "ValidityCheckAndCall",
-            "description": "Before calling the interface, always check IsValid on the stored actor reference. Then call the interface function via target_class (creates UK2Node_Message, no cast needed). This two-step guard prevents null-reference errors when the player presses interact with nobody in range.",
-            "notes": "Pattern: input event -> get_var NearestInteractable -> IsValid -> Branch -> True: call Interact with target_class=BPI_Interactable. The IsValid check is essential because the overlap variable may be null (nobody in range) or stale (actor destroyed). Do not skip it."
+            "description": "Before calling the interface, always check IsValid on the stored actor reference. Then call the interface function on the interactable via interface message (no cast needed). This two-step guard prevents null-reference errors when the player presses interact with nobody in range.",
+            "notes": "Flow: input event fires, read NearestInteractable variable, IsValid check, branch on true to call Interact on the target. Calling through a Blueprint Interface (e.g., BPI_Interactable) uses UK2Node_Message which does not require casting. The IsValid check is essential because the overlap variable may be null or stale (actor destroyed)."
         },
         {
             "name": "FullCallerArchitecture",
-            "description": "The complete caller has three independent concerns wired in EventGraph: (1) BeginPlay sets up input context (AddMappingContext for EIA), (2) Overlap events maintain the NearestInteractable reference, (3) Input event triggers the validity-check-and-call chain. Each concern is its own exec chain starting from its own event node.",
+            "description": "The complete caller has three independent concerns wired in EventGraph: (1) BeginPlay sets up input context (AddMappingContext for Enhanced Input), (2) Overlap events maintain the NearestInteractable reference, (3) Input event triggers the validity-check-and-call chain. Each concern is its own exec chain starting from its own event node.",
             "notes": "Separation matters because each concern has different lifetimes. Input setup runs once (BeginPlay). Detection is continuous (overlap). Action is instantaneous (input press). Keeping them as separate event chains avoids spaghetti and makes each independently testable."
         }
     ]

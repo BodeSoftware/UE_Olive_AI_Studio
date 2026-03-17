@@ -6,7 +6,7 @@
     "catalog_description": "Architecture patterns for interactive objects: event-based interfaces, Timeline for smooth movement, state-driven toggles, pivot and slider components.",
     "catalog_examples": "",
 
-    "tags": "interactable door gate switch lever chest interact interface event timeline smooth movement toggle async create_timeline",
+    "tags": "interactable door gate switch lever chest interact interface event timeline smooth movement toggle async",
 
     "patterns": [
         {
@@ -16,8 +16,8 @@
         },
         {
             "name": "TimelineInterpolation",
-            "description": "For smooth finite animations (door rotation, gate sliding, platform lifting, UI fades), use a Timeline node created via blueprint.create_timeline. Timeline nodes have exec inputs (Play, PlayFromStart, Stop, Reverse, ReverseFromEnd) and track data outputs (each track name is a pin). The toggle event controls direction (Play vs Reverse based on state), while the track output feeds interpolation (alpha through Lerp into SetRelativeRotation/SetRelativeLocation). Timeline length controls animation speed.",
-            "notes": "Timelines are preferred over Tick+FInterpTo for interactables because they are idle when not playing (no per-frame cost), have built-in Finished events for triggering dispatchers, and support reverse playback natively. Wire timeline pins with connect_pins or reference them in plan_json via @node_id.TrackName. Use Tick+FInterpTo only for continuous motion that never stops (spinning fans, bobbing platforms)."
+            "description": "For smooth finite animations (door rotation, gate sliding, platform lifting, UI fades), use a Timeline node. Timeline nodes have exec inputs (Play, PlayFromStart, Stop, Reverse, ReverseFromEnd) and track data outputs (each track name becomes a pin). The toggle event controls direction (Play vs Reverse based on state), while the track output feeds interpolation (alpha through Lerp into SetRelativeRotation or SetRelativeLocation). Timeline length controls animation speed.",
+            "notes": "Timelines are preferred over Tick+FInterpTo for interactables because they are idle when not playing (no per-frame cost), have built-in Finished events for triggering dispatchers, and support reverse playback natively. Timeline nodes must live in EventGraph, so the toggle logic must be a Custom Event (not a function). Use Tick+FInterpTo only for continuous motion that never stops (spinning fans, bobbing platforms)."
         },
         {
             "name": "StateTogglePattern",
@@ -31,7 +31,7 @@
         },
         {
             "name": "InterfaceIntegration",
-            "description": "Interactables work best with a Blueprint Interface (e.g., BPI_Interactable) that declares Interact() with no outputs. The caller (player character) checks DoesImplementInterface or uses overlap events, then calls Interact via target_class -- no casting needed. Each interactable type implements the event differently.",
+            "description": "Interactables work best with a Blueprint Interface (e.g., BPI_Interactable) that declares Interact() with no outputs. The caller (player character) checks DoesImplementInterface or uses overlap events, then calls Interact through the interface -- no casting needed. Each interactable type implements the event differently.",
             "notes": "Keep the interface minimal: one Interact event, optionally one pure function for UI text (GetInteractionText():String). The pure function is fine as a synchronous function graph. Do not add output pins to Interact unless you have a specific reason AND you accept that all implementations will be synchronous."
         }
     ]

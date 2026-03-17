@@ -1,6 +1,7 @@
 // Copyright Bode Software. All Rights Reserved.
 
 #include "Settings/OliveAISettings.h"
+#include "OliveAIEditorModule.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 
@@ -118,6 +119,15 @@ FString SerializeProviderModelOverrides(const TMap<FString, FString>& Overrides)
 
 UOliveAISettings::UOliveAISettings()
 {
+}
+
+void UOliveAISettings::PostInitProperties()
+{
+	Super::PostInitProperties();
+
+	UE_LOG(LogOliveAI, Log, TEXT("OliveAISettings: DefaultChatMode = %s"),
+		DefaultChatMode == EOliveChatModeConfig::Code ? TEXT("Code") :
+		DefaultChatMode == EOliveChatModeConfig::Plan ? TEXT("Plan") : TEXT("Ask"));
 }
 
 #if WITH_EDITOR
@@ -274,67 +284,6 @@ void UOliveAISettings::SetSelectedModelForProvider(EOliveAIProvider InProvider, 
 	{
 		SelectedModel = NormalizedModel;
 	}
-}
-
-UOliveAISettings::FOnSafetyPresetChanged UOliveAISettings::OnSafetyPresetChanged;
-
-EOliveConfirmationTier UOliveAISettings::GetEffectiveTier(const FString& OperationCategory) const
-{
-	// Get base tier from per-category settings
-	EOliveConfirmationTier BaseTier = EOliveConfirmationTier::Tier2_PlanConfirm;
-
-	if (OperationCategory == TEXT("variable"))
-	{
-		BaseTier = VariableOperationsTier;
-	}
-	else if (OperationCategory == TEXT("component"))
-	{
-		BaseTier = ComponentOperationsTier;
-	}
-	else if (OperationCategory == TEXT("create"))
-	{
-		BaseTier = CreateOperationsTier;
-	}
-	else if (OperationCategory == TEXT("function_creation"))
-	{
-		BaseTier = FunctionCreationTier;
-	}
-	else if (OperationCategory == TEXT("graph_editing"))
-	{
-		BaseTier = GraphEditingTier;
-	}
-	else if (OperationCategory == TEXT("refactoring"))
-	{
-		BaseTier = RefactoringTier;
-	}
-	else if (OperationCategory == TEXT("delete"))
-	{
-		BaseTier = DeleteOperationsTier;
-	}
-
-	// Apply safety preset adjustment
-	switch (SafetyPreset)
-	{
-	case EOliveSafetyPreset::Careful:
-		return BaseTier;
-	case EOliveSafetyPreset::Fast:
-		if (BaseTier == EOliveConfirmationTier::Tier3_Preview)
-		{
-			return EOliveConfirmationTier::Tier2_PlanConfirm;
-		}
-		return BaseTier;
-	case EOliveSafetyPreset::YOLO:
-		return EOliveConfirmationTier::Tier1_AutoExecute;
-	default:
-		return BaseTier;
-	}
-}
-
-void UOliveAISettings::SetSafetyPreset(EOliveSafetyPreset NewPreset)
-{
-	SafetyPreset = NewPreset;
-	SaveConfig();
-	OnSafetyPresetChanged.Broadcast(NewPreset);
 }
 
 #undef LOCTEXT_NAMESPACE
