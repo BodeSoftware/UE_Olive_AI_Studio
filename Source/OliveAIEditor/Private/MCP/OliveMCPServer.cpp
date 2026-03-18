@@ -9,7 +9,6 @@
 #include "Catalog/OliveBTNodeCatalog.h"
 #include "OliveAIEditorModule.h"
 #include "Brain/OliveToolExecutionContext.h"
-#include "Chat/OlivePromptAssembler.h"
 #include "HttpPath.h"
 #include "HttpServerModule.h"
 #include "IHttpRouter.h"
@@ -912,64 +911,6 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleResourcesList(const TSharedPtr<FJ
 		Resources.Add(MakeShared<FJsonValueObject>(Resource));
 	}
 
-	// Knowledge resources
-	{
-		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
-		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/blueprint-patterns"));
-		Resource->SetStringField(TEXT("name"), TEXT("Blueprint Design Patterns"));
-		Resource->SetStringField(TEXT("description"), TEXT("Component architecture, design patterns, and decomposition guidelines"));
-		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
-		Resources.Add(MakeShared<FJsonValueObject>(Resource));
-	}
-	{
-		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
-		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/plan-json"));
-		Resource->SetStringField(TEXT("name"), TEXT("Plan JSON Reference"));
-		Resource->SetStringField(TEXT("description"), TEXT("plan_json operation vocabulary, batching rules, and wiring conventions"));
-		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
-		Resources.Add(MakeShared<FJsonValueObject>(Resource));
-	}
-	{
-		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
-		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/events-vs-functions"));
-		Resource->SetStringField(TEXT("name"), TEXT("Events vs Functions Guide"));
-		Resource->SetStringField(TEXT("description"), TEXT("Decision framework for when to use events, functions, or custom events"));
-		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
-		Resources.Add(MakeShared<FJsonValueObject>(Resource));
-	}
-	{
-		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
-		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/node-routing"));
-		Resource->SetStringField(TEXT("name"), TEXT("Node Type Routing"));
-		Resource->SetStringField(TEXT("description"), TEXT("Node type resolution rules and add_node fallback behavior"));
-		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
-		Resources.Add(MakeShared<FJsonValueObject>(Resource));
-	}
-	{
-		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
-		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/recipe-routing"));
-		Resource->SetStringField(TEXT("name"), TEXT("Recipe Routing Guide"));
-		Resource->SetStringField(TEXT("description"), TEXT("Template and recipe discovery workflow"));
-		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
-		Resources.Add(MakeShared<FJsonValueObject>(Resource));
-	}
-	{
-		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
-		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/blueprint-authoring"));
-		Resource->SetStringField(TEXT("name"), TEXT("Blueprint Authoring Approaches"));
-		Resource->SetStringField(TEXT("description"), TEXT("Three approaches for building Blueprints: plan_json, granular tools, Python"));
-		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
-		Resources.Add(MakeShared<FJsonValueObject>(Resource));
-	}
-	{
-		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
-		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/tool-usage-rules"));
-		Resource->SetStringField(TEXT("name"), TEXT("Tool Usage Rules"));
-		Resource->SetStringField(TEXT("description"), TEXT("Pin naming conventions, batching limits, UE class name rules"));
-		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
-		Resources.Add(MakeShared<FJsonValueObject>(Resource));
-	}
-
 	Result->SetArrayField(TEXT("resources"), Resources);
 
 	return Result;
@@ -1063,41 +1004,6 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleResourcesRead(const TSharedPtr<FJ
 	else if (Uri == TEXT("olive://behaviortree/node-catalog"))
 	{
 		ContentText = JsonToString(FOliveBTNodeCatalog::Get().ToJson());
-	}
-	else if (Uri == TEXT("olive://knowledge/blueprint-patterns"))
-	{
-		MimeType = TEXT("text/plain");
-		ContentText = FOlivePromptAssembler::Get().GetKnowledgePackById(TEXT("blueprint_design_patterns"));
-	}
-	else if (Uri == TEXT("olive://knowledge/plan-json"))
-	{
-		MimeType = TEXT("text/plain");
-		ContentText = FOlivePromptAssembler::Get().GetKnowledgePackById(TEXT("cli_blueprint"));
-	}
-	else if (Uri == TEXT("olive://knowledge/events-vs-functions"))
-	{
-		MimeType = TEXT("text/plain");
-		ContentText = FOlivePromptAssembler::Get().GetKnowledgePackById(TEXT("events_vs_functions"));
-	}
-	else if (Uri == TEXT("olive://knowledge/node-routing"))
-	{
-		MimeType = TEXT("text/plain");
-		ContentText = FOlivePromptAssembler::Get().GetKnowledgePackById(TEXT("node_routing"));
-	}
-	else if (Uri == TEXT("olive://knowledge/recipe-routing"))
-	{
-		MimeType = TEXT("text/plain");
-		ContentText = FOlivePromptAssembler::Get().GetKnowledgePackById(TEXT("recipe_routing"));
-	}
-	else if (Uri == TEXT("olive://knowledge/blueprint-authoring"))
-	{
-		MimeType = TEXT("text/plain");
-		ContentText = FOlivePromptAssembler::Get().GetKnowledgePackById(TEXT("blueprint_authoring"));
-	}
-	else if (Uri == TEXT("olive://knowledge/tool-usage-rules"))
-	{
-		MimeType = TEXT("text/plain");
-		ContentText = FOlivePromptAssembler::Get().GetKnowledgePackById(TEXT("tool_usage_rules"));
 	}
 	else
 	{

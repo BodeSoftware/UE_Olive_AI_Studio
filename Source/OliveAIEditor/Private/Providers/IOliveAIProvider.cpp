@@ -136,15 +136,13 @@ TSharedPtr<IOliveAIProvider> FOliveProviderFactory::CreateProvider(const FString
 
 	if (ProviderName.Equals(TEXT("claudecode"), ESearchCase::IgnoreCase) ||
 		ProviderName.Equals(TEXT("Claude Code"), ESearchCase::IgnoreCase) ||
-		ProviderName.Equals(TEXT("Claude Code CLI"), ESearchCase::IgnoreCase) ||
-		ProviderName.Equals(TEXT("Claude Code (Local)"), ESearchCase::IgnoreCase))
+		ProviderName.Equals(TEXT("Claude Code CLI"), ESearchCase::IgnoreCase))
 	{
 		return MakeShared<FOliveClaudeCodeProvider>();
 	}
 
 	if (ProviderName.Equals(TEXT("codex"), ESearchCase::IgnoreCase) ||
-		ProviderName.Equals(TEXT("Codex CLI"), ESearchCase::IgnoreCase) ||
-		ProviderName.Equals(TEXT("Codex (Local)"), ESearchCase::IgnoreCase))
+		ProviderName.Equals(TEXT("Codex CLI"), ESearchCase::IgnoreCase))
 	{
 		return MakeShared<FOliveCodexProvider>();
 	}
@@ -189,13 +187,13 @@ TArray<FString> FOliveProviderFactory::GetAvailableProviders()
 	// Claude Code CLI - no API key needed, uses Claude Max subscription
 	if (FOliveClaudeCodeProvider::IsClaudeCodeInstalled())
 	{
-		Providers.Add(TEXT("Claude Code (Local)"));
+		Providers.Add(TEXT("Claude Code CLI"));
 	}
 
 	// Codex CLI - uses ChatGPT subscription or OPENAI_API_KEY
 	if (FOliveCodexProvider::IsCodexInstalled())
 	{
-		Providers.Add(TEXT("Codex (Local)"));
+		Providers.Add(TEXT("Codex CLI"));
 	}
 
 	// OpenRouter - API key required

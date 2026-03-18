@@ -435,8 +435,7 @@ void FOliveOllamaProvider::ParseStreamChunk(const TSharedPtr<FJsonObject>& Chunk
 	}
 
 	// Check for finish reason
-	FString FinishReason;
-	Choice->TryGetStringField(TEXT("finish_reason"), FinishReason);
+	FString FinishReason = Choice->GetStringField(TEXT("finish_reason"));
 	if (!FinishReason.IsEmpty() && FinishReason != TEXT("null"))
 	{
 		// Store finish reason so HandleComplete can detect truncation (e.g. "length")
@@ -459,8 +458,7 @@ void FOliveOllamaProvider::ParseStreamChunk(const TSharedPtr<FJsonObject>& Chunk
 	// Check for text content
 	if (Delta->HasField(TEXT("content")))
 	{
-		FString Content;
-		Delta->TryGetStringField(TEXT("content"), Content);
+		FString Content = Delta->GetStringField(TEXT("content"));
 		if (!Content.IsEmpty())
 		{
 			AccumulatedResponse += Content;
@@ -522,25 +520,24 @@ void FOliveOllamaProvider::ParseToolCallDelta(const TSharedPtr<FJsonObject>& Del
 		}
 
 		// Update tool call ID if present
-		FString ToolCallId;
-		if (ToolCallObj->TryGetStringField(TEXT("id"), ToolCallId))
+		if (ToolCallObj->HasField(TEXT("id")))
 		{
-			PendingCall->ToolCallId = ToolCallId;
+			PendingCall->ToolCallId = ToolCallObj->GetStringField(TEXT("id"));
 		}
 
 		// Update function info if present
 		const TSharedPtr<FJsonObject>* FunctionPtr;
 		if (ToolCallObj->TryGetObjectField(TEXT("function"), FunctionPtr))
 		{
-			FString FunctionName;
-			if ((*FunctionPtr)->TryGetStringField(TEXT("name"), FunctionName))
+			if ((*FunctionPtr)->HasField(TEXT("name")))
 			{
-				PendingCall->ToolName = FunctionName;
+				PendingCall->ToolName = (*FunctionPtr)->GetStringField(TEXT("name"));
 			}
 
-			FString ArgsChunk;
-			if ((*FunctionPtr)->TryGetStringField(TEXT("arguments"), ArgsChunk))
+			if ((*FunctionPtr)->HasField(TEXT("arguments")))
 			{
+				FString ArgsChunk = (*FunctionPtr)->GetStringField(TEXT("arguments"));
+
 				// Accumulate arguments in dedicated buffer (not PendingCall->Text)
 				PendingToolArgsBuffer.FindOrAdd(Index) += ArgsChunk;
 			}
@@ -598,16 +595,8 @@ void FOliveOllamaProvider::CompleteStreaming()
 	bIsBusy = false;
 	CurrentRequest.Reset();
 
-	UE_LOG(LogOliveAI, Log,
-		TEXT("Ollama request complete. Model: %s, Tokens: %d prompt, %d completion, finish_reason=%s"),
-		*Config.ModelId, CurrentUsage.PromptTokens, CurrentUsage.CompletionTokens,
-		CurrentUsage.FinishReason.IsEmpty() ? TEXT("unknown") : *CurrentUsage.FinishReason);
-
-	if (CurrentUsage.PromptTokens == 0 && CurrentUsage.CompletionTokens == 0)
-	{
-		UE_LOG(LogOliveAI, Warning,
-			TEXT("Provider returned no usage metadata. Token counts may be inaccurate."));
-	}
+	UE_LOG(LogOliveAI, Log, TEXT("Ollama request complete. Model: %s, Tokens: %d prompt, %d completion"),
+		*Config.ModelId, CurrentUsage.PromptTokens, CurrentUsage.CompletionTokens);
 
 	OnCompleteCallback.ExecuteIfBound(AccumulatedResponse, CurrentUsage);
 }

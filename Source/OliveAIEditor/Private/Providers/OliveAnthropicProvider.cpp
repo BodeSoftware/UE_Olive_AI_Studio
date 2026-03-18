@@ -635,16 +635,8 @@ void FOliveAnthropicProvider::CompleteStreaming()
 	bIsBusy = false;
 	CurrentRequest.Reset();
 
-	UE_LOG(LogOliveAI, Log,
-		TEXT("Anthropic request complete. Tokens: %d prompt, %d completion, finish_reason=%s"),
-		CurrentUsage.PromptTokens, CurrentUsage.CompletionTokens,
-		CurrentUsage.FinishReason.IsEmpty() ? TEXT("unknown") : *CurrentUsage.FinishReason);
-
-	if (CurrentUsage.PromptTokens == 0 && CurrentUsage.CompletionTokens == 0)
-	{
-		UE_LOG(LogOliveAI, Warning,
-			TEXT("Provider returned no usage metadata. Token counts may be inaccurate."));
-	}
+	UE_LOG(LogOliveAI, Log, TEXT("Anthropic request complete. Tokens: %d prompt, %d completion"),
+		CurrentUsage.PromptTokens, CurrentUsage.CompletionTokens);
 
 	OnCompleteCallback.ExecuteIfBound(AccumulatedResponse, CurrentUsage);
 }

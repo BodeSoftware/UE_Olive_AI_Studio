@@ -222,16 +222,10 @@ FString FOliveClaudeCodeProvider::GetCLIArguments(const FString& SystemPromptArg
 	//   from discovering MCP tools on its own. ConversationManager is the sole orchestrator;
 	//   tools are defined via system prompt text and parsed from <tool_call> XML blocks.
 	// --append-system-prompt: inject domain-specific guidance and tool schemas
-	FString Args = TEXT("--print --output-format stream-json --verbose --max-turns 1 --strict-mcp-config");
-
-	const UOliveAISettings* Settings = UOliveAISettings::Get();
-	if (Settings && Settings->bAllowCLIPermissionBypass)
-	{
-		Args += TEXT(" --dangerously-skip-permissions");
-	}
-
-	Args += FString::Printf(TEXT(" %s"), *SystemPromptArg);
-	return Args;
+	return FString::Printf(
+		TEXT("--print --output-format stream-json --verbose --dangerously-skip-permissions --max-turns 1 --strict-mcp-config %s"),
+		*SystemPromptArg
+	);
 }
 
 FString FOliveClaudeCodeProvider::GetCLIArgumentsAutonomous() const
@@ -252,14 +246,8 @@ FString FOliveClaudeCodeProvider::GetCLIArgumentsAutonomous() const
 	const int32 MaxTurns = Settings ? Settings->AutonomousMaxTurns : 500;
 
 	FString BaseArgs = FString::Printf(
-		TEXT("--print --output-format stream-json --verbose --max-turns %d"),
+		TEXT("--print --output-format stream-json --verbose --dangerously-skip-permissions --max-turns %d"),
 		MaxTurns);
-
-	// Append permission bypass flag if enabled
-	if (Settings && Settings->bAllowCLIPermissionBypass)
-	{
-		BaseArgs += TEXT(" --dangerously-skip-permissions");
-	}
 
 	// Append session management flags.
 	// bHasActiveSession is set AFTER GetCLIArgumentsAutonomous() returns in SendMessageAutonomous(),

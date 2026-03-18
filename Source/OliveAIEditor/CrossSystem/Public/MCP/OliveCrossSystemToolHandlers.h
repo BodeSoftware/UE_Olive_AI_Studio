@@ -68,7 +68,6 @@ private:
 	void RegisterRecipeTools();
 	void LoadRecipeLibrary();
 	FOliveToolResult HandleGetRecipe(const TSharedPtr<FJsonObject>& Params);
-	FOliveToolResult HandleGetKnowledge(const TSharedPtr<FJsonObject>& Params);
 
 	/** Loaded recipes: Key = "category/name", Value = file content */
 	TMap<FString, FString> RecipeLibrary;

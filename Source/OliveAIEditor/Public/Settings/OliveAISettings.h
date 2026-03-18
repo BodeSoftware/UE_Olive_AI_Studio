@@ -134,7 +134,7 @@ public:
 	/** Maximum tokens in the response */
 	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
 		meta=(DisplayName="Max Tokens", ClampMin=256, ClampMax=128000))
-	int32 MaxTokens = 16384;
+	int32 MaxTokens = 4096;
 
 	/** Request timeout in seconds */
 	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
@@ -151,10 +151,11 @@ public:
 		meta=(DisplayName="Max Rate Limit Wait (seconds)", ClampMin=0, ClampMax=300))
 	int32 MaxRetryAfterWaitSeconds = 120;
 
-	/** Deprecated: CLI providers now always run in their native autonomous MCP mode.
-	 *  Retained only for config compatibility with older user settings. */
+	/** Use autonomous MCP mode for Claude Code CLI.
+	 *  When enabled, Claude Code discovers tools via MCP and manages its own loop.
+	 *  When disabled, the plugin orchestrates each turn (legacy behavior). */
 	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
-		meta=(DisplayName="Autonomous MCP Mode (Deprecated)", EditCondition="false", EditConditionHides))
+		meta=(DisplayName="Autonomous MCP Mode (Claude Code)"))
 	bool bUseAutonomousMCPMode = true;
 
 	/** Maximum total runtime for autonomous CLI mode (seconds). 0 = no limit.
@@ -176,12 +177,6 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
 		meta=(DisplayName="Autonomous Max Turns", ClampMin=1, ClampMax=1000))
 	int32 AutonomousMaxTurns = 500;
-
-	/** When disabled, external CLIs use their native approval model. Enable for fully autonomous operation. */
-	UPROPERTY(EditAnywhere, Config, Category = "Autonomous Mode",
-		meta = (DisplayName = "Allow CLI Permission Bypass", 
-		ToolTip = "When disabled, external CLIs use their native approval model. Enable for fully autonomous operation."))
-	bool bAllowCLIPermissionBypass = false;
 
 	// ==========================================
 	// MCP Server Settings
@@ -290,10 +285,6 @@ public:
 	/** Maximum correction cycles before the brain layer stops retrying a failed operation */
 	UPROPERTY(Config, EditAnywhere, Category = "Brain Layer", meta = (ClampMin = 1, ClampMax = 20))
 	int32 MaxCorrectionCyclesPerRun = 5;
-
-	/** Maximum tool iterations allowed in a single conversation */
-	UPROPERTY(Config, EditAnywhere, Category = "Brain Layer", meta = (ClampMin = 10, ClampMax = 1000))
-	int32 MaxToolIterations = 50;
 
 	// ==========================================
 	// Blueprint Plan JSON

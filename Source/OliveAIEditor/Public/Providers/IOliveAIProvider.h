@@ -38,7 +38,7 @@ struct OLIVEAIEDITOR_API FOliveProviderConfig
 
 	/** Maximum tokens to generate */
 	UPROPERTY()
-	int32 MaxTokens = 16384;
+	int32 MaxTokens = 4096;
 
 	/** Request timeout in seconds */
 	UPROPERTY()
@@ -280,27 +280,16 @@ public:
 	) = 0;
 
 	/**
-	 * Send a message in autonomous mode for CLI providers.
-	 * The agent discovers tools via MCP and manages its own agentic loop.
-	 * The plugin does not orchestrate turns, parse tool calls, or inject system prompts.
+	 * Send a message in autonomous mode. The agent discovers tools via MCP
+	 * and manages its own agentic loop. The plugin does not orchestrate turns,
+	 * parse tool calls, or inject system prompts.
+	 *
+	 * Default implementation rejects -- only CLI-based providers override this.
 	 *
 	 * @param UserMessage  The user's task description sent to stdin
 	 * @param OnChunk      Called for each streamed progress chunk
 	 * @param OnComplete   Called when the autonomous process finishes
-	 * @param OnError      Called on error
-	 */
-	virtual void SendMessage(
-		const FString& UserMessage,
-		FOnOliveStreamChunk OnChunk,
-		FOnOliveComplete OnComplete,
-		FOnOliveError OnError)
-	{
-		OnError.ExecuteIfBound(TEXT("Autonomous mode not supported by this provider"));
-	}
-
-	/**
-	 * Backward-compatible autonomous entry point used by the current ConversationManager.
-	 * Default implementation forwards to the simplified overload above.
+	 * @param OnError      Called on error or if autonomous mode is unsupported
 	 */
 	virtual void SendMessageAutonomous(
 		const FString& UserMessage,
@@ -308,7 +297,7 @@ public:
 		FOnOliveComplete OnComplete,
 		FOnOliveError OnError)
 	{
-		SendMessage(UserMessage, OnChunk, OnComplete, OnError);
+		OnError.ExecuteIfBound(TEXT("Autonomous mode not supported by this provider"));
 	}
 
 	/**
@@ -330,7 +319,11 @@ public:
 	// Status
 	// ==========================================
 
-	/** Whether this provider supports autonomous MCP mode. */
+	/**
+	 * Whether this provider supports autonomous MCP mode.
+	 * CLI-based providers (Claude Code, Codex) return true.
+	 * API-based providers return false (default).
+	 */
 	virtual bool SupportsAutonomousMode() const { return false; }
 
 	/** Check if a request is in progress */
@@ -338,13 +331,6 @@ public:
 
 	/** Get last error message */
 	virtual FString GetLastError() const = 0;
-
-	/**
-	 * Whether this provider is a CLI provider that operates as a native agent.
-	 * CLI providers (Claude Code, Codex) return true.
-	 * API-based providers return false (default).
-	 */
-	virtual bool IsCLIProvider() const { return false; }
 
 	/**
 	 * Async connection validation. Tests if the provider is reachable and configured correctly.

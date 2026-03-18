@@ -311,20 +311,6 @@ namespace OliveCrossSystemSchemas
 		return Schema;
 	}
 
-	/** Schema for olive.get_knowledge: {topic: string} -- get domain-specific knowledge */
-	TSharedPtr<FJsonObject> KnowledgeGetKnowledge()
-	{
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		TSharedPtr<FJsonObject> Props = MakeProperties();
-
-		Props->SetObjectField(TEXT("topic"),
-			OliveBlueprintSchemas::StringProp(TEXT("Topic to retrieve. Options: blueprint-patterns, plan-json, events-vs-functions, node-routing, recipe-routing, blueprint-authoring, tool-usage-rules")));
-
-		Schema->SetObjectField(TEXT("properties"), Props);
-		AddRequired(Schema, { TEXT("topic") });
-		return Schema;
-	}
-
 	// ============================================================================
 	// Community Blueprint Search
 	// ============================================================================
