@@ -295,13 +295,17 @@ void FOliveCodexProvider::ParseOutputLine(const FString& Line)
 	if (!FJsonSerializer::Deserialize(Reader, JsonObject) || !JsonObject.IsValid())
 	{
 		// Not JSON — treat as plain text
-		if (!Line.StartsWith(TEXT("{")))
+		if (!Line.StartsWith(TEXT("{")) && !ShouldFilterUnstructuredOutputLine(Line))
 		{
 			FScopeLock Lock(&CallbackLock);
 			FOliveStreamChunk Chunk;
 			Chunk.Text = Line;
 			AccumulatedResponse += Line + TEXT("\n");
 			CurrentOnChunk.ExecuteIfBound(Chunk);
+		}
+		else if (ShouldFilterUnstructuredOutputLine(Line))
+		{
+			UE_LOG(LogOliveCodex, Verbose, TEXT("Filtered Codex CLI diagnostic line: %s"), *Line);
 		}
 		return;
 	}

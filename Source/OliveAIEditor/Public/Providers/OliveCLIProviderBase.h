@@ -201,6 +201,8 @@ protected:
 	 * resume (e.g., Claude Code CLI with --resume <session-id>).
 	 */
 	virtual bool SupportsSessionResume() const { return false; }
+	bool ShouldFilterUnstructuredOutputLine(const FString& Line) const;
+	FString SanitizeAccumulatedResponseText(const FString& Text) const;
 
 	// ==========================================
 	// Shared infrastructure (protected, usable by subclasses)

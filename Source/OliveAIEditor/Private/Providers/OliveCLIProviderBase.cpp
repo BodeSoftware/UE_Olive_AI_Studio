@@ -234,6 +234,31 @@ void FOliveCLIProviderBase::ParseOutputLine(const FString& Line)
 	CurrentOnChunk.ExecuteIfBound(Chunk);
 }
 
+bool FOliveCLIProviderBase::ShouldFilterUnstructuredOutputLine(const FString& Line) const
+{
+	const FString Lower = Line.TrimStartAndEnd().ToLower();
+	return Lower.StartsWith(TEXT("worker quit with "))
+		|| Lower.Contains(TEXT("worker quit with fatal"));
+}
+
+FString FOliveCLIProviderBase::SanitizeAccumulatedResponseText(const FString& Text) const
+{
+	TArray<FString> Lines;
+	Text.ParseIntoArrayLines(Lines, false);
+
+	TArray<FString> KeptLines;
+	KeptLines.Reserve(Lines.Num());
+	for (const FString& Line : Lines)
+	{
+		if (!ShouldFilterUnstructuredOutputLine(Line))
+		{
+			KeptLines.Add(Line);
+		}
+	}
+
+	return FString::Join(KeptLines, TEXT("\n"));
+}
+
 FString FOliveCLIProviderBase::GetWorkingDirectory() const
 {
 	return WorkingDirectory;
@@ -1269,10 +1294,12 @@ void FOliveCLIProviderBase::HandleResponseComplete(int32 ReturnCode)
 		return;
 	}
 
+	const FString SanitizedResponse = SanitizeAccumulatedResponseText(AccumulatedResponse);
+
 	// Parse tool calls from accumulated text
 	TArray<FOliveStreamChunk> ParsedToolCalls;
 	FString CleanedText;
-	bool bHasToolCalls = FOliveCLIToolCallParser::Parse(AccumulatedResponse, ParsedToolCalls, CleanedText);
+	bool bHasToolCalls = FOliveCLIToolCallParser::Parse(SanitizedResponse, ParsedToolCalls, CleanedText);
 
 	if (bHasToolCalls)
 	{
@@ -1329,7 +1356,7 @@ void FOliveCLIProviderBase::HandleResponseCompleteAutonomous(int32 ReturnCode)
 	Usage.Model = CurrentConfig.ModelId.IsEmpty() ? FString::Printf(TEXT("%s-cli"), *GetCLIName().ToLower()) : CurrentConfig.ModelId;
 	Usage.FinishReason = TEXT("stop");
 	bIsBusy = false;
-	CurrentOnComplete.ExecuteIfBound(AccumulatedResponse, Usage);
+	CurrentOnComplete.ExecuteIfBound(SanitizeAccumulatedResponseText(AccumulatedResponse), Usage);
 }
 
 TArray<FString> FOliveCLIProviderBase::ExtractKeywordsFromMessage(const FString& Message) const

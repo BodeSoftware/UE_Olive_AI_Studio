@@ -33,6 +33,7 @@
 #include "Components/PrimitiveComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "InputCoreTypes.h"
 #include "WidgetBlueprint.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Widget.h"
@@ -3159,6 +3160,37 @@ bool FOliveBlueprintPlanResolver::ResolveEventOp(
 			*Step.StepId, *Step.Target);
 
 		return true;
+	}
+
+	// ----------------------------------------------------------------
+	// InputKey detection: plain key names such as "E", "R", or
+	// "LeftMouseButton" should resolve to UK2Node_InputKey when used
+	// as plan_json events. Prompt guidance already tells the model this
+	// is valid; support it directly instead of falling through to the
+	// generic event path.
+	// ----------------------------------------------------------------
+	{
+		const FKey CandidateKey(*Step.Target);
+		if (CandidateKey.IsValid())
+		{
+			Out.NodeType = OliveNodeTypes::InputKey;
+			Out.Properties.Add(TEXT("key"), Step.Target);
+
+			FOliveResolverNote Note;
+			Note.Field = TEXT("node_type");
+			Note.OriginalValue = TEXT("Event");
+			Note.ResolvedValue = OliveNodeTypes::InputKey;
+			Note.Reason = FString::Printf(
+				TEXT("Target '%s' resolved as an InputKey event."),
+				*Step.Target);
+			Out.ResolverNotes.Add(MoveTemp(Note));
+
+			UE_LOG(LogOlivePlanResolver, Log,
+				TEXT("Step '%s': InputKey detected — target='%s', resolving as InputKey node type"),
+				*Step.StepId, *Step.Target);
+
+			return true;
+		}
 	}
 
 	FString ResolvedEventName = Step.Target;

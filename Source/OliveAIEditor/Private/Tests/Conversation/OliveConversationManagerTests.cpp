@@ -290,6 +290,8 @@ bool FOliveConversationPlanSessionExplicitResetTest::RunTest(const FString& Para
 		Manager->ShouldContinueActivePlan(TEXT("Create a door blueprint.")));
 	TestTrue(TEXT("Plan-to-code handoff cue should continue the active plan"),
 		Manager->ShouldContinueActivePlan(TEXT("Switch to code mode and do it.")));
+	TestTrue(TEXT("Approval-only cue should continue the active plan"),
+		Manager->ShouldContinueActivePlan(TEXT("I approve.")));
 
 	Manager->UpdatePlanSessionFromUserMessage(TEXT("New task: plan an interactable dialogue terminal instead."));
 	const FString Continuation = Manager->BuildPlanContinuationContext();
@@ -326,6 +328,70 @@ bool FOliveConversationPlanToCodeAutonomousHandoffTest::RunTest(const FString& P
 		Provider->AutonomousContinuationContextSeen.Contains(TEXT("Approved Plan To Execute")));
 	TestTrue(TEXT("Autonomous continuation context should include the planned goal"),
 		Provider->AutonomousContinuationContextSeen.Contains(TEXT("patrol enemy")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FOliveConversationPlanApprovalInPlanModeAutonomousTest,
+	"OliveAI.Conversation.PlanApprovalInPlanModeAutonomous",
+	OliveConversationManagerTests::TestFlags)
+
+bool FOliveConversationPlanApprovalInPlanModeAutonomousTest::RunTest(const FString& Parameters)
+{
+	using namespace OliveConversationManagerTests;
+
+	FScopedAutonomousModeSetting AutonomousMode(true);
+	TSharedPtr<FOliveConversationManager> Manager = MakeShared<FOliveConversationManager>();
+	TSharedPtr<FFakeProvider> Provider = MakeShared<FFakeProvider>();
+	Provider->bSupportsAutonomousMode = true;
+	Manager->SetProvider(Provider);
+
+	Manager->SetChatMode(EOliveChatMode::Plan);
+	Manager->UpdatePlanSessionFromUserMessage(TEXT("Plan a patrol enemy with waypoint movement."));
+	Manager->UpdatePlanSessionFromAssistantMessage(MakeAssistantMessage(
+		TEXT("Create the enemy Blueprint, add waypoint refs, then wire patrol movement and perception.")));
+
+	Manager->SendUserMessage(TEXT("I approve."));
+
+	TestEqual(TEXT("Approval in Plan mode should use autonomous send once"), Provider->AutonomousSendCount, 1);
+	TestTrue(TEXT("Approval in Plan mode should use execution framing"),
+		Provider->AutonomousContinuationContextSeen.Contains(TEXT("Approved Plan To Execute")));
+	TestFalse(TEXT("Approval in Plan mode should not use continuation framing"),
+		Provider->AutonomousContinuationContextSeen.Contains(TEXT("Active Plan Context")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FOliveConversationPlanApprovalInPlanModeOrchestratedTest,
+	"OliveAI.Conversation.PlanApprovalInPlanModeOrchestrated",
+	OliveConversationManagerTests::TestFlags)
+
+bool FOliveConversationPlanApprovalInPlanModeOrchestratedTest::RunTest(const FString& Parameters)
+{
+	using namespace OliveConversationManagerTests;
+
+	TSharedPtr<FOliveConversationManager> Manager = MakeShared<FOliveConversationManager>();
+	TSharedPtr<FFakeProvider> Provider = MakeShared<FFakeProvider>();
+	Manager->SetProvider(Provider);
+	Manager->SetChatMode(EOliveChatMode::Plan);
+	Manager->UpdatePlanSessionFromUserMessage(TEXT("Plan a patrol enemy with waypoint movement."));
+	Manager->UpdatePlanSessionFromAssistantMessage(MakeAssistantMessage(
+		TEXT("Create the enemy Blueprint, add waypoint refs, then wire patrol movement and perception.")));
+
+	Manager->SendUserMessage(TEXT("I approve."));
+
+	bool bSawExecutionContext = false;
+	for (const FOliveChatMessage& Message : Provider->MessagesSeen)
+	{
+		if (Message.Role == EOliveChatRole::System && Message.Content.Contains(TEXT("Approved Plan To Execute")))
+		{
+			bSawExecutionContext = true;
+			break;
+		}
+	}
+
+	TestEqual(TEXT("Approval in Plan mode should use orchestrated send once"), Provider->SendCount, 1);
+	TestTrue(TEXT("Approval in Plan mode should inject execution context"), bSawExecutionContext);
 	return true;
 }
 

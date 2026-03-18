@@ -134,7 +134,7 @@ bool IsPlanToCodeHandoffCue(const FString& Message)
 	static const TArray<FString> HandoffKeywords = {
 		TEXT("implement"), TEXT("build it"), TEXT("go ahead"), TEXT("proceed"),
 		TEXT("do it"), TEXT("start building"), TEXT("create it"), TEXT("use the plan"),
-		TEXT("approved"), TEXT("ship it")
+		TEXT("approve"), TEXT("approved"), TEXT("ship it")
 	};
 
 	const FString Lower = Message.ToLower();
@@ -400,20 +400,20 @@ bool FOliveConversationManager::IsAutonomousProvider() const
 void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message)
 {
 	FString ContinuationContext;
-	if (ActiveChatMode == EOliveChatMode::Plan)
-	{
-		ContinuationContext = BuildPlanContinuationContext();
-		if (!ContinuationContext.IsEmpty())
-		{
-			UE_LOG(LogOliveAI, Log, TEXT("Injected plan continuation context into autonomous request"));
-		}
-	}
-	else if (ActiveChatMode == EOliveChatMode::Code && IsPlanToCodeHandoffCue(Message))
+	if (bRequestExecutingApprovedPlan)
 	{
 		ContinuationContext = BuildPlanExecutionContext();
 		if (!ContinuationContext.IsEmpty())
 		{
 			UE_LOG(LogOliveAI, Log, TEXT("Injected plan execution context into autonomous request"));
+		}
+	}
+	else if (RequestChatMode == EOliveChatMode::Plan)
+	{
+		ContinuationContext = BuildPlanContinuationContext();
+		if (!ContinuationContext.IsEmpty())
+		{
+			UE_LOG(LogOliveAI, Log, TEXT("Injected plan continuation context into autonomous request"));
 		}
 	}
 
@@ -461,7 +461,7 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 
 	// 5. Propagate the current chat mode to the MCP server so that tool calls
 	//    from the internal autonomous agent respect Plan/Ask mode gating.
-	FOliveMCPServer::Get().SetChatModeForInternalAgent(ActiveChatMode);
+	FOliveMCPServer::Get().SetChatModeForInternalAgent(RequestChatMode);
 
 	// 6. Begin a Brain run
 	if (Brain.IsValid())
@@ -506,7 +506,7 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 			AssistantMessage.Content = !FullResponse.IsEmpty() ? FullResponse : This->CurrentStreamingContent;
 			AssistantMessage.Timestamp = FDateTime::UtcNow();
 			This->AddMessage(AssistantMessage);
-			if (This->ActiveChatMode == EOliveChatMode::Plan)
+			if (This->RequestChatMode == EOliveChatMode::Plan)
 			{
 				This->UpdatePlanSessionFromAssistantMessage(AssistantMessage);
 			}
@@ -518,6 +518,7 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 			}
 
 			This->bIsProcessing = false;
+			This->ResetRequestContext();
 			This->CurrentStreamingContent.Empty();
 			This->OnProcessingComplete.Broadcast();
 
@@ -552,6 +553,7 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 			}
 
 			This->bIsProcessing = false;
+			This->ResetRequestContext();
 			This->CurrentStreamingContent.Empty();
 
 			This->OnError.Broadcast(ErrorMessage);
@@ -633,6 +635,8 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 	{
 		UpdatePlanSessionFromUserMessage(Message);
 	}
+
+	BeginRequestContext(Message);
 
 	// Route to autonomous path for Claude Code CLI when autonomous MCP mode is enabled.
 	// This bypasses the entire orchestrated loop (system message assembly, tool schema
@@ -727,6 +731,7 @@ void FOliveConversationManager::CancelCurrentRequest()
 	}
 
 	bIsProcessing = false;
+	ResetRequestContext();
 	PendingToolCalls.Empty();
 	PendingToolResults.Empty();
 	PendingToolExecutions = 0;
@@ -818,6 +823,7 @@ FOliveChatMessage FOliveConversationManager::BuildSystemMessage()
 	FOliveChatMessage SystemMessage;
 	SystemMessage.Role = EOliveChatRole::System;
 	SystemMessage.Timestamp = FDateTime::UtcNow();
+	const EOliveChatMode EffectiveChatMode = bIsProcessing ? RequestChatMode : ActiveChatMode;
 
 	const UOliveAISettings* Settings = UOliveAISettings::Get();
 	const int32 MaxPromptTokens = Settings ? FMath::Max(512, Settings->MaxTokens) : 4000;
@@ -826,7 +832,7 @@ FOliveChatMessage FOliveConversationManager::BuildSystemMessage()
 	if (SystemPrompt.IsEmpty())
 	{
 		SystemMessage.Content = PromptAssembler.AssembleSystemPrompt(
-			ActiveChatMode,
+			EffectiveChatMode,
 			ActiveContextPaths,
 			MaxPromptTokens);
 	}
@@ -834,7 +840,7 @@ FOliveChatMessage FOliveConversationManager::BuildSystemMessage()
 	{
 		SystemMessage.Content = PromptAssembler.AssembleSystemPromptWithBase(
 			SystemPrompt,
-			ActiveChatMode,
+			EffectiveChatMode,
 			ActiveContextPaths,
 			MaxPromptTokens);
 	}
@@ -851,7 +857,7 @@ FOliveChatMessage FOliveConversationManager::BuildSystemMessage()
 
 TArray<FOliveToolDefinition> FOliveConversationManager::GetAvailableTools()
 {
-	return FOliveToolRegistry::Get().GetToolsForMode(ActiveChatMode);
+	return FOliveToolRegistry::Get().GetToolsForMode(bIsProcessing ? RequestChatMode : ActiveChatMode);
 }
 
 void FOliveConversationManager::SendToProvider()
@@ -971,13 +977,13 @@ void FOliveConversationManager::SendToProvider()
 	if (LastUserMessage)
 	{
 		FString PlanContext;
-		if (ActiveChatMode == EOliveChatMode::Plan)
-		{
-			PlanContext = BuildPlanContinuationContext();
-		}
-		else if (ActiveChatMode == EOliveChatMode::Code && IsPlanToCodeHandoffCue(LastUserMessage->Content))
+		if (bRequestExecutingApprovedPlan)
 		{
 			PlanContext = BuildPlanExecutionContext();
+		}
+		else if (RequestChatMode == EOliveChatMode::Plan)
+		{
+			PlanContext = BuildPlanContinuationContext();
 		}
 
 		if (!PlanContext.IsEmpty())
@@ -1108,7 +1114,7 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 	AssistantMessage.Timestamp = FDateTime::UtcNow();
 	AssistantMessage.ToolCalls = PendingToolCalls;
 	AddMessage(AssistantMessage);
-	if (ActiveChatMode == EOliveChatMode::Plan)
+	if (RequestChatMode == EOliveChatMode::Plan)
 	{
 		UpdatePlanSessionFromAssistantMessage(AssistantMessage);
 	}
@@ -1219,6 +1225,7 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 
 		// No tool calls, we're done
 		bIsProcessing = false;
+		ResetRequestContext();
 		OnProcessingComplete.Broadcast();
 
 		// Apply deferred mode switch if pending
@@ -1411,6 +1418,31 @@ FString FOliveConversationManager::BuildPlanExecutionContext() const
 	return FString::Join(Lines, TEXT("\n"));
 }
 
+bool FOliveConversationManager::ShouldExecuteApprovedPlan(const FString& Message) const
+{
+	return ActivePlanSession.IsValid()
+		&& ActivePlanSession->bHasActivePlan
+		&& IsPlanToCodeHandoffCue(Message);
+}
+
+void FOliveConversationManager::BeginRequestContext(const FString& Message)
+{
+	bRequestExecutingApprovedPlan = ShouldExecuteApprovedPlan(Message);
+	RequestChatMode = bRequestExecutingApprovedPlan ? EOliveChatMode::Code : ActiveChatMode;
+
+	if (bRequestExecutingApprovedPlan && ActivePlanSession.IsValid())
+	{
+		ActivePlanSession->ActiveModeContext = TEXT("Code (executing approved plan)");
+		ActivePlanSession->LastUpdatedUtc = FDateTime::UtcNow();
+	}
+}
+
+void FOliveConversationManager::ResetRequestContext()
+{
+	RequestChatMode = ActiveChatMode;
+	bRequestExecutingApprovedPlan = false;
+}
+
 bool FOliveConversationManager::ShouldContinueActivePlan(const FString& Message) const
 {
 	if (!ActivePlanSession.IsValid() || !ActivePlanSession->bHasActivePlan)
@@ -1427,6 +1459,11 @@ bool FOliveConversationManager::ShouldContinueActivePlan(const FString& Message)
 	if (MessageStartsNewPlanTask(Trimmed))
 	{
 		return false;
+	}
+
+	if (ShouldExecuteApprovedPlan(Trimmed))
+	{
+		return true;
 	}
 
 	const FString Lower = Trimmed.ToLower();
@@ -1486,6 +1523,7 @@ void FOliveConversationManager::HandleError(const FString& ErrorMessage)
 	UE_LOG(LogOliveAI, Error, TEXT("Conversation error: %s"), *ErrorMessage);
 
 	bIsProcessing = false;
+	ResetRequestContext();
 
 	// Brain: error state (CompleteRun already transitions to Idle)
 	if (Brain.IsValid() && Brain->IsActive())
@@ -1691,7 +1729,7 @@ void FOliveConversationManager::ExecuteToolCall(const FOliveStreamChunk& ToolCal
 	ToolContext.Origin = EOliveToolCallOrigin::EditorChat;
 	ToolContext.SessionId = SessionId.ToString();
 	ToolContext.RunId = Brain.IsValid() ? Brain->GetCurrentRunId() : TEXT("");
-	ToolContext.ChatMode = ActiveChatMode;
+	ToolContext.ChatMode = RequestChatMode;
 	ToolContext.bRunModeActive = bRunModeActive;
 	FOliveToolExecutionContextScope ContextScope(ToolContext);
 
@@ -1958,6 +1996,7 @@ void FOliveConversationManager::ContinueAfterToolResults()
 	{
 		bStopAfterToolResults = false;
 		bIsProcessing = false;
+		ResetRequestContext();
 		if (Brain.IsValid() && Brain->GetState() != EOliveBrainState::Idle)
 		{
 			Brain->CompleteRun(EOliveRunOutcome::Failed); // Already transitions to Idle

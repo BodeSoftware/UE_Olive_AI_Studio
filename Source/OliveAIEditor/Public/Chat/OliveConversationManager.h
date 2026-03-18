@@ -299,6 +299,9 @@ private:
 	 * @param Message User's message text
 	 */
 	void SendUserMessageAutonomous(const FString& Message);
+	bool ShouldExecuteApprovedPlan(const FString& Message) const;
+	void BeginRequestContext(const FString& Message);
+	void ResetRequestContext();
 
 	// ==========================================
 	// Internal Message Handling
@@ -381,6 +384,8 @@ private:
 
 	/** Current chat mode (Code/Plan/Ask). Initialized from DefaultChatMode setting. */
 	EOliveChatMode ActiveChatMode = EOliveChatMode::Code;
+	EOliveChatMode RequestChatMode = EOliveChatMode::Code;
+	bool bRequestExecutingApprovedPlan = false;
 
 	/** Deferred mode switch -- applied when processing completes */
 	TOptional<EOliveChatMode> DeferredChatMode;

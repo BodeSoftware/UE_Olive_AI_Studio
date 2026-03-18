@@ -279,7 +279,7 @@ void FOliveClaudeCodeProvider::ParseOutputLine(const FString& Line)
 	if (!FJsonSerializer::Deserialize(Reader, JsonObject) || !JsonObject.IsValid())
 	{
 		// Not JSON, might be plain text output
-		if (!Line.StartsWith(TEXT("{")))
+		if (!Line.StartsWith(TEXT("{")) && !ShouldFilterUnstructuredOutputLine(Line))
 		{
 			// Treat as text chunk
 			FScopeLock Lock(&CallbackLock);
@@ -287,6 +287,10 @@ void FOliveClaudeCodeProvider::ParseOutputLine(const FString& Line)
 			Chunk.Text = Line;
 			AccumulatedResponse += Line + TEXT("\n");
 			CurrentOnChunk.ExecuteIfBound(Chunk);
+		}
+		else if (ShouldFilterUnstructuredOutputLine(Line))
+		{
+			UE_LOG(LogOliveClaudeCode, Verbose, TEXT("Filtered Claude CLI diagnostic line: %s"), *Line);
 		}
 		return;
 	}
