@@ -442,7 +442,8 @@ void FOliveOpenAIProvider::ParseStreamChunk(const TSharedPtr<FJsonObject>& Chunk
 	}
 
 	// Check for finish reason
-	FString FinishReason = Choice->GetStringField(TEXT("finish_reason"));
+	FString FinishReason;
+	Choice->TryGetStringField(TEXT("finish_reason"), FinishReason);
 	if (!FinishReason.IsEmpty() && FinishReason != TEXT("null"))
 	{
 		// Store finish reason so HandleComplete can detect truncation (e.g. "length")
@@ -637,8 +638,16 @@ void FOliveOpenAIProvider::CompleteStreaming()
 	bIsBusy = false;
 	CurrentRequest.Reset();
 
-	UE_LOG(LogOliveAI, Log, TEXT("OpenAI request complete. Tokens: %d prompt, %d completion"),
-		CurrentUsage.PromptTokens, CurrentUsage.CompletionTokens);
+	UE_LOG(LogOliveAI, Log,
+		TEXT("OpenAI request complete. Tokens: %d prompt, %d completion, finish_reason=%s"),
+		CurrentUsage.PromptTokens, CurrentUsage.CompletionTokens,
+		CurrentUsage.FinishReason.IsEmpty() ? TEXT("unknown") : *CurrentUsage.FinishReason);
+
+	if (CurrentUsage.PromptTokens == 0 && CurrentUsage.CompletionTokens == 0)
+	{
+		UE_LOG(LogOliveAI, Warning,
+			TEXT("Provider returned no usage metadata. Token counts may be inaccurate."));
+	}
 
 	OnCompleteCallback.ExecuteIfBound(AccumulatedResponse, CurrentUsage);
 }

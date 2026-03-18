@@ -4,6 +4,7 @@
 #include "OliveCrossSystemSchemas.h"
 #include "OliveSnapshotManager.h"
 #include "OliveMultiAssetOperations.h"
+#include "Chat/OlivePromptAssembler.h"
 #include "Index/OliveProjectIndex.h"
 #include "Settings/OliveAISettings.h"
 #include "Writer/OliveGraphWriter.h"
@@ -1262,6 +1263,17 @@ void FOliveCrossSystemToolHandlers::RegisterRecipeTools()
 	);
 	RegisteredToolNames.Add(TEXT("olive.get_recipe"));
 
+	Registry.RegisterTool(
+		TEXT("olive.get_knowledge"),
+		TEXT("Get domain-specific knowledge about Unreal Engine development patterns and tool usage conventions. "
+			"Topic to retrieve. Options: blueprint-patterns, plan-json, events-vs-functions, node-routing, recipe-routing, blueprint-authoring, tool-usage-rules"),
+		OliveCrossSystemSchemas::KnowledgeGetKnowledge(),
+		FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleGetKnowledge),
+		{TEXT("crosssystem"), TEXT("read")},
+		TEXT("crosssystem")
+	);
+	RegisteredToolNames.Add(TEXT("olive.get_knowledge"));
+
 	UE_LOG(LogOliveCrossSystemTools, Log, TEXT("Registered recipe tool with %d recipes available"), RecipeLibrary.Num());
 }
 
@@ -1417,6 +1429,81 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleGetRecipe(const TSharedPtr
 		Data->SetArrayField(TEXT("available_entries"), AvailableArray);
 	}
 
+	return FOliveToolResult::Success(Data);
+}
+
+FOliveToolResult FOliveCrossSystemToolHandlers::HandleGetKnowledge(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("KNOWLEDGE_INVALID_PARAMS"),
+			TEXT("Parameters required"),
+			TEXT("Call with {\"topic\":\"blueprint-patterns\"} to get domain-specific knowledge."));
+	}
+
+	FString Topic;
+	if (!Params->TryGetStringField(TEXT("topic"), Topic) || Topic.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("KNOWLEDGE_MISSING_TOPIC"),
+			TEXT("'topic' parameter is required"),
+			TEXT("Call with {\"topic\":\"blueprint-patterns\"} to get domain-specific knowledge. "
+				"Options: blueprint-patterns, plan-json, events-vs-functions, node-routing, recipe-routing, blueprint-authoring, tool-usage-rules"));
+	}
+
+	// Map topic to knowledge pack ID
+	FString PackId;
+	if (Topic == TEXT("plan-json"))
+	{
+		PackId = TEXT("cli_blueprint");
+	}
+	else if (Topic == TEXT("blueprint-patterns"))
+	{
+		PackId = TEXT("blueprint_design_patterns");
+	}
+	else if (Topic == TEXT("events-vs-functions"))
+	{
+		PackId = TEXT("events_vs_functions");
+	}
+	else if (Topic == TEXT("node-routing"))
+	{
+		PackId = TEXT("node_routing");
+	}
+	else if (Topic == TEXT("recipe-routing"))
+	{
+		PackId = TEXT("recipe_routing");
+	}
+	else if (Topic == TEXT("blueprint-authoring"))
+	{
+		PackId = TEXT("blueprint_authoring");
+	}
+	else if (Topic == TEXT("tool-usage-rules"))
+	{
+		PackId = TEXT("tool_usage_rules");
+	}
+	else
+	{
+		return FOliveToolResult::Error(
+			TEXT("KNOWLEDGE_UNKNOWN_TOPIC"),
+			FString::Printf(TEXT("Unknown knowledge topic: %s"), *Topic),
+			TEXT("Valid topics: blueprint-patterns, plan-json, events-vs-functions, node-routing, recipe-routing, blueprint-authoring, tool-usage-rules"));
+	}
+
+	// Get the knowledge content
+	const FString Content = FOlivePromptAssembler::Get().GetKnowledgePackById(PackId);
+	if (Content.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("KNOWLEDGE_NOT_FOUND"),
+			FString::Printf(TEXT("Knowledge content not found for topic: %s"), *Topic),
+			TEXT("The requested knowledge pack is empty or missing."));
+	}
+
+	// Return the content
+	TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("topic"), Topic);
+	Data->SetStringField(TEXT("content"), Content);
 	return FOliveToolResult::Success(Data);
 }
 

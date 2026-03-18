@@ -201,12 +201,12 @@ FString FOliveCodexProvider::GetCLIArgumentsAutonomous() const
 	// Codex exec: non-interactive mode with JSONL output
 	// --json: JSONL event stream to stdout
 	// --dangerously-bypass-approvals-and-sandbox: all mutations go through MCP, not shell
-	// --skip-git-repo-check: sandbox dir is not a git repo
-	// --ephemeral: don't persist session files
+	// --skip-git-repo-check: sandbox dir is a synthetic git root
 	// -C <sandbox>: explicit working directory so Codex reads AGENTS.md from there
 	// --add-dir <project>: grant access to project Content/ for MCP tool operations
 	// -c mcp_servers.olive.url=...: direct HTTP MCP connection (no bridge)
 	// -c mcp_servers={olive=...}: isolate Codex from user-global MCP servers for Olive-launched runs
+	// exec resume <thread_id>: reload prior conversation context for follow-up messages
 
 	const int32 MCPPort = FOliveMCPServer::Get().GetActualPort();
 	const FString ProjectDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
@@ -222,17 +222,36 @@ FString FOliveCodexProvider::GetCLIArgumentsAutonomous() const
 		}
 	}
 
-	return FString::Printf(
-		TEXT("exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --ephemeral %s")
-		TEXT("-C \"%s\" --add-dir \"%s\" ")
+	FString BaseFlags = TEXT("--json --skip-git-repo-check");
+	
+	// Append permission bypass flag if enabled
+	if (Settings && Settings->bAllowCLIPermissionBypass)
+	{
+		BaseFlags += TEXT(" --dangerously-bypass-approvals-and-sandbox");
+	}
+
+	const FString SharedConfigArgs = FString::Printf(
+		TEXT("%s %s")
 		TEXT("-c \"mcp_servers.olive.url=\\\"http://localhost:%d/mcp\\\"\" ")
 		TEXT("-c \"mcp_servers={olive={url=\\\"http://localhost:%d/mcp\\\"}}\""),
+		*BaseFlags,
 		*ModelArg,
+		MCPPort,
+		MCPPort);
+
+	if (bHasActiveSession && !CLISessionId.IsEmpty())
+	{
+		return FString::Printf(
+			TEXT("exec resume %s %s"),
+			*CLISessionId,
+			*SharedConfigArgs);
+	}
+
+	return FString::Printf(
+		TEXT("exec -C \"%s\" --add-dir \"%s\" %s"),
 		*AutonomousSandboxDir,
 		*ProjectDir,
-		MCPPort,
-		MCPPort
-	);
+		*SharedConfigArgs);
 }
 
 bool FOliveCodexProvider::ExtractMcpToolNameFromJsonLine(const FString& Line, FString& OutToolName)
@@ -312,7 +331,16 @@ void FOliveCodexProvider::ParseOutputLine(const FString& Line)
 		return;
 	}
 
-	if (Type == TEXT("item.completed"))
+	if (Type == TEXT("thread.started"))
+	{
+		FString ThreadId;
+		if (JsonObject->TryGetStringField(TEXT("thread_id"), ThreadId) && !ThreadId.IsEmpty())
+		{
+			CLISessionId = ThreadId;
+			UE_LOG(LogOliveCodex, Log, TEXT("Codex session thread established: %s"), *CLISessionId);
+		}
+	}
+	else if (Type == TEXT("item.completed"))
 	{
 		const TSharedPtr<FJsonObject>* ItemObj;
 		if (!JsonObject->TryGetObjectField(TEXT("item"), ItemObj))
@@ -400,7 +428,7 @@ void FOliveCodexProvider::ParseOutputLine(const FString& Line)
 		LastError = ErrorMsg;
 		CurrentOnError.ExecuteIfBound(ErrorMsg);
 	}
-	// thread.started, turn.started — informational, no action needed
+	// turn.started — informational, no action needed
 }
 
 void FOliveCodexProvider::WriteProviderSpecificSandboxFiles(const FString& AgentContext)

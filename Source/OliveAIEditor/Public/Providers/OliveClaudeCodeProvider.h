@@ -32,7 +32,7 @@ public:
 	// IOliveAIProvider Interface (Claude-specific overrides)
 	// ==========================================
 
-	virtual FString GetProviderName() const override { return TEXT("Claude Code CLI"); }
+	virtual FString GetProviderName() const override { return TEXT("Claude Code (Local)"); }
 	virtual TArray<FString> GetAvailableModels() const override;
 	virtual FString GetRecommendedModel() const override;
 
@@ -65,9 +65,6 @@ protected:
 	// FOliveCLIProviderBase Virtual Hooks
 	// ==========================================
 
-	/** Claude is an Anthropic provider — skip prescriptive guidance in AGENTS.md */
-	virtual bool IsAnthropicProvider() const override { return true; }
-
 	/** Claude Code CLI supports --session-id / --resume for conversation persistence */
 	virtual bool SupportsSessionResume() const override { return true; }
 
@@ -98,6 +95,9 @@ protected:
 
 	/** Returns "Claude" for error messages */
 	virtual FString GetCLIName() const override { return TEXT("Claude"); }
+
+	/** Returns the permission bypass flag for Claude Code */
+	virtual FString GetPermissionBypassFlag() const override { return TEXT("--dangerously-skip-permissions"); }
 
 	/**
 	 * Writes .mcp.json (pointing to mcp-bridge.js) and CLAUDE.md into the sandbox.

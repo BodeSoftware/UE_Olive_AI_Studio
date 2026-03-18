@@ -161,6 +161,14 @@ protected:
 	virtual void ParseOutputLine(const FString& Line);
 
 	/**
+	 * Get the permission bypass flag for this provider.
+	 * Used to conditionally append dangerous flags like --dangerously-skip-permissions
+	 * based on the user setting bAllowCLIPermissionBypass.
+	 * @return The provider-specific permission bypass flag, or empty string if none
+	 */
+	virtual FString GetPermissionBypassFlag() const { return TEXT(""); }
+
+	/**
 	 * Get the working directory for the CLI process.
 	 * Default: returns the stored WorkingDirectory member.
 	 * @return Absolute path to use as the process working directory
@@ -182,12 +190,10 @@ protected:
 	virtual FString GetCLIName() const;
 
 	/**
-	 * Whether this provider is an Anthropic/Claude provider.
-	 * When false, SetupAutonomousSandbox() appends additional prescriptive
-	 * guidance to AGENTS.md to compensate for weaker tool-schema comprehension.
-	 * Default: false (non-Anthropic providers get prescriptive guidance).
+	 * Whether this provider is a CLI provider that operates as a native agent.
+	 * CLI providers return true.
 	 */
-	virtual bool IsAnthropicProvider() const { return false; }
+	virtual bool IsCLIProvider() const override { return true; }
 
 	/**
 	 * Whether this provider supports session resume via CLI flags.
@@ -315,14 +321,7 @@ protected:
 	 */
 	FString BuildAssetStateSummary(const TArray<FString>& AssetPaths) const;
 
-	/**
-	 * Build additional prescriptive guidance for non-Anthropic CLI providers.
-	 * Returns strict rules and examples that compensate for weaker UE5 knowledge
-	 * and tool-schema comprehension observed in testing (pin name guessing,
-	 * rate limit hammering, granular-tool spirals).
-	 * @return Formatted markdown string with mandatory tool usage rules
-	 */
-	FString BuildPrescriptiveGuidance() const;
+
 
 	/**
 	 * Kill the running CLI process and clean up all resources.

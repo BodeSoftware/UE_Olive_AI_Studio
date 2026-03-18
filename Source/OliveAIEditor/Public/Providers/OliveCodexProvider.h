@@ -28,7 +28,7 @@ public:
 	FOliveCodexProvider();
 
 	// IOliveAIProvider identity
-	virtual FString GetProviderName() const override { return TEXT("Codex CLI"); }
+	virtual FString GetProviderName() const override { return TEXT("Codex (Local)"); }
 	virtual TArray<FString> GetAvailableModels() const override;
 	virtual FString GetRecommendedModel() const override;
 
@@ -49,6 +49,8 @@ protected:
 	virtual FString GetCLIArgumentsAutonomous() const override;
 	virtual void ParseOutputLine(const FString& Line) override;
 	virtual FString GetCLIName() const override { return TEXT("Codex"); }
+	virtual bool SupportsSessionResume() const override { return true; }
+	virtual FString GetPermissionBypassFlag() const override { return TEXT("--dangerously-bypass-approvals-and-sandbox"); }
 
 	/**
 	 * No-op: Codex discovers MCP via -c CLI flag, not config files.

@@ -308,7 +308,9 @@ namespace
 					FString FuncName;
 					if (P->TryGetStringField(TEXT("function_name"), FuncName) && !FuncName.IsEmpty())
 					{
-						if (!P->HasField(TEXT("graph_name")) || P->GetStringField(TEXT("graph_name")).IsEmpty())
+						FString GraphName;
+						if (!P->HasField(TEXT("graph_name")) || 
+						    (!P->TryGetStringField(TEXT("graph_name"), GraphName) || GraphName.IsEmpty()))
 						{
 							P->SetStringField(TEXT("graph_name"), FuncName);
 						}
@@ -1168,7 +1170,17 @@ FOliveToolResult FOliveToolRegistry::HandleProjectSearch(const TSharedPtr<FJsonO
 		);
 	}
 
-	FString Query = Params->GetStringField(TEXT("query"));
+	FString Query;
+	// Try both "query" and "pattern" as parameter names to handle different AI models
+	if (!Params->TryGetStringField(TEXT("query"), Query) && !Params->TryGetStringField(TEXT("pattern"), Query))
+	{
+		return FOliveToolResult::Error(
+			FOliveErrorBuilder::ERR_INVALID_PARAMS,
+			TEXT("Query cannot be empty"),
+			TEXT("Provide a non-empty search query.")
+		);
+	}
+	
 	if (Query.IsEmpty())
 	{
 		return FOliveToolResult::Error(
@@ -1244,7 +1256,11 @@ FOliveToolResult FOliveToolRegistry::HandleProjectGetClassHierarchy(const TShare
 
 	if (Params.IsValid() && Params->HasField(TEXT("root_class")))
 	{
-		RootClass = FName(*Params->GetStringField(TEXT("root_class")));
+		FString RootClassName;
+		if (Params->TryGetStringField(TEXT("root_class"), RootClassName))
+		{
+			RootClass = FName(*RootClassName);
+		}
 	}
 
 	FString HierarchyJson = FOliveProjectIndex::Get().GetClassHierarchyJson(RootClass);

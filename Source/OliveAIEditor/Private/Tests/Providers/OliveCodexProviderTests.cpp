@@ -6,6 +6,25 @@
 namespace OliveCodexProviderTests
 {
 	static constexpr EAutomationTestFlags TestFlags = EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter;
+
+	class FTestableCodexProvider : public FOliveCodexProvider
+	{
+	public:
+		using FOliveCodexProvider::GetCLIArgumentsAutonomous;
+		using FOliveCodexProvider::ParseOutputLine;
+
+		void SetSessionState(const FString& InSessionId, bool bInHasActiveSession)
+		{
+			CLISessionId = InSessionId;
+			bHasActiveSession = bInHasActiveSession;
+			AutonomousSandboxDir = TEXT("B:/Sandbox");
+		}
+
+		FString GetSessionId() const
+		{
+			return CLISessionId;
+		}
+	};
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -59,3 +78,33 @@ bool FOliveCodexProviderParseNonToolItemTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FOliveCodexProviderResumeArgsTest,
+	"OliveAI.CodexProvider.ResumeArgs",
+	OliveCodexProviderTests::TestFlags)
+
+bool FOliveCodexProviderResumeArgsTest::RunTest(const FString& Parameters)
+{
+	OliveCodexProviderTests::FTestableCodexProvider Provider;
+	Provider.SetSessionState(TEXT("thread_123"), true);
+
+	const FString Args = Provider.GetCLIArgumentsAutonomous();
+
+	TestTrue(TEXT("Resume args should use exec resume"), Args.Contains(TEXT("exec resume thread_123")));
+	TestFalse(TEXT("Resume args should not be ephemeral"), Args.Contains(TEXT("--ephemeral")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FOliveCodexProviderCaptureThreadIdTest,
+	"OliveAI.CodexProvider.CaptureThreadId",
+	OliveCodexProviderTests::TestFlags)
+
+bool FOliveCodexProviderCaptureThreadIdTest::RunTest(const FString& Parameters)
+{
+	OliveCodexProviderTests::FTestableCodexProvider Provider;
+	Provider.ParseOutputLine(TEXT("{\"type\":\"thread.started\",\"thread_id\":\"thread_abc\"}"));
+
+	TestEqual(TEXT("thread.started should update session id"), Provider.GetSessionId(), TEXT("thread_abc"));
+	return true;
+}

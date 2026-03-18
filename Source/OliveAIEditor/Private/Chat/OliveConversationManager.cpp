@@ -106,7 +106,7 @@ FOliveRequestOptions BuildRequestOptions()
 		return Options;
 	}
 
-	Options.MaxTokens = FMath::Clamp(Settings->MaxTokens, 256, 8192);
+	Options.MaxTokens = FMath::Max(Settings->MaxTokens, 256);
 	Options.TimeoutSeconds = FMath::Clamp(Settings->RequestTimeoutSeconds, 30, 300);
 	Options.Temperature = FMath::Clamp(Settings->Temperature, 0.0f, 2.0f);
 	return Options;
@@ -216,10 +216,10 @@ bool FOliveConversationManager::IsAutonomousProvider() const
 		return false;
 	}
 
-	const UOliveAISettings* Settings = UOliveAISettings::Get();
-	const bool bAutonomousEnabled = Settings && Settings->bUseAutonomousMCPMode;
-
-	return bAutonomousEnabled && Provider->SupportsAutonomousMode();
+	// CLI providers always run in their native autonomous mode.
+	// This keeps Claude Code / Codex operating as themselves with Olive's MCP tools,
+	// and preserves their own session memory/resume behavior across user follow-ups.
+	return Provider->IsCLIProvider() && Provider->SupportsAutonomousMode();
 }
 
 void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message)
@@ -268,7 +268,17 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 
 	// 5. Propagate the current chat mode to the MCP server so that tool calls
 	//    from the internal autonomous agent respect Plan/Ask mode gating.
-	FOliveMCPServer::Get().SetChatModeForInternalAgent(ActiveChatMode);
+	// CLI providers are autonomous agents -- always give them full Code mode execution
+	// capability regardless of the UI chat mode. The mode gate exists for plugin-orchestrated
+	// providers, not for native CLI agents.
+	if (Provider.IsValid() && Provider->IsCLIProvider())
+	{
+		FOliveMCPServer::Get().SetChatModeForInternalAgent(EOliveChatMode::Code);
+	}
+	else
+	{
+		FOliveMCPServer::Get().SetChatModeForInternalAgent(ActiveChatMode);
+	}
 
 	// 6. Begin a Brain run
 	if (Brain.IsValid())
@@ -432,11 +442,9 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 		return;
 	}
 
-	// Route to autonomous path for Claude Code CLI when autonomous MCP mode is enabled.
-	// This bypasses the entire orchestrated loop (system message assembly, tool schema
-	// serialization, prompt distillation, iteration budgets, correction directives,
-	// self-correction policy, and loop detection). Claude Code discovers tools via MCP
-	// and manages its own agentic loop.
+	// CLI providers always route through their native autonomous MCP path.
+	// This bypasses the plugin-managed orchestration loop so Claude Code / Codex
+	// discover tools via MCP and manage their own ongoing conversation/session state.
 	if (IsAutonomousProvider())
 	{
 		// Ask mode blocks autonomous execution entirely
@@ -463,23 +471,28 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 	SelfCorrectionPolicy.Reset();
 	bTurnHasExplicitWriteIntent = DetectWriteIntent(Message);
 
-	// Dynamic iteration budget for multi-asset tasks
+	// Set MaxToolIterations from settings, with dynamic adjustment for multi-asset tasks
+	const UOliveAISettings* Settings = UOliveAISettings::Get();
+	const int32 BaseMaxToolIterations = Settings ? Settings->MaxToolIterations : 50;
+	
 	if (bTurnHasExplicitWriteIntent && DetectMultiAssetIntent(Message))
 	{
-		MaxToolIterations = FMath::Max(MaxToolIterations, 20);
+		MaxToolIterations = FMath::Max(BaseMaxToolIterations, 100);
 		UE_LOG(LogOliveAI, Log,
 			TEXT("Multi-asset task detected. Increased MaxToolIterations to %d"),
 			MaxToolIterations);
 	}
 	else
 	{
-		MaxToolIterations = 10;
+		MaxToolIterations = BaseMaxToolIterations;
 	}
 
 	bStopAfterToolResults = false;
 	bHasPendingCorrections = false;
 	CorrectionRepromptCount = 0;
 	ZeroToolRepromptCount = 0;
+	TruncationContinuationCount = 0;
+	bLastTurnWasTruncated = false;
 
 	// Begin a Brain run
 	if (Brain.IsValid())
@@ -687,8 +700,8 @@ void FOliveConversationManager::SendToProvider()
 	{
 		FString TruncationNote = FString::Printf(
 			TEXT("[CONTEXT NOTE: %d older messages were summarized to save tokens. "
-				 "%d tool results were truncated. If you need details from earlier "
-				 "in the conversation, ask the user to re-provide the relevant context.]"),
+			 "%d tool results were truncated. If you need details from earlier "
+			 "in the conversation, ask the user to re-provide the relevant context.]"),
 			DistillResult.MessagesSummarized,
 			DistillResult.ToolResultsTruncated);
 
@@ -723,16 +736,16 @@ void FOliveConversationManager::SendToProvider()
 		{
 			BudgetNote = FString::Printf(
 				TEXT("[ITERATION BUDGET: %d/%d used, only %d remaining. "
-					 "CRITICAL: Focus on completing the most important remaining work. "
-					 "If there are multiple assets to create, prioritize creating them "
-					 "over perfecting existing ones.]"),
+				 "CRITICAL: Focus on completing the most important remaining work. "
+				 "If there are multiple assets to create, prioritize creating them "
+				 "over perfecting existing ones.]"),
 				CurrentToolIteration, MaxToolIterations, RemainingIterations);
 		}
 		else if (RemainingIterations <= 6)
 		{
 			BudgetNote = FString::Printf(
 				TEXT("[ITERATION BUDGET: %d/%d used, %d remaining. "
-					 "Plan remaining tool calls efficiently.]"),
+				 "Plan remaining tool calls efficiently.]"),
 				CurrentToolIteration, MaxToolIterations, RemainingIterations);
 		}
 
@@ -863,6 +876,56 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 	AssistantMessage.ToolCalls = PendingToolCalls;
 	AddMessage(AssistantMessage);
 
+	// --- Auto-continuation on truncation ---
+	if (bResponseTruncated)
+	{
+		if (PendingToolCalls.Num() > 0)
+		{
+			// Case A: Truncated WITH tool calls.
+			// Process the tool calls normally. After ContinueAfterToolResults(),
+			// the model gets another turn and sees the tool results -- natural
+			// continuation. Just mark that truncation happened so post-tool
+			// continuation can inject a nudge.
+			bLastTurnWasTruncated = true;
+			ProcessPendingToolCalls();
+			return;
+		}
+
+		// Case B: Truncated with NO tool calls (pure text output hit the cap).
+		// Auto-continue if within budget.
+		if (TruncationContinuationCount < MaxTruncationContinuations)
+		{
+			TruncationContinuationCount++;
+
+			FString ContinuationPrompt = FString::Printf(
+				TEXT("[SYSTEM: Your previous response was cut off by the token limit "
+				 "(continuation %d/%d). Continue EXACTLY where you left off. "
+				 "Do NOT repeat completed work, re-explain context, or restate "
+				 "your plan. If you have remaining tool calls to make, output "
+				 "them now. If the task is genuinely complete, provide only a "
+				 "brief final summary.]"),
+				TruncationContinuationCount, MaxTruncationContinuations);
+
+			FOliveChatMessage ContinuationMessage;
+			ContinuationMessage.Role = EOliveChatRole::User;
+			ContinuationMessage.Content = ContinuationPrompt;
+			ContinuationMessage.Timestamp = FDateTime::UtcNow();
+			AddMessage(ContinuationMessage);
+
+			UE_LOG(LogOliveAI, Log,
+				TEXT("Auto-continuing after truncation (%d/%d)"),
+				TruncationContinuationCount, MaxTruncationContinuations);
+
+			SendToProvider();
+			return;
+		}
+
+		// Budget exhausted -- fall through to normal completion with PartialSuccess
+		UE_LOG(LogOliveAI, Warning,
+			TEXT("Truncation continuation budget exhausted (%d). Ending run."),
+			MaxTruncationContinuations);
+	}
+
 	// Check if we have tool calls to process
 	if (PendingToolCalls.Num() > 0)
 	{
@@ -881,10 +944,10 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 
 			FString ForceToolPrompt = FString::Printf(
 				TEXT("[SYSTEM: You responded with text but the task is NOT complete. "
-					 "You MUST continue calling tools. The task requires creating "
-					 "components, variables, and wiring graph logic — not just creating "
-					 "empty Blueprints. Output <tool_call> blocks now. "
-					 "Re-prompt %d/%d.]"),
+				 "You MUST continue calling tools. The task requires creating "
+				 "components, variables, and wiring graph logic — not just creating "
+				 "empty Blueprints. Output <tool_call> blocks now. "
+				 "Re-prompt %d/%d.]"),
 				ZeroToolRepromptCount, MaxZeroToolReprompts);
 
 			FOliveChatMessage RepromptMessage;
@@ -901,7 +964,7 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 
 			UE_LOG(LogOliveAI, Warning,
 				TEXT("AI responded text-only on iteration %d with write intent. "
-					 "Re-prompting to force tool use (%d/%d)"),
+				 "Re-prompting to force tool use (%d/%d)"),
 				CurrentToolIteration, ZeroToolRepromptCount, MaxZeroToolReprompts);
 
 			SendToProvider();
@@ -915,8 +978,8 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 
 			FString RepromptText = FString::Printf(
 				TEXT("[SYSTEM: You responded with text but there are still unresolved tool failures "
-					 "from a previous batch. You MUST call the appropriate tools to fix these errors "
-					 "before completing. Re-prompt %d/%d.]"),
+				 "from a previous batch. You MUST call the appropriate tools to fix these errors "
+				 "before completing. Re-prompt %d/%d.]"),
 				CorrectionRepromptCount, MaxCorrectionReprompts);
 
 			FOliveChatMessage RepromptMessage;
@@ -939,8 +1002,11 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 			return;
 		}
 
-		// Determine final outcome based on whether corrections were resolved
-		EOliveRunOutcome FinalOutcome = bHasPendingCorrections
+		// Determine final outcome based on whether corrections were resolved or truncation budget was exhausted
+		const bool bTruncationBudgetExhausted =
+			(TruncationContinuationCount >= MaxTruncationContinuations);
+		EOliveRunOutcome FinalOutcome =
+			(bHasPendingCorrections || bTruncationBudgetExhausted)
 			? EOliveRunOutcome::PartialSuccess
 			: EOliveRunOutcome::Completed;
 
@@ -1154,8 +1220,8 @@ void FOliveConversationManager::ProcessPendingToolCalls()
 				SkipMessage.ToolName = ToolCall.ToolName;
 				SkipMessage.Content = FString::Printf(
 					TEXT("{\"success\":false,\"error\":{\"code\":\"SKIPPED_ASSET_NOT_FOUND\","
-						 "\"message\":\"Skipped: asset '%s' was not found by a prior tool in this batch. "
-						 "Use project.search to find the correct path, then retry.\"}}"),
+					 "\"message\":\"Skipped: asset '%s' was not found by a prior tool in this batch. "
+					 "Use project.search to find the correct path, then retry.\"}}"),
 					*ToolAssetPath);
 				SkipMessage.Timestamp = FDateTime::UtcNow();
 				PendingToolResults.Add(SkipMessage);
@@ -1419,8 +1485,8 @@ void FOliveConversationManager::ContinueAfterToolResults()
 
 		FString Directive = FString::Printf(
 			TEXT("[CORRECTION REQUIRED: %d tool(s) failed in this batch. Failed operations:\n%s"
-				 "You MUST retry the failed operations before proceeding to new work. "
-				 "Read the asset state first if you are unsure of current values.]"),
+			 "You MUST retry the failed operations before proceeding to new work. "
+			 "Read the asset state first if you are unsure of current values.]"),
 			CurrentBatchFailureCount, *CurrentBatchCorrectionSummary);
 
 		FOliveChatMessage DirectiveMessage;
@@ -1457,6 +1523,20 @@ void FOliveConversationManager::ContinueAfterToolResults()
 	// Reset batch failure tracking
 	CurrentBatchFailureCount = 0;
 	CurrentBatchCorrectionSummary.Empty();
+
+	// Inject truncation note if the last turn was truncated
+	if (bLastTurnWasTruncated)
+	{
+		bLastTurnWasTruncated = false;
+
+		FOliveChatMessage TruncationNote;
+		TruncationNote.Role = EOliveChatRole::System;
+		TruncationNote.Content = TEXT(
+			"[NOTE: Your previous response was truncated by token limits. "
+			"Continue with the next required steps. Do not repeat completed work.]");
+		TruncationNote.Timestamp = FDateTime::UtcNow();
+		AddMessage(TruncationNote);
+	}
 
 	if (bStopAfterToolResults)
 	{
@@ -1538,21 +1618,9 @@ void FOliveConversationManager::DrainNextQueuedMessage()
 		return;
 	}
 
-	const FString NextMessage = Queue->Dequeue();
-	if (!NextMessage.IsEmpty())
-	{
-		UE_LOG(LogOliveAI, Log, TEXT("Draining queued message (remaining: %d)"), Queue->GetQueueDepth());
-		SendUserMessage(NextMessage);
-	}
+	// Get the next message from the queue
+	FString NextMessage = Queue->Dequeue();
+	
+	// Send the message
+	SendUserMessage(NextMessage);
 }
-
-// ==========================================
-// Token Management
-// ==========================================
-
-int32 FOliveConversationManager::EstimateTokens(const FString& Text) const
-{
-	// Rough estimation: ~4 characters per token for English
-	return Text.Len() / 4;
-}
-

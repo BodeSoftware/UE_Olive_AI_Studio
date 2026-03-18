@@ -45,9 +45,9 @@ FString ProviderDisplayName(EOliveAIProvider ProviderType)
 	switch (ProviderType)
 	{
 	case EOliveAIProvider::ClaudeCode:
-		return TEXT("Claude Code CLI");
+		return TEXT("Claude Code (Local)");
 	case EOliveAIProvider::Codex:
-		return TEXT("Codex CLI");
+		return TEXT("Codex (Local)");
 	case EOliveAIProvider::OpenRouter:
 		return TEXT("OpenRouter");
 	case EOliveAIProvider::ZAI:
@@ -70,11 +70,13 @@ FString ProviderDisplayName(EOliveAIProvider ProviderType)
 EOliveAIProvider ProviderFromDisplayName(const FString& ProviderName)
 {
 	if (ProviderName.Equals(TEXT("Claude Code CLI"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("Claude Code (Local)"), ESearchCase::IgnoreCase) ||
 		ProviderName.Equals(TEXT("claudecode"), ESearchCase::IgnoreCase))
 	{
 		return EOliveAIProvider::ClaudeCode;
 	}
 	if (ProviderName.Equals(TEXT("Codex CLI"), ESearchCase::IgnoreCase) ||
+		ProviderName.Equals(TEXT("Codex (Local)"), ESearchCase::IgnoreCase) ||
 		ProviderName.Equals(TEXT("codex"), ESearchCase::IgnoreCase))
 	{
 		return EOliveAIProvider::Codex;
@@ -630,12 +632,61 @@ void SOliveAIChatPanel::OnMessageSubmitted(const FString& Message)
 		}
 	}
 
-	// Refresh provider from current settings so key/provider changes apply immediately.
-	FString ProviderError;
-	if (!ConfigureProviderFromSettings(ProviderError))
+	// Only recreate the provider if there isn't one or the provider type changed.
+	// Recreating on every send destroys CLI session state (thread IDs, resume flags).
 	{
-		HandleError(ProviderError);
-		return;
+		TSharedPtr<IOliveAIProvider> CurrentProvider = ConversationManager->GetProvider();
+		UOliveAISettings* Settings = UOliveAISettings::Get();
+		const FString WantedName = Settings ? ProviderDisplayName(Settings->Provider) : TEXT("");
+		const bool bNeedsNewProvider = !CurrentProvider.IsValid()
+			|| CurrentProvider->GetProviderName() != WantedName;
+
+		if (bNeedsNewProvider)
+		{
+			FString ProviderError;
+			if (!ConfigureProviderFromSettings(ProviderError))
+			{
+				HandleError(ProviderError);
+				return;
+			}
+		}
+		else if (Settings && CurrentProvider.IsValid())
+		{
+			FString ModelId = Settings->GetSelectedModelForProvider(Settings->Provider);
+			if (ModelId.IsEmpty())
+			{
+				ModelId = CurrentProvider->GetRecommendedModel();
+				if (ModelId.IsEmpty())
+				{
+					const TArray<FString> AvailableModels = CurrentProvider->GetAvailableModels();
+					if (AvailableModels.Num() > 0)
+					{
+						ModelId = AvailableModels[0];
+					}
+				}
+
+				if (!ModelId.IsEmpty())
+				{
+					Settings->SetSelectedModelForProvider(Settings->Provider, ModelId);
+					Settings->SaveConfig();
+				}
+			}
+
+			FOliveProviderConfig ProviderConfig;
+			ProviderConfig.ProviderName = WantedName;
+			ProviderConfig.ApiKey = Settings->GetCurrentApiKey();
+			ProviderConfig.BaseUrl = Settings->GetCurrentBaseUrl();
+			ProviderConfig.ModelId = ModelId;
+			ProviderConfig.Temperature = Settings->Temperature;
+			ProviderConfig.MaxTokens = Settings->MaxTokens;
+			ProviderConfig.TimeoutSeconds = Settings->RequestTimeoutSeconds;
+			CurrentProvider->Configure(ProviderConfig);
+
+			if (ModelTextBox.IsValid())
+			{
+				ModelTextBox->SetText(FText::FromString(ModelId));
+			}
+		}
 	}
 
 	// Update context from context bar

@@ -363,6 +363,9 @@ private:
 	/** Maximum re-prompts for unresolved corrections per turn */
 	static constexpr int32 MaxCorrectionReprompts = 2;
 
+	/** Maximum auto-continuations before giving up (budget per user message) */
+	static constexpr int32 MaxTruncationContinuations = 5;
+
 	/** Turn-level intent flag: used for multi-asset iteration budget and zero-tool re-prompt guard. */
 	bool bTurnHasExplicitWriteIntent = false;
 
@@ -383,6 +386,16 @@ private:
 
 	/** Asset paths that failed with ASSET_NOT_FOUND in current batch -- used to skip subsequent tools targeting the same dead path */
 	TSet<FString> FailedAssetPaths;
+
+	// ==========================================
+	// Truncation Continuation State
+	// ==========================================
+
+	/** Number of auto-continuation turns triggered by truncation in the current run */
+	int32 TruncationContinuationCount = 0;
+
+	/** Whether the last provider turn was truncated (for post-tool continuation nudge) */
+	bool bLastTurnWasTruncated = false;
 
 	// ==========================================
 	// Brain Layer Components
