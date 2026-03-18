@@ -584,6 +584,7 @@ FString FOliveCLIProviderBase::BuildPrescriptiveGuidance() const
 
 void FOliveCLIProviderBase::SendMessageAutonomous(
 	const FString& UserMessage,
+	const FString& ContinuationContext,
 	FOnOliveStreamChunk OnChunk,
 	FOnOliveComplete OnComplete,
 	FOnOliveError OnError)
@@ -623,6 +624,26 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 	const bool bIsSessionResume = bHasActiveSession && SupportsSessionResume();
 
 	FString EffectiveMessage = UserMessage;
+	if (!ContinuationContext.IsEmpty())
+	{
+		const bool bIsExecutionHandoff = ContinuationContext.Contains(TEXT("## Approved Plan To Execute"));
+		if (SupportsSessionResume() && !bIsExecutionHandoff)
+		{
+			UE_LOG(LogOliveCLIProvider, Log,
+				TEXT("Continuation context provided (%d chars) but not auto-injected because %s supports session resume"),
+				ContinuationContext.Len(),
+				*GetCLIName());
+		}
+		else
+		{
+			EffectiveMessage = ContinuationContext + TEXT("\n\n") + EffectiveMessage;
+			UE_LOG(LogOliveCLIProvider, Log,
+				TEXT("Injected %scontext into autonomous prompt for %s provider (%d chars)"),
+				bIsExecutionHandoff ? TEXT("execution handoff ") : TEXT("continuation "),
+				*GetCLIName(),
+				ContinuationContext.Len());
+		}
+	}
 
 	if (bIsFirstSessionMessage)
 	{

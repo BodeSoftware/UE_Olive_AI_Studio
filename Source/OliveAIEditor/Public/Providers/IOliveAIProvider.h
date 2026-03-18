@@ -293,6 +293,7 @@ public:
 	 */
 	virtual void SendMessageAutonomous(
 		const FString& UserMessage,
+		const FString& ContinuationContext,
 		FOnOliveStreamChunk OnChunk,
 		FOnOliveComplete OnComplete,
 		FOnOliveError OnError)

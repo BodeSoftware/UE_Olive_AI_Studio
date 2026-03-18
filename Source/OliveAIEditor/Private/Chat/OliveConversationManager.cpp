@@ -20,6 +20,135 @@
 
 namespace
 {
+FString NormalizePlanText(const FString& Text)
+{
+	FString Normalized = Text;
+	Normalized.ReplaceInline(TEXT("\r"), TEXT(" "));
+	Normalized.ReplaceInline(TEXT("\n"), TEXT(" "));
+	while (Normalized.ReplaceInline(TEXT("  "), TEXT(" ")) > 0)
+	{
+	}
+	return Normalized.TrimStartAndEnd();
+}
+
+FString SummarizePlanText(const FString& Text, const int32 MaxLen = 240)
+{
+	const FString Normalized = NormalizePlanText(Text);
+	if (Normalized.Len() <= MaxLen)
+	{
+		return Normalized;
+	}
+
+	return Normalized.Left(MaxLen) + TEXT("...");
+}
+
+bool MessageStartsNewPlanTask(const FString& Message)
+{
+	const FString Lower = Message.TrimStartAndEnd().ToLower();
+	if (Lower.Contains(TEXT("switch to code mode"))
+		|| Lower.Contains(TEXT("switch to code"))
+		|| Lower.Contains(TEXT("do it"))
+		|| Lower.Contains(TEXT("build it"))
+		|| Lower.Contains(TEXT("implement it")))
+	{
+		return false;
+	}
+
+	static const TArray<FString> NewTaskPhrases = {
+		TEXT("new task"),
+		TEXT("different task"),
+		TEXT("another task"),
+		TEXT("instead"),
+		TEXT("separate task"),
+		TEXT("for a different"),
+		TEXT("now plan")
+	};
+
+	for (const FString& Phrase : NewTaskPhrases)
+	{
+		if (Lower.StartsWith(Phrase) || Lower.Contains(TEXT(" ") + Phrase))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void AppendUniquePlanItem(TArray<FString>& Items, const FString& Candidate, const int32 MaxItems = 6)
+{
+	FString Cleaned = Candidate.TrimStartAndEnd();
+	if (Cleaned.IsEmpty())
+	{
+		return;
+	}
+
+	Cleaned.RemoveFromStart(TEXT("- "));
+	Cleaned.RemoveFromStart(TEXT("* "));
+	Cleaned.RemoveFromStart(TEXT("1. "));
+	Cleaned.RemoveFromStart(TEXT("2. "));
+	Cleaned.RemoveFromStart(TEXT("3. "));
+	Cleaned.RemoveFromStart(TEXT("4. "));
+
+	for (const FString& Existing : Items)
+	{
+		if (Existing.Equals(Cleaned, ESearchCase::IgnoreCase))
+		{
+			return;
+		}
+	}
+
+	if (Items.Num() < MaxItems)
+	{
+		Items.Add(Cleaned);
+	}
+}
+
+bool IsLikelyPlanQuestion(const FString& Line)
+{
+	const FString Lower = Line.ToLower();
+	return Line.Contains(TEXT("?"))
+		|| Lower.Contains(TEXT("question"))
+		|| Lower.Contains(TEXT("need to decide"))
+		|| Lower.Contains(TEXT("confirm whether"))
+		|| Lower.Contains(TEXT("should we"));
+}
+
+bool IsLikelyPlanAssetLine(const FString& Line)
+{
+	const FString Lower = Line.ToLower();
+	return Line.Contains(TEXT("/Game/"))
+		|| Line.Contains(TEXT(".h"))
+		|| Line.Contains(TEXT(".cpp"))
+		|| Lower.Contains(TEXT("blueprint"))
+		|| Lower.Contains(TEXT("widget"))
+		|| Lower.Contains(TEXT("component"))
+		|| Lower.Contains(TEXT("behavior tree"))
+		|| Lower.Contains(TEXT("blackboard"))
+		|| Lower.Contains(TEXT("pcg"))
+		|| Lower.Contains(TEXT("asset"));
+}
+
+bool IsPlanToCodeHandoffCue(const FString& Message)
+{
+	static const TArray<FString> HandoffKeywords = {
+		TEXT("implement"), TEXT("build it"), TEXT("go ahead"), TEXT("proceed"),
+		TEXT("do it"), TEXT("start building"), TEXT("create it"), TEXT("use the plan"),
+		TEXT("approved"), TEXT("ship it")
+	};
+
+	const FString Lower = Message.ToLower();
+	for (const FString& Keyword : HandoffKeywords)
+	{
+		if (Lower.Contains(Keyword))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
 bool MessageContainsAnyKeyword(const FString& Message, const TArray<FString>& Keywords)
 {
 	FString Normalized = Message.ToLower();
@@ -113,6 +242,37 @@ FOliveRequestOptions BuildRequestOptions()
 }
 } // namespace
 
+void FOliveConversationManager::FOlivePlanSessionState::Reset()
+{
+	bHasActivePlan = false;
+	SessionId.Reset();
+	GoalSummary.Reset();
+	TargetSummary.Reset();
+	ActiveModeContext.Reset();
+	LatestPlanText.Reset();
+	LatestPlanSummary.Reset();
+	UserPlanAdjustments.Reset();
+	KeyDecisions.Reset();
+	OutstandingQuestions.Reset();
+	PlannedAssetsOrArtifacts.Reset();
+	LastUpdatedUtc = FDateTime();
+}
+
+bool FOliveConversationManager::FOlivePlanSessionState::IsEmpty() const
+{
+	return !bHasActivePlan
+		&& SessionId.IsEmpty()
+		&& GoalSummary.IsEmpty()
+		&& TargetSummary.IsEmpty()
+		&& ActiveModeContext.IsEmpty()
+		&& LatestPlanText.IsEmpty()
+		&& LatestPlanSummary.IsEmpty()
+		&& UserPlanAdjustments.Num() == 0
+		&& KeyDecisions.Num() == 0
+		&& OutstandingQuestions.Num() == 0
+		&& PlannedAssetsOrArtifacts.Num() == 0;
+}
+
 FOliveConversationManager::FOliveConversationManager()
 {
 	Brain = MakeShared<FOliveBrainLayer>();
@@ -169,6 +329,15 @@ void FOliveConversationManager::StartNewSession()
 		ActiveChatMode = EOliveChatMode::Code;
 	}
 	DeferredChatMode.Reset();
+	if (!ActivePlanSession.IsValid())
+	{
+		ActivePlanSession = MakeUnique<FOlivePlanSessionState>();
+	}
+	if (!ActivePlanSession->IsEmpty())
+	{
+		UE_LOG(LogOliveAI, Log, TEXT("Reset plan session state for new conversation session"));
+	}
+	ActivePlanSession->Reset();
 
 	// Reset provider session so the next message starts a fresh CLI session
 	if (Provider.IsValid())
@@ -203,6 +372,12 @@ void FOliveConversationManager::ClearHistory()
 
 	// Clear any deferred mode switch
 	DeferredChatMode.Reset();
+
+	if (ActivePlanSession.IsValid() && !ActivePlanSession->IsEmpty())
+	{
+		UE_LOG(LogOliveAI, Log, TEXT("Reset plan session state while clearing history"));
+		ActivePlanSession->Reset();
+	}
 }
 
 // ==========================================
@@ -224,6 +399,24 @@ bool FOliveConversationManager::IsAutonomousProvider() const
 
 void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message)
 {
+	FString ContinuationContext;
+	if (ActiveChatMode == EOliveChatMode::Plan)
+	{
+		ContinuationContext = BuildPlanContinuationContext();
+		if (!ContinuationContext.IsEmpty())
+		{
+			UE_LOG(LogOliveAI, Log, TEXT("Injected plan continuation context into autonomous request"));
+		}
+	}
+	else if (ActiveChatMode == EOliveChatMode::Code && IsPlanToCodeHandoffCue(Message))
+	{
+		ContinuationContext = BuildPlanExecutionContext();
+		if (!ContinuationContext.IsEmpty())
+		{
+			UE_LOG(LogOliveAI, Log, TEXT("Injected plan execution context into autonomous request"));
+		}
+	}
+
 	// 1. Add user message to conversation history for UI display
 	FOliveChatMessage UserMessage;
 	UserMessage.Role = EOliveChatRole::User;
@@ -313,6 +506,10 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 			AssistantMessage.Content = !FullResponse.IsEmpty() ? FullResponse : This->CurrentStreamingContent;
 			AssistantMessage.Timestamp = FDateTime::UtcNow();
 			This->AddMessage(AssistantMessage);
+			if (This->ActiveChatMode == EOliveChatMode::Plan)
+			{
+				This->UpdatePlanSessionFromAssistantMessage(AssistantMessage);
+			}
 
 			// Brain: complete run (CompleteRun already transitions to Idle)
 			if (This->Brain.IsValid() && This->Brain->GetState() != EOliveBrainState::Idle)
@@ -390,7 +587,7 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 	UE_LOG(LogOliveAI, Log, TEXT("Launching autonomous run (%s) for message: %.80s%s"),
 		*ProviderName, *Message.Left(80), Message.Len() > 80 ? TEXT("...") : TEXT(""));
 
-	Provider->SendMessageAutonomous(Message, OnChunk, OnComplete, OnErr);
+	Provider->SendMessageAutonomous(Message, ContinuationContext, OnChunk, OnComplete, OnErr);
 }
 
 // ==========================================
@@ -430,6 +627,11 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 	{
 		OnError.Broadcast(TEXT("No AI provider configured. Please configure a provider in settings."));
 		return;
+	}
+
+	if (ActiveChatMode == EOliveChatMode::Plan)
+	{
+		UpdatePlanSessionFromUserMessage(Message);
 	}
 
 	// Route to autonomous path for Claude Code CLI when autonomous MCP mode is enabled.
@@ -756,6 +958,50 @@ void FOliveConversationManager::SendToProvider()
 		}
 	}
 
+	const FOliveChatMessage* LastUserMessage = nullptr;
+	for (int32 i = MessagesToSend.Num() - 1; i >= 0; --i)
+	{
+		if (MessagesToSend[i].Role == EOliveChatRole::User)
+		{
+			LastUserMessage = &MessagesToSend[i];
+			break;
+		}
+	}
+
+	if (LastUserMessage)
+	{
+		FString PlanContext;
+		if (ActiveChatMode == EOliveChatMode::Plan)
+		{
+			PlanContext = BuildPlanContinuationContext();
+		}
+		else if (ActiveChatMode == EOliveChatMode::Code && IsPlanToCodeHandoffCue(LastUserMessage->Content))
+		{
+			PlanContext = BuildPlanExecutionContext();
+		}
+
+		if (!PlanContext.IsEmpty())
+		{
+			FOliveChatMessage PlanContextMessage;
+			PlanContextMessage.Role = EOliveChatRole::System;
+			PlanContextMessage.Content = PlanContext;
+			PlanContextMessage.Timestamp = FDateTime::UtcNow();
+
+			int32 InsertIndex = MessagesToSend.Num();
+			for (int32 i = MessagesToSend.Num() - 1; i >= 0; --i)
+			{
+				if (MessagesToSend[i].Role == EOliveChatRole::User)
+				{
+					InsertIndex = i;
+					break;
+				}
+			}
+
+			MessagesToSend.Insert(PlanContextMessage, InsertIndex);
+			UE_LOG(LogOliveAI, Log, TEXT("Injected plan context into provider request"));
+		}
+	}
+
 	// Get available tools filtered by focus profile.
 	// Tool pack gating was removed in the AI Freedom update -- all tools allowed
 	// by the active focus profile are now sent on every iteration. This lets the
@@ -862,6 +1108,10 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 	AssistantMessage.Timestamp = FDateTime::UtcNow();
 	AssistantMessage.ToolCalls = PendingToolCalls;
 	AddMessage(AssistantMessage);
+	if (ActiveChatMode == EOliveChatMode::Plan)
+	{
+		UpdatePlanSessionFromAssistantMessage(AssistantMessage);
+	}
 
 	// Check if we have tool calls to process
 	if (PendingToolCalls.Num() > 0)
@@ -983,6 +1233,252 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 		// Drain the next queued message if any are waiting
 		DrainNextQueuedMessage();
 	}
+}
+
+void FOliveConversationManager::UpdatePlanSessionFromUserMessage(const FString& Message)
+{
+	if (ActiveChatMode != EOliveChatMode::Plan || Message.TrimStartAndEnd().IsEmpty())
+	{
+		return;
+	}
+
+	if (!ActivePlanSession.IsValid())
+	{
+		ActivePlanSession = MakeUnique<FOlivePlanSessionState>();
+	}
+
+	const FString PlanMessage = NormalizePlanText(Message);
+	const bool bContinuePlan = ShouldContinueActivePlan(PlanMessage);
+	if (!ActivePlanSession->bHasActivePlan || !bContinuePlan)
+	{
+		if (!ActivePlanSession->IsEmpty())
+		{
+			UE_LOG(LogOliveAI, Log, TEXT("Reset active plan session before starting new plan thread"));
+		}
+		ActivePlanSession->Reset();
+		ActivePlanSession->bHasActivePlan = true;
+		ActivePlanSession->SessionId = FGuid::NewGuid().ToString(EGuidFormats::Digits);
+		ActivePlanSession->GoalSummary = SummarizePlanText(PlanMessage, 160);
+		ActivePlanSession->TargetSummary = ActivePlanSession->GoalSummary;
+		ActivePlanSession->LatestPlanSummary = ActivePlanSession->GoalSummary;
+		UE_LOG(LogOliveAI, Log, TEXT("Started plan session %s: %.120s"),
+			*ActivePlanSession->SessionId, *ActivePlanSession->GoalSummary);
+	}
+	else
+	{
+		AppendUniquePlanItem(ActivePlanSession->UserPlanAdjustments, SummarizePlanText(PlanMessage, 160), 8);
+		UE_LOG(LogOliveAI, Log, TEXT("Updated plan session %s from user follow-up"),
+			*ActivePlanSession->SessionId);
+	}
+
+	ActivePlanSession->ActiveModeContext = LexToString(ActiveChatMode);
+	ActivePlanSession->LastUpdatedUtc = FDateTime::UtcNow();
+}
+
+void FOliveConversationManager::UpdatePlanSessionFromAssistantMessage(const FOliveChatMessage& AssistantMessage)
+{
+	if (ActiveChatMode != EOliveChatMode::Plan
+		|| AssistantMessage.Role != EOliveChatRole::Assistant
+		|| AssistantMessage.Content.TrimStartAndEnd().IsEmpty())
+	{
+		return;
+	}
+
+	if (!ActivePlanSession.IsValid())
+	{
+		ActivePlanSession = MakeUnique<FOlivePlanSessionState>();
+	}
+
+	if (!ActivePlanSession->bHasActivePlan)
+	{
+		ActivePlanSession->bHasActivePlan = true;
+		ActivePlanSession->SessionId = FGuid::NewGuid().ToString(EGuidFormats::Digits);
+	}
+
+	ActivePlanSession->ActiveModeContext = LexToString(ActiveChatMode);
+	ActivePlanSession->LatestPlanText = AssistantMessage.Content.TrimStartAndEnd();
+	ActivePlanSession->LatestPlanSummary = SummarizePlanText(AssistantMessage.Content, 320);
+	if (ActivePlanSession->GoalSummary.IsEmpty())
+	{
+		ActivePlanSession->GoalSummary = ActivePlanSession->LatestPlanSummary;
+	}
+	if (ActivePlanSession->TargetSummary.IsEmpty())
+	{
+		ActivePlanSession->TargetSummary = ActivePlanSession->LatestPlanSummary;
+	}
+
+	TArray<FString> Lines;
+	AssistantMessage.Content.ParseIntoArrayLines(Lines, true);
+	for (const FString& RawLine : Lines)
+	{
+		const FString Line = RawLine.TrimStartAndEnd();
+		if (Line.IsEmpty())
+		{
+			continue;
+		}
+
+		if (IsLikelyPlanQuestion(Line))
+		{
+			AppendUniquePlanItem(ActivePlanSession->OutstandingQuestions, Line, 6);
+			continue;
+		}
+
+		if (IsLikelyPlanAssetLine(Line))
+		{
+			AppendUniquePlanItem(ActivePlanSession->PlannedAssetsOrArtifacts, Line, 8);
+		}
+
+		if (Line.StartsWith(TEXT("-")) || Line.StartsWith(TEXT("*")) || Line.StartsWith(TEXT("1."))
+			|| Line.StartsWith(TEXT("2.")) || Line.StartsWith(TEXT("3.")) || Line.StartsWith(TEXT("4.")))
+		{
+			AppendUniquePlanItem(ActivePlanSession->KeyDecisions, Line, 8);
+		}
+	}
+	ActivePlanSession->LastUpdatedUtc = FDateTime::UtcNow();
+	UE_LOG(LogOliveAI, Log, TEXT("Updated plan session %s from assistant response"),
+		*ActivePlanSession->SessionId);
+}
+
+FString FOliveConversationManager::BuildPlanContinuationContext() const
+{
+	if (!ActivePlanSession.IsValid()
+		|| !ActivePlanSession->bHasActivePlan
+		|| ActivePlanSession->LatestPlanSummary.IsEmpty()
+		|| ActivePlanSession->LatestPlanText.IsEmpty())
+	{
+		return TEXT("");
+	}
+
+	TArray<FString> Lines;
+	Lines.Add(TEXT("## Active Plan Context"));
+	if (!ActivePlanSession->GoalSummary.IsEmpty())
+	{
+		Lines.Add(FString::Printf(TEXT("Goal: %s"), *ActivePlanSession->GoalSummary));
+	}
+	if (!ActivePlanSession->LatestPlanSummary.IsEmpty())
+	{
+		Lines.Add(FString::Printf(TEXT("Latest plan: %s"), *ActivePlanSession->LatestPlanSummary));
+	}
+	if (ActivePlanSession->UserPlanAdjustments.Num() > 0)
+	{
+		const FString Adjustments = FString::Join(ActivePlanSession->UserPlanAdjustments, TEXT("; "));
+		Lines.Add(FString::Printf(TEXT("Recent user adjustments: %s"), *Adjustments));
+	}
+	if (ActivePlanSession->OutstandingQuestions.Num() > 0)
+	{
+		const FString Questions = FString::Join(ActivePlanSession->OutstandingQuestions, TEXT("; "));
+		Lines.Add(FString::Printf(TEXT("Open questions: %s"), *Questions));
+	}
+	Lines.Add(TEXT("Revise the active plan instead of starting a new task."));
+
+	return FString::Join(Lines, TEXT("\n"));
+}
+
+FString FOliveConversationManager::BuildPlanExecutionContext() const
+{
+	if (!ActivePlanSession.IsValid() || !ActivePlanSession->bHasActivePlan)
+	{
+		return TEXT("");
+	}
+
+	TArray<FString> Lines;
+	Lines.Add(TEXT("## Approved Plan To Execute"));
+	if (!ActivePlanSession->GoalSummary.IsEmpty())
+	{
+		Lines.Add(FString::Printf(TEXT("Goal: %s"), *ActivePlanSession->GoalSummary));
+	}
+	if (!ActivePlanSession->LatestPlanSummary.IsEmpty())
+	{
+		Lines.Add(FString::Printf(TEXT("Plan summary: %s"), *ActivePlanSession->LatestPlanSummary));
+	}
+	if (ActivePlanSession->UserPlanAdjustments.Num() > 0)
+	{
+		const FString Adjustments = FString::Join(ActivePlanSession->UserPlanAdjustments, TEXT("; "));
+		Lines.Add(FString::Printf(TEXT("Approved adjustments: %s"), *Adjustments));
+	}
+	if (ActivePlanSession->PlannedAssetsOrArtifacts.Num() > 0)
+	{
+		const FString Assets = FString::Join(ActivePlanSession->PlannedAssetsOrArtifacts, TEXT("; "));
+		Lines.Add(FString::Printf(TEXT("Planned assets/artifacts: %s"), *Assets));
+	}
+	if (ActivePlanSession->KeyDecisions.Num() > 0)
+	{
+		const FString Decisions = FString::Join(ActivePlanSession->KeyDecisions, TEXT("; "));
+		Lines.Add(FString::Printf(TEXT("Key decisions: %s"), *Decisions));
+	}
+	Lines.Add(TEXT("Implement this active approved plan without restarting discovery."));
+
+	return FString::Join(Lines, TEXT("\n"));
+}
+
+bool FOliveConversationManager::ShouldContinueActivePlan(const FString& Message) const
+{
+	if (!ActivePlanSession.IsValid() || !ActivePlanSession->bHasActivePlan)
+	{
+		return false;
+	}
+
+	const FString Trimmed = Message.TrimStartAndEnd();
+	if (Trimmed.IsEmpty())
+	{
+		return false;
+	}
+
+	if (MessageStartsNewPlanTask(Trimmed))
+	{
+		return false;
+	}
+
+	const FString Lower = Trimmed.ToLower();
+	if (Lower.StartsWith(TEXT("it "))
+		|| Lower.StartsWith(TEXT("it'"))
+		|| Lower.StartsWith(TEXT("also "))
+		|| Lower.StartsWith(TEXT("and also"))
+		|| Lower.StartsWith(TEXT("continue"))
+		|| Lower.StartsWith(TEXT("keep "))
+		|| Lower.StartsWith(TEXT("for it"))
+		|| Lower.StartsWith(TEXT("switch to code"))
+		|| Lower.StartsWith(TEXT("switch to code mode"))
+		|| Lower.StartsWith(TEXT("do it"))
+		|| Lower.StartsWith(TEXT("build it"))
+		|| Lower.StartsWith(TEXT("implement it"))
+		|| Lower.Contains(TEXT(" also "))
+		|| Lower.Contains(TEXT(" it "))
+		|| Lower.Contains(TEXT(" approved plan"))
+		|| Lower.Contains(TEXT(" use the plan")))
+	{
+		return true;
+	}
+
+	static const TArray<FString> ContinuationKeywords = {
+		TEXT("also"), TEXT("update"), TEXT("change"), TEXT("revise"), TEXT("tweak"),
+		TEXT("follow-up"), TEXT("same plan"), TEXT("that plan"), TEXT("this plan")
+	};
+	if (MessageContainsAnyKeyword(Lower, ContinuationKeywords))
+	{
+		return true;
+	}
+
+	if (!ActivePlanSession->GoalSummary.IsEmpty())
+	{
+		TArray<FString> GoalTokens;
+		ActivePlanSession->GoalSummary.ToLower().ParseIntoArrayWS(GoalTokens);
+		int32 MatchingGoalTokens = 0;
+		for (const FString& Token : GoalTokens)
+		{
+			if (Token.Len() >= 5 && Lower.Contains(Token))
+			{
+				MatchingGoalTokens++;
+			}
+		}
+
+		if (MatchingGoalTokens >= 2)
+		{
+			return true;
+		}
+	}
+
+	return false;
 }
 
 void FOliveConversationManager::HandleError(const FString& ErrorMessage)

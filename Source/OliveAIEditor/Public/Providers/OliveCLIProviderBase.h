@@ -99,13 +99,15 @@ public:
 	 * autonomous arguments (no system prompt injection, no tool schema serialization).
 	 * The CLI discovers tools via MCP server and manages its own agentic loop.
 	 *
-	 * @param UserMessage  The user's task description sent to stdin
-	 * @param OnChunk      Called for each streamed progress chunk (text, tool activity, etc.)
-	 * @param OnComplete   Called when the autonomous process finishes naturally
-	 * @param OnError      Called on process spawn failure, idle timeout, or non-zero exit with no output
+	 * @param UserMessage          The user's task description sent to stdin
+	 * @param ContinuationContext  Optional compact context block for stateless follow-ups
+	 * @param OnChunk              Called for each streamed progress chunk (text, tool activity, etc.)
+	 * @param OnComplete           Called when the autonomous process finishes naturally
+	 * @param OnError              Called on process spawn failure, idle timeout, or non-zero exit with no output
 	 */
 	virtual void SendMessageAutonomous(
 		const FString& UserMessage,
+		const FString& ContinuationContext,
 		FOnOliveStreamChunk OnChunk,
 		FOnOliveComplete OnComplete,
 		FOnOliveError OnError

@@ -48,6 +48,35 @@ public:
 	~FOliveConversationManager();
 
 	// ==========================================
+	// Plan Session State (for Plan mode continuity)
+	// ==========================================
+
+	/**
+	 * Plan Session State
+	 * Stores compact structured state for ongoing planning conversations.
+	 * Enables Plan mode to behave like a persistent planning session
+	 * where follow-ups revise the active plan.
+	 */
+	struct FOlivePlanSessionState
+	{
+		bool bHasActivePlan = false;
+		FString SessionId;
+		FString GoalSummary;
+		FString TargetSummary;
+		FString ActiveModeContext;
+		FString LatestPlanText;
+		FString LatestPlanSummary;
+		TArray<FString> UserPlanAdjustments;
+		TArray<FString> KeyDecisions;
+		TArray<FString> OutstandingQuestions;
+		TArray<FString> PlannedAssetsOrArtifacts;
+		FDateTime LastUpdatedUtc;
+
+		void Reset();
+		bool IsEmpty() const;
+	};
+
+	// ==========================================
 	// Session Management
 	// ==========================================
 
@@ -180,6 +209,40 @@ public:
 
 	/** Check if run mode is active */
 	bool IsRunModeActive() const { return bRunModeActive; }
+
+	// ==========================================
+	// Plan Session Management
+	// ==========================================
+
+	/**
+	 * Update plan session from a user message
+	 * Classifies the message as continuation or new task and updates session state
+	 */
+	void UpdatePlanSessionFromUserMessage(const FString& Message);
+
+	/**
+	 * Update plan session from an assistant message
+	 * Extracts and stores plan artifact from AI responses in Plan mode
+	 */
+	void UpdatePlanSessionFromAssistantMessage(const FOliveChatMessage& AssistantMessage);
+
+	/**
+	 * Build continuation context for stateless providers
+	 * Returns compact planning context to prepend to follow-up messages
+	 */
+	FString BuildPlanContinuationContext() const;
+
+	/**
+	 * Build execution context for Plan->Code handoff
+	 * Returns approved plan summary to frame Code mode execution
+	 */
+	FString BuildPlanExecutionContext() const;
+
+	/**
+	 * Check if message should continue the active plan
+	 * Returns true if message appears to continue current planning thread
+	 */
+	bool ShouldContinueActivePlan(const FString& Message) const;
 
 	// ==========================================
 	// Configuration
@@ -356,6 +419,9 @@ private:
 
 	/** Whether there are unresolved failures that require the AI to retry */
 	bool bHasPendingCorrections = false;
+
+	/** Plan session state (owned by ConversationManager for Plan mode continuity) */
+	TUniquePtr<FOlivePlanSessionState> ActivePlanSession;
 
 	/** Number of times we have re-prompted the AI to address corrections in the current turn */
 	int32 CorrectionRepromptCount = 0;

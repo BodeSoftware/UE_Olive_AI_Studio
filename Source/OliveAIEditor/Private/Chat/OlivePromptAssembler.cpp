@@ -412,11 +412,14 @@ FString FOlivePromptAssembler::GetModeSuffix(EOliveChatMode Mode) const
 			"before destructive changes. Do not ask for permission on standard operations.");
 
 	case EOliveChatMode::Plan:
-		return TEXT("You are in Plan mode. Research the codebase and present a structured plan. "
-			"Use read tools freely to understand the current state. Do not execute write operations. "
-			"Present your plan as: 1) what assets to create/modify, 2) what each asset needs "
-			"(components, variables, functions), 3) how assets communicate. "
-			"The user will approve before you build.");
+		return TEXT("You are in Plan mode. Treat this as an ongoing planning session, not a one-turn answer. "
+			"When the user sends follow-up messages, revise the current plan unless they clearly start a new task. "
+			"Preserve task identity across follow-ups and mode switches. Do not execute write operations. "
+			"Use read tools freely to understand the current state. Present your plan as: 1) what assets to create/modify, "
+			"2) what each asset needs (components, variables, functions), 3) how assets communicate. "
+			"The user will approve before you build.\n\n"
+			"When transitioning to Code mode, build execution context from the active plan and frame implementation "
+			"as 'implement this active approved plan' without starting over.");
 
 	case EOliveChatMode::Ask:
 		return TEXT("You are in Ask mode. Answer questions about the project using read tools. "
