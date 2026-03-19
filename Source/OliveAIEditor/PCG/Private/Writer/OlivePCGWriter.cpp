@@ -10,6 +10,7 @@
 #include "PCGComponent.h"
 #include "PCGSubsystem.h"
 #include "AssetToolsModule.h"
+#include "Components/BoxComponent.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Factories/Factory.h"
 #include "UObject/SavePackage.h"
@@ -401,7 +402,6 @@ FPCGExecuteResult FOlivePCGWriter::Execute(UPCGGraph* Graph, float TimeoutSecond
 
 	// Create a temporary actor with a PCG component
 	FActorSpawnParameters SpawnParams;
-	SpawnParams.Name = FName(*FString::Printf(TEXT("OlivePCG_Temp_%s"), *Graph->GetName()));
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
 	AActor* TempActor = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, SpawnParams);
@@ -410,6 +410,25 @@ FPCGExecuteResult FOlivePCGWriter::Execute(UPCGGraph* Graph, float TimeoutSecond
 		Result.Summary = TEXT("Failed to create temporary actor");
 		return Result;
 	}
+
+	UE_LOG(LogOlivePCGWriter, Verbose, TEXT("Spawned temporary PCG actor '%s' for graph '%s'"),
+		*TempActor->GetName(), *Graph->GetName());
+
+	// PCG generation requires valid component bounds. A plain AActor has no bounds,
+	// so attach a large hidden box root to provide a deterministic local execution volume.
+	UBoxComponent* BoundsComponent = NewObject<UBoxComponent>(TempActor, TEXT("OlivePCGBounds"));
+	if (!BoundsComponent)
+	{
+		World->DestroyActor(TempActor);
+		Result.Summary = TEXT("Failed to create temporary bounds component");
+		return Result;
+	}
+
+	BoundsComponent->SetBoxExtent(FVector(500000.0, 500000.0, 500000.0));
+	BoundsComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	BoundsComponent->SetHiddenInGame(true);
+	TempActor->SetRootComponent(BoundsComponent);
+	BoundsComponent->RegisterComponent();
 
 	UPCGComponent* PCGComponent = NewObject<UPCGComponent>(TempActor);
 	PCGComponent->RegisterComponent();
