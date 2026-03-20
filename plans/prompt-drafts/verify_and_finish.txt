@@ -1,0 +1,25 @@
+Verify a Blueprint is complete and report what was built.
+
+Asset: {{asset_path}}
+Expected functions: {{expected_functions}}
+
+COMPILE: Compile the Blueprint (blueprint.compile). If there are errors, fix them using the fix_compile_errors workflow before proceeding.
+
+CHECK STRUCTURE: Read the Blueprint (blueprint.read mode "full"). Verify that:
+- All expected functions exist and contain graph logic (not just empty entry/result nodes)
+- All expected variables and components are present
+- Event handlers (BeginPlay, Tick, overlap events, etc.) are wired with logic if they were part of the task
+
+CHECK GRAPHS: For each key function, read it back (blueprint.describe_function) and confirm the execution flow makes sense. Look for:
+- Disconnected exec chains (nodes that exist but are not reachable from the entry point)
+- Data pins that should be wired but have no connection
+- Missing return values on functions that should output data
+
+REPORT: Summarize what was built:
+- Blueprint class and parent
+- Components added
+- Variables added
+- Functions implemented (brief description of each)
+- Any known limitations or things that could not be accomplished with available tools
+
+If something is incomplete, say what is missing and why. Do not claim completion if graph logic is missing.

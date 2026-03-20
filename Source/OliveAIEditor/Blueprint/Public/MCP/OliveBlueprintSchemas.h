@@ -90,6 +90,14 @@ namespace OliveBlueprintSchemas
 	 */
 	TSharedPtr<FJsonObject> BlueprintDescribeFunction();
 
+	/**
+	 * Schema for blueprint.verify_completion tool.
+	 * Verify a Blueprint is complete: compiles, expected functions/variables exist,
+	 * no orphaned exec flows, no unwired required data pins.
+	 * Params: {asset_path: string, expected_functions?: string[], expected_variables?: string[]}
+	 */
+	TSharedPtr<FJsonObject> BlueprintVerifyCompletion();
+
 	// ============================================================================
 	// Asset Writer Tool Schemas
 	// ============================================================================
@@ -101,6 +109,17 @@ namespace OliveBlueprintSchemas
 	 *          template_id?: string, template_params?: object, preset?: string}
 	 */
 	TSharedPtr<FJsonObject> BlueprintCreate();
+
+	/**
+	 * Schema for blueprint.scaffold
+	 * Create a Blueprint with components, variables, and interfaces in one call.
+	 * Replaces the pattern of create + N x add_component + N x add_variable + N x add_interface.
+	 * Params: {path: string, parent_class: string, type?: string,
+	 *          components?: [{class: string, name?: string, parent?: string}],
+	 *          variables?: [VariableSpec],
+	 *          interfaces?: [string]}
+	 */
+	TSharedPtr<FJsonObject> BlueprintScaffold();
 
 	/**
 	 * Schema for blueprint.set_parent_class

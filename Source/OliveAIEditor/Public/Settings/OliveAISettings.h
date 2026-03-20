@@ -67,10 +67,11 @@ public:
 	// AI Provider Settings
 	// ==========================================
 
-	/** The AI provider to use for built-in chat. Claude Code CLI requires no API key if you have a Claude Max subscription. */
+	/** The AI provider to use for built-in chat.
+	 *  Claude Code CLI requires enabling the legacy provider setting below. */
 	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
 		meta=(DisplayName="Provider"))
-	EOliveAIProvider Provider = EOliveAIProvider::ClaudeCode;
+	EOliveAIProvider Provider = EOliveAIProvider::OpenRouter;
 
 	/** OpenRouter API key. Get one at https://openrouter.ai/keys */
 	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
@@ -151,31 +152,47 @@ public:
 		meta=(DisplayName="Max Rate Limit Wait (seconds)", ClampMin=0, ClampMax=300))
 	int32 MaxRetryAfterWaitSeconds = 120;
 
+	/** Enable Claude Code as an in-editor chat provider (legacy).
+	 *  When disabled (default), Claude Code is used exclusively as an external MCP integration
+	 *  via the companion panel. The recommended workflow is: open Claude Code in your terminal,
+	 *  connect via MCP, and use the companion panel for monitoring. */
+	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
+		meta=(DisplayName="Enable Legacy Claude Code Provider"))
+	bool bEnableLegacyClaudeCodeProvider = false;
+
 	/** Use autonomous MCP mode for Claude Code CLI.
 	 *  When enabled, Claude Code discovers tools via MCP and manages its own loop.
-	 *  When disabled, the plugin orchestrates each turn (legacy behavior). */
+	 *  When disabled, the plugin orchestrates each turn (legacy behavior).
+	 *  Only applies when bEnableLegacyClaudeCodeProvider is true. */
 	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
-		meta=(DisplayName="Autonomous MCP Mode (Claude Code)"))
+		meta=(DisplayName="Autonomous MCP Mode (Claude Code)",
+			EditCondition="bEnableLegacyClaudeCodeProvider"))
 	bool bUseAutonomousMCPMode = true;
 
 	/** Maximum total runtime for autonomous CLI mode (seconds). 0 = no limit.
-	 *  Acts as a cost-control safety net. The activity and idle timeouts catch hung processes. */
+	 *  Acts as a cost-control safety net. The activity and idle timeouts catch hung processes.
+	 *  Only applies when bEnableLegacyClaudeCodeProvider is true. */
 	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
-		meta=(DisplayName="Autonomous Max Runtime (seconds)", ClampMin=0, ClampMax=3600))
+		meta=(DisplayName="Autonomous Max Runtime (seconds)", ClampMin=0, ClampMax=3600,
+			EditCondition="bEnableLegacyClaudeCodeProvider"))
 	int32 AutonomousMaxRuntimeSeconds = 1800;
 
 	/** Maximum seconds with no MCP tool call before killing an autonomous CLI process.
 	 *  This catches "thinking but not acting" -- the AI produces stdout but makes no progress.
-	 *  Set to 0 to disable. The idle stdout timeout (120s) still catches fully hung processes. */
+	 *  Set to 0 to disable. The idle stdout timeout (120s) still catches fully hung processes.
+	 *  Only applies when bEnableLegacyClaudeCodeProvider is true. */
 	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
-		meta=(DisplayName="Autonomous Tool Idle Timeout (seconds)", ClampMin=0, ClampMax=600))
+		meta=(DisplayName="Autonomous Tool Idle Timeout (seconds)", ClampMin=0, ClampMax=600,
+			EditCondition="bEnableLegacyClaudeCodeProvider"))
 	int32 AutonomousIdleToolSeconds = 240;
 
 	/** Crash-only safety ceiling for autonomous CLI mode — not a task budget.
 	 *  Loop detection handles stuck runs; raise this only if legitimate tasks are being cut short.
-	 *  Each MCP tools/call counts as one turn. */
+	 *  Each MCP tools/call counts as one turn.
+	 *  Only applies when bEnableLegacyClaudeCodeProvider is true. */
 	UPROPERTY(Config, EditAnywhere, Category="AI Provider",
-		meta=(DisplayName="Autonomous Max Turns", ClampMin=1, ClampMax=1000))
+		meta=(DisplayName="Autonomous Max Turns", ClampMin=1, ClampMax=1000,
+			EditCondition="bEnableLegacyClaudeCodeProvider"))
 	int32 AutonomousMaxTurns = 500;
 
 	// ==========================================

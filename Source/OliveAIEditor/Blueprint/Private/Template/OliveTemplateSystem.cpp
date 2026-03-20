@@ -1307,6 +1307,18 @@ bool FOliveLibraryIndex::IndexTemplateFile(const FString& FilePath)
 			Info.Functions.Num());
 	}
 
+	// Load pre-generated digest (LLM-generated structured summary).
+	// Deep copy so the full template JSON can be released after indexing.
+	const TSharedPtr<FJsonObject>* DigestObj = nullptr;
+	if (JsonObj->TryGetObjectField(TEXT("digest"), DigestObj) && DigestObj && (*DigestObj)->Values.Num() > 0)
+	{
+		Info.Digest = MakeShared<FJsonObject>();
+		for (const auto& Field : (*DigestObj)->Values)
+		{
+			Info.Digest->Values.Add(Field.Key, Field.Value);
+		}
+	}
+
 	// Store and build search tokens -- discard the full JSON
 	BuildSearchTokens(Info);
 	Templates.Add(TemplateId, MoveTemp(Info));
@@ -1385,6 +1397,33 @@ void FOliveLibraryIndex::BuildSearchTokens(const FOliveLibraryTemplateInfo& Info
 		AddTokens(Func.Name);
 		AddTokens(Func.Tags);
 		AddTokens(Func.Description);
+	}
+
+	// Index digest content for richer search (purpose + function "does" summaries)
+	if (Info.Digest.IsValid())
+	{
+		FString Purpose;
+		if (Info.Digest->TryGetStringField(TEXT("purpose"), Purpose))
+		{
+			AddTokens(Purpose);
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* DigestFunctions = nullptr;
+		if (Info.Digest->TryGetArrayField(TEXT("functions"), DigestFunctions) && DigestFunctions)
+		{
+			for (const TSharedPtr<FJsonValue>& FuncVal : *DigestFunctions)
+			{
+				const TSharedPtr<FJsonObject>* FuncObj = nullptr;
+				if (FuncVal.IsValid() && FuncVal->TryGetObject(FuncObj) && FuncObj)
+				{
+					FString Does;
+					if ((*FuncObj)->TryGetStringField(TEXT("does"), Does))
+					{
+						AddTokens(Does);
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -1503,6 +1542,11 @@ TArray<TSharedPtr<FJsonObject>> FOliveLibraryIndex::Search(const FString& Query,
 		if (MatchedFunctions.Num() > 0)
 		{
 			ResultObj->SetArrayField(TEXT("matched_functions"), MatchedFunctions);
+		}
+
+		if (Info->Digest.IsValid())
+		{
+			ResultObj->SetObjectField(TEXT("digest"), Info->Digest);
 		}
 
 		Results.Add(ResultObj);

@@ -1,0 +1,17 @@
+Build a Blueprint feature in the current Unreal Engine project.
+
+Feature: {{feature_description}}
+Target path: {{target_path}}
+Parent class: {{parent_class}}
+
+Work through these stages. Use your judgment on how much research is needed -- simple features need less, complex systems need more.
+
+ORIENT: Search the project for existing assets that relate to this feature (project.search). Check if templates have relevant patterns (blueprint.list_templates with domain keywords). For complex systems, read a template's function graph to see how similar logic is structured (blueprint.get_template with pattern parameter).
+
+STRUCTURE: Create the Blueprint if it does not exist (blueprint.create). Add components and variables that the feature needs. For multi-Blueprint systems, identify all required assets up front, create them all, then build each one to completion before starting the next.
+
+BUILD: Write graph logic using whichever approach fits the task. plan_json works well for standard function logic (3+ nodes). Granular tools (add_node, connect_pins) work better for unusual node types or small edits. Python (editor.run_python) handles anything the other tools cannot express. Preview plan_json before applying it.
+
+VERIFY: Compile after completing each function's logic (blueprint.compile). Fix the first error before moving on. When all functions are done, do a final compile to confirm zero errors.
+
+Events and custom_events are exec sources -- they have no exec input pin. Wire FROM them, not TO them. Data wires use @step.auto syntax. Exec wires use plain step_id with no @ prefix. Component references use @ComponentName (no dot suffix).

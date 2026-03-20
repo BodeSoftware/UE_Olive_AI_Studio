@@ -86,6 +86,9 @@ private:
 	/** Look up a UFunction by name and return its exact pin signature, or fuzzy suggestions on failure */
 	FOliveToolResult HandleDescribeFunction(const TSharedPtr<FJsonObject>& Params);
 
+	/** Verify a Blueprint is complete: compiles, expected structure exists, no orphaned flows */
+	FOliveToolResult HandleVerifyCompletion(const TSharedPtr<FJsonObject>& Params);
+
 	/** Section-specific reader helpers (called by HandleBlueprintRead based on section param) */
 	FOliveToolResult HandleReadSectionAll(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleReadSectionGraph(const TSharedPtr<FJsonObject>& Params);
@@ -100,6 +103,13 @@ private:
 	// ============================================================================
 
 	FOliveToolResult HandleBlueprintCreate(const TSharedPtr<FJsonObject>& Params);
+
+	/**
+	 * Scaffold a Blueprint: create + add interfaces + add components + add variables in one call.
+	 * Sub-operation failures are collected as warnings, not hard failures.
+	 */
+	FOliveToolResult HandleBlueprintScaffold(const TSharedPtr<FJsonObject>& Params);
+
 	FOliveToolResult HandleBlueprintSetParentClass(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlueprintAddInterface(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlueprintRemoveInterface(const TSharedPtr<FJsonObject>& Params);

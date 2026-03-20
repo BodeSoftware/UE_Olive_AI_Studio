@@ -70,10 +70,14 @@ private:
 	/** Spawn the chat panel tab */
 	TSharedRef<class SDockTab> SpawnChatTab(const class FSpawnTabArgs& Args);
 
+	/** Spawn the Claude Code companion panel tab */
+	TSharedRef<class SDockTab> SpawnClaudeCodeTab(const class FSpawnTabArgs& Args);
+
 	/** UI handles */
 	TSharedPtr<class FUICommandList> PluginCommands;
 	FDelegateHandle ToolMenuExtensionHandle;
 
 	/** Tab identifiers */
 	static const FName ChatTabId;
+	static const FName ClaudeCodeTabId;
 };

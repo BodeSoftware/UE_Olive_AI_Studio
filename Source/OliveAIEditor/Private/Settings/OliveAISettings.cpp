@@ -125,6 +125,16 @@ void UOliveAISettings::PostInitProperties()
 {
 	Super::PostInitProperties();
 
+	// Migration: if saved config has ClaudeCode as provider but legacy flag is off,
+	// fall back to the first non-CLI provider (OpenRouter) and warn the user.
+	if (Provider == EOliveAIProvider::ClaudeCode && !bEnableLegacyClaudeCodeProvider)
+	{
+		UE_LOG(LogOliveAI, Warning, TEXT("OliveAISettings: Provider was set to Claude Code CLI but the legacy Claude Code provider is disabled. "
+			"Falling back to OpenRouter. To restore the in-editor Claude Code provider, enable 'Enable Legacy Claude Code Provider' in "
+			"Project Settings > Plugins > Olive AI Studio. The recommended workflow is to use Claude Code as an external MCP integration."));
+		Provider = EOliveAIProvider::OpenRouter;
+	}
+
 	UE_LOG(LogOliveAI, Log, TEXT("OliveAISettings: DefaultChatMode = %s"),
 		DefaultChatMode == EOliveChatModeConfig::Code ? TEXT("Code") :
 		DefaultChatMode == EOliveChatModeConfig::Plan ? TEXT("Plan") : TEXT("Ask"));

@@ -616,14 +616,16 @@ void FOliveBlueprintToolHandlers::RegisterReaderTools()
 	RegisteredToolNames.Add(TEXT("blueprint.get_node_pins"));
 
 	// blueprint.describe_node_type
-	Registry.RegisterTool(
-		TEXT("blueprint.describe_node_type"),
-		TEXT("Describe a Blueprint node type: its pins, properties, and behavior. Use to plan before creating nodes."),
-		OliveBlueprintSchemas::BlueprintDescribeNodeType(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleDescribeNodeType),
-		{TEXT("blueprint"), TEXT("read"), TEXT("discovery")},
-		TEXT("blueprint")
-	);
+	{
+		FOliveToolDefinition Def;
+		Def.Name = TEXT("blueprint.describe_node_type");
+		Def.Description = TEXT("Describe a Blueprint node type: its pins, properties, and behavior. Use to plan before creating nodes.");
+		Def.InputSchema = OliveBlueprintSchemas::BlueprintDescribeNodeType();
+		Def.Tags = {TEXT("blueprint"), TEXT("read"), TEXT("discovery")};
+		Def.Category = TEXT("blueprint");
+		Def.WhenToUse = TEXT("NOT needed for plan_json workflows — plan_json auto-resolves function names. Only use when you need to discover pins on an unfamiliar K2Node subclass before using add_node. Do NOT call this before apply_plan_json.");
+		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleDescribeNodeType));
+	}
 	RegisteredToolNames.Add(TEXT("blueprint.describe_node_type"));
 
 	// blueprint.describe_function
@@ -637,7 +639,18 @@ void FOliveBlueprintToolHandlers::RegisterReaderTools()
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.describe_function"));
 
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered %d reader tools"), 4);
+	// blueprint.verify_completion
+	Registry.RegisterTool(
+		TEXT("blueprint.verify_completion"),
+		TEXT("Verify a Blueprint is complete: compiles, expected functions/variables exist, no orphaned exec flows, no unwired required data pins"),
+		OliveBlueprintSchemas::BlueprintVerifyCompletion(),
+		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleVerifyCompletion),
+		{TEXT("blueprint"), TEXT("read")},
+		TEXT("blueprint")
+	);
+	RegisteredToolNames.Add(TEXT("blueprint.verify_completion"));
+
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered %d reader tools"), 5);
 }
 
 // ============================================================================
@@ -660,6 +673,21 @@ void FOliveBlueprintToolHandlers::RegisterAssetWriterTools()
 		TEXT("blueprint")
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.create"));
+
+	// blueprint.scaffold (composite: create + interfaces + components + variables in one call)
+	{
+		FOliveToolDefinition Def;
+		Def.Name = TEXT("blueprint.scaffold");
+		Def.Description = TEXT("Create a Blueprint with components, variables, and interfaces in one call. "
+			"Preferred over separate create + add_component + add_variable calls. "
+			"Sub-operation failures are collected as warnings, not hard failures.");
+		Def.InputSchema = OliveBlueprintSchemas::BlueprintScaffold();
+		Def.Tags = {TEXT("blueprint"), TEXT("write"), TEXT("create"), TEXT("component"), TEXT("variable"), TEXT("interface")};
+		Def.Category = TEXT("blueprint");
+		Def.WhenToUse = TEXT("Preferred over separate blueprint.create + blueprint.add_component + blueprint.add_variable calls. Use this whenever creating a new Blueprint that needs components, variables, or interfaces.");
+		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintScaffold));
+	}
+	RegisteredToolNames.Add(TEXT("blueprint.scaffold"));
 
 	// blueprint.set_parent_class
 	Registry.RegisterTool(
@@ -730,7 +758,7 @@ void FOliveBlueprintToolHandlers::RegisterAssetWriterTools()
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.delete"));
 
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered 7 asset writer tools"));
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered 8 asset writer tools"));
 }
 
 void FOliveBlueprintToolHandlers::RegisterVariableWriterTools()
@@ -865,14 +893,16 @@ void FOliveBlueprintToolHandlers::RegisterGraphWriterTools()
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
 	// blueprint.add_node
-	Registry.RegisterTool(
-		TEXT("blueprint.add_node"),
-		TEXT("Add a node to a Blueprint graph"),
-		OliveBlueprintSchemas::BlueprintAddNode(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintAddNode),
-		{TEXT("blueprint"), TEXT("write"), TEXT("graph")},
-		TEXT("blueprint")
-	);
+	{
+		FOliveToolDefinition Def;
+		Def.Name = TEXT("blueprint.add_node");
+		Def.Description = TEXT("Add a node to a Blueprint graph");
+		Def.InputSchema = OliveBlueprintSchemas::BlueprintAddNode();
+		Def.Tags = {TEXT("blueprint"), TEXT("write"), TEXT("graph")};
+		Def.Category = TEXT("blueprint");
+		Def.WhenToUse = TEXT("Do NOT use for function calls or standard logic — use blueprint.apply_plan_json instead. Only use add_node for specialized node types outside plan_json vocabulary (K2Node_Timeline, MakeArray, MakeMap, etc.) or for wiring to existing nodes created by a previous plan_json call.");
+		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintAddNode));
+	}
 	RegisteredToolNames.Add(TEXT("blueprint.add_node"));
 
 	// blueprint.remove_node
@@ -1701,6 +1731,26 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleDescribeNodeType(const TShar
 		);
 	}
 
+	// --- 3a. Input normalization ---
+	// Strip parenthetical suffixes: "Event (Override)" -> "Event"
+	FString NormalizedInput = TypeName;
+	{
+		int32 ParenIndex = INDEX_NONE;
+		if (NormalizedInput.FindChar(TEXT('('), ParenIndex))
+		{
+			NormalizedInput = NormalizedInput.Left(ParenIndex).TrimEnd();
+		}
+	}
+	// Strip "K2Node " prefix (with space) and "K2Node_" prefix
+	if (NormalizedInput.StartsWith(TEXT("K2Node "), ESearchCase::IgnoreCase))
+	{
+		NormalizedInput = NormalizedInput.Mid(7);
+	}
+	else if (NormalizedInput.StartsWith(TEXT("K2Node_"), ESearchCase::IgnoreCase))
+	{
+		NormalizedInput = NormalizedInput.Mid(7);
+	}
+
 	// Short-name to K2Node class name mapping for common types
 	static const TMap<FString, FString> ShortNameMap = {
 		// Control flow
@@ -1727,6 +1777,8 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleDescribeNodeType(const TShar
 		{ TEXT("setvariable"),         TEXT("K2Node_VariableSet") },
 		{ TEXT("getvar"),              TEXT("K2Node_VariableGet") },
 		{ TEXT("setvar"),              TEXT("K2Node_VariableSet") },
+		{ TEXT("variableget"),         TEXT("K2Node_VariableGet") },
+		{ TEXT("variableset"),         TEXT("K2Node_VariableSet") },
 		// Casting
 		{ TEXT("cast"),                TEXT("K2Node_DynamicCast") },
 		{ TEXT("castto"),              TEXT("K2Node_DynamicCast") },
@@ -1736,15 +1788,48 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleDescribeNodeType(const TShar
 		{ TEXT("makestruct"),          TEXT("K2Node_MakeStruct") },
 		{ TEXT("breakstruct"),         TEXT("K2Node_BreakStruct") },
 		{ TEXT("makearray"),           TEXT("K2Node_MakeArray") },
+		{ TEXT("makemap"),             TEXT("K2Node_MakeMap") },
+		{ TEXT("makeset"),             TEXT("K2Node_MakeSet") },
+		// Enhanced Input
+		{ TEXT("enhancedinputaction"), TEXT("K2Node_EnhancedInputAction") },
+		{ TEXT("inputaction"),         TEXT("K2Node_EnhancedInputAction") },
+		{ TEXT("enhancedinputactionevent"), TEXT("K2Node_EnhancedInputAction") },
+		// Timeline
+		{ TEXT("timeline"),            TEXT("K2Node_Timeline") },
+		// Self reference
+		{ TEXT("self"),                TEXT("K2Node_Self") },
+		{ TEXT("selfref"),             TEXT("K2Node_Self") },
+		{ TEXT("selfreference"),       TEXT("K2Node_Self") },
 	};
 
 	// Resolve the type name: check short name map (case-insensitive)
+	// Try normalized input with spaces stripped first, then original TypeName
 	FString ResolvedClassName = TypeName;
 	{
-		FString LowerTypeName = TypeName.ToLower();
-		if (const FString* Mapped = ShortNameMap.Find(LowerTypeName))
+		// Build space-stripped key from normalized input for map lookup
+		FString MapKey = NormalizedInput.ToLower();
+		MapKey.ReplaceInline(TEXT(" "), TEXT(""));
+
+		if (const FString* Mapped = ShortNameMap.Find(MapKey))
 		{
 			ResolvedClassName = *Mapped;
+		}
+		else
+		{
+			// Fallback: try the original TypeName lowered (for cases where normalization
+			// didn't apply, e.g., "getvar" -> already in map)
+			FString LowerOriginal = TypeName.ToLower();
+			LowerOriginal.ReplaceInline(TEXT(" "), TEXT(""));
+			if (const FString* Mapped2 = ShortNameMap.Find(LowerOriginal))
+			{
+				ResolvedClassName = *Mapped2;
+			}
+			else if (!NormalizedInput.Equals(TypeName, ESearchCase::IgnoreCase))
+			{
+				// Use the normalized input as the resolved class name (preserves
+				// prefix stripping for StaticFindFirstObject strategies below)
+				ResolvedClassName = NormalizedInput;
+			}
 		}
 	}
 
@@ -1792,7 +1877,66 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleDescribeNodeType(const TShar
 	// Validate it is a UK2Node subclass
 	if (!NodeClass || !NodeClass->IsChildOf(UK2Node::StaticClass()))
 	{
-		// Try the node catalog for fuzzy suggestions
+		// --- 3c. High-confidence catalog resolution ---
+		// Before returning an error, try the node catalog fuzzy match.
+		// If the top result has score >= 500 (prefix match or exact ID match),
+		// attempt to resolve it as an actual class instead of just suggesting it.
+		if (FOliveNodeCatalog::Get().IsInitialized())
+		{
+			TArray<FOliveNodeSuggestion> Suggestions = FOliveNodeCatalog::Get().FuzzyMatch(TypeName, 5);
+			if (Suggestions.Num() > 0 && Suggestions[0].Score >= 500)
+			{
+				const FString& TopTypeId = Suggestions[0].TypeId;
+
+				// Try to find the class using the TypeId from the catalog.
+				// Catalog TypeIds for K2Node entries are class names like "K2Node_IfThenElse".
+				// Try with UK2Node_ prefix first, then U prefix.
+				UClass* CatalogClass = nullptr;
+
+				// Strategy A: TypeId might be a bare K2Node class name (e.g., "K2Node_Timeline")
+				FString CatalogClassNameU = TopTypeId;
+				if (!CatalogClassNameU.StartsWith(TEXT("U")))
+				{
+					CatalogClassNameU = TEXT("U") + CatalogClassNameU;
+				}
+				CatalogClass = Cast<UClass>(StaticFindFirstObject(
+					UClass::StaticClass(), *CatalogClassNameU,
+					EFindFirstObjectOptions::NativeFirst, ELogVerbosity::NoLogging,
+					TEXT("HandleDescribeNodeType")));
+
+				// Strategy B: TypeId without U prefix (bare name)
+				if (!CatalogClass)
+				{
+					CatalogClass = Cast<UClass>(StaticFindFirstObject(
+						UClass::StaticClass(), *TopTypeId,
+						EFindFirstObjectOptions::NativeFirst, ELogVerbosity::NoLogging,
+						TEXT("HandleDescribeNodeType")));
+				}
+
+				// Strategy C: TypeId might be a short name like "Branch" -- try UK2Node_ prefix
+				if (!CatalogClass && !TopTypeId.StartsWith(TEXT("K2Node_")) && !TopTypeId.StartsWith(TEXT("UK2Node_")))
+				{
+					CatalogClass = Cast<UClass>(StaticFindFirstObject(
+						UClass::StaticClass(), *(TEXT("UK2Node_") + TopTypeId),
+						EFindFirstObjectOptions::NativeFirst, ELogVerbosity::NoLogging,
+						TEXT("HandleDescribeNodeType")));
+				}
+
+				if (CatalogClass && CatalogClass->IsChildOf(UK2Node::StaticClass()))
+				{
+					NodeClass = CatalogClass;
+					ResolvedClassName = TopTypeId;
+					UE_LOG(LogOliveBPTools, Log,
+						TEXT("HandleDescribeNodeType: Resolved '%s' via catalog fuzzy match (score=%d, type_id='%s')"),
+						*TypeName, Suggestions[0].Score, *TopTypeId);
+				}
+			}
+		}
+	}
+
+	// Final check: if still no valid class, return error with suggestions
+	if (!NodeClass || !NodeClass->IsChildOf(UK2Node::StaticClass()))
+	{
 		FString SuggestionStr = TEXT("Use short names like 'Branch', 'Sequence', 'Delay', 'CustomEvent', or full class names like 'K2Node_IfThenElse'.");
 
 		if (FOliveNodeCatalog::Get().IsInitialized())
@@ -2163,6 +2307,277 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleDescribeFunction(const TShar
 }
 
 // ============================================================================
+// Verify Completion Handler
+// ============================================================================
+
+FOliveToolResult FOliveBlueprintToolHandlers::HandleVerifyCompletion(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide at least 'asset_path'."));
+	}
+
+	FString AssetPath;
+	if (!Params->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'asset_path' is missing or empty"),
+			TEXT("Provide the Blueprint asset path to verify."));
+	}
+
+	// Load Blueprint
+	FOliveBlueprintReader& BPReader = FOliveBlueprintReader::Get();
+	UBlueprint* Blueprint = BPReader.LoadBlueprint(AssetPath);
+	if (!Blueprint)
+	{
+		return FOliveToolResult::Error(
+			TEXT("ASSET_NOT_FOUND"),
+			FString::Printf(TEXT("Failed to load Blueprint at path '%s'"), *AssetPath),
+			TEXT("Use project.search to find the correct asset path."));
+	}
+
+	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
+	TArray<TSharedPtr<FJsonValue>> IssuesArray;
+	bool bComplete = true;
+
+	// ------------------------------------------------------------------
+	// 1. Compile the Blueprint
+	// ------------------------------------------------------------------
+	FOliveIRCompileResult CompileResult = FOliveCompileManager::Get().Compile(Blueprint);
+
+	int32 CompileErrorCount = CompileResult.Errors.Num();
+	for (const FOliveIRCompileError& Err : CompileResult.Errors)
+	{
+		TSharedPtr<FJsonObject> Issue = MakeShared<FJsonObject>();
+		Issue->SetStringField(TEXT("type"), TEXT("compile_error"));
+		Issue->SetStringField(TEXT("message"), Err.Message);
+		if (!Err.GraphName.IsEmpty())
+		{
+			Issue->SetStringField(TEXT("graph"), Err.GraphName);
+		}
+		if (!Err.Suggestion.IsEmpty())
+		{
+			Issue->SetStringField(TEXT("suggestion"), Err.Suggestion);
+		}
+		IssuesArray.Add(MakeShared<FJsonValueObject>(Issue));
+	}
+	if (CompileErrorCount > 0)
+	{
+		bComplete = false;
+	}
+	ResultData->SetNumberField(TEXT("compile_errors"), CompileErrorCount);
+
+	// ------------------------------------------------------------------
+	// 2. Check orphaned exec flows across all graphs
+	// ------------------------------------------------------------------
+	int32 TotalOrphanedExec = 0;
+	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
+
+	auto CheckOrphanedExec = [&](UEdGraph* Graph)
+	{
+		if (!Graph) return;
+		TArray<FOliveIRMessage> OrphanMessages;
+		int32 Count = Pipeline.DetectOrphanedExecFlows(Graph, OrphanMessages);
+		TotalOrphanedExec += Count;
+		for (const FOliveIRMessage& Msg : OrphanMessages)
+		{
+			TSharedPtr<FJsonObject> Issue = MakeShared<FJsonObject>();
+			Issue->SetStringField(TEXT("type"), TEXT("orphaned_exec"));
+			Issue->SetStringField(TEXT("message"), Msg.Message);
+			Issue->SetStringField(TEXT("graph"), Graph->GetName());
+			IssuesArray.Add(MakeShared<FJsonValueObject>(Issue));
+		}
+	};
+
+	for (UEdGraph* Graph : Blueprint->UbergraphPages)
+	{
+		CheckOrphanedExec(Graph);
+	}
+	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+	{
+		CheckOrphanedExec(Graph);
+	}
+	if (TotalOrphanedExec > 0)
+	{
+		bComplete = false;
+	}
+	ResultData->SetNumberField(TEXT("orphaned_exec_flows"), TotalOrphanedExec);
+
+	// ------------------------------------------------------------------
+	// 3. Check unwired required data pins across all graphs
+	// ------------------------------------------------------------------
+	int32 TotalUnwiredPins = 0;
+
+	auto CheckUnwiredPins = [&](UEdGraph* Graph)
+	{
+		if (!Graph) return;
+		TSet<UEdGraphNode*> EmptySet; // Check all nodes
+		TArray<FString> UnwiredMessages;
+		int32 Count = FOliveWritePipeline::DetectUnwiredRequiredDataPins(Graph, EmptySet, UnwiredMessages);
+		TotalUnwiredPins += Count;
+		for (const FString& Msg : UnwiredMessages)
+		{
+			TSharedPtr<FJsonObject> Issue = MakeShared<FJsonObject>();
+			Issue->SetStringField(TEXT("type"), TEXT("unwired_pin"));
+			Issue->SetStringField(TEXT("message"), Msg);
+			Issue->SetStringField(TEXT("graph"), Graph->GetName());
+			IssuesArray.Add(MakeShared<FJsonValueObject>(Issue));
+		}
+	};
+
+	for (UEdGraph* Graph : Blueprint->UbergraphPages)
+	{
+		CheckUnwiredPins(Graph);
+	}
+	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+	{
+		CheckUnwiredPins(Graph);
+	}
+	if (TotalUnwiredPins > 0)
+	{
+		// Unwired pins are warnings, not errors -- don't set bComplete to false
+		// They may be intentional in some patterns (e.g., optional pins)
+	}
+	ResultData->SetNumberField(TEXT("unwired_required_pins"), TotalUnwiredPins);
+
+	// ------------------------------------------------------------------
+	// 4. Check expected functions
+	// ------------------------------------------------------------------
+	const TArray<TSharedPtr<FJsonValue>>* ExpectedFunctions = nullptr;
+	if (Params->TryGetArrayField(TEXT("expected_functions"), ExpectedFunctions) && ExpectedFunctions)
+	{
+		TArray<TSharedPtr<FJsonValue>> MissingFunctionsArr;
+		for (const TSharedPtr<FJsonValue>& Val : *ExpectedFunctions)
+		{
+			if (!Val.IsValid()) continue;
+			FString ExpectedName = Val->AsString();
+			if (ExpectedName.IsEmpty()) continue;
+
+			bool bFound = false;
+
+			// Check FunctionGraphs
+			for (const UEdGraph* Graph : Blueprint->FunctionGraphs)
+			{
+				if (Graph && Graph->GetFName() == FName(*ExpectedName))
+				{
+					bFound = true;
+					break;
+				}
+			}
+
+			// Also check ubergraph pages for custom events
+			if (!bFound)
+			{
+				for (const UEdGraph* Graph : Blueprint->UbergraphPages)
+				{
+					if (!Graph) continue;
+					for (const UEdGraphNode* Node : Graph->Nodes)
+					{
+						if (const UK2Node_CustomEvent* CE = Cast<UK2Node_CustomEvent>(Node))
+						{
+							if (CE->CustomFunctionName == FName(*ExpectedName))
+							{
+								bFound = true;
+								break;
+							}
+						}
+					}
+					if (bFound) break;
+				}
+			}
+
+			if (!bFound)
+			{
+				bComplete = false;
+				TSharedPtr<FJsonObject> Issue = MakeShared<FJsonObject>();
+				Issue->SetStringField(TEXT("type"), TEXT("missing_function"));
+				Issue->SetStringField(TEXT("message"),
+					FString::Printf(TEXT("Expected function '%s' not found"), *ExpectedName));
+				IssuesArray.Add(MakeShared<FJsonValueObject>(Issue));
+				MissingFunctionsArr.Add(MakeShared<FJsonValueString>(ExpectedName));
+			}
+		}
+		if (MissingFunctionsArr.Num() > 0)
+		{
+			ResultData->SetArrayField(TEXT("missing_functions"), MissingFunctionsArr);
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// 5. Check expected variables
+	// ------------------------------------------------------------------
+	const TArray<TSharedPtr<FJsonValue>>* ExpectedVariables = nullptr;
+	if (Params->TryGetArrayField(TEXT("expected_variables"), ExpectedVariables) && ExpectedVariables)
+	{
+		TArray<TSharedPtr<FJsonValue>> MissingVariablesArr;
+		for (const TSharedPtr<FJsonValue>& Val : *ExpectedVariables)
+		{
+			if (!Val.IsValid()) continue;
+			FString ExpectedName = Val->AsString();
+			if (ExpectedName.IsEmpty()) continue;
+
+			bool bFound = false;
+			for (const FBPVariableDescription& Var : Blueprint->NewVariables)
+			{
+				if (Var.VarName == FName(*ExpectedName))
+				{
+					bFound = true;
+					break;
+				}
+			}
+
+			if (!bFound)
+			{
+				bComplete = false;
+				TSharedPtr<FJsonObject> Issue = MakeShared<FJsonObject>();
+				Issue->SetStringField(TEXT("type"), TEXT("missing_variable"));
+				Issue->SetStringField(TEXT("message"),
+					FString::Printf(TEXT("Expected variable '%s' not found"), *ExpectedName));
+				IssuesArray.Add(MakeShared<FJsonValueObject>(Issue));
+				MissingVariablesArr.Add(MakeShared<FJsonValueString>(ExpectedName));
+			}
+		}
+		if (MissingVariablesArr.Num() > 0)
+		{
+			ResultData->SetArrayField(TEXT("missing_variables"), MissingVariablesArr);
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// 6. Build result
+	// ------------------------------------------------------------------
+	ResultData->SetBoolField(TEXT("complete"), bComplete);
+	ResultData->SetArrayField(TEXT("issues"), IssuesArray);
+	ResultData->SetNumberField(TEXT("issue_count"), IssuesArray.Num());
+
+	FString Summary;
+	if (bComplete && IssuesArray.Num() == 0)
+	{
+		Summary = TEXT("Blueprint verification passed with no issues.");
+	}
+	else if (bComplete)
+	{
+		Summary = FString::Printf(TEXT("Blueprint verification passed with %d warning(s)."), IssuesArray.Num());
+	}
+	else
+	{
+		Summary = FString::Printf(TEXT("Blueprint verification FAILED with %d issue(s)."), IssuesArray.Num());
+	}
+	ResultData->SetStringField(TEXT("summary"), Summary);
+
+	FOliveToolResult Result = FOliveToolResult::Success(ResultData);
+	if (!bComplete)
+	{
+		Result.NextStepGuidance = TEXT("Fix the reported issues, then re-run blueprint.verify_completion to confirm.");
+	}
+	return Result;
+}
+
+// ============================================================================
 // Asset Writer Tool Handlers
 // ============================================================================
 
@@ -2453,6 +2868,459 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 		bCommunitySearchHintShownCreate = true;
 		ToolResult.Data->SetStringField(TEXT("tip"),
 			TEXT("olive.search_community_blueprints('relevant query') can show how other developers built similar patterns."));
+	}
+
+	return ToolResult;
+}
+
+// ============================================================================
+// blueprint.scaffold — Composite tool: create + interfaces + components + variables
+// ============================================================================
+
+FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintScaffold(const TSharedPtr<FJsonObject>& Params)
+{
+	// Validate parameters
+	if (!Params.IsValid())
+	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintScaffold: Params object is null"));
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a valid parameters object with 'path' and 'parent_class' fields")
+		);
+	}
+
+	// Extract path (required)
+	FString AssetPath;
+	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
+	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintScaffold: Missing required param 'path'"));
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Required parameter 'path' is missing or empty"),
+			TEXT("Provide the Blueprint asset path (e.g., '/Game/Blueprints/BP_NewActor')")
+		);
+	}
+
+	// Defensive: detect folder-only paths before they reach the writer
+	{
+		FString ShortName = FPackageName::GetShortName(AssetPath);
+		if (ShortName.IsEmpty() || AssetPath.EndsWith(TEXT("/")))
+		{
+			FOliveToolResult Result = FOliveToolResult::Error(
+				TEXT("VALIDATION_PATH_IS_FOLDER"),
+				FString::Printf(TEXT("'%s' is a folder path, not an asset path. The last segment must be the Blueprint name."), *AssetPath),
+				FString::Printf(TEXT("Append a Blueprint name like '%s/BP_MyBlueprint'. Example: /Game/Blueprints/BP_Gun"), *AssetPath)
+			);
+			if (Result.Data.IsValid())
+			{
+				Result.Data->SetStringField(TEXT("self_correction_hint"),
+					FString::Printf(TEXT("You used '%s' which is a folder. Add the BP name: '%s/BP_MyBlueprint'. Then retry blueprint.scaffold."),
+						*AssetPath, *AssetPath));
+			}
+			return Result;
+		}
+
+		// Catch paths missing /Game/ prefix
+		if (!AssetPath.StartsWith(TEXT("/Game/")))
+		{
+			FOliveToolResult Result = FOliveToolResult::Error(
+				TEXT("VALIDATION_INVALID_PATH_PREFIX"),
+				FString::Printf(TEXT("Path '%s' must start with '/Game/'."), *AssetPath),
+				FString::Printf(TEXT("Use '/Game/Blueprints/%s' or another path under /Game/"), *ShortName)
+			);
+			if (Result.Data.IsValid())
+			{
+				Result.Data->SetStringField(TEXT("self_correction_hint"),
+					FString::Printf(TEXT("Paths must start with /Game/. Try: /Game/Blueprints/%s"), *ShortName));
+			}
+			return Result;
+		}
+	}
+
+	// Extract type (optional, default "Normal")
+	FString TypeString = TEXT("Normal");
+	Params->TryGetStringField(TEXT("type"), TypeString);
+
+	// Parse Blueprint type (case-insensitive, lenient) — same logic as HandleBlueprintCreate
+	EOliveBlueprintType BlueprintType = EOliveBlueprintType::Normal;
+	FString TypeUpper = TypeString.ToUpper();
+	if (TypeUpper == TEXT("NORMAL") || TypeUpper == TEXT("BLUEPRINT") || TypeUpper.IsEmpty())
+	{
+		BlueprintType = EOliveBlueprintType::Normal;
+	}
+	else if (TypeUpper == TEXT("INTERFACE"))
+	{
+		BlueprintType = EOliveBlueprintType::Interface;
+	}
+	else if (TypeUpper == TEXT("FUNCTIONLIBRARY") || TypeUpper == TEXT("FUNCTION_LIBRARY"))
+	{
+		BlueprintType = EOliveBlueprintType::FunctionLibrary;
+	}
+	else if (TypeUpper == TEXT("MACROLIBRARY") || TypeUpper == TEXT("MACRO_LIBRARY"))
+	{
+		BlueprintType = EOliveBlueprintType::MacroLibrary;
+	}
+	else if (TypeUpper == TEXT("ANIMATIONBLUEPRINT") || TypeUpper == TEXT("ANIMATION_BLUEPRINT") || TypeUpper == TEXT("ANIM_BLUEPRINT"))
+	{
+		BlueprintType = EOliveBlueprintType::AnimationBlueprint;
+	}
+	else if (TypeUpper == TEXT("WIDGETBLUEPRINT") || TypeUpper == TEXT("WIDGET_BLUEPRINT") || TypeUpper == TEXT("UMG") || TypeUpper == TEXT("UI"))
+	{
+		BlueprintType = EOliveBlueprintType::WidgetBlueprint;
+	}
+	else
+	{
+		UE_LOG(LogOliveBPTools, Warning, TEXT("blueprint.scaffold: Unknown type '%s', defaulting to Normal."), *TypeString);
+		BlueprintType = EOliveBlueprintType::Normal;
+	}
+
+	// Extract parent_class (required, with auto-defaults for typed BPs)
+	FString ParentClass;
+	Params->TryGetStringField(TEXT("parent_class"), ParentClass);
+
+	if (ParentClass.IsEmpty())
+	{
+		if (BlueprintType == EOliveBlueprintType::WidgetBlueprint)
+		{
+			ParentClass = TEXT("UserWidget");
+		}
+		else if (BlueprintType == EOliveBlueprintType::AnimationBlueprint)
+		{
+			ParentClass = TEXT("AnimInstance");
+		}
+		else
+		{
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_MISSING_PARAM"),
+				TEXT("Required parameter 'parent_class' is missing or empty."),
+				TEXT("Provide the parent class name (e.g., 'Actor', 'Character', 'Pawn').")
+			);
+		}
+	}
+
+	// Parse optional arrays from params (pre-parse so lambda captures clean data)
+
+	// --- Interfaces ---
+	TArray<FString> InterfaceNames;
+	const TArray<TSharedPtr<FJsonValue>>* InterfacesArray = nullptr;
+	if (Params->TryGetArrayField(TEXT("interfaces"), InterfacesArray) && InterfacesArray)
+	{
+		for (const TSharedPtr<FJsonValue>& Val : *InterfacesArray)
+		{
+			FString InterfaceName;
+			if (Val.IsValid() && Val->TryGetString(InterfaceName) && !InterfaceName.IsEmpty())
+			{
+				InterfaceNames.Add(InterfaceName);
+			}
+		}
+	}
+
+	// --- Components ---
+	struct FComponentSpec
+	{
+		FString ClassName;
+		FString Name;
+		FString Parent;
+	};
+	TArray<FComponentSpec> ComponentSpecs;
+	const TArray<TSharedPtr<FJsonValue>>* ComponentsArray = nullptr;
+	if (Params->TryGetArrayField(TEXT("components"), ComponentsArray) && ComponentsArray)
+	{
+		for (const TSharedPtr<FJsonValue>& Val : *ComponentsArray)
+		{
+			const TSharedPtr<FJsonObject>* CompObj = nullptr;
+			if (!Val.IsValid() || !Val->TryGetObject(CompObj) || !CompObj || !(*CompObj).IsValid())
+			{
+				continue;
+			}
+
+			FComponentSpec Spec;
+			if (!(*CompObj)->TryGetStringField(TEXT("class"), Spec.ClassName) || Spec.ClassName.IsEmpty())
+			{
+				continue; // class is required per component
+			}
+			(*CompObj)->TryGetStringField(TEXT("name"), Spec.Name);
+			(*CompObj)->TryGetStringField(TEXT("parent"), Spec.Parent);
+			ComponentSpecs.Add(MoveTemp(Spec));
+		}
+	}
+
+	// --- Variables ---
+	TArray<FOliveIRVariable> VariableSpecs;
+	const TArray<TSharedPtr<FJsonValue>>* VariablesArray = nullptr;
+	if (Params->TryGetArrayField(TEXT("variables"), VariablesArray) && VariablesArray)
+	{
+		for (const TSharedPtr<FJsonValue>& Val : *VariablesArray)
+		{
+			const TSharedPtr<FJsonObject>* VarObj = nullptr;
+			if (!Val.IsValid() || !Val->TryGetObject(VarObj) || !VarObj || !(*VarObj).IsValid())
+			{
+				continue;
+			}
+
+			FOliveIRVariable Variable = ParseVariableFromParams(*VarObj);
+			if (!Variable.Name.IsEmpty())
+			{
+				VariableSpecs.Add(MoveTemp(Variable));
+			}
+		}
+	}
+
+	UE_LOG(LogOliveBPTools, Log,
+		TEXT("blueprint.scaffold: path='%s' parent='%s' type='%s' interfaces=%d components=%d variables=%d"),
+		*AssetPath, *ParentClass, *TypeString,
+		InterfaceNames.Num(), ComponentSpecs.Num(), VariableSpecs.Num());
+
+	// Build write request for pipeline
+	FOliveWriteRequest Request;
+	Request.ToolName = TEXT("blueprint.scaffold");
+	Request.Params = Params;
+	Request.AssetPath = AssetPath;
+	Request.TargetAsset = nullptr; // Create operation has no pre-existing target
+	Request.OperationDescription = FText::FromString(
+		FString::Printf(TEXT("Scaffold Blueprint '%s' (%d interfaces, %d components, %d variables)"),
+			*AssetPath, InterfaceNames.Num(), ComponentSpecs.Num(), VariableSpecs.Num())
+	);
+	Request.OperationCategory = TEXT("create");
+	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
+	Request.bAutoCompile = true; // Compile once at end after all sub-operations
+	Request.bSkipVerification = false;
+
+	// Create executor that sequentially: creates BP, adds interfaces, adds components, adds variables
+	FOliveWriteExecutor Executor;
+	Executor.BindLambda([AssetPath, ParentClass, BlueprintType, InterfaceNames, ComponentSpecs, VariableSpecs]
+		(const FOliveWriteRequest& Req, UObject* Target) -> FOliveWriteResult
+	{
+		TArray<FString> Warnings;
+		int32 InterfacesAdded = 0;
+		int32 ComponentsAdded = 0;
+		int32 VariablesAdded = 0;
+
+		// ---- Step 1: Create the Blueprint ----
+		FOliveBlueprintWriter& Writer = FOliveBlueprintWriter::Get();
+		FOliveBlueprintWriteResult CreateResult = Writer.CreateBlueprint(AssetPath, ParentClass, BlueprintType);
+
+		if (!CreateResult.bSuccess)
+		{
+			FString ErrorMsg = CreateResult.GetFirstError();
+			UE_LOG(LogOliveBPTools, Error, TEXT("blueprint.scaffold: Create failed: path='%s' error='%s'"),
+				*AssetPath, *ErrorMsg);
+			return FOliveWriteResult::ExecutionError(
+				TEXT("BP_SCAFFOLD_CREATE_FAILED"),
+				ErrorMsg,
+				TEXT("Verify the parent class exists and the asset path is valid")
+			);
+		}
+
+		// Load the newly created Blueprint for subsequent operations
+		UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+		if (!Blueprint)
+		{
+			UE_LOG(LogOliveBPTools, Error, TEXT("blueprint.scaffold: Created Blueprint but failed to load it at '%s'"), *AssetPath);
+			return FOliveWriteResult::ExecutionError(
+				TEXT("BP_SCAFFOLD_LOAD_FAILED"),
+				FString::Printf(TEXT("Blueprint was created at '%s' but could not be loaded for subsequent operations"), *AssetPath),
+				TEXT("This is an internal error. The Blueprint was created but interfaces/components/variables were not added.")
+			);
+		}
+
+		// ---- Step 2: Add interfaces (failures are warnings) ----
+		for (const FString& InterfaceName : InterfaceNames)
+		{
+			FOliveBlueprintWriteResult InterfaceResult = Writer.AddInterface(AssetPath, InterfaceName);
+			if (InterfaceResult.bSuccess)
+			{
+				InterfacesAdded++;
+			}
+			else
+			{
+				FString ErrorMsg = InterfaceResult.GetFirstError();
+				UE_LOG(LogOliveBPTools, Warning, TEXT("blueprint.scaffold: Failed to add interface '%s': %s"),
+					*InterfaceName, *ErrorMsg);
+				Warnings.Add(FString::Printf(TEXT("Interface '%s': %s"), *InterfaceName, *ErrorMsg));
+			}
+		}
+
+		// ---- Step 3: Add components (failures are warnings) ----
+		FOliveComponentWriter& CompWriter = FOliveComponentWriter::Get();
+		for (const auto& Spec : ComponentSpecs)
+		{
+			FOliveBlueprintWriteResult CompResult = CompWriter.AddComponent(AssetPath, Spec.ClassName, Spec.Name, Spec.Parent);
+			if (CompResult.bSuccess)
+			{
+				ComponentsAdded++;
+			}
+			else
+			{
+				FString ErrorMsg = CompResult.GetFirstError();
+				UE_LOG(LogOliveBPTools, Warning, TEXT("blueprint.scaffold: Failed to add component '%s' ('%s'): %s"),
+					*Spec.ClassName, *Spec.Name, *ErrorMsg);
+				Warnings.Add(FString::Printf(TEXT("Component '%s' ('%s'): %s"), *Spec.ClassName, *Spec.Name, *ErrorMsg));
+			}
+		}
+
+		// ---- Step 4: Add variables (failures are warnings) ----
+		for (const FOliveIRVariable& Variable : VariableSpecs)
+		{
+			// Skip variables with unknown type (likely malformed input)
+			if (Variable.Type.Category == EOliveIRTypeCategory::Unknown)
+			{
+				UE_LOG(LogOliveBPTools, Warning, TEXT("blueprint.scaffold: Skipping variable '%s' — type is Unknown"),
+					*Variable.Name);
+				Warnings.Add(FString::Printf(TEXT("Variable '%s': type is Unknown (missing or invalid type spec)"), *Variable.Name));
+				continue;
+			}
+
+			FOliveBlueprintWriteResult VarResult = Writer.AddVariable(AssetPath, Variable);
+			if (VarResult.bSuccess)
+			{
+				VariablesAdded++;
+			}
+			else
+			{
+				FString ErrorMsg = VarResult.GetFirstError();
+				UE_LOG(LogOliveBPTools, Warning, TEXT("blueprint.scaffold: Failed to add variable '%s': %s"),
+					*Variable.Name, *ErrorMsg);
+				Warnings.Add(FString::Printf(TEXT("Variable '%s': %s"), *Variable.Name, *ErrorMsg));
+			}
+		}
+
+		// Build result data
+		TSharedPtr<FJsonObject> ResultData = MakeShareable(new FJsonObject());
+		ResultData->SetStringField(TEXT("asset_path"), AssetPath);
+		ResultData->SetStringField(TEXT("parent_class"), ParentClass);
+		ResultData->SetStringField(TEXT("type"), FOliveBlueprintTypeDetector::TypeToString(BlueprintType));
+		ResultData->SetNumberField(TEXT("interfaces_added"), InterfacesAdded);
+		ResultData->SetNumberField(TEXT("components_added"), ComponentsAdded);
+		ResultData->SetNumberField(TEXT("variables_added"), VariablesAdded);
+
+		// Attach warnings array
+		if (Warnings.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> WarningsJsonArray;
+			for (const FString& Warning : Warnings)
+			{
+				WarningsJsonArray.Add(MakeShared<FJsonValueString>(Warning));
+			}
+			ResultData->SetArrayField(TEXT("warnings"), WarningsJsonArray);
+		}
+
+		// Reload the Blueprint to get the final state (after all modifications)
+		Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+		if (Blueprint)
+		{
+			if (TSharedPtr<FJsonObject> StateJson = BuildCompactStateJson(Blueprint))
+			{
+				ResultData->SetObjectField(TEXT("blueprint_state"), StateJson);
+			}
+		}
+
+		FOliveWriteResult Result = FOliveWriteResult::Success(ResultData);
+		Result.CreatedItem = AssetPath;
+		return Result;
+	});
+
+	// Execute through pipeline (single transaction wrapping all sub-operations)
+	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
+	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
+
+	FOliveToolResult ToolResult = Result.ToToolResult();
+
+	// Enrich success response with inherited members (same pattern as HandleBlueprintCreate)
+	if (ToolResult.bSuccess && ToolResult.Data.IsValid())
+	{
+		UBlueprint* CreatedBP = LoadObject<UBlueprint>(nullptr, *AssetPath);
+		if (CreatedBP && CreatedBP->ParentClass)
+		{
+			TArray<TSharedPtr<FJsonValue>> InheritedVars;
+			TArray<TSharedPtr<FJsonValue>> InheritedDispatchers;
+
+			for (TFieldIterator<FProperty> It(CreatedBP->ParentClass); It; ++It)
+			{
+				if (!It->HasAnyPropertyFlags(CPF_BlueprintVisible | CPF_BlueprintReadOnly))
+				{
+					continue;
+				}
+
+				const FString PropName = It->GetName();
+				if (PropName.StartsWith(TEXT("UberGraphFrame")) || PropName == TEXT("bCanEverTick"))
+				{
+					continue;
+				}
+
+				if (CastField<FMulticastDelegateProperty>(*It))
+				{
+					InheritedDispatchers.Add(MakeShared<FJsonValueString>(PropName));
+				}
+				else
+				{
+					FString TypeName = It->GetCPPType();
+					InheritedVars.Add(MakeShared<FJsonValueString>(
+						FString::Printf(TEXT("%s (%s)"), *PropName, *TypeName)));
+				}
+			}
+
+			if (InheritedVars.Num() > 0)
+			{
+				if (InheritedVars.Num() > 30)
+				{
+					int32 Total = InheritedVars.Num();
+					InheritedVars.SetNum(30);
+					InheritedVars.Add(MakeShared<FJsonValueString>(
+						FString::Printf(TEXT("... and %d more"), Total - 30)));
+				}
+				ToolResult.Data->SetArrayField(TEXT("inherited_variables"), InheritedVars);
+			}
+
+			if (InheritedDispatchers.Num() > 0)
+			{
+				ToolResult.Data->SetArrayField(TEXT("inherited_dispatchers"), InheritedDispatchers);
+			}
+
+			// List inherited SCS components from parent Blueprints
+			TArray<TSharedPtr<FJsonValue>> InheritedComponents;
+			UBlueprint* ParentBP = Cast<UBlueprint>(CreatedBP->ParentClass->ClassGeneratedBy);
+			if (ParentBP && ParentBP->SimpleConstructionScript)
+			{
+				TArray<USCS_Node*> AllNodes = ParentBP->SimpleConstructionScript->GetAllNodes();
+				for (USCS_Node* Node : AllNodes)
+				{
+					if (Node && Node->ComponentTemplate)
+					{
+						InheritedComponents.Add(MakeShared<FJsonValueString>(
+							FString::Printf(TEXT("%s (%s)"),
+								*Node->GetVariableName().ToString(),
+								*Node->ComponentClass->GetName())));
+					}
+				}
+			}
+
+			// Also enumerate native components from C++ parent class CDO
+			if (!ParentBP && CreatedBP->ParentClass->IsChildOf(AActor::StaticClass()))
+			{
+				AActor* CDO = Cast<AActor>(CreatedBP->ParentClass->GetDefaultObject());
+				if (CDO)
+				{
+					TInlineComponentArray<UActorComponent*> NativeComps;
+					CDO->GetComponents(NativeComps);
+					for (UActorComponent* Comp : NativeComps)
+					{
+						if (Comp)
+						{
+							InheritedComponents.Add(MakeShared<FJsonValueString>(
+								FString::Printf(TEXT("%s (%s)"),
+									*Comp->GetName(), *Comp->GetClass()->GetName())));
+						}
+					}
+				}
+			}
+
+			if (InheritedComponents.Num() > 0)
+			{
+				ToolResult.Data->SetArrayField(TEXT("inherited_components"), InheritedComponents);
+			}
+		}
 	}
 
 	return ToolResult;
@@ -7680,14 +8548,16 @@ void FOliveBlueprintToolHandlers::RegisterPlanTools()
 	RegisteredToolNames.Add(TEXT("blueprint.preview_plan_json"));
 
 	// blueprint.apply_plan_json
-	Registry.RegisterTool(
-		TEXT("blueprint.apply_plan_json"),
-		TEXT("Apply an intent-level Blueprint plan atomically. Resolves intents to nodes, executes in a single transaction, compiles once."),
-		OliveBlueprintSchemas::BlueprintApplyPlanJson(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson),
-		{TEXT("blueprint"), TEXT("write"), TEXT("graph"), TEXT("plan")},
-		TEXT("blueprint")
-	);
+	{
+		FOliveToolDefinition Def;
+		Def.Name = TEXT("blueprint.apply_plan_json");
+		Def.Description = TEXT("Apply an intent-level Blueprint plan atomically. Resolves intents to nodes, executes in a single transaction, compiles once.");
+		Def.InputSchema = OliveBlueprintSchemas::BlueprintApplyPlanJson();
+		Def.Tags = {TEXT("blueprint"), TEXT("write"), TEXT("graph"), TEXT("plan")};
+		Def.Category = TEXT("blueprint");
+		Def.WhenToUse = TEXT("Primary tool for Blueprint graph logic. Handles 3+ node patterns in one call. Auto-resolves function names — no need for describe_node_type or describe_function first. Preview with blueprint.preview_plan_json before applying. Do NOT batch preview and apply in the same response.");
+		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson));
+	}
 	RegisteredToolNames.Add(TEXT("blueprint.apply_plan_json"));
 
 	UE_LOG(LogOliveBPTools, Log, TEXT("Registered Plan JSON tools (preview + apply)"));
@@ -8189,6 +9059,32 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(con
 			BuildPlanFailureMessage(TEXT("Plan resolution failed"), ResolveResult.Errors),
 			ResolveResult.Errors.Num() > 0 ? ResolveResult.Errors[0].Suggestion : TEXT(""));
 		Result.Data = ErrorData;
+
+		// Build contextual next-step guidance based on the first error
+		if (ResolveResult.Errors.Num() > 0)
+		{
+			const FOliveIRBlueprintPlanError& FirstErr = ResolveResult.Errors[0];
+			if (FirstErr.ErrorCode == TEXT("FUNCTION_NOT_FOUND"))
+			{
+				Result.NextStepGuidance = FString::Printf(
+					TEXT("Function not found for step '%s'. Use blueprint.describe_function to check "
+						 "available functions on the target class, or check spelling."),
+					*FirstErr.StepId);
+			}
+			else if (FirstErr.ErrorCode == TEXT("VARIABLE_NOT_FOUND"))
+			{
+				Result.NextStepGuidance = FString::Printf(
+					TEXT("Variable not found for step '%s'. Use blueprint.read with section='variables' "
+						 "to see available variables, or add the variable first with blueprint.add_variable."),
+					*FirstErr.StepId);
+			}
+			else
+			{
+				Result.NextStepGuidance = TEXT("Check the errors array for details. Use blueprint.describe_function "
+					"or blueprint.read to verify names and types before retrying.");
+			}
+		}
+
 		return Result;
 	}
 
@@ -8530,6 +9426,32 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 			BuildPlanFailureMessage(TEXT("Plan resolution failed"), ResolveResult.Errors),
 			ResolveResult.Errors.Num() > 0 ? ResolveResult.Errors[0].Suggestion : TEXT(""));
 		Result.Data = ErrorData;
+
+		// Build contextual next-step guidance based on the first error
+		if (ResolveResult.Errors.Num() > 0)
+		{
+			const FOliveIRBlueprintPlanError& FirstErr = ResolveResult.Errors[0];
+			if (FirstErr.ErrorCode == TEXT("FUNCTION_NOT_FOUND"))
+			{
+				Result.NextStepGuidance = FString::Printf(
+					TEXT("Function not found for step '%s'. Use blueprint.describe_function to check "
+						 "available functions on the target class, or check spelling."),
+					*FirstErr.StepId);
+			}
+			else if (FirstErr.ErrorCode == TEXT("VARIABLE_NOT_FOUND"))
+			{
+				Result.NextStepGuidance = FString::Printf(
+					TEXT("Variable not found for step '%s'. Use blueprint.read with section='variables' "
+						 "to see available variables, or add the variable first with blueprint.add_variable."),
+					*FirstErr.StepId);
+			}
+			else
+			{
+				Result.NextStepGuidance = TEXT("Check the errors array for details. Use blueprint.describe_function "
+					"or blueprint.read to verify names and types before retrying.");
+			}
+		}
+
 		return Result;
 	}
 
@@ -8822,6 +9744,22 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 						ErrorsArr.Add(MakeShared<FJsonValueObject>(Err.ToJson()));
 					}
 					ResultData->SetArrayField(TEXT("wiring_errors"), ErrorsArr);
+
+					// Enrich with first failed step context for AI self-correction
+					const FOliveIRBlueprintPlanError& FirstErr = PlanResult.Errors[0];
+					if (!FirstErr.StepId.IsEmpty())
+					{
+						ResultData->SetStringField(TEXT("failed_step_id"), FirstErr.StepId);
+						// Find the step's op type from the plan
+						for (const FOliveIRBlueprintPlanStep& PStep : CapturedPlan.Steps)
+						{
+							if (PStep.StepId == FirstErr.StepId)
+							{
+								ResultData->SetStringField(TEXT("failed_step_op"), PStep.Op);
+								break;
+							}
+						}
+					}
 				}
 
 				// Split warnings into regular warnings and design warnings
@@ -8924,6 +9862,32 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 						ErrorMsg,
 						PlanResult.Errors.Num() > 0 ? PlanResult.Errors[0].Suggestion : TEXT(""));
 					ErrorResult.ResultData = ResultData;
+
+					// Build contextual next-step guidance from the first error
+					if (PlanResult.Errors.Num() > 0)
+					{
+						const FOliveIRBlueprintPlanError& FirstErr = PlanResult.Errors[0];
+						if (FirstErr.ErrorCode == TEXT("NODE_CREATION_FAILED"))
+						{
+							ErrorResult.NextStepGuidance = FString::Printf(
+								TEXT("Node creation failed for step '%s'. Use blueprint.describe_node_type or "
+									 "blueprint.describe_function to verify the node type/function exists, then retry with corrected plan_json."),
+								*FirstErr.StepId);
+						}
+						else if (FirstErr.ErrorCode.Contains(TEXT("PIN_NOT_FOUND")))
+						{
+							ErrorResult.NextStepGuidance = FString::Printf(
+								TEXT("Pin not found on step '%s' (see: %s). Use blueprint.describe_function to see available pins, "
+									 "or use blueprint.read on the graph to see actual node pins after creation."),
+								*FirstErr.StepId, *FirstErr.LocationPointer);
+						}
+						else
+						{
+							ErrorResult.NextStepGuidance = TEXT("Check wiring_errors for details. Use blueprint.read on the target graph "
+								"to see current state, then retry with corrected plan_json.");
+						}
+					}
+
 					return ErrorResult;
 				}
 
@@ -8962,6 +9926,13 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 						CreatedNodeIds.Add(Pair.Value);
 					}
 					PartialResult.CreatedNodeIds = MoveTemp(CreatedNodeIds);
+
+					// Build contextual next-step guidance for partial success
+					PartialResult.NextStepGuidance = FString::Printf(
+						TEXT("%d connection(s) failed. Read wiring_errors for details, then use "
+							 "blueprint.connect_pins or blueprint.set_pin_default to fix. "
+							 "Nodes are committed with valid IDs in step_to_node_map."),
+						TotalFailures);
 
 					return PartialResult;
 				}
@@ -9426,26 +10397,30 @@ void FOliveBlueprintToolHandlers::RegisterTemplateTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
-	Registry.RegisterTool(
-		TEXT("blueprint.get_template"),
-		TEXT("View a template's content. Without pattern: shows structure overview (components, variables, function signatures). "
-			"With pattern=FunctionName: returns the function's full graph or plan as reference for building your own."),
-		OliveBlueprintSchemas::BlueprintGetTemplate(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintGetTemplate),
-		{TEXT("blueprint"), TEXT("read"), TEXT("template")},
-		TEXT("blueprint")
-	);
+	{
+		FOliveToolDefinition Def;
+		Def.Name = TEXT("blueprint.get_template");
+		Def.Description = TEXT("View a template's content. Without pattern: shows structure overview (components, variables, function signatures). "
+			"With pattern=FunctionName: returns the function's full graph or plan as reference for building your own.");
+		Def.InputSchema = OliveBlueprintSchemas::BlueprintGetTemplate();
+		Def.Tags = {TEXT("blueprint"), TEXT("read"), TEXT("template")};
+		Def.Category = TEXT("blueprint");
+		Def.WhenToUse = TEXT("Only when the digest from list_templates is insufficient. Use the pattern parameter to read a single function's graph — do NOT read the entire template when you only need one function.");
+		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintGetTemplate));
+	}
 	RegisteredToolNames.Add(TEXT("blueprint.get_template"));
 
-	Registry.RegisterTool(
-		TEXT("blueprint.list_templates"),
-		TEXT("List available templates. Use query parameter to search by name, tag, function name, "
-			"or keyword across all templates including library templates from extracted projects."),
-		OliveBlueprintSchemas::BlueprintListTemplates(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintListTemplates),
-		{TEXT("blueprint"), TEXT("read"), TEXT("template")},
-		TEXT("blueprint")
-	);
+	{
+		FOliveToolDefinition Def;
+		Def.Name = TEXT("blueprint.list_templates");
+		Def.Description = TEXT("List available templates. Use query parameter to search by name, tag, function name, "
+			"or keyword across all templates including library templates from extracted projects.");
+		Def.InputSchema = OliveBlueprintSchemas::BlueprintListTemplates();
+		Def.Tags = {TEXT("blueprint"), TEXT("read"), TEXT("template")};
+		Def.Category = TEXT("blueprint");
+		Def.WhenToUse = TEXT("Returns digests with each result. If the digest provides enough context for your task, skip get_template and proceed to building. Only call get_template when you need a specific function's full node graph as reference.");
+		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintListTemplates));
+	}
 	RegisteredToolNames.Add(TEXT("blueprint.list_templates"));
 
 	UE_LOG(LogOliveBPTools, Log, TEXT("Registered template tools (get_template, list_templates)"));

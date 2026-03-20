@@ -681,17 +681,21 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsCall(
 	}
 
 	// Emit completion notification with timing and summary
+	const double DurationMs = (FPlatformTime::Seconds() - ToolStartTime) * 1000.0;
 	{
-		const int32 DurationMs = static_cast<int32>((FPlatformTime::Seconds() - ToolStartTime) * 1000.0);
 		const FString Summary = ToolResultText.Left(200);
 
 		TSharedPtr<FJsonObject> CompleteParams = MakeShared<FJsonObject>();
 		CompleteParams->SetStringField(TEXT("tool"), ToolName);
 		CompleteParams->SetStringField(TEXT("status"), ToolResult.bSuccess ? TEXT("completed") : TEXT("failed"));
-		CompleteParams->SetNumberField(TEXT("duration_ms"), DurationMs);
+		CompleteParams->SetNumberField(TEXT("duration_ms"), static_cast<int32>(DurationMs));
 		CompleteParams->SetStringField(TEXT("summary"), Summary);
 		SendNotification(TEXT("tools/progress"), CompleteParams, ClientId);
 	}
+
+	// Record in activity ring buffer and fire OnToolCompleted delegate
+	RecordToolCompletion(ToolName, ClientId, ToolResult.bSuccess, DurationMs);
+
 	return Result;
 }
 
@@ -818,17 +822,20 @@ void FOliveMCPServer::HandleToolsCallAsync(
 		}
 
 		// Emit completion notification with timing and summary
+		const double DurationMs = (FPlatformTime::Seconds() - ToolStartTime) * 1000.0;
 		{
-			const int32 DurationMs = static_cast<int32>((FPlatformTime::Seconds() - ToolStartTime) * 1000.0);
 			const FString Summary = ToolResultText.Left(200);
 
 			TSharedPtr<FJsonObject> CompleteParams = MakeShared<FJsonObject>();
 			CompleteParams->SetStringField(TEXT("tool"), ToolName);
 			CompleteParams->SetStringField(TEXT("status"), ToolResult.bSuccess ? TEXT("completed") : TEXT("failed"));
-			CompleteParams->SetNumberField(TEXT("duration_ms"), DurationMs);
+			CompleteParams->SetNumberField(TEXT("duration_ms"), static_cast<int32>(DurationMs));
 			CompleteParams->SetStringField(TEXT("summary"), Summary);
 			SendNotification(TEXT("tools/progress"), CompleteParams, ClientId);
 		}
+
+		// Record in activity ring buffer and fire OnToolCompleted delegate
+		RecordToolCompletion(ToolName, ClientId, ToolResult.bSuccess, DurationMs);
 
 		SendJsonResponse(OliveJsonRpc::CreateResponse(RequestId, Result), OnComplete);
 	});
@@ -908,6 +915,201 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleResourcesList(const TSharedPtr<FJ
 		Resource->SetStringField(TEXT("name"), TEXT("Behavior Tree Node Catalog Search"));
 		Resource->SetStringField(TEXT("description"), TEXT("Search BT node catalog by query (append ?q=<query>)"));
 		Resource->SetStringField(TEXT("mimeType"), TEXT("application/json"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
+	// ==========================================
+	// Domain Knowledge Resources
+	// ==========================================
+
+	// Knowledge: Events vs Functions
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/events-vs-functions"));
+		Resource->SetStringField(TEXT("name"), TEXT("Events vs Functions"));
+		Resource->SetStringField(TEXT("description"),
+			TEXT("When to implement logic as Event Graphs (BeginPlay, Tick, custom events) vs Function Graphs in Blueprints. Decision criteria and common mistakes."));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
+	// Knowledge: Blueprint Design Patterns
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/blueprint-patterns"));
+		Resource->SetStringField(TEXT("name"), TEXT("Blueprint Design Patterns"));
+		Resource->SetStringField(TEXT("description"),
+			TEXT("Reusable UE5 Blueprint architecture patterns: component composition, interface communication, event dispatchers, inheritance strategies."));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
+	// Knowledge: Blueprint Authoring
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/blueprint-authoring"));
+		Resource->SetStringField(TEXT("name"), TEXT("Blueprint Authoring Rules"));
+		Resource->SetStringField(TEXT("description"),
+			TEXT("Blueprint authoring rules: naming conventions, variable organization, function decomposition, compile-error-first debugging."));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
+	// Knowledge: Node Routing
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/node-routing"));
+		Resource->SetStringField(TEXT("name"), TEXT("Node Routing Guide"));
+		Resource->SetStringField(TEXT("description"),
+			TEXT("Guide for choosing the right Blueprint node type: K2Node subclasses, macro vs function, pure vs impure, latent actions."));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
+	// ==========================================
+	// Recipe Resources
+	// ==========================================
+
+	// Recipe: Create
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/recipe/create"));
+		Resource->SetStringField(TEXT("name"), TEXT("Recipe: Create Blueprint"));
+		Resource->SetStringField(TEXT("description"),
+			TEXT("Step-by-step recipe for creating a new Blueprint from scratch."));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
+	// Recipe: Modify
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/recipe/modify"));
+		Resource->SetStringField(TEXT("name"), TEXT("Recipe: Modify Blueprint"));
+		Resource->SetStringField(TEXT("description"),
+			TEXT("Step-by-step recipe for modifying an existing Blueprint's logic."));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
+	// Recipe: Fix Wiring
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/recipe/fix_wiring"));
+		Resource->SetStringField(TEXT("name"), TEXT("Recipe: Fix Wiring"));
+		Resource->SetStringField(TEXT("description"),
+			TEXT("How to diagnose and fix pin wiring issues in Blueprint graphs using pin_manifests from tool results."));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
+	// Recipe: Spawn Actor
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/recipe/spawn_actor"));
+		Resource->SetStringField(TEXT("name"), TEXT("Recipe: Spawn Actor"));
+		Resource->SetStringField(TEXT("description"),
+			TEXT("SpawnActor node usage with SpawnTransform pin and MakeTransform pattern."));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
+	// Recipe: Interface Pattern
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/recipe/interface_pattern"));
+		Resource->SetStringField(TEXT("name"), TEXT("Recipe: Interface Pattern"));
+		Resource->SetStringField(TEXT("description"),
+			TEXT("Blueprint Interface (BPI) creation, implementation, and interface-based calling pattern."));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
+	// Recipe: Multi Asset
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/recipe/multi_asset"));
+		Resource->SetStringField(TEXT("name"), TEXT("Recipe: Multi-Asset Workflow"));
+		Resource->SetStringField(TEXT("description"),
+			TEXT("Multi-asset workflow: creating multiple related Blueprints with cross-asset references and build order."));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
+	// Recipe: Variables and Components
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/recipe/variables_components"));
+		Resource->SetStringField(TEXT("name"), TEXT("Recipe: Variables & Components"));
+		Resource->SetStringField(TEXT("description"),
+			TEXT("Add variables and components with correct type format and configuration."));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
+	// Recipe: Edit Existing Graph
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/recipe/edit_existing_graph"));
+		Resource->SetStringField(TEXT("name"), TEXT("Recipe: Edit Existing Graph"));
+		Resource->SetStringField(TEXT("description"),
+			TEXT("Insert, remove, or rewire nodes in an existing event graph or function graph."));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
+	// Recipe: Function Graph
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/recipe/function_graph"));
+		Resource->SetStringField(TEXT("name"), TEXT("Recipe: Function Graph"));
+		Resource->SetStringField(TEXT("description"),
+			TEXT("Function graph entry node, auto-chain, graph_target, and return values."));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
+	// Recipe: Object Variable Type
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/recipe/object_variable_type"));
+		Resource->SetStringField(TEXT("name"), TEXT("Recipe: Object Variable Types"));
+		Resource->SetStringField(TEXT("description"),
+			TEXT("Variable type format for object refs, class refs, arrays, and enums."));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
+	// Recipe: Component Reference
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/recipe/component_reference"));
+		Resource->SetStringField(TEXT("name"), TEXT("Recipe: Component Reference"));
+		Resource->SetStringField(TEXT("description"),
+			TEXT("How to access component properties and transforms using GetComponentByClass."));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
+	// Recipe: Events and Functions
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/recipe/events_and_functions"));
+		Resource->SetStringField(TEXT("name"), TEXT("Recipe: Events and Functions"));
+		Resource->SetStringField(TEXT("description"),
+			TEXT("When to use events vs functions, interface output traps, hybrid pattern, smooth movement with Tick+FInterpTo."));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
+		Resources.Add(MakeShared<FJsonValueObject>(Resource));
+	}
+
+	// Recipe: Input Handling
+	{
+		TSharedPtr<FJsonObject> Resource = MakeShared<FJsonObject>();
+		Resource->SetStringField(TEXT("uri"), TEXT("olive://knowledge/recipe/input_handling"));
+		Resource->SetStringField(TEXT("name"), TEXT("Recipe: Input Handling"));
+		Resource->SetStringField(TEXT("description"),
+			TEXT("Enhanced Input Actions vs InputKey decision tree, tool split for asset creation vs wiring."));
+		Resource->SetStringField(TEXT("mimeType"), TEXT("text/plain"));
 		Resources.Add(MakeShared<FJsonValueObject>(Resource));
 	}
 
@@ -1004,6 +1206,45 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleResourcesRead(const TSharedPtr<FJ
 	else if (Uri == TEXT("olive://behaviortree/node-catalog"))
 	{
 		ContentText = JsonToString(FOliveBTNodeCatalog::Get().ToJson());
+	}
+	else if (Uri.StartsWith(TEXT("olive://knowledge/")))
+	{
+		// Map knowledge URI to file path under Content/SystemPrompts/Knowledge/
+		FString RelPath = Uri.RightChop(18); // strip "olive://knowledge/"
+
+		const FString KnowledgeDir = FPaths::Combine(
+			FPaths::ConvertRelativePathToFull(
+				FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("UE_Olive_AI_Studio"))),
+			TEXT("Content"), TEXT("SystemPrompts"), TEXT("Knowledge"));
+
+		FString FilePath;
+		if (RelPath.StartsWith(TEXT("recipe/")))
+		{
+			// olive://knowledge/recipe/create -> Knowledge/recipes/blueprint/create.txt
+			FString RecipeName = RelPath.RightChop(7); // strip "recipe/"
+			FilePath = FPaths::Combine(KnowledgeDir, TEXT("recipes"), TEXT("blueprint"), RecipeName + TEXT(".txt"));
+		}
+		else
+		{
+			// olive://knowledge/events-vs-functions -> Knowledge/events_vs_functions.txt
+			FString FileName = RelPath.Replace(TEXT("-"), TEXT("_"));
+			FilePath = FPaths::Combine(KnowledgeDir, FileName + TEXT(".txt"));
+		}
+
+		if (FPaths::FileExists(FilePath))
+		{
+			FFileHelper::LoadFileToString(ContentText, *FilePath);
+			MimeType = TEXT("text/plain");
+		}
+		else
+		{
+			UE_LOG(LogOliveAI, Warning, TEXT("Knowledge resource file not found: %s (URI: %s)"), *FilePath, *Uri);
+			return OliveJsonRpc::CreateErrorResponse(
+				nullptr,
+				OliveJsonRpc::RESOURCE_NOT_FOUND,
+				FString::Printf(TEXT("Knowledge resource not found: %s"), *Uri)
+			)->GetObjectField(TEXT("error"));
+		}
 	}
 	else
 	{
@@ -1270,6 +1511,54 @@ void FOliveMCPServer::ClearChatModeForInternalAgent()
 	InternalAgentChatMode = EOliveChatMode::Code;
 	bHasInternalAgent = false;
 	UE_LOG(LogOliveAI, Log, TEXT("MCP internal agent chat mode cleared"));
+}
+
+// ==========================================
+// Recent Tool Calls
+// ==========================================
+
+TArray<FOliveMCPServer::FRecentToolCall> FOliveMCPServer::GetRecentToolCalls(int32 MaxCount) const
+{
+	FScopeLock Lock(&RecentToolCallsLock);
+
+	const int32 Count = FMath::Min(MaxCount, RecentToolCalls.Num());
+	TArray<FRecentToolCall> Result;
+	Result.Reserve(Count);
+
+	// Return newest-first (ring buffer stores oldest-first, so iterate in reverse)
+	for (int32 i = RecentToolCalls.Num() - 1; i >= 0 && Result.Num() < Count; --i)
+	{
+		Result.Add(RecentToolCalls[i]);
+	}
+
+	return Result;
+}
+
+void FOliveMCPServer::RecordToolCompletion(const FString& ToolName, const FString& ClientId, bool bSuccess, double DurationMs)
+{
+	// Add to ring buffer
+	{
+		FScopeLock Lock(&RecentToolCallsLock);
+
+		FRecentToolCall Entry;
+		Entry.Timestamp = FDateTime::UtcNow();
+		Entry.ToolName = ToolName;
+		Entry.ClientId = ClientId;
+		Entry.bSuccess = bSuccess;
+		Entry.DurationMs = DurationMs;
+
+		RecentToolCalls.Add(MoveTemp(Entry));
+
+		// Trim if over capacity
+		while (RecentToolCalls.Num() > MaxRecentToolCalls)
+		{
+			RecentToolCalls.RemoveAt(0);
+		}
+	}
+
+	// Fire delegate (we are already on game thread for async path,
+	// and on game thread for sync path)
+	OnToolCompleted.Broadcast(ToolName, ClientId, bSuccess, DurationMs);
 }
 
 void FOliveMCPServer::PruneEventBuffer()

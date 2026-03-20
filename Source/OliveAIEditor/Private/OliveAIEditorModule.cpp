@@ -24,6 +24,7 @@
 #include "OliveMCPPromptTemplates.h"
 #include "Chat/OliveEditorChatSession.h"
 #include "UI/SOliveAIChatPanel.h"
+#include "UI/SOliveClaudeCodePanel.h"
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -37,6 +38,7 @@ DEFINE_LOG_CATEGORY(LogOliveAI);
 #define LOCTEXT_NAMESPACE "FOliveAIEditorModule"
 
 const FName FOliveAIEditorModule::ChatTabId = FName(TEXT("OliveAIChatTab"));
+const FName FOliveAIEditorModule::ClaudeCodeTabId = FName(TEXT("OliveClaudeCodeTab"));
 
 void FOliveAIEditorModule::StartupModule()
 {
@@ -209,6 +211,16 @@ void FOliveAIEditorModule::RegisterUI()
 	.SetGroup(WorkspaceMenu::GetMenuStructure().GetToolsCategory())
 	.SetIcon(FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.Tabs.Details"));
 
+	// Register nomad tab spawner for the Claude Code companion panel
+	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+		ClaudeCodeTabId,
+		FOnSpawnTab::CreateRaw(this, &FOliveAIEditorModule::SpawnClaudeCodeTab)
+	)
+	.SetDisplayName(LOCTEXT("ClaudeCodeTabTitle", "Olive AI -- Claude Code"))
+	.SetTooltipText(LOCTEXT("ClaudeCodeTabTooltip", "Open the Claude Code integration panel (MCP status, setup, activity feed)"))
+	.SetGroup(WorkspaceMenu::GetMenuStructure().GetToolsCategory())
+	.SetIcon(FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.Tabs.Viewports"));
+
 	// Extend Tools menu
 	ExtendToolsMenu();
 }
@@ -216,6 +228,7 @@ void FOliveAIEditorModule::RegisterUI()
 void FOliveAIEditorModule::UnregisterUI()
 {
 	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(ChatTabId);
+	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(ClaudeCodeTabId);
 
 	// Remove menu section if it was added
 	UToolMenus* ToolMenus = UToolMenus::Get();
@@ -246,6 +259,17 @@ void FOliveAIEditorModule::ExtendToolsMenu()
 			LOCTEXT("OpenChatPanelTooltip", "Open the Olive AI Chat panel for AI-assisted development"),
 			FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.Tabs.Details")
 		);
+
+		Section.AddEntry(FToolMenuEntry::InitMenuEntry(
+			"OpenClaudeCodePanel",
+			LOCTEXT("OpenClaudeCodePanel", "Olive AI -- Claude Code"),
+			LOCTEXT("OpenClaudeCodePanelTooltip", "Open the Claude Code integration panel (MCP status, setup, activity feed)"),
+			FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.Tabs.Viewports"),
+			FUIAction(FExecuteAction::CreateLambda([]()
+			{
+				FGlobalTabmanager::Get()->TryInvokeTab(ClaudeCodeTabId);
+			}))
+		));
 	}
 }
 
@@ -255,6 +279,16 @@ TSharedRef<SDockTab> FOliveAIEditorModule::SpawnChatTab(const FSpawnTabArgs& Arg
 		.TabRole(ETabRole::NomadTab)
 		[
 			SNew(SOliveAIChatPanel)
+		];
+}
+
+TSharedRef<SDockTab> FOliveAIEditorModule::SpawnClaudeCodeTab(const FSpawnTabArgs& Args)
+{
+	return SNew(SDockTab)
+		.TabRole(ETabRole::NomadTab)
+		.Label(LOCTEXT("ClaudeCodeTabLabel", "Claude Code"))
+		[
+			SNew(SOliveClaudeCodePanel)
 		];
 }
 

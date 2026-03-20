@@ -1246,20 +1246,22 @@ void FOliveCrossSystemToolHandlers::RegisterRecipeTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
-	Registry.RegisterTool(
-		TEXT("olive.get_recipe"),
-		TEXT("Search for patterns, examples, and gotchas for Blueprint workflows. "
+	{
+		FOliveToolDefinition Def;
+		Def.Name = TEXT("olive.get_recipe");
+		Def.Description = TEXT("Search for patterns, examples, and gotchas for Blueprint workflows. "
 			"Query with keywords related to your task or error "
 			"(e.g. 'spawn actor transform', 'variable type object', 'function graph entry'). "
-			"Returns the most relevant reference entry."),
-		OliveCrossSystemSchemas::RecipeGetRecipe(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleGetRecipe),
-		{TEXT("crosssystem"), TEXT("read")},
+			"Returns the most relevant reference entry.");
+		Def.InputSchema = OliveCrossSystemSchemas::RecipeGetRecipe();
+		Def.Tags = {TEXT("crosssystem"), TEXT("read")};
 		// Category is intentionally "crosssystem" — NOT "olive". Focus profiles filter
 		// by category, and "crosssystem" ensures visibility in Blueprint/Auto profiles
 		// without adding a new category to the profile filter config.
-		TEXT("crosssystem")
-	);
+		Def.Category = TEXT("crosssystem");
+		Def.WhenToUse = TEXT("Call ONCE at task start to get patterns and gotchas for your workflow. Do NOT call repeatedly mid-build — recipe content is static and does not change between calls.");
+		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleGetRecipe));
+	}
 	RegisteredToolNames.Add(TEXT("olive.get_recipe"));
 
 	UE_LOG(LogOliveCrossSystemTools, Log, TEXT("Registered recipe tool with %d recipes available"), RecipeLibrary.Num());

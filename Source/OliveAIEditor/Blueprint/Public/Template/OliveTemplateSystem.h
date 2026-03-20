@@ -77,6 +77,12 @@ struct OLIVEAIEDITOR_API FOliveLibraryTemplateInfo
     TArray<FString> ComponentNames;
     TArray<FString> DispatcherNames;
     TArray<FOliveLibraryFunctionSummary> Functions;
+
+    /** Pre-generated structured summary (~150 tokens) covering purpose, key_patterns,
+     *  functions, variables, and dispatchers. Produced by the tagger agent (LLM-generated).
+     *  Included in search results so callers can skip full get_template round trips.
+     *  Nullptr if the template JSON has no "digest" field. */
+    TSharedPtr<FJsonObject> Digest;
 };
 
 /**

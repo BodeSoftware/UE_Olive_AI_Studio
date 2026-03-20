@@ -421,6 +421,33 @@ namespace OliveBlueprintSchemas
 		return Schema;
 	}
 
+	TSharedPtr<FJsonObject> BlueprintVerifyCompletion()
+	{
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		TSharedPtr<FJsonObject> Props = MakeProperties();
+
+		Props->SetObjectField(TEXT("asset_path"), StringProp(
+			TEXT("Blueprint asset path to verify (e.g., '/Game/Blueprints/BP_MyActor')")));
+
+		Props->SetObjectField(TEXT("expected_functions"),
+			ArrayProp(
+				TEXT("Function names that should exist in the Blueprint (optional)"),
+				MakeSchema(TEXT("string"))));
+
+		Props->SetObjectField(TEXT("expected_variables"),
+			ArrayProp(
+				TEXT("Variable names that should exist in the Blueprint (optional)"),
+				MakeSchema(TEXT("string"))));
+
+		Schema->SetStringField(TEXT("description"),
+			TEXT("Verify a Blueprint is complete: compiles without errors, expected functions and variables "
+				 "exist, no orphaned exec flows, no unwired required data pins. Returns a structured report "
+				 "with all issues found. Use after applying plan_json or making multiple edits."));
+		Schema->SetObjectField(TEXT("properties"), Props);
+		AddRequired(Schema, {TEXT("asset_path")});
+		return Schema;
+	}
+
 	// ============================================================================
 	// Asset Writer Tool Schemas
 	// ============================================================================
@@ -445,6 +472,44 @@ namespace OliveBlueprintSchemas
 			TEXT("Create a new empty Blueprint asset with the specified parent_class."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path")});
+
+		return Schema;
+	}
+
+	TSharedPtr<FJsonObject> BlueprintScaffold()
+	{
+		TSharedPtr<FJsonObject> Properties = MakeProperties();
+
+		Properties->SetObjectField(TEXT("path"),
+			StringProp(TEXT("Asset path for new Blueprint (e.g., '/Game/Blueprints/BP_NewActor')")));
+
+		Properties->SetObjectField(TEXT("parent_class"),
+			StringProp(TEXT("Parent class name (e.g., 'Actor', 'Character', 'Pawn', '/Game/Blueprints/BP_Base'). "
+				"Auto-defaults to UserWidget for WidgetBlueprint, AnimInstance for AnimationBlueprint.")));
+
+		Properties->SetObjectField(TEXT("type"),
+			EnumProp(TEXT("Blueprint type (defaults to 'Normal')"),
+			{TEXT("Normal"), TEXT("Interface"), TEXT("FunctionLibrary"), TEXT("MacroLibrary"), TEXT("AnimationBlueprint"), TEXT("WidgetBlueprint")}));
+
+		Properties->SetObjectField(TEXT("components"),
+			ArrayProp(TEXT("Components to add to the Blueprint (each: {class: string, name?: string, parent?: string})"),
+				ComponentSpecSchema()));
+
+		Properties->SetObjectField(TEXT("variables"),
+			ArrayProp(TEXT("Variables to add to the Blueprint (each follows the standard variable schema with name, type, etc.)"),
+				VariableSchema()));
+
+		Properties->SetObjectField(TEXT("interfaces"),
+			ArrayProp(TEXT("Interfaces to implement (e.g., ['BPI_Interactable', 'BPI_Damageable'])"),
+				MakeSchema(TEXT("string"))));
+
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		Schema->SetStringField(TEXT("description"),
+			TEXT("Create a Blueprint with components, variables, and interfaces in one call. "
+				"Replaces the pattern of separate create + add_component + add_variable + add_interface calls. "
+				"Sub-operation failures (e.g., one component fails) are collected as warnings, not hard failures."));
+		Schema->SetObjectField(TEXT("properties"), Properties);
+		AddRequired(Schema, {TEXT("path"), TEXT("parent_class")});
 
 		return Schema;
 	}
@@ -1042,10 +1107,14 @@ namespace OliveBlueprintSchemas
 				StringProp(TEXT("Track name. Becomes the output pin name on the timeline node.")));
 			TrackProps->SetObjectField(TEXT("type"),
 				EnumProp(TEXT("Track type"), {TEXT("float"), TEXT("vector"), TEXT("color"), TEXT("event")}));
+			TSharedPtr<FJsonObject> KeyTupleSchema = ArrayProp(
+				TEXT("Key tuple values. Float: [time, value]. Vector: [time, x, y, z]. "
+					"Color: [time, r, g, b, a]. Event: [time, 0]."),
+				MakeSchema(TEXT("number")));
 			TrackProps->SetObjectField(TEXT("keys"),
 				ArrayProp(TEXT("Keyframe array. Float: [[time, value], ...]. Vector: [[time, x, y, z], ...]. "
 					"Color: [[time, r, g, b, a], ...]. Event: [[time, 0], ...]."),
-					MakeSchema(TEXT("array"))));
+					KeyTupleSchema));
 			TrackProps->SetObjectField(TEXT("interp"),
 				EnumProp(TEXT("Interpolation mode (default: linear). Ignored for event tracks."),
 					{TEXT("linear"), TEXT("cubic"), TEXT("constant")}));

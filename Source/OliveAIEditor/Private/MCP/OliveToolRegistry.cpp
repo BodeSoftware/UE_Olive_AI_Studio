@@ -506,6 +506,21 @@ TSharedPtr<FJsonObject> FOliveToolDefinition::ToMCPJson() const
 		ToolJson->SetObjectField(TEXT("inputSchema"), EmptySchema);
 	}
 
+	// Add annotations object if any guidance fields are set
+	if (!UsageGuidance.IsEmpty() || !WhenToUse.IsEmpty())
+	{
+		TSharedPtr<FJsonObject> Annotations = MakeShared<FJsonObject>();
+		if (!UsageGuidance.IsEmpty())
+		{
+			Annotations->SetStringField(TEXT("usage_guidance"), UsageGuidance);
+		}
+		if (!WhenToUse.IsEmpty())
+		{
+			Annotations->SetStringField(TEXT("when_to_use"), WhenToUse);
+		}
+		ToolJson->SetObjectField(TEXT("annotations"), Annotations);
+	}
+
 	return ToolJson;
 }
 
@@ -582,6 +597,11 @@ TSharedPtr<FJsonObject> FOliveToolResult::ToJson() const
 	if (ExecutionTimeMs > 0.0)
 	{
 		Response->SetNumberField(TEXT("execution_time_ms"), ExecutionTimeMs);
+	}
+
+	if (!NextStepGuidance.IsEmpty())
+	{
+		Response->SetStringField(TEXT("next_step"), NextStepGuidance);
 	}
 
 	return Response;

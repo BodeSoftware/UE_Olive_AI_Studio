@@ -60,6 +60,7 @@ public class OliveAIEditor : ModuleRules
 			// UI
 			"Slate",
 			"SlateCore",
+			"ApplicationCore",
 			"InputCore",
 			"PropertyEditor",
 

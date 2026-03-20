@@ -10,6 +10,8 @@
 #include "Providers/OliveOpenAICompatibleProvider.h"
 #include "Providers/OliveGoogleProvider.h"
 #include "Providers/OliveZAIProvider.h"
+#include "Settings/OliveAISettings.h"
+#include "OliveAIEditorModule.h"
 #include "Serialization/JsonSerializer.h"
 
 // ==========================================
@@ -138,6 +140,12 @@ TSharedPtr<IOliveAIProvider> FOliveProviderFactory::CreateProvider(const FString
 		ProviderName.Equals(TEXT("Claude Code"), ESearchCase::IgnoreCase) ||
 		ProviderName.Equals(TEXT("Claude Code CLI"), ESearchCase::IgnoreCase))
 	{
+		const UOliveAISettings* Settings = UOliveAISettings::Get();
+		if (Settings && !Settings->bEnableLegacyClaudeCodeProvider)
+		{
+			UE_LOG(LogOliveAI, Warning, TEXT("Claude Code provider is disabled. Enable 'Enable Legacy Claude Code Provider' in Project Settings > Plugins > Olive AI Studio to use it as an in-editor provider. The recommended workflow is to use Claude Code as an external MCP integration."));
+			return nullptr;
+		}
 		return MakeShared<FOliveClaudeCodeProvider>();
 	}
 
@@ -184,10 +192,17 @@ TArray<FString> FOliveProviderFactory::GetAvailableProviders()
 {
 	TArray<FString> Providers;
 
-	// Claude Code CLI - no API key needed, uses Claude Max subscription
-	if (FOliveClaudeCodeProvider::IsClaudeCodeInstalled())
+	// Claude Code CLI - gated behind legacy flag (default: disabled)
+	// Recommended workflow: use Claude Code as external MCP integration via companion panel
 	{
-		Providers.Add(TEXT("Claude Code CLI"));
+		const UOliveAISettings* Settings = UOliveAISettings::Get();
+		if (Settings && Settings->bEnableLegacyClaudeCodeProvider)
+		{
+			if (FOliveClaudeCodeProvider::IsClaudeCodeInstalled())
+			{
+				Providers.Add(TEXT("Claude Code CLI"));
+			}
+		}
 	}
 
 	// Codex CLI - uses ChatGPT subscription or OPENAI_API_KEY

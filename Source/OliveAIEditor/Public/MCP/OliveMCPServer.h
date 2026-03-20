@@ -51,6 +51,16 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FOnMCPClientDisconnected, const FString& /* 
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnMCPToolCalled, const FString& /* ToolName */, const FString& /* ClientId */, const TSharedPtr<FJsonObject>& /* Arguments */);
 
 /**
+ * Tool Completed Event
+ * Fires after a tool finishes execution via MCP. Provides timing and success/failure status.
+ */
+DECLARE_MULTICAST_DELEGATE_FourParams(FOnMCPToolCompleted,
+	const FString& /* ToolName */,
+	const FString& /* ClientId */,
+	bool /* bSuccess */,
+	double /* DurationMs */);
+
+/**
  * MCP Notification Event for poll-based delivery
  */
 struct FMCPNotificationEvent
@@ -183,6 +193,31 @@ public:
 
 	/** Fired when a tool is called */
 	FOnMCPToolCalled OnToolCalled;
+
+	/** Fired after a tool finishes execution (on game thread) */
+	FOnMCPToolCompleted OnToolCompleted;
+
+	// ==========================================
+	// Recent Tool Calls (Activity Feed)
+	// ==========================================
+
+	/** Record of a recently completed tool call, for activity feed population */
+	struct FRecentToolCall
+	{
+		FDateTime Timestamp;
+		FString ToolName;
+		FString ClientId;
+		bool bSuccess = true;
+		double DurationMs = 0.0;
+	};
+
+	/**
+	 * Get recent tool call history for activity feed population.
+	 * Thread-safe. Returns newest-first.
+	 * @param MaxCount Maximum number of entries to return (default 50)
+	 * @return Array of recent tool calls, newest first
+	 */
+	TArray<FRecentToolCall> GetRecentToolCalls(int32 MaxCount = 50) const;
 
 	// ==========================================
 	// Client Management
@@ -416,6 +451,22 @@ private:
 
 	/** Prune old events from buffer */
 	void PruneEventBuffer();
+
+	// ==========================================
+	// Recent Tool Calls State
+	// ==========================================
+
+	/** Ring buffer of recent tool calls for activity feed population */
+	TArray<FRecentToolCall> RecentToolCalls;
+
+	/** Lock for RecentToolCalls access (written on game thread, read from any thread) */
+	mutable FCriticalSection RecentToolCallsLock;
+
+	/** Maximum number of recent tool calls to retain */
+	static constexpr int32 MaxRecentToolCalls = 100;
+
+	/** Record a completed tool call into the ring buffer and fire OnToolCompleted */
+	void RecordToolCompletion(const FString& ToolName, const FString& ClientId, bool bSuccess, double DurationMs);
 
 	// ==========================================
 	// Tool Filter State

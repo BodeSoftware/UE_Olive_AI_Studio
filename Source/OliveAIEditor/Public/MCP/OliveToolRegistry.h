@@ -36,6 +36,14 @@ struct OLIVEAIEDITOR_API FOliveToolDefinition
 	UPROPERTY()
 	FString Category;
 
+	/** Detailed usage guidance for AI agents. Multi-line.
+	 *  Appears in tools/list under annotations.usage_guidance (MCP spec extension). */
+	FString UsageGuidance;
+
+	/** When to use this tool vs alternatives. Helps AI pick the right tool.
+	 *  Appears in tools/list under annotations.when_to_use. */
+	FString WhenToUse;
+
 	/** Convert to JSON for MCP tools/list */
 	TSharedPtr<FJsonObject> ToMCPJson() const;
 };
@@ -63,6 +71,10 @@ struct OLIVEAIEDITOR_API FOliveToolResult
 	/** Execution time in milliseconds */
 	UPROPERTY()
 	double ExecutionTimeMs = 0.0;
+
+	/** Optional next-step guidance for the AI. Contextual suggestion
+	 *  based on what just happened. Serialized as "next_step" in JSON output. */
+	FString NextStepGuidance;
 
 	/** Create a success result */
 	static FOliveToolResult Success(const TSharedPtr<FJsonObject>& ResultData = nullptr);
