@@ -1800,6 +1800,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleDescribeNodeType(const TShar
 		{ TEXT("self"),                TEXT("K2Node_Self") },
 		{ TEXT("selfref"),             TEXT("K2Node_Self") },
 		{ TEXT("selfreference"),       TEXT("K2Node_Self") },
+		{ TEXT("SelfReference"),       TEXT("K2Node_Self") },
 	};
 
 	// Resolve the type name: check short name map (case-insensitive)
@@ -6306,7 +6307,9 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintConnectPins(const T
 			// Fallback for non-type errors (pin not found, etc.)
 			return FOliveWriteResult::ExecutionError(
 				TEXT("BP_CONNECT_PINS_FAILED"),
-				ErrorMsg,
+				ErrorMsg.IsEmpty()
+					? TEXT("Connection failed — pins may already be wired. Use blueprint.read to check current graph state.")
+					: ErrorMsg,
 				TEXT("Call blueprint.get_node_pins on both nodes to verify pin names and types")
 			);
 		}

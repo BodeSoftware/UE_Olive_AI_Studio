@@ -876,7 +876,8 @@ FOliveWiringDiagnostic FOlivePinConnector::BuildWiringDiagnostic(
 		else
 		{
 			Diag.WhyAutoFixFailed = FString::Printf(
-				TEXT("Pin '%s' already has %d connection(s). Disconnect existing wires first."),
+				TEXT("Pin '%s' already has %d connection(s) — likely wired by a previous apply_plan_json. "
+					 "Use blueprint.read to verify current wiring before manual connect_pins."),
 				(SourcePin->LinkedTo.Num() > 0) ? *SourcePin->PinName.ToString() : *TargetPin->PinName.ToString(),
 				FMath::Max(SourcePin->LinkedTo.Num(), TargetPin->LinkedTo.Num()));
 		}

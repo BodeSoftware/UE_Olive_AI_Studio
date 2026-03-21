@@ -4,12 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Test
 
-**Build command:**
-```bash
-"C:/Program Files/Epic Games/UE_5.5/Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.exe" UE_Olive_AI_ToolkitEditor Win64 Development "-Project=B:/Unreal Projects/UE_Olive_AI_Toolkit/UE_Olive_AI_Toolkit.uproject" -WaitMutex
-```
-- Invoke UBT directly from bash — `cmd.exe /c` does NOT work well with spaces in paths
-- Incremental builds take ~5-6 seconds
+## Unreal UBT Builds
+To run Unreal builds from the container, use `ubt-build-5.5 /workspace/UE_Olive_AI_Toolkit/UE_Olive_AI_Toolkit.uproject`.
+
+Important:
+- `ubt-build-5.5` depends on a Windows host bridge process.
+- Before using it, first ask the user to start `S:\docker-os\start-ubt-bridge-host.bat`.
+- Do not assume the bridge is already running unless the user confirms it.
+
+Rules:
+- Do not try to execute `UnrealBuildTool.exe` directly inside the Linux container.
+- If the bridge is not running, prompt the user to start `S:\docker-os\start-ubt-bridge-host.bat` and then continue.
+- Use the explicit UE 5.5 wrapper for this project.
+- After a failed build, inspect the returned log path or `<Project>/Saved/Logs/claude-ubt-build.log`.
 
 **Log files for diagnosing failures:**
 - Project log: `../../Saved/Logs/UE_Olive_AI_Toolkit.log`

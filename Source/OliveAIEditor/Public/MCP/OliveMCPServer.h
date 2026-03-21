@@ -341,8 +341,11 @@ private:
 	/** Handle initialized notification */
 	void HandleInitialized(const FString& ClientId);
 
-	/** Handle tools/list request */
-	TSharedPtr<FJsonObject> HandleToolsList(const TSharedPtr<FJsonObject>& Params);
+	/** Handle tools/list request
+	 * @param Params JSON-RPC params (may contain cursor for pagination)
+	 * @param ClientId The requesting client's ID, used to inject client-specific tools (e.g., think tool for Claude)
+	 */
+	TSharedPtr<FJsonObject> HandleToolsList(const TSharedPtr<FJsonObject>& Params, const FString& ClientId);
 
 	/** Handle tools/call request */
 	TSharedPtr<FJsonObject> HandleToolsCall(

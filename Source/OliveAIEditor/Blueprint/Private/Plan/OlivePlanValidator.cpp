@@ -685,6 +685,30 @@ void FOlivePlanValidator::CheckVariableExists(
 			}
 		}
 
+		// Special-case "self" — guide AI to use @self.auto in step inputs instead of get_var
+		const bool bIsSelfRef = VariableName.Equals(TEXT("self"), ESearchCase::IgnoreCase)
+			|| VariableName.Equals(TEXT("Self"), ESearchCase::IgnoreCase);
+
+		FString Suggestion;
+		if (bIsSelfRef)
+		{
+			Suggestion = TEXT("To reference the Blueprint itself, use \"Target\": \"@self.auto\" in step inputs "
+				"(e.g., {\"op\":\"call\",\"target\":\"SetTimer\",\"inputs\":{\"Target\":\"@self.auto\"}}). "
+				"Do not use get_var for self references.");
+		}
+		else if (!CrossBPNote.IsEmpty())
+		{
+			Suggestion = TEXT("Use get_var with Target to access external properties: "
+				"{\"op\":\"get_var\",\"target\":\"VarName\",\"inputs\":{\"Target\":\"@cast_step.auto\"}}");
+		}
+		else
+		{
+			Suggestion = FString::Printf(
+				TEXT("Add the variable first with blueprint.add_variable, or check the variable name. "
+					 "Available variables: [%s]"),
+				*AvailableList);
+		}
+
 		Result.Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
 			TEXT("VARIABLE_NOT_FOUND"),
 			Resolved.StepId,
@@ -693,12 +717,7 @@ void FOlivePlanValidator::CheckVariableExists(
 				TEXT("Variable '%s' not found on Blueprint '%s' or its parent classes. "
 					 "get_var/set_var requires an existing variable. Components use their SCS variable name.%s"),
 				*VariableName, *Context.Blueprint->GetName(), *CrossBPNote),
-			CrossBPNote.IsEmpty()
-				? FString::Printf(
-					TEXT("Add the variable first with blueprint.add_variable, or check the variable name. "
-						 "Available variables: [%s]"),
-					*AvailableList)
-				: TEXT("Use get_var with Target to access external properties: {\"op\":\"get_var\",\"target\":\"VarName\",\"inputs\":{\"Target\":\"@cast_step.auto\"}}")));
+			Suggestion));
 
 		UE_LOG(LogOlivePlanValidator, Warning,
 			TEXT("Phase 0: VARIABLE_NOT_FOUND -- step '%s' references '%s' on '%s'"),

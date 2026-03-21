@@ -699,11 +699,9 @@ FOliveIRResult FOliveIRValidator::ValidateBlueprintPlanJson(
 	// --- schema_version ---
 	if (!Json->HasField(TEXT("schema_version")))
 	{
-		AddError(
-			TEXT("PLAN_MISSING_FIELD"),
-			TEXT("/schema_version"),
-			TEXT("Plan is missing required field 'schema_version'"),
-			TEXT("Add \"schema_version\": \"1.0\" to the plan root"));
+		// Auto-default to "1.0" — the struct default handles this.
+		// Log a note but do not block validation.
+		UE_LOG(LogOliveIRSchema, Log, TEXT("Plan JSON missing schema_version, defaulting to 1.0"));
 	}
 	else
 	{

@@ -22,6 +22,8 @@
 #include "Misc/Paths.h"
 #include "HAL/PlatformFileManager.h"
 #include "Async/Async.h"
+#include "Sockets.h"
+#include "SocketSubsystem.h"
 
 // ==========================================
 // Singleton
@@ -84,20 +86,50 @@ bool FOliveMCPServer::Start(int32 Port)
 
 			if (RouteHandle.IsValid())
 			{
-				ActualPort = PortToTry;
-
 				// Bind events polling route
 				EventRouteHandle = HttpRouter->BindRoute(
 					FHttpPath(TEXT("/mcp/events")),
 					EHttpServerRequestVerbs::VERB_GET,
 					FHttpRequestHandler::CreateRaw(this, &FOliveMCPServer::HandleEventsPoll)
 				);
-				bSuccess = true;
 
 				// Start the listener
 				HttpServerModule.StartAllListeners();
 
-				break;
+				// Verify the listener actually bound (StartAllListeners can fail silently)
+				bool bListenerBound = false;
+				{
+					FSocket* TestSocket = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateSocket(
+						NAME_Stream, TEXT("OliveMCPBindTest"), false);
+					if (TestSocket)
+					{
+						TSharedRef<FInternetAddr> Addr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
+						bool bIsValid;
+						Addr->SetIp(TEXT("127.0.0.1"), bIsValid);
+						Addr->SetPort(PortToTry);
+
+						bListenerBound = TestSocket->Connect(*Addr);
+						TestSocket->Close();
+						ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(TestSocket);
+					}
+				}
+
+				if (bListenerBound)
+				{
+					ActualPort = PortToTry;
+					bSuccess = true;
+					break;
+				}
+				else
+				{
+					UE_LOG(LogOliveAI, Warning, TEXT("MCP Server: port %d bind verification failed, trying next port"), PortToTry);
+					HttpRouter->UnbindRoute(RouteHandle);
+					if (EventRouteHandle.IsValid())
+					{
+						HttpRouter->UnbindRoute(EventRouteHandle);
+					}
+					// Continue to next port
+				}
 			}
 		}
 	}
@@ -370,7 +402,7 @@ TSharedPtr<FJsonObject> FOliveMCPServer::ProcessJsonRpcRequest(
 	}
 	else if (Method == TEXT("tools/list"))
 	{
-		return OliveJsonRpc::CreateResponse(RequestId, HandleToolsList(Params));
+		return OliveJsonRpc::CreateResponse(RequestId, HandleToolsList(Params, ClientId));
 	}
 	else if (Method == TEXT("tools/call"))
 	{
@@ -504,6 +536,20 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleInitialize(
 	ServerInfo->SetStringField(TEXT("version"), OLIVE_MCP_SERVER_VERSION);
 	Result->SetObjectField(TEXT("serverInfo"), ServerInfo);
 
+	// Add instructions for Claude Code clients (enables Tool Search lazy-loading,
+	// reducing context from ~60k to ~5k tokens)
+	if (ClientState.ClientName.Contains(TEXT("claude"), ESearchCase::IgnoreCase))
+	{
+		Result->SetStringField(TEXT("instructions"),
+			TEXT("Olive AI Studio — tools for Unreal Engine 5 development inside the editor. "
+				 "Covers Blueprints, Behavior Trees, PCG graphs, and C++ files. "
+				 "Tools range from project search and asset inspection to batch graph editing "
+				 "and granular node manipulation. Use project.search to explore the project "
+				 "and olive.get_recipe for workflow guidance on specific tasks. "
+				 "Unreal assets (.uasset, .umap) are binary — when a user references one, "
+				 "extract the asset path and use blueprint.read or project.get_asset_info instead of reading the file."));
+	}
+
 	return Result;
 }
 
@@ -523,7 +569,7 @@ void FOliveMCPServer::HandleInitialized(const FString& ClientId)
 	OnClientConnected.Broadcast(ClientId);
 }
 
-TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsList(const TSharedPtr<FJsonObject>& Params)
+TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsList(const TSharedPtr<FJsonObject>& Params, const FString& ClientId)
 {
 	TSharedPtr<FJsonObject> FullResult = FOliveToolRegistry::Get().GetToolsListMCP();
 
@@ -533,6 +579,8 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsList(const TSharedPtr<FJsonO
 		FScopeLock Lock(&ToolFilterLock);
 		ActiveFilter = ToolFilterPrefixes;
 	}
+
+	TSharedPtr<FJsonObject> ResultToReturn;
 
 	if (ActiveFilter.Num() > 0)
 	{
@@ -574,19 +622,76 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsList(const TSharedPtr<FJsonO
 			AllTools ? AllTools->Num() : 0,
 			ActiveFilter.Num());
 
-		return FilteredResult;
+		ResultToReturn = FilteredResult;
 	}
-
-	// No filter -- return all tools
-	int32 ToolCount = 0;
-	const TArray<TSharedPtr<FJsonValue>>* ToolsArray;
-	if (FullResult.IsValid() && FullResult->TryGetArrayField(TEXT("tools"), ToolsArray))
+	else
 	{
-		ToolCount = ToolsArray->Num();
-	}
-	UE_LOG(LogOliveAI, Log, TEXT("MCP tools/list: returning %d tools"), ToolCount);
+		// No filter -- return all tools
+		int32 ToolCount = 0;
+		const TArray<TSharedPtr<FJsonValue>>* ToolsArray;
+		if (FullResult.IsValid() && FullResult->TryGetArrayField(TEXT("tools"), ToolsArray))
+		{
+			ToolCount = ToolsArray->Num();
+		}
+		UE_LOG(LogOliveAI, Log, TEXT("MCP tools/list: returning %d tools"), ToolCount);
 
-	return FullResult;
+		ResultToReturn = FullResult;
+	}
+
+	// Add think tool for Claude Code clients (reasoning checkpoint, 54% improvement on complex tasks)
+	FString ClientName;
+	{
+		FScopeLock Lock(&ClientsLock);
+		FMCPClientState* FoundClient = ClientStates.Find(ClientId);
+		if (FoundClient)
+		{
+			ClientName = FoundClient->ClientName;
+		}
+	}
+
+	if (ClientName.Contains(TEXT("claude"), ESearchCase::IgnoreCase))
+	{
+		// Build think tool JSON
+		TSharedPtr<FJsonObject> ThinkTool = MakeShared<FJsonObject>();
+		ThinkTool->SetStringField(TEXT("name"), TEXT("think"));
+		ThinkTool->SetStringField(TEXT("description"),
+			TEXT("Use the think tool for internal technical reasoning — analyzing node wiring, "
+				 "resolving type mismatches, or debugging compile errors. "
+				 "For design decisions, unclear requirements, or when multiple approaches could work, "
+				 "ask the user instead. The thought is returned as-is with no side effects."));
+
+		// Build input schema
+		TSharedPtr<FJsonObject> InputSchema = MakeShared<FJsonObject>();
+		InputSchema->SetStringField(TEXT("type"), TEXT("object"));
+
+		TSharedPtr<FJsonObject> Props = MakeShared<FJsonObject>();
+		TSharedPtr<FJsonObject> ThoughtProp = MakeShared<FJsonObject>();
+		ThoughtProp->SetStringField(TEXT("type"), TEXT("string"));
+		ThoughtProp->SetStringField(TEXT("description"), TEXT("Your step-by-step reasoning about the current situation"));
+		Props->SetObjectField(TEXT("thought"), ThoughtProp);
+		InputSchema->SetObjectField(TEXT("properties"), Props);
+
+		TArray<TSharedPtr<FJsonValue>> Required;
+		Required.Add(MakeShared<FJsonValueString>(TEXT("thought")));
+		InputSchema->SetArrayField(TEXT("required"), Required);
+
+		ThinkTool->SetObjectField(TEXT("inputSchema"), InputSchema);
+
+		// Append to the tools array in the result
+		if (ResultToReturn.IsValid())
+		{
+			const TArray<TSharedPtr<FJsonValue>>* ExistingTools;
+			if (ResultToReturn->TryGetArrayField(TEXT("tools"), ExistingTools))
+			{
+				// Copy array (GetArrayField returns const ref), append think tool
+				TArray<TSharedPtr<FJsonValue>> ToolsWithThink = *ExistingTools;
+				ToolsWithThink.Add(MakeShared<FJsonValueObject>(ThinkTool));
+				ResultToReturn->SetArrayField(TEXT("tools"), ToolsWithThink);
+			}
+		}
+	}
+
+	return ResultToReturn;
 }
 
 TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsCall(
@@ -631,6 +736,27 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsCall(
 
 		ErrorResult->SetArrayField(TEXT("content"), Content);
 		return ErrorResult;
+	}
+
+	// Handle think tool -- no-op reasoning tool, return thought verbatim
+	if (ToolName == TEXT("think"))
+	{
+		FString Thought;
+		if (Arguments.IsValid())
+		{
+			Arguments->TryGetStringField(TEXT("thought"), Thought);
+		}
+
+		TSharedPtr<FJsonObject> ThinkResult = MakeShared<FJsonObject>();
+		TArray<TSharedPtr<FJsonValue>> ThinkContent;
+		TSharedPtr<FJsonObject> ThinkTextContent = MakeShared<FJsonObject>();
+		ThinkTextContent->SetStringField(TEXT("type"), TEXT("text"));
+		ThinkTextContent->SetStringField(TEXT("text"), Thought.IsEmpty() ? TEXT("(no thought provided)") : *Thought);
+		ThinkContent.Add(MakeShared<FJsonValueObject>(ThinkTextContent));
+		ThinkResult->SetArrayField(TEXT("content"), ThinkContent);
+
+		RecordToolCompletion(TEXT("think"), ClientId, true, 0.0);
+		return ThinkResult;
 	}
 
 	// Fire event (pass Arguments so subscribers can inspect tool call parameters)
@@ -749,6 +875,35 @@ void FOliveMCPServer::HandleToolsCallAsync(
 	}
 
 	UE_LOG(LogOliveAI, Log, TEXT("MCP tools/call: %s (client: %s)"), *ToolName, *ClientId);
+
+	// Handle think tool -- no-op reasoning tool, return thought verbatim without
+	// dispatching to game thread. No side effects, no registry lookup needed.
+	if (ToolName == TEXT("think"))
+	{
+		FString Thought;
+		if (Arguments.IsValid())
+		{
+			Arguments->TryGetStringField(TEXT("thought"), Thought);
+		}
+
+		TSharedPtr<FJsonObject> ThinkResult = MakeShared<FJsonObject>();
+		TArray<TSharedPtr<FJsonValue>> ThinkContent;
+		TSharedPtr<FJsonObject> ThinkTextContent = MakeShared<FJsonObject>();
+		ThinkTextContent->SetStringField(TEXT("type"), TEXT("text"));
+		ThinkTextContent->SetStringField(TEXT("text"), Thought.IsEmpty() ? TEXT("(no thought provided)") : *Thought);
+		ThinkContent.Add(MakeShared<FJsonValueObject>(ThinkTextContent));
+		ThinkResult->SetArrayField(TEXT("content"), ThinkContent);
+
+		// Record on game thread since RecordToolCompletion broadcasts OnToolCompleted
+		// delegate which may have subscribers that touch UE APIs
+		AsyncTask(ENamedThreads::GameThread, [this, ClientId]()
+		{
+			RecordToolCompletion(TEXT("think"), ClientId, true, 0.0);
+		});
+
+		SendJsonResponse(OliveJsonRpc::CreateResponse(RequestId, ThinkResult), OnComplete);
+		return;
+	}
 
 	// Log tool call parameters for diagnostics
 	if (Arguments.IsValid())
