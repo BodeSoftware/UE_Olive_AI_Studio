@@ -2,6 +2,8 @@
 
 WARNING THIS PLUGIN IS STILL IN EARLY BETA
 
+Review any of your AI providers terms of service before use.
+
 AI development tooling for Unreal Engine 5.5+.
 
 This plugin ships two main surfaces:
