@@ -1,5 +1,7 @@
 # Olive AI Studio
 
+WARNING THIS PLUGIN IS STILL IN EARLY BETA
+
 AI development tooling for Unreal Engine 5.5+.
 
 This plugin ships two main surfaces:
