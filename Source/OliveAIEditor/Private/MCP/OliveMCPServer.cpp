@@ -547,7 +547,11 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleInitialize(
 				 "and granular node manipulation. Use project.search to explore the project "
 				 "and olive.get_recipe for workflow guidance on specific tasks. "
 				 "Unreal assets (.uasset, .umap) are binary — when a user references one, "
-				 "extract the asset path and use blueprint.read or project.get_asset_info instead of reading the file."));
+				 "extract the asset path and use blueprint.read or project.get_asset_info instead of reading the file. "
+				 "For multi-step builds, use olive.build to batch all operations in a single call — "
+				 "this is much faster than calling tools individually. "
+				 "For common patterns (guns, projectiles, pickups), check blueprint.list_templates first — "
+				 "factory templates include complete plan_json that olive.build can execute directly."));
 	}
 
 	return Result;
@@ -627,31 +631,11 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsList(const TSharedPtr<FJsonO
 	else
 	{
 		// No filter -- return all tools
-		int32 ToolCount = 0;
-		const TArray<TSharedPtr<FJsonValue>>* ToolsArray;
-		if (FullResult.IsValid() && FullResult->TryGetArrayField(TEXT("tools"), ToolsArray))
-		{
-			ToolCount = ToolsArray->Num();
-		}
-		UE_LOG(LogOliveAI, Log, TEXT("MCP tools/list: returning %d tools"), ToolCount);
-
 		ResultToReturn = FullResult;
 	}
 
-	// Add think tool for Claude Code clients (reasoning checkpoint, 54% improvement on complex tasks)
-	FString ClientName;
+	// Add think tool for all clients (reasoning checkpoint — no-op that returns thought as-is)
 	{
-		FScopeLock Lock(&ClientsLock);
-		FMCPClientState* FoundClient = ClientStates.Find(ClientId);
-		if (FoundClient)
-		{
-			ClientName = FoundClient->ClientName;
-		}
-	}
-
-	if (ClientName.Contains(TEXT("claude"), ESearchCase::IgnoreCase))
-	{
-		// Build think tool JSON
 		TSharedPtr<FJsonObject> ThinkTool = MakeShared<FJsonObject>();
 		ThinkTool->SetStringField(TEXT("name"), TEXT("think"));
 		ThinkTool->SetStringField(TEXT("description"),
@@ -660,7 +644,6 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsList(const TSharedPtr<FJsonO
 				 "For design decisions, unclear requirements, or when multiple approaches could work, "
 				 "ask the user instead. The thought is returned as-is with no side effects."));
 
-		// Build input schema
 		TSharedPtr<FJsonObject> InputSchema = MakeShared<FJsonObject>();
 		InputSchema->SetStringField(TEXT("type"), TEXT("object"));
 
@@ -677,18 +660,27 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsList(const TSharedPtr<FJsonO
 
 		ThinkTool->SetObjectField(TEXT("inputSchema"), InputSchema);
 
-		// Append to the tools array in the result
 		if (ResultToReturn.IsValid())
 		{
 			const TArray<TSharedPtr<FJsonValue>>* ExistingTools;
 			if (ResultToReturn->TryGetArrayField(TEXT("tools"), ExistingTools))
 			{
-				// Copy array (GetArrayField returns const ref), append think tool
 				TArray<TSharedPtr<FJsonValue>> ToolsWithThink = *ExistingTools;
 				ToolsWithThink.Add(MakeShared<FJsonValueObject>(ThinkTool));
 				ResultToReturn->SetArrayField(TEXT("tools"), ToolsWithThink);
 			}
 		}
+	}
+
+	// Log final count after think tool injection
+	{
+		int32 FinalToolCount = 0;
+		const TArray<TSharedPtr<FJsonValue>>* FinalToolsArray;
+		if (ResultToReturn.IsValid() && ResultToReturn->TryGetArrayField(TEXT("tools"), FinalToolsArray))
+		{
+			FinalToolCount = FinalToolsArray->Num();
+		}
+		UE_LOG(LogOliveAI, Log, TEXT("MCP tools/list: returning %d tools (includes think tool)"), FinalToolCount);
 	}
 
 	return ResultToReturn;

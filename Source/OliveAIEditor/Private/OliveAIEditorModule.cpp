@@ -20,6 +20,7 @@
 #include "MCP/OliveCppToolHandlers.h"
 #include "MCP/OliveCrossSystemToolHandlers.h"
 #include "MCP/OlivePythonToolHandlers.h"
+#include "MCP/OliveBuildTool.h"
 #include "Template/OliveTemplateSystem.h"
 #include "OliveMCPPromptTemplates.h"
 #include "Chat/OliveEditorChatSession.h"
@@ -304,6 +305,9 @@ void FOliveAIEditorModule::OnPostEngineInit()
 
 	// Register built-in tools
 	FOliveToolRegistry::Get().RegisterBuiltInTools();
+
+	// Register olive.build batch executor (after built-in tools, before domain-specific tools)
+	FOliveBuildTool::RegisterTool();
 
 	// Initialize node catalog
 	FOliveNodeCatalog::Get().Initialize();

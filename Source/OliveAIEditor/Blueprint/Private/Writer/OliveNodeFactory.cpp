@@ -3380,6 +3380,14 @@ const TMap<FString, FString>& FOliveNodeFactory::GetAliasMap()
 		Map.Add(TEXT("RandomInRange"), TEXT("RandomFloatInRange"));
 		Map.Add(TEXT("Min"), TEXT("FMin"));
 		Map.Add(TEXT("Max"), TEXT("FMax"));
+		// Integer math variants — Claude often appends _Int suffix for integer operations
+		Map.Add(TEXT("Min_Int"), TEXT("Min"));
+		Map.Add(TEXT("MinInt"), TEXT("Min"));
+		Map.Add(TEXT("Max_Int"), TEXT("Max"));
+		Map.Add(TEXT("MaxInt"), TEXT("Max"));
+		Map.Add(TEXT("Clamp_Int"), TEXT("Clamp"));
+		Map.Add(TEXT("ClampInt"), TEXT("Clamp"));
+		Map.Add(TEXT("Clamp_Integer"), TEXT("Clamp"));
 		Map.Add(TEXT("Floor"), TEXT("FFloor"));
 		Map.Add(TEXT("Ceil"), TEXT("FCeil"));
 		Map.Add(TEXT("Round"), TEXT("Round"));
@@ -3463,6 +3471,8 @@ const TMap<FString, FString>& FOliveNodeFactory::GetAliasMap()
 		Map.Add(TEXT("SphereTrace"), TEXT("SphereTraceSingle"));
 		Map.Add(TEXT("SphereTraceSingle"), TEXT("SphereTraceSingle"));
 		Map.Add(TEXT("SetCollisionEnabled"), TEXT("SetCollisionEnabled"));
+		Map.Add(TEXT("MoveIgnoreActorAdd"), TEXT("IgnoreActorWhenMoving"));
+		Map.Add(TEXT("IgnoreActorCollision"), TEXT("IgnoreActorWhenMoving"));
 
 		// ================================================================
 		// Gameplay Statics (UGameplayStatics)

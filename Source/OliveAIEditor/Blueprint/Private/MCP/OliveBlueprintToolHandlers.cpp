@@ -2643,6 +2643,14 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 		}
 	}
 
+	// Check for template_id -- if set, delegate to template creation
+	FString TemplateId;
+	if (Params->TryGetStringField(TEXT("template_id"), TemplateId) && !TemplateId.IsEmpty())
+	{
+		UE_LOG(LogOliveBPTools, Log, TEXT("blueprint.create: template_id='%s' detected, delegating to template system"), *TemplateId);
+		return HandleBlueprintCreateFromTemplate(TemplateId, AssetPath, Params);
+	}
+
 	// Extract type first (needed for parent_class defaults)
 	FString TypeString = TEXT("Normal");
 	Params->TryGetStringField(TEXT("type"), TypeString);
@@ -5113,15 +5121,32 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAddFunctionType_Function(
 	UBlueprint* Blueprint)
 {
 	// Extract signature object (required for function type)
-	const TSharedPtr<FJsonObject>* SignatureJsonPtr;
-	if (!Params->TryGetObjectField(TEXT("signature"), SignatureJsonPtr) || !SignatureJsonPtr->IsValid())
+	const TSharedPtr<FJsonObject>* SignatureJsonPtr = nullptr;
+	TSharedPtr<FJsonObject> ParsedFromString; // holds parsed result if signature was a string
+
+	if (!Params->TryGetObjectField(TEXT("signature"), SignatureJsonPtr) || !SignatureJsonPtr || !SignatureJsonPtr->IsValid())
 	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleAddFunctionType_Function: Missing required param 'signature' for path='%s'"), *AssetPath);
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'signature' is missing or invalid"),
-			TEXT("Provide a function signature with name, inputs, and outputs")
-		);
+		// Try parsing signature from a JSON string (common LLM mistake: stringified JSON)
+		FString SigString;
+		if (Params->TryGetStringField(TEXT("signature"), SigString) && !SigString.IsEmpty())
+		{
+			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(SigString);
+			if (FJsonSerializer::Deserialize(Reader, ParsedFromString) && ParsedFromString.IsValid())
+			{
+				SignatureJsonPtr = &ParsedFromString;
+				UE_LOG(LogOliveBPTools, Log, TEXT("HandleAddFunctionType_Function: Auto-parsed stringified JSON signature for path='%s'"), *AssetPath);
+			}
+		}
+
+		if (!SignatureJsonPtr || !SignatureJsonPtr->IsValid())
+		{
+			UE_LOG(LogOliveBPTools, Warning, TEXT("HandleAddFunctionType_Function: Missing required param 'signature' for path='%s'"), *AssetPath);
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_MISSING_PARAM"),
+				TEXT("Required parameter 'signature' is missing or invalid"),
+				TEXT("Provide a function signature as a JSON object with name, inputs, and outputs")
+			);
+		}
 	}
 
 	// Parse function signature from JSON to IR
@@ -9831,16 +9856,18 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 					ResultData->SetArrayField(TEXT("conversion_notes"), ConvNotesArray);
 				}
 
-				// Self-correction hint when wiring partially failed
-				const bool bHasWiringErrors =
-					(PlanResult.Errors.Num() > 0) &&
-					PlanResult.bSuccess; // Only include hint on partial success, not total failure
+				// Self-correction hint when any wiring errors occurred (partial success OR full rollback).
+				// Including the hint on rollback is critical — without it the AI enters a debugging
+				// spiral of blueprint.read + get_node_pins calls when the alternatives are already
+				// in the wiring_errors array.
+				const bool bHasWiringErrors = (PlanResult.Errors.Num() > 0);
 				if (bHasWiringErrors)
 				{
 					ResultData->SetStringField(TEXT("self_correction_hint"),
-						TEXT("Some wiring failed. Use blueprint.read on the target graph to see "
-							 "actual pin names on created nodes, then use granular connect_pins/set_pin_default "
-							 "to fix failed connections. See wiring_errors for details."));
+						TEXT("Some data connections failed. Check the 'wiring_errors' array — each entry "
+							 "includes 'alternatives' listing the correct pin names. Fix the pin names in "
+							 "your plan_json and retry. Do NOT use blueprint.read or blueprint.get_node_pins "
+							 "to debug — the alternatives are already provided."));
 				}
 
 				if (!PlanResult.bSuccess)
@@ -10400,6 +10427,41 @@ void FOliveBlueprintToolHandlers::RegisterTemplateTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
+	// blueprint.create_from_template
+	{
+		FOliveToolDefinition Def;
+		Def.Name = TEXT("blueprint.create_from_template");
+		Def.Description = TEXT("Create a complete Blueprint from a factory template. "
+			"Handles structure (components, variables, dispatchers) AND graph logic "
+			"(functions with plan_json) in one call (~60ms). This is the fastest way to create "
+			"standard Blueprint types. Check the template catalog for available factories.");
+		Def.InputSchema = OliveBlueprintSchemas::BlueprintCreateFromTemplate();
+		Def.Tags = {TEXT("blueprint"), TEXT("write"), TEXT("template"), TEXT("create")};
+		Def.Category = TEXT("blueprint");
+		Def.WhenToUse = TEXT("ALWAYS check this first when creating a new Blueprint. "
+			"If a factory template matches, use it — it's 100x faster than manual scaffold + apply_plan_json. "
+			"Customize the result with granular tools afterward if needed.");
+		Registry.RegisterTool(Def, FOliveToolHandler::CreateLambda([this](const TSharedPtr<FJsonObject>& Params) -> FOliveToolResult
+		{
+			if (!Params.IsValid())
+			{
+				return FOliveToolResult::Error(TEXT("VALIDATION_INVALID_PARAMS"), TEXT("Parameters object is null"), TEXT("Provide template_id and path"));
+			}
+			FString TemplateId;
+			if (!Params->TryGetStringField(TEXT("template_id"), TemplateId) || TemplateId.IsEmpty())
+			{
+				return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"), TEXT("Required parameter 'template_id' is missing"), TEXT("Provide a factory template ID"));
+			}
+			FString AssetPath;
+			if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
+			{
+				return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"), TEXT("Required parameter 'path' is missing"), TEXT("Provide the Blueprint asset path"));
+			}
+			return HandleBlueprintCreateFromTemplate(TemplateId, AssetPath, Params);
+		}));
+	}
+	RegisteredToolNames.Add(TEXT("blueprint.create_from_template"));
+
 	{
 		FOliveToolDefinition Def;
 		Def.Name = TEXT("blueprint.get_template");
@@ -10426,7 +10488,7 @@ void FOliveBlueprintToolHandlers::RegisterTemplateTools()
 	}
 	RegisteredToolNames.Add(TEXT("blueprint.list_templates"));
 
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered template tools (get_template, list_templates)"));
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered template tools (create_from_template, get_template, list_templates)"));
 }
 
 FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintListTemplates(const TSharedPtr<FJsonObject>& Params)
@@ -10667,4 +10729,43 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintGetTemplate(const T
 	return FOliveToolResult::Success(ResultData);
 }
 
+// ============================================================
+// HandleBlueprintCreateFromTemplate
+// ============================================================
 
+FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreateFromTemplate(
+	const FString& TemplateId,
+	const FString& AssetPath,
+	const TSharedPtr<FJsonObject>& Params)
+{
+	FString PresetName;
+	if (Params.IsValid())
+	{
+		Params->TryGetStringField(TEXT("preset"), PresetName);
+	}
+
+	// Extract template parameters -- accept both "template_params" and "parameters"
+	TMap<FString, FString> UserParams;
+	const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
+	if (Params.IsValid())
+	{
+		if (!(Params->TryGetObjectField(TEXT("template_params"), ParamsObj) && ParamsObj && (*ParamsObj).IsValid()))
+		{
+			// Fallback: accept "parameters" for backward compatibility with old create_from_template format
+			Params->TryGetObjectField(TEXT("parameters"), ParamsObj);
+		}
+	}
+	if (ParamsObj && (*ParamsObj).IsValid())
+	{
+		for (const auto& KV : (*ParamsObj)->Values)
+		{
+			FString Value;
+			if (KV.Value->TryGetString(Value))
+			{
+				UserParams.Add(KV.Key, Value);
+			}
+		}
+	}
+
+	return FOliveTemplateSystem::Get().ApplyTemplate(TemplateId, UserParams, PresetName, AssetPath);
+}

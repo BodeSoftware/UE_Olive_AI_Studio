@@ -12,10 +12,10 @@ Never simplify your design to fit a tool's limitations — use a different tool 
 
 ## Workflows
 CREATE new Blueprint:
-0. project.search + project.get_relevant_context with task keywords — check if the project already has the system you're about to build. If it does, modify the existing asset instead of creating a duplicate.
-1. Reference patterns are available via blueprint.list_templates(query="relevant terms"). Study matching functions with blueprint.get_template(id, pattern="FuncName").
-2. Create the Blueprint: blueprint.create with parent_class -> add_component/add_variable -> apply_plan_json
-3. Use template patterns as reference to inform your plan_json structure, variable naming, and component layout.
+0. Check the template catalog (in system prompt) for a matching factory template. If one exists, use blueprint.create_from_template — it creates the Blueprint with components, variables, dispatchers, AND function graph logic in one call (~60ms). Customize with template_params or follow up with granular tools for anything the template doesn't cover.
+1. If no factory template matches: search library/reference templates (blueprint.list_templates query="...") for architectural patterns. Study relevant functions with get_template.
+2. Build manually: blueprint.create with parent_class -> add_component/add_variable -> apply_plan_json.
+3. Only search the project (project.search) if you suspect the asset already exists. Do not search "just in case" — it wastes time on empty projects.
 
 MODIFY existing Blueprint:
 1. project.search (find path) → blueprint.read
@@ -81,15 +81,17 @@ Class ref: {"category":"class","class_name":"Actor"}
 Array: {"category":"array","value_type":{"category":"float"}}
 
 ## Templates & Pattern Sources
-Templates are reference material, not scripts. Study patterns, then build your own approach.
-Often library templates are the best quality (if available), factory templates are still good,
-and community blueprints have mixed variety. Compare several templates before building.
+Factory templates create complete Blueprints — structure AND logic — in one call. Use them as
+the primary path for supported types (gun, projectile, stat_component, interactable_door, etc.).
+After template creation, customize with granular tools (add_variable, apply_plan_json, etc.).
+Library and reference templates are research material for patterns not covered by factories.
 - Library templates: extracted from real shipped projects with full node graphs. Search with
   blueprint.list_templates(query="..."), read specific functions with
   blueprint.get_template(id, pattern="FuncName"). The catalog lists domain keywords per
   project so you know what's available. Adapt naming to fit your project.
-- Factory templates: hand-crafted parameterized templates for common patterns. Read with
-  get_template to study architecture, variable layout, and plan_json patterns.
+- Factory templates: blueprint.create_from_template creates the full Blueprint. Check the
+  catalog (always in system prompt) for available factories. Pass template_params to customize
+  names, values, classes. Follow up with granular tools for anything beyond the template.
 - Community blueprints: olive.search_community_blueprints(query) for 150K+ community
   examples. Mixed quality -- compare multiple results before committing.
 - Recipes: olive.get_recipe(query) has tested wiring patterns for common tasks.
@@ -195,6 +197,10 @@ WHY: Default SpawnTransform spawns at world origin (0,0,0). Projectiles must spa
 WRONG: Using ActorBeginOverlap on the CHARACTER to detect pickup items
 RIGHT: Use OnComponentBeginOverlap on the ITEM's PickupSphere component (component_name in properties)
 WHY: ActorBeginOverlap fires for ANY collision on the entire actor (ground, walls, other characters). OnComponentBeginOverlap fires only for the specific pickup sphere. The overlap trigger belongs on the ITEM, not the character.
+
+WRONG: Using editor.run_python to inspect Blueprint graph nodes (K2Node pins, connections, node types)
+RIGHT: Use blueprint.read_function(asset_path, function_name) or blueprint.get_node_pins(asset_path, node_id)
+WHY: The Python unreal module cannot access K2Node pin data — UK2Node is an editor-internal type not exposed to Python scripting. Blueprint inspection tools (read, read_function, get_node_pins, describe_function) are purpose-built for this.
 
 ## Widget Blueprint Design
 

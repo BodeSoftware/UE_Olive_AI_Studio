@@ -921,11 +921,20 @@ FOliveIRResult FOliveIRValidator::ValidateBlueprintPlanJson(
 				{
 					if (!DeclaredStepIds.Contains(ExecAfter))
 					{
+						FString Suggestion = TEXT("exec_after must reference a step_id that exists in the steps array and is declared before this step");
+						if (ExecAfter.Contains(TEXT(".")))
+						{
+							Suggestion = FString::Printf(
+								TEXT("'%s' looks like a branch output reference (step_id.pin). "
+									 "To target a specific branch output, use exec_outputs on the branch step instead: "
+									 "{\"op\": \"branch\", \"step_id\": \"my_branch\", \"exec_outputs\": {\"True\": \"%s\"}}"),
+								*ExecAfter, *StepId);
+						}
 						AddError(
 							TEXT("PLAN_INVALID_EXEC_AFTER"),
 							StepLocation + TEXT("/exec_after"),
 							FString::Printf(TEXT("Step %d ('%s'): exec_after references unknown step_id '%s'"), i, *StepId, *ExecAfter),
-							TEXT("exec_after must reference a step_id that exists in the steps array and is declared before this step"));
+							Suggestion);
 					}
 					else
 					{

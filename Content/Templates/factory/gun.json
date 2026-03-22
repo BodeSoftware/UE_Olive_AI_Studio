@@ -3,9 +3,9 @@
     "template_type": "factory",
     "display_name": "Gun",
 
-    "catalog_description": "Actor with mesh, muzzle point, fire/reload functions with full graph logic, ammo tracking, cooldown timer, and event dispatchers. Pair with the projectile template for a complete weapon system.",
+    "catalog_description": "Actor with mesh, muzzle point, pickup sphere with auto-equip on overlap, fire/reload/equip functions with full graph logic, ammo tracking, cooldown timer, and event dispatchers. Pair with the projectile template for a complete weapon system.",
     "catalog_examples": "Pistol, Rifle, Shotgun, SMG, Sniper, Launcher",
-    "usage_notes": "Equipping: Cast overlapping actor to Character, get the character's Mesh (SkeletalMeshComponent), attach the weapon via K2_AttachToComponent with SocketName (hand_r or weapon_r) and all rules set to SnapToTarget, then disable collision on the weapon mesh (NOT the PickupSphere). Self-collision prevention: After SpawnActor for the projectile, call SetOwner(self) on it. The projectile's BeginPlay should then call IgnoreActorWhenMoving(GetOwner(), true) on its collision component.",
+    "usage_notes": "Creates a complete weapon with pickup and equip. PickupSphere triggers OnComponentBeginOverlap which casts to Character and calls EquipToCharacter (attaches to hand_r socket, disables collision). Fire() checks ammo and cooldown, spawns projectile via SpawnProjectile custom event, and fires OnFired/OnAmmoEmpty dispatchers. SpawnProjectile gets MuzzlePoint world location + controller aim rotation for the spawn transform, then calls SetOwner for damage attribution. Pair with the projectile template which handles BeginPlay collision prevention and OnComponentHit damage/destroy.",
 
     "parameters": {
         "weapon_name": {
@@ -37,6 +37,11 @@
             "type": "float",
             "default": "5000.0",
             "description": "Projectile launch speed in cm/s"
+        },
+        "projectile_class": {
+            "type": "string",
+            "default": "",
+            "description": "Asset path of the projectile Blueprint to spawn (e.g., '/Game/Blueprints/BP_Bullet'). Leave empty to fill in later."
         }
     },
 
@@ -46,35 +51,40 @@
             "max_ammo": "12",
             "fire_rate": "3",
             "damage": "25",
-            "muzzle_velocity": "5000"
+            "muzzle_velocity": "5000",
+            "projectile_class": ""
         },
         "Rifle": {
             "weapon_name": "Rifle",
             "max_ammo": "30",
             "fire_rate": "10",
             "damage": "15",
-            "muzzle_velocity": "8000"
+            "muzzle_velocity": "8000",
+            "projectile_class": ""
         },
         "Shotgun": {
             "weapon_name": "Shotgun",
             "max_ammo": "8",
             "fire_rate": "1",
             "damage": "80",
-            "muzzle_velocity": "4000"
+            "muzzle_velocity": "4000",
+            "projectile_class": ""
         },
         "SMG": {
             "weapon_name": "SMG",
             "max_ammo": "25",
             "fire_rate": "15",
             "damage": "10",
-            "muzzle_velocity": "6000"
+            "muzzle_velocity": "6000",
+            "projectile_class": ""
         },
         "Sniper": {
             "weapon_name": "Sniper",
             "max_ammo": "5",
             "fire_rate": "0.5",
             "damage": "150",
-            "muzzle_velocity": "15000"
+            "muzzle_velocity": "15000",
+            "projectile_class": ""
         }
     },
 
@@ -100,6 +110,16 @@
                 "class": "SceneComponent",
                 "name": "MuzzlePoint",
                 "parent": "${weapon_name}Mesh"
+            },
+            {
+                "class": "SphereComponent",
+                "name": "PickupSphere",
+                "parent": "Root",
+                "properties": {
+                    "SphereRadius": "100.0",
+                    "CollisionProfileName": "OverlapAllDynamic",
+                    "bGenerateOverlapEvents": "true"
+                }
             }
         ],
 
@@ -142,6 +162,12 @@
             },
             {
                 "name": "bFireResult",
+                "type": "Boolean",
+                "default": "false",
+                "category": "${weapon_name}"
+            },
+            {
+                "name": "bIsEquipped",
                 "type": "Boolean",
                 "default": "false",
                 "category": "${weapon_name}"
@@ -208,9 +234,11 @@
                         { "step_id": "s_set_timer", "op": "call", "target": "SetTimer",
                           "inputs": { "FunctionName": "ResetCanFire", "Time": "@s_calc_cooldown.ReturnValue", "bLooping": "false" },
                           "exec_after": "s_disable_fire" },
+                        { "step_id": "s_call_spawn", "op": "call", "target": "SpawnProjectile",
+                          "exec_after": "s_set_timer" },
                         { "step_id": "s_call_on_fired", "op": "call_delegate", "target": "OnFired",
                           "inputs": { "RemainingAmmo": "@s_calc_new_ammo.ReturnValue" },
-                          "exec_after": "s_set_timer" },
+                          "exec_after": "s_call_spawn" },
                         { "step_id": "s_branch_empty", "op": "branch",
                           "inputs": { "Condition": "@s_check_empty.ReturnValue" },
                           "exec_after": "s_call_on_fired",
@@ -262,6 +290,106 @@
                         { "step_id": "s_return", "op": "return",
                           "inputs": { "NewAmmo": "@s_get_max.MaxAmmo" },
                           "exec_after": "s_call_reloaded" }
+                    ]
+                }
+            },
+            {
+                "name": "SpawnProjectile",
+                "description": "Custom event in EventGraph. Gets muzzle world location, gets owning pawn's control rotation, builds a spawn transform, spawns the projectile actor, and calls SetOwner on it. Target graph: EventGraph.",
+                "category": "${weapon_name}",
+                "access": "public",
+                "inputs": [],
+                "outputs": [],
+                "plan": {
+                    "steps": [
+                        { "step_id": "s_event", "op": "custom_event", "target": "SpawnProjectile" },
+                        { "step_id": "s_get_muzzle", "op": "get_var", "target": "MuzzlePoint" },
+                        { "step_id": "s_muzzle_loc", "op": "call", "target": "GetWorldLocation",
+                          "inputs": { "Target": "@s_get_muzzle.MuzzlePoint" } },
+                        { "step_id": "s_get_instigator", "op": "call", "target": "GetInstigator" },
+                        { "step_id": "s_get_ctrl", "op": "call", "target": "GetController",
+                          "inputs": { "Target": "@s_get_instigator.ReturnValue" } },
+                        { "step_id": "s_get_rot", "op": "call", "target": "GetControlRotation",
+                          "inputs": { "Target": "@s_get_ctrl.ReturnValue" } },
+                        { "step_id": "s_make_tf", "op": "make_struct", "target": "Transform",
+                          "inputs": { "Location": "@s_muzzle_loc.ReturnValue", "Rotation": "@s_get_rot.ReturnValue" } },
+                        { "step_id": "s_spawn", "op": "spawn_actor", "target": "${projectile_class}",
+                          "inputs": { "SpawnTransform": "@s_make_tf.auto" },
+                          "exec_after": "s_event" },
+                        { "step_id": "s_set_owner", "op": "call", "target": "SetOwner",
+                          "inputs": { "Target": "@s_spawn.auto", "NewOwner": "@s_get_instigator.ReturnValue" },
+                          "exec_after": "s_spawn" }
+                    ]
+                }
+            },
+            {
+                "name": "EquipToCharacter",
+                "description": "Custom event in EventGraph. Equips the weapon to a character: attaches to character mesh socket, disables weapon mesh collision and pickup overlap, sets bIsEquipped. Target graph: EventGraph.",
+                "category": "${weapon_name}",
+                "access": "public",
+                "inputs": [
+                    { "name": "TargetCharacter", "type": { "category": "object", "class_name": "Character" } }
+                ],
+                "outputs": [],
+                "plan": {
+                    "steps": [
+                        { "step_id": "s_event", "op": "custom_event", "target": "EquipToCharacter",
+                          "properties": { "params": [{ "name": "TargetCharacter", "type": { "category": "object", "class_name": "Character" } }] } },
+                        { "step_id": "s_get_mesh", "op": "get_var", "target": "Mesh",
+                          "inputs": { "Target": "@s_event.TargetCharacter" } },
+                        { "step_id": "s_get_weapon_mesh", "op": "get_var", "target": "${weapon_name}Mesh" },
+                        { "step_id": "s_attach", "op": "call", "target": "K2_AttachToComponent",
+                          "inputs": {
+                              "Target": "@self.auto",
+                              "Parent": "@s_get_mesh.auto",
+                              "SocketName": "hand_r",
+                              "LocationRule": "SnapToTarget",
+                              "RotationRule": "SnapToTarget",
+                              "ScaleRule": "SnapToTarget"
+                          },
+                          "exec_after": "s_event" },
+                        { "step_id": "s_disable_mesh_col", "op": "call", "target": "SetCollisionEnabled",
+                          "inputs": {
+                              "Target": "@s_get_weapon_mesh.auto",
+                              "NewType": "NoCollision"
+                          },
+                          "exec_after": "s_attach" },
+                        { "step_id": "s_get_pickup", "op": "get_var", "target": "PickupSphere" },
+                        { "step_id": "s_disable_pickup", "op": "call", "target": "SetCollisionEnabled",
+                          "inputs": {
+                              "Target": "@s_get_pickup.auto",
+                              "NewType": "NoCollision"
+                          },
+                          "exec_after": "s_disable_mesh_col" },
+                        { "step_id": "s_set_equipped", "op": "set_var", "target": "bIsEquipped",
+                          "inputs": { "bIsEquipped": "true" },
+                          "exec_after": "s_disable_pickup" }
+                    ]
+                }
+            },
+            {
+                "name": "OnPickupOverlap",
+                "description": "OnComponentBeginOverlap event on PickupSphere in EventGraph. Checks bIsEquipped, casts overlapping actor to Character, calls EquipToCharacter. Target graph: EventGraph.",
+                "category": "${weapon_name}",
+                "access": "public",
+                "inputs": [],
+                "outputs": [],
+                "plan": {
+                    "steps": [
+                        { "step_id": "s_overlap", "op": "event", "target": "OnComponentBeginOverlap",
+                          "properties": { "component_name": "PickupSphere" } },
+                        { "step_id": "s_get_equipped", "op": "get_var", "target": "bIsEquipped" },
+                        { "step_id": "s_not_equipped", "op": "call", "target": "Not_PreBool",
+                          "inputs": { "A": "@s_get_equipped.bIsEquipped" } },
+                        { "step_id": "s_check", "op": "branch",
+                          "inputs": { "Condition": "@s_not_equipped.ReturnValue" },
+                          "exec_after": "s_overlap",
+                          "exec_outputs": { "True": "s_cast" } },
+                        { "step_id": "s_cast", "op": "cast", "target": "Character",
+                          "inputs": { "Object": "@s_overlap.OtherActor" } },
+                        { "step_id": "s_equip", "op": "call", "target": "EquipToCharacter",
+                          "inputs": { "TargetCharacter": "@s_cast.auto" },
+                          "exec_after": "s_cast" }
                     ]
                 }
             }

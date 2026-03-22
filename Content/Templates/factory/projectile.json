@@ -146,6 +146,56 @@
                 "default": "${damage}",
                 "category": "${projectile_name}"
             }
+        ],
+
+        "functions": [
+            {
+                "name": "InitProjectile",
+                "description": "BeginPlay event graph chain: sets lifespan for auto-destroy, then gets the owner actor and tells the collision sphere to ignore it to prevent self-hit on spawn. Target graph: EventGraph.",
+                "inputs": [],
+                "outputs": [],
+                "plan": {
+                    "steps": [
+                        { "step_id": "s_begin", "op": "event", "target": "ReceiveBeginPlay" },
+                        { "step_id": "s_lifespan", "op": "call", "target": "SetLifeSpan",
+                          "inputs": { "InLifespan": "3.0" },
+                          "exec_after": "s_begin" },
+                        { "step_id": "s_get_owner", "op": "call", "target": "GetOwner" },
+                        { "step_id": "s_valid", "op": "is_valid",
+                          "inputs": { "Object": "@s_get_owner.ReturnValue" },
+                          "exec_after": "s_lifespan",
+                          "exec_outputs": { "IsValid": "s_get_sphere" } },
+                        { "step_id": "s_get_sphere", "op": "get_var", "target": "CollisionSphere" },
+                        { "step_id": "s_ignore", "op": "call", "target": "IgnoreActorWhenMoving",
+                          "inputs": { "Target": "@s_get_sphere.CollisionSphere", "Actor": "@s_get_owner.ReturnValue", "bShouldIgnore": "true" },
+                          "exec_after": "s_valid" }
+                    ]
+                }
+            },
+            {
+                "name": "HitResponse",
+                "description": "OnComponentHit event graph chain on CollisionSphere: applies damage to the hit actor using the projectile's damage variable and instigator controller, then destroys the projectile. Target graph: EventGraph.",
+                "inputs": [],
+                "outputs": [],
+                "plan": {
+                    "steps": [
+                        { "step_id": "s_hit", "op": "event", "target": "OnComponentHit",
+                          "properties": { "component_name": "CollisionSphere" } },
+                        { "step_id": "s_get_dmg", "op": "get_var", "target": "${projectile_name}Damage" },
+                        { "step_id": "s_get_instigator", "op": "call", "target": "GetInstigatorController" },
+                        { "step_id": "s_apply_dmg", "op": "call", "target": "ApplyDamage",
+                          "inputs": {
+                              "DamagedActor": "@s_hit.OtherActor",
+                              "BaseDamage": "@s_get_dmg.auto",
+                              "EventInstigator": "@s_get_instigator.ReturnValue",
+                              "DamageCauser": "@self.auto"
+                          },
+                          "exec_after": "s_hit" },
+                        { "step_id": "s_destroy", "op": "call", "target": "DestroyActor",
+                          "exec_after": "s_apply_dmg" }
+                    ]
+                }
+            }
         ]
     }
 }

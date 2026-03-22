@@ -140,14 +140,14 @@
 - Sub-pin naming: `{ParentPinName}_{ComponentName}` (e.g., `ReturnValue_X`, `Location_Pitch`)
 - ConversionNote for SplitPin: `ConversionNodeType = "SplitPin(X)"` etc.
 
-## Template System (Reference-Only Migration, 2026-03-13)
-- `OliveLibraryCloner.h/.cpp` DELETED (~3700 lines); `ApplyTemplate()`, `MergeParameters()`, `SubstituteParameters()`, `EvaluateConditionals()` DELETED from OliveTemplateSystem (~980 lines)
-- Tools removed: `blueprint.create_from_library`, `blueprint.create` template_id path, `create_from_template` alias
-- Templates are now reference-only: `blueprint.list_templates` (search) + `blueprint.get_template` (read) survive unchanged
-- `FOliveTemplateSystem` retains: Initialize, Shutdown, Reload, FindTemplate, GetAllTemplates, GetTemplatesByType, SearchTemplates, GetCatalogBlock, GetTemplateContent
+## Template System (ApplyTemplate Restored, 2026-03-22)
+- `ApplyTemplate()`, `MergeParameters()`, `SubstituteParameters()`, `EvaluateConditionals()` RESTORED to OliveTemplateSystem
+- Anonymous namespace helpers restored: `ParseSimpleTypeCategory`, `ResolveUnknownIRType`, `ParseTemplateVariable`, `ParseTemplateFuncParam`, `ParseBlueprintType`
+- `OliveLibraryCloner.h/.cpp` still DELETED (was separate library cloning system, not needed)
+- **EventGraph detection in ApplyTemplate**: functions array entries whose first step op is `event` or `custom_event` are routed to EventGraph (skip AddFunction), all others get their own function graph
+- Factory templates support `blueprint.create_from_template` for one-call Blueprint creation
 - `FOliveLibraryIndex` fully retained (lazy-load + inverted search index)
-- Factory templates still on disk with `${param}` tokens -- read as reference, AI substitutes own values
-- Knowledge files updated: cli_blueprint.txt, recipe_routing.txt, Worker_Blueprint.txt -- all "clone directly" / "template_id" language removed
+- Catalog text updated: mentions `blueprint.create_from_template`, not reference-only
 
 ## Class API Helper + Error Recovery (Phases 1-2, error-recovery-design.md)
 - `OliveClassAPIHelper.h/cpp` at `Blueprint/Public/Writer/` and `Blueprint/Private/Writer/`
@@ -166,6 +166,18 @@
 - ResolveCallDelegateOp/ResolveBindDelegateOp: `TFieldIterator<FMulticastDelegateProperty>` on `BP->ParentClass` after NewVariables loop
 - ResolveCallOp auto-reroute: same TFieldIterator search after NewVariables dispatcher check
 - `blueprint.create` response enrichment: `inherited_variables`, `inherited_dispatchers`, `inherited_components` arrays on success
+
+## olive.build Batch Executor Tool (2026-03-21)
+- Files: `Private/MCP/OliveBuildTool.h` / `Private/MCP/OliveBuildTool.cpp` (both in Private, not Public)
+- Static class with `RegisterTool()` + `HandleBuild()` (CreateStatic, not CreateRaw)
+- Registered in `OnPostEngineInit()` right after `RegisterBuiltInTools()`, before domain-specific tools
+- Tags: `{olive, build, batch}`, Category: `olive`
+- Recursion guard: static `bIsExecuting` bool prevents nested olive.build calls; also checks step tool names upfront
+- Alias-aware validation: uses `ResolveAlias()` before `HasTool()` during pre-validation
+- Snapshot: collects `path`/`asset_path` fields from step args, creates via `FOliveSnapshotManager::Get().CreateSnapshot()`
+- FOliveIRMessage has NO explicit constructors (USTRUCT GENERATED_BODY) -- must use field-by-field init (Severity, Code, Message)
+- Failed step result added to StepResults BEFORE skipped-step loop (ordering matters)
+- MCP server instructions string updated to mention olive.build
 
 ## Agent Pipeline (REMOVED - Single-Agent Revert 2026-03-09, Session Resume 2026-03-16)
 - Multi-agent pipeline, auto-continue, continuation prompts all DELETED

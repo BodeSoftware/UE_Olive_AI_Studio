@@ -35,7 +35,7 @@ struct OLIVEAIEDITOR_API FOliveTemplateInfo
     /** Absolute path to the JSON file on disk */
     FString FilePath;
 
-    /** Full parsed JSON content (cached for GetTemplateContent) */
+    /** Full parsed JSON content (cached for ApplyTemplate and GetTemplateContent) */
     TSharedPtr<FJsonObject> FullJson;
 };
 
@@ -167,11 +167,8 @@ private:
  * FOliveTemplateSystem
  *
  * Loads template JSON files from Content/Templates/, builds an auto-generated
- * catalog block for prompt injection, and provides reference-reading
- * infrastructure (GetTemplateContent, SearchTemplates) for AI use.
- *
- * Templates are reference material -- the AI reads them to understand
- * architecture, then builds Blueprints itself using standard tools.
+ * catalog block for prompt injection, and provides ApplyTemplate() for factory
+ * template execution.
  *
  * Singleton. Game thread only.
  *
@@ -222,6 +219,26 @@ public:
     /** Access the library index directly. */
     const FOliveLibraryIndex& GetLibraryIndex() const { return LibraryIndex; }
 
+    // ============================================================
+    // Execution
+    // ============================================================
+
+    /**
+     * Apply a factory template: create Blueprint, add variables, add dispatchers,
+     * create functions, execute plan JSON for each function, compile.
+     *
+     * @param TemplateId   Factory template ID
+     * @param UserParams   Parameter overrides from the AI
+     * @param PresetName   Optional preset name (applied before UserParams)
+     * @param AssetPath    Where to create the Blueprint (/Game/...)
+     * @return Tool result with created asset info or error
+     */
+    FOliveToolResult ApplyTemplate(
+        const FString& TemplateId,
+        const TMap<FString, FString>& UserParams,
+        const FString& PresetName,
+        const FString& AssetPath);
+
     /**
      * Get a template's content as a formatted string for AI reference reading.
      * For factory templates: parameter schema + presets + function plan outlines.
@@ -261,6 +278,37 @@ private:
 
     /** Rebuild CachedCatalog from all loaded Templates. */
     void RebuildCatalog();
+
+    // ============================================================
+    // Parameter Substitution
+    // ============================================================
+
+    /**
+     * Merge default parameters from the template schema with user overrides.
+     * If PresetName is non-empty, preset values are applied between defaults
+     * and user overrides.
+     */
+    TMap<FString, FString> MergeParameters(
+        const FOliveTemplateInfo& Info,
+        const TMap<FString, FString>& UserParams,
+        const FString& PresetName) const;
+
+    /**
+     * Replace ${param} tokens in a JSON string with values from MergedParams.
+     * Logs warnings for any unsubstituted tokens.
+     */
+    FString SubstituteParameters(
+        const FString& Input,
+        const TMap<FString, FString>& MergedParams) const;
+
+    /**
+     * Evaluate simple conditional expressions like "${start_full} ? ${max_value} : 0".
+     * Only supports bool ternary for defaults. Returns the substituted string
+     * with conditionals resolved.
+     */
+    FString EvaluateConditionals(
+        const FString& Input,
+        const TMap<FString, FString>& MergedParams) const;
 
     // ============================================================
     // State

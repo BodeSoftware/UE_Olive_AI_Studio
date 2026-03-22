@@ -64,6 +64,128 @@ namespace
             Graph->NotifyGraphChanged();
         }
     }
+
+    /**
+     * Compute the Levenshtein edit distance between two strings (case-insensitive).
+     * Used to suggest close pin name matches in error messages.
+     */
+    static int32 ComputeLevenshteinDistance(const FString& A, const FString& B)
+    {
+        const FString LowerA = A.ToLower();
+        const FString LowerB = B.ToLower();
+        const int32 LenA = LowerA.Len();
+        const int32 LenB = LowerB.Len();
+
+        if (LenA == 0) return LenB;
+        if (LenB == 0) return LenA;
+
+        // Use a single row for space efficiency
+        TArray<int32> Row;
+        Row.SetNum(LenB + 1);
+        for (int32 j = 0; j <= LenB; ++j)
+        {
+            Row[j] = j;
+        }
+
+        for (int32 i = 1; i <= LenA; ++i)
+        {
+            int32 Prev = Row[0];
+            Row[0] = i;
+            for (int32 j = 1; j <= LenB; ++j)
+            {
+                const int32 Temp = Row[j];
+                if (LowerA[i - 1] == LowerB[j - 1])
+                {
+                    Row[j] = Prev;
+                }
+                else
+                {
+                    Row[j] = FMath::Min3(Prev, Row[j], Row[j - 1]) + 1;
+                }
+                Prev = Temp;
+            }
+        }
+
+        return Row[LenB];
+    }
+
+    /**
+     * Find the best Levenshtein match for a pin name hint from a list of available pins.
+     * Returns the best matching pin name if the edit distance is within threshold,
+     * or an empty string if no close match exists.
+     *
+     * @param Hint The name the AI used (possibly wrong)
+     * @param AvailablePins Array of available pin manifest entries to search
+     * @param OutDistance Receives the edit distance of the best match
+     * @return Best matching pin name, or empty string if none within threshold
+     */
+    static FString FindBestPinMatch(
+        const FString& Hint,
+        const TArray<const FOlivePinManifestEntry*>& AvailablePins,
+        int32& OutDistance)
+    {
+        FString BestMatch;
+        int32 BestDist = MAX_int32;
+
+        // Max edit distance threshold: allow up to 40% of the hint length, minimum 3
+        const int32 MaxDist = FMath::Max(3, Hint.Len() * 2 / 5);
+
+        for (const FOlivePinManifestEntry* Pin : AvailablePins)
+        {
+            // Check against internal pin name
+            int32 Dist = ComputeLevenshteinDistance(Hint, Pin->PinName);
+            if (Dist < BestDist)
+            {
+                BestDist = Dist;
+                BestMatch = Pin->PinName;
+            }
+
+            // Also check against display name (may be different from internal name)
+            if (!Pin->DisplayName.IsEmpty() && !Pin->DisplayName.Equals(Pin->PinName, ESearchCase::IgnoreCase))
+            {
+                Dist = ComputeLevenshteinDistance(Hint, Pin->DisplayName);
+                if (Dist < BestDist)
+                {
+                    BestDist = Dist;
+                    BestMatch = Pin->PinName; // Return internal name even if display name matched
+                }
+            }
+        }
+
+        OutDistance = BestDist;
+        return (BestDist <= MaxDist) ? BestMatch : FString();
+    }
+
+    /**
+     * Build an Alternatives array from available pins formatted as "PinName (TypeDisplayString)".
+     * Also computes the best Levenshtein suggestion for the given hint.
+     *
+     * @param Hint The name the AI used (possibly wrong)
+     * @param AvailablePins Pins to list as alternatives
+     * @param OutAlternatives Receives formatted alternative strings
+     * @param OutSuggestion Receives "Did you mean 'X'?" if a close match is found, or empty
+     */
+    static void BuildPinAlternativesAndSuggestion(
+        const FString& Hint,
+        const TArray<const FOlivePinManifestEntry*>& AvailablePins,
+        TArray<FString>& OutAlternatives,
+        FString& OutSuggestion)
+    {
+        OutAlternatives.Reset();
+        OutAlternatives.Reserve(AvailablePins.Num());
+        for (const FOlivePinManifestEntry* Pin : AvailablePins)
+        {
+            OutAlternatives.Add(FString::Printf(TEXT("%s (%s)"),
+                *Pin->PinName, *Pin->TypeDisplayString));
+        }
+
+        int32 BestDist = MAX_int32;
+        const FString BestMatch = FindBestPinMatch(Hint, AvailablePins, BestDist);
+        if (!BestMatch.IsEmpty())
+        {
+            OutSuggestion = FString::Printf(TEXT("Did you mean '%s'?"), *BestMatch);
+        }
+    }
 }
 
 // ============================================================================
@@ -3111,12 +3233,51 @@ void FOlivePlanExecutor::PhaseWireData(
                         *FString::Join(Result.Suggestions, TEXT(", ")));
                 }
 
-                Context.WiringErrors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+                // Compute Levenshtein-based "Did you mean?" from available pins.
+                // Extract pin names from formatted suggestions "PinName (Type)".
+                if (Result.Suggestions.Num() > 0 && !ResolvedPinKey.Equals(TEXT("auto"), ESearchCase::IgnoreCase))
+                {
+                    FString BestMatch;
+                    int32 BestDist = MAX_int32;
+                    const int32 MaxDist = FMath::Max(3, ResolvedPinKey.Len() * 2 / 5);
+
+                    for (const FString& Suggestion : Result.Suggestions)
+                    {
+                        // Extract pin name: everything before " ("
+                        FString CandidateName = Suggestion;
+                        int32 ParenIdx = INDEX_NONE;
+                        if (Suggestion.FindChar(TEXT('('), ParenIdx) && ParenIdx > 1)
+                        {
+                            CandidateName = Suggestion.Left(ParenIdx).TrimEnd();
+                        }
+
+                        const int32 Dist = ComputeLevenshteinDistance(ResolvedPinKey, CandidateName);
+                        if (Dist < BestDist)
+                        {
+                            BestDist = Dist;
+                            BestMatch = CandidateName;
+                        }
+                    }
+
+                    if (BestDist <= MaxDist && !BestMatch.IsEmpty())
+                    {
+                        SuggestionText = FString::Printf(TEXT("Did you mean '%s'? %s"),
+                            *BestMatch,
+                            SuggestionText.IsEmpty() ? TEXT("") : *SuggestionText);
+                    }
+                }
+
+                FOliveIRBlueprintPlanError WireError = FOliveIRBlueprintPlanError::MakeStepError(
                     ErrorCode,
                     Step.StepId,
                     FString::Printf(TEXT("/steps/inputs/%s"), *PinKey),
                     Result.ErrorMessage,
-                    SuggestionText));
+                    SuggestionText);
+
+                // Populate Alternatives array with available pin names for structured access
+                WireError.Alternatives = Result.Suggestions;
+
+                Context.WiringErrors.Add(MoveTemp(WireError));
             }
         }
     }
@@ -3524,8 +3685,21 @@ FOliveSmartWireResult FOlivePlanExecutor::WireDataConnection(
             EOliveIRTypeCategory::Unknown, &TargetMatchMethod);
         if (!TargetPinEntry)
         {
+            // Populate suggestions with available input pins for self-correction
+            TArray<const FOlivePinManifestEntry*> DataInputs = TargetManifest->GetDataPins(/*bInput=*/true);
+            for (const FOlivePinManifestEntry* Pin : DataInputs)
+            {
+                Result.Suggestions.Add(FString::Printf(TEXT("%s (%s)"),
+                    *Pin->PinName, *Pin->TypeDisplayString));
+            }
             Result.ErrorMessage = FString::Printf(
                 TEXT("Target pin '%s' not found on step '%s' for @self wire"), *TargetPinHint, *TargetStepId);
+            UE_LOG(LogOlivePlanExecutor, Warning,
+                TEXT("  Data wire FAILED: %s. Available: %s"),
+                *Result.ErrorMessage,
+                Result.Suggestions.Num() > 0
+                    ? *FString::Join(Result.Suggestions, TEXT(", "))
+                    : TEXT("(none)"));
             return Result;
         }
 
@@ -4303,22 +4477,34 @@ void FOlivePlanExecutor::PhaseSetDefaults(
             {
                 Context.FailedDefaultCount++;
 
-                TArray<FString> Suggestions;
                 TArray<const FOlivePinManifestEntry*> DataInputs = Manifest->GetDataPins(true);
-                for (const FOlivePinManifestEntry* Pin : DataInputs)
+
+                TArray<FString> Alternatives;
+                FString DidYouMean;
+                BuildPinAlternativesAndSuggestion(ResolvedPinKey, DataInputs, Alternatives, DidYouMean);
+
+                FString SuggestionText;
+                if (!DidYouMean.IsEmpty())
                 {
-                    Suggestions.Add(FString::Printf(TEXT("%s (%s)"),
-                        *Pin->PinName, *Pin->TypeDisplayString));
+                    SuggestionText = FString::Printf(TEXT("%s Available data inputs: %s"),
+                        *DidYouMean, *FString::Join(Alternatives, TEXT(", ")));
+                }
+                else
+                {
+                    SuggestionText = FString::Printf(TEXT("Available data inputs: %s"),
+                        *FString::Join(Alternatives, TEXT(", ")));
                 }
 
-                Context.WiringErrors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+                FOliveIRBlueprintPlanError DefaultError = FOliveIRBlueprintPlanError::MakeStepError(
                     TEXT("DEFAULT_PIN_NOT_FOUND"),
                     Step.StepId,
                     FString::Printf(TEXT("/steps/inputs/%s"), *PinKey),
                     FString::Printf(TEXT("No input pin matching '%s' on step '%s'"),
                         *PinKey, *Step.StepId),
-                    FString::Printf(TEXT("Available data inputs: %s"),
-                        *FString::Join(Suggestions, TEXT(", ")))));
+                    SuggestionText);
+                DefaultError.Alternatives = MoveTemp(Alternatives);
+
+                Context.WiringErrors.Add(MoveTemp(DefaultError));
                 continue;
             }
 

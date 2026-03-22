@@ -1,6 +1,6 @@
 ## Routing
 - olive.get_recipe(query) has tested wiring patterns. Call it before starting any multi-asset or UI task — dispatcher binding, widget updates, interface calls, and pickup patterns are all covered.
-- NEW blueprint: FIRST search the project (project.search + project.get_relevant_context) for existing implementations. THEN check templates for reference patterns via blueprint.list_templates(query="..."). Study relevant functions with get_template, then: blueprint.create + components/variables + apply_plan_json
+- NEW blueprint: FIRST check if a factory template exists (see catalog below or blueprint.list_templates(type="factory")). If one matches, use blueprint.create_from_template — it creates structure AND graph logic in one call (~60ms). If no factory template fits, search library/reference templates for patterns, then: blueprint.create + components/variables + apply_plan_json. Only search the project (project.search) if you need to check whether the asset already exists.
 - MODIFY existing: project.search (find path) → blueprint.read → templates can provide useful reference patterns → write tools
 - Widget Blueprints that need actor data: wire ownership in Construct (GetPlayerCharacter + Cast) or use expose_on_spawn set before AddToViewport. See blueprint_design_patterns Section "Widget Ownership".
 - MULTI-ASSET: First, list ALL Blueprints the system needs (see System Decomposition in design patterns). Then build each one fully (structure + logic + compile) before starting the next.
@@ -8,9 +8,9 @@
 - plan_json is atomic (all-or-nothing); granular tools are incremental. Pick what fits.
 - Split complex logic into multiple functions when it makes architectural sense.
 
-## Pattern Research Sources (search and compare multiple before building)
-- Library templates (blueprint.list_templates query="...") -- extracted from proven, shipped projects. High quality. Full node graphs with real implementation patterns. Study with get_template, adapt naming to fit your project.
-- Factory templates (blueprint.list_templates type="factory") -- hand-crafted patterns. Read with get_template to study architecture and plan_json structure.
-- Community blueprints (olive.search_community_blueprints query) -- 150K+ blueprints from the community. Mixed quality -- compare several results and use your judgment. Browse mode first, then detail on promising matches.
+## Pattern Research Sources
+- Factory templates — complete Blueprint generators. Use blueprint.create_from_template for one-call creation. Check the catalog in the system prompt for available factories before building anything manually.
+- Library templates (blueprint.list_templates query="...") — extracted from proven, shipped projects. Full node graphs. Study with get_template, adapt to your project.
+- Community blueprints (olive.search_community_blueprints query) — 150K+ community examples. Mixed quality — compare several results before committing.
 
-Always compare multiple references when available. For community blueprints especially, browse 5-10 results before committing to a pattern.
+For community blueprints, browse 5-10 results before committing to a pattern. For factory and library templates, the catalog gives enough info to decide relevance.

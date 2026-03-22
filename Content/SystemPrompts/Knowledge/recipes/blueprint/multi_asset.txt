@@ -1,11 +1,17 @@
-TAGS: multi asset multiple blueprint cross dependency
+TAGS: multi asset multiple blueprint cross dependency weapon gun bullet projectile
 ---
 MULTI-ASSET workflow (e.g. gun + bullet, spawner + enemy):
-1. Create all asset structures first (blueprint.create + add_component + add_variable for every asset)
-2. Wire graph logic for each asset one at a time
-3. Fix wiring errors if needed
 
-Create all structures before any graph logic so cross-references work
+For weapon systems: use blueprint.create_from_template with the "gun" and "projectile" templates.
+They include complete plan_json for Fire, Reload, SpawnProjectile, BeginPlay, and OnComponentHit.
+
+General multi-asset sequence:
+1. Create ALL asset structures first (use olive.build to batch: create + scaffold)
+2. Wire graph logic per asset (use olive.build with apply_plan_json steps)
+3. Compile all assets at the end
+
+Create structures before graph logic so cross-refs work
 (BP_Gun can reference BP_Bullet_C as a type).
 Blueprint class refs append _C: "BP_Bullet_C" not "BP_Bullet".
-Complete one asset fully before moving to the next.
+Complete one asset's logic fully before the next.
+For each olive.build call, use on_error:"continue_remaining" so partial successes aren't lost.

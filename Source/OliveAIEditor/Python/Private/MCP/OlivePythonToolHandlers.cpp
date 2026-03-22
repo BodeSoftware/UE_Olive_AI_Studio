@@ -60,10 +60,15 @@ FOliveToolResult FOlivePythonToolHandlers::HandleRunPython(const TSharedPtr<FJso
 	FString Script;
 	if (!Params->TryGetStringField(TEXT("script"), Script))
 	{
+		// Also accept "code" as a common alias
+		Params->TryGetStringField(TEXT("code"), Script);
+	}
+	if (Script.IsEmpty())
+	{
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Missing required parameter 'script'"),
-			TEXT("Provide the Python script to execute")
+			TEXT("Missing required parameter 'script' (also accepts 'code')"),
+			TEXT("Provide the Python script to execute as the 'script' parameter")
 		);
 	}
 
