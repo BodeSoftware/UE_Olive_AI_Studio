@@ -189,3 +189,7 @@ Representative tool groups currently registered in code:
 ## License
 
 MIT
+
+## Contributions
+
+Contributions are accepted under the Contributor License Agreement in `CLA.md`.
