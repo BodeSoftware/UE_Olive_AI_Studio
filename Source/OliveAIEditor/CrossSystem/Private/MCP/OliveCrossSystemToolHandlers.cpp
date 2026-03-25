@@ -925,6 +925,17 @@ void FOliveCrossSystemToolHandlers::RegisterIndexTools()
 		TEXT("crosssystem")
 	);
 	RegisteredToolNames.Add(TEXT("project.get_relevant_context"));
+
+	// Alias: project.search → same handler (many prompts reference this name)
+	Registry.RegisterTool(
+		TEXT("project.search"),
+		TEXT("Search the project index and return the most relevant assets for a query (alias for project.get_relevant_context)"),
+		OliveCrossSystemSchemas::ProjectGetRelevantContext(),
+		FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleGetRelevantContext),
+		{TEXT("crosssystem"), TEXT("read")},
+		TEXT("crosssystem")
+	);
+	RegisteredToolNames.Add(TEXT("project.search"));
 }
 
 FOliveToolResult FOliveCrossSystemToolHandlers::HandleIndexBuild(const TSharedPtr<FJsonObject>& Params)

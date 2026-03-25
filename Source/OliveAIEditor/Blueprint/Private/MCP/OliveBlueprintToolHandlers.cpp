@@ -142,11 +142,13 @@ void ExtractPagingParams(
 	const TSharedPtr<FJsonObject>& Params,
 	int32& OutPage,
 	int32& OutPageSize,
-	FString& OutMode)
+	FString& OutMode,
+	int32& OutMaxNodes)
 {
 	OutPage = -1;
 	OutPageSize = OLIVE_GRAPH_PAGE_SIZE;
 	OutMode = TEXT("auto");
+	OutMaxNodes = OLIVE_LARGE_GRAPH_THRESHOLD;
 
 	if (!Params.IsValid())
 	{
@@ -163,6 +165,12 @@ void ExtractPagingParams(
 	{
 		OutPageSize = static_cast<int32>(Params->GetNumberField(TEXT("page_size")));
 		OutPageSize = FMath::Clamp(OutPageSize, 10, 200);
+	}
+
+	if (Params->HasField(TEXT("max_nodes")))
+	{
+		OutMaxNodes = static_cast<int32>(Params->GetNumberField(TEXT("max_nodes")));
+		OutMaxNodes = FMath::Clamp(OutMaxNodes, 10, 5000);
 	}
 
 	Params->TryGetStringField(TEXT("mode"), OutMode);
@@ -200,7 +208,8 @@ FOliveToolResult HandleGraphReadWithPaging(
 	int32 Page = -1;
 	int32 PageSize = OLIVE_GRAPH_PAGE_SIZE;
 	FString Mode;
-	ExtractPagingParams(Params, Page, PageSize, Mode);
+	int32 MaxNodes = OLIVE_LARGE_GRAPH_THRESHOLD;
+	ExtractPagingParams(Params, Page, PageSize, Mode, MaxNodes);
 
 	// Count nodes (fast -- just count the array, no serialization)
 	const int32 RawNodeCount = Graph->Nodes.Num();
@@ -216,7 +225,7 @@ FOliveToolResult HandleGraphReadWithPaging(
 		ResultData->SetNumberField(TEXT("page_size"), PageSize);
 		ResultData->SetNumberField(TEXT("total_pages"),
 			FMath::CeilToInt(static_cast<float>(PageIR.NodeCount) / static_cast<float>(PageSize)));
-		ResultData->SetBoolField(TEXT("is_large_graph"), PageIR.NodeCount >= OLIVE_LARGE_GRAPH_THRESHOLD);
+		ResultData->SetBoolField(TEXT("is_large_graph"), PageIR.NodeCount >= MaxNodes);
 
 		// Inject redirector info
 		if (!ResolveInfo.RedirectedFrom.IsEmpty() && ResultData.IsValid())
@@ -228,7 +237,7 @@ FOliveToolResult HandleGraphReadWithPaging(
 	}
 
 	// If graph is large and mode is not "full", return summary
-	if (RawNodeCount >= OLIVE_LARGE_GRAPH_THRESHOLD && Mode != TEXT("full"))
+	if (RawNodeCount >= MaxNodes && Mode != TEXT("full"))
 	{
 		FOliveIRGraph SummaryIR = GraphReader->ReadGraphSummary(Graph, Blueprint);
 		TSharedPtr<FJsonObject> ResultData = SummaryIR.ToJson();

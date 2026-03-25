@@ -12,13 +12,13 @@ Never simplify your design to fit a tool's limitations — use a different tool 
 
 ## Workflows
 CREATE new Blueprint:
-0. Check the template catalog (in system prompt) for a matching factory template. If one exists, use blueprint.create_from_template — it creates the Blueprint with components, variables, dispatchers, AND function graph logic in one call (~60ms). Customize with template_params or follow up with granular tools for anything the template doesn't cover.
-1. If no factory template matches: search library/reference templates (blueprint.list_templates query="...") for architectural patterns. Study relevant functions with get_template.
-2. Build manually: blueprint.create with parent_class -> add_component/add_variable -> apply_plan_json.
-3. Only search the project (project.search) if you suspect the asset already exists. Do not search "just in case" — it wastes time on empty projects.
+1. blueprint.create with parent_class -> add_component/add_variable -> apply_plan_json.
+2. If a factory template in the catalog matches, blueprint.create_from_template handles structure + graph logic in one call (~60ms). Customize with template_params or follow up with granular tools.
+3. For unfamiliar patterns, search templates for reference (blueprint.list_templates query="..."). Library templates are higher quality than community blueprints — prefer them. Compare a few results before committing to an approach.
+4. Only search the project (project.get_relevant_context) if you suspect the asset already exists.
 
 MODIFY existing Blueprint:
-1. project.search (find path) → blueprint.read
+1. project.get_relevant_context (find path) → blueprint.read
 2. Templates can provide useful reference patterns → blueprint.list_templates(query="relevant terms"). Adapt patterns to fit the existing Blueprint.
 3. add_variable/add_component → apply_plan_json
 
@@ -64,6 +64,9 @@ RIGHT: Put `exec_outputs:{"True":"next_step"}` on the branch step itself.
 - Component events: {"op":"event","target":"OnComponentBeginOverlap","properties":{"component_name":"CollisionComp"}}
 - Function graphs: entry node is auto-created. Impure steps MUST have exec_after.
 - Return node is auto-created. Exec is auto-wired to the last step if you omit a return op.
+- Function graphs do NOT have event entry points. Do NOT use op:"event" with target:"FunctionEntry" —
+  FunctionEntry is auto-created. Your first step should use exec_after to chain from it automatically,
+  or simply omit exec_after on the first step (auto-chain handles it).
 - For functions WITH output parameters, add an explicit return step to wire the output values:
   `{"step_id":"ret","op":"return","inputs":{"NewAmmo":"@set_ammo.auto"},"exec_after":"set_ammo"}`
 
@@ -71,6 +74,8 @@ RIGHT: Put `exec_outputs:{"True":"next_step"}` on the branch step itself.
 Use natural names for op:call. K2_ prefixes and aliases resolve automatically.
 Examples: Destroy→K2_DestroyActor, Print→PrintString, GetWorldTransform→K2_GetComponentToWorld
 Interface functions: use target_class with the interface name (e.g., "BPI_Interactable").
+Do NOT use qualified names like "KismetMathLibrary::Greater_IntInt" — use bare names: "Greater_IntInt".
+The resolver searches library classes automatically. Use target_class only when disambiguation is needed.
 When using interfaces, call olive.get_recipe(query="interface") first — it covers DoesImplementInterface guards, the full BPI workflow, and common pitfalls.
 
 ## Variable Types
@@ -81,19 +86,19 @@ Class ref: {"category":"class","class_name":"Actor"}
 Array: {"category":"array","value_type":{"category":"float"}}
 
 ## Templates & Pattern Sources
-Factory templates create complete Blueprints — structure AND logic — in one call. Use them as
-the primary path for supported types (gun, projectile, stat_component, interactable_door, etc.).
-After template creation, customize with granular tools (add_variable, apply_plan_json, etc.).
-Library and reference templates are research material for patterns not covered by factories.
-- Library templates: extracted from real shipped projects with full node graphs. Search with
-  blueprint.list_templates(query="..."), read specific functions with
-  blueprint.get_template(id, pattern="FuncName"). The catalog lists domain keywords per
-  project so you know what's available. Adapt naming to fit your project.
-- Factory templates: blueprint.create_from_template creates the full Blueprint. Check the
-  catalog (always in system prompt) for available factories. Pass template_params to customize
-  names, values, classes. Follow up with granular tools for anything beyond the template.
-- Community blueprints: olive.search_community_blueprints(query) for 150K+ community
-  examples. Mixed quality -- compare multiple results before committing.
+Templates are optional research tools — use them when helpful, skip them when the pattern is straightforward.
+
+Factory templates create complete Blueprints — structure AND logic — in one call (~60ms).
+If one matches your task, it saves time. Otherwise, build manually.
+
+Library templates are curated from real shipped projects with full node graphs — higher quality
+than community blueprints. When researching unfamiliar patterns, prefer library templates.
+- Library: blueprint.list_templates(query="..."), read functions with
+  blueprint.get_template(id, pattern="FuncName"). Compare a few results before committing.
+- Factory: blueprint.create_from_template creates the full Blueprint. Check the
+  catalog (always in system prompt) for available factories. Pass template_params to customize.
+- Community blueprints: olive.search_community_blueprints(query) for 150K+ examples.
+  Mixed quality — compare multiple results and cross-reference with library templates when possible.
 - Recipes: olive.get_recipe(query) has tested wiring patterns for common tasks.
 - Search strategy: search for the specific thing (e.g., "bow", "arrow", "shield"), not just
   the generic category ("weapon"). Multiple narrow searches beat one broad search.
@@ -121,7 +126,11 @@ For pin wiring, use `@step.auto` — the resolver handles ~80% of connections au
 - Self-correct on errors. If one approach fails, try a different tool or technique.
 - If something genuinely cannot be done with available tools, tell the user what you built, what you could not do, and why.
 - plan_json is atomic (all-or-nothing); granular tools are incremental. Choose based on the situation.
-- After a plan_json failure, all nodes from that plan are rolled back — they do not exist. Do NOT use connect_pins or add_node with node IDs from a failed plan. Instead: fix the plan and retry apply_plan_json, or start fresh with granular tools using new add_node calls.
+- After a plan_json failure, all nodes are rolled back. The error response contains:
+  - `wiring_errors` array with exact error codes, suggestions, and `alternatives` (correct pin/function names)
+  - `pin_manifests` with complete pin metadata for created nodes
+  Use these to fix your plan — do NOT call blueprint.read or get_node_pins to diagnose, the error response already has everything.
+  Fix the specific error and retry apply_plan_json, or start fresh with granular tools.
 - After applying plan_json to a complex function (5+ steps), read the function back with blueprint.read_function to verify the graph looks correct. Disconnected data wires don't always cause compile errors.
 - Component functions (SetVelocityInLocalSpace, SetSimulatePhysics, etc.) require target_class when the component is NOT on the current Blueprint's SCS. If you're calling a function on a spawned actor's component, you need a reference to that component first.
 - Calling functions on non-self actors: add `"Target": "@step.auto"` to inputs. Example — set lifespan on a spawned actor:
@@ -186,9 +195,9 @@ RIGHT: Use get_var with Target: `{"op":"get_var","target":"Mesh","inputs":{"Targ
 WHY: get_var without Target reads the CURRENT Blueprint's variables only. With Target, it creates an external VariableGet that reads properties from the referenced actor. Works for engine UPROPERTYs (Mesh, CapsuleComponent, etc.) and parent class variables.
 
 
-WRONG: Disabling collision on the pickup trigger (SphereComponent) when equipping a weapon
-RIGHT: Disable collision on the MESH component (StaticMeshComponent) so it doesn't collide with the character when attached
-WHY: Pickup spheres are overlap triggers — they don't block movement. The mesh is what physically collides. On equip: disable mesh collision + optionally disable pickup sphere overlap.
+WRONG: Disabling collision on the CHARACTER's mesh when equipping a weapon
+RIGHT: Disable collision on the WEAPON's mesh (the item being attached). Call SetCollisionEnabled on the gun/item actor's StaticMeshComponent, not the character's SkeletalMeshComponent.
+WHY: When attaching a weapon to a character, the weapon's mesh is what would clip through the character. Disabling the character's mesh collision breaks all character physics. Target the attached item's mesh specifically — use get_var with Target to get the weapon's mesh component, then call SetCollisionEnabled on it.
 
 WRONG: spawn_actor with default/zero SpawnTransform for a weapon projectile
 RIGHT: Get MuzzlePoint component location (GetWorldLocation) + Controller aim rotation (GetControlRotation) for the SpawnTransform
@@ -201,6 +210,30 @@ WHY: ActorBeginOverlap fires for ANY collision on the entire actor (ground, wall
 WRONG: Using editor.run_python to inspect Blueprint graph nodes (K2Node pins, connections, node types)
 RIGHT: Use blueprint.read_function(asset_path, function_name) or blueprint.get_node_pins(asset_path, node_id)
 WHY: The Python unreal module cannot access K2Node pin data — UK2Node is an editor-internal type not exposed to Python scripting. Blueprint inspection tools (read, read_function, get_node_pins, describe_function) are purpose-built for this.
+
+WRONG: exec_after: "s_branch.True" or exec_after: "s_branch.False"
+RIGHT: Put exec_outputs on the BRANCH step: {"op":"branch",...,"exec_outputs":{"True":"step_a","False":"step_b"}}
+WHY: Branch outputs are declared on the branch step via exec_outputs, not referenced from downstream via exec_after with dot notation.
+
+WRONG: {"op":"call","target":"KismetMathLibrary::Greater_IntInt"}
+RIGHT: {"op":"call","target":"Greater_IntInt"}
+WHY: The resolver searches all library classes automatically. Qualified names with :: break resolution. Use bare function names. Add target_class only if ambiguous.
+
+WRONG: {"op":"event","target":"FunctionEntry"} in a function graph
+RIGHT: Omit the entry step entirely — function graphs auto-create entry nodes. Your first impure step auto-chains from the entry.
+WHY: FunctionEntry is a C++ node type, not an event. Function graphs always have an entry node; plan_json auto-wires your first step to it.
+
+WRONG: exec_after: "node_0" (using a node_id from blueprint.read)
+RIGHT: exec_after: "s_my_step" (using a step_id defined in the current plan)
+WHY: exec_after references step_ids within the plan, not node_ids from the Blueprint graph. Node IDs and step IDs are different namespaces.
+
+WRONG: {"op":"call","target":"EquipToCharacter"} in BP_ThirdPersonCharacter (function exists on BP_Gun)
+RIGHT: {"op":"call","target":"EquipToCharacter","target_class":"BP_Gun_C"} or call it on the gun reference
+WHY: The resolver searches the CURRENT Blueprint's class hierarchy. To call a function from another Blueprint, provide target_class or wire a Target input referencing that actor.
+
+WRONG: Building a gun/weapon system without input binding on the character
+RIGHT: A gun system needs THREE things: gun actor, projectile actor, AND input wiring on the character (IA_Fire or InputKey for firing). After building the gun and projectile, add input handling to the character's EventGraph that calls the gun's Fire function.
+WHY: A weapon without input is unusable. Always include character-side input wiring as part of a weapon system. Check the input_handling recipe (olive.get_recipe query="input") for Enhanced Input vs InputKey patterns.
 
 ## Widget Blueprint Design
 

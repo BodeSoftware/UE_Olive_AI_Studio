@@ -421,7 +421,7 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 	AgentContext += TEXT("- `blueprint.describe_node_type(type)` -- check K2Node properties and pins\n");
 	AgentContext += TEXT("- `project.search(query)` -- find existing assets by name\n");
 	AgentContext += TEXT("- `olive.get_recipe(query)` -- tested wiring patterns for common tasks\n\n");
-	AgentContext += TEXT("Before creating any assets, call get_recipe or get_template for the primary task domain.\n");
+	AgentContext += TEXT("For complex or unfamiliar patterns, get_recipe or list_templates can provide reference. Skip research for straightforward tasks.\n");
 	AgentContext += TEXT("For inventory/pickup systems: search pickup, inventory, widget. For combat: search damage, health, weapon.\n");
 	AgentContext += TEXT("Research is mandatory, not optional — it takes 10 seconds and prevents 10 minutes of failures.\n");
 	AgentContext += TEXT("Exception: if search returns no relevant results (0-1 weak matches), proceed without.\n\n");
@@ -1602,7 +1602,7 @@ FString FOliveCLIProviderBase::BuildConversationPrompt(const TArray<FOliveChatMe
 	if (UserMessageCount == 1 && ToolResultCount == 0)
 	{
 		Prompt += TEXT("- Respond ONLY with <tool_call> blocks. Do NOT respond with explanation text.\n");
-		Prompt += TEXT("- If the task is creating NEW Blueprints, search templates for reference patterns (blueprint.list_templates), then use blueprint.create with parent_class.\n");
+		Prompt += TEXT("- If the task is creating NEW Blueprints, use blueprint.create with parent_class. If a factory template in the catalog matches, use blueprint.create_from_template instead.\n");
 		Prompt += TEXT("- If the task is modifying EXISTING assets, start with project.search to find exact paths.\n");
 		Prompt += TEXT("- Batch only independent calls (e.g., create + add_component + add_variable).\n");
 		Prompt += TEXT("- Do NOT batch blueprint.preview_plan_json and blueprint.apply_plan_json in the same response.\n\n");

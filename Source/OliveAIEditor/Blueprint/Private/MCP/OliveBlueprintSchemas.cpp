@@ -344,11 +344,14 @@ namespace OliveBlueprintSchemas
 		Properties->SetObjectField(TEXT("page_size"),
 			IntProp(TEXT("Nodes per page (default 100, max 200). Only used with 'page' parameter."), 10, 200));
 
+		Properties->SetObjectField(TEXT("max_nodes"),
+			IntProp(TEXT("Node count threshold for auto-summary (default 100). Graphs with more nodes return summary instead of full data. Set higher to get full data for larger graphs."), 10, 5000));
+
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
 		Schema->SetStringField(TEXT("description"),
 			TEXT("Unified Blueprint reader. Read any aspect of a Blueprint by specifying 'section'. "
 				"Default section 'all' returns summary for large BPs and auto-upgrades to full for small ones (<=50 nodes). "
-				"section='graph' with graph_name reads a single graph with large-graph paging support (500+ node threshold)."));
+				"section='graph' with graph_name reads a single graph with large-graph paging support (100+ node threshold, adjustable via max_nodes)."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path")});
 

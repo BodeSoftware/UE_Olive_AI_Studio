@@ -267,8 +267,8 @@ TArray<const FOliveTemplateInfo*> FOliveTemplateSystem::GetTemplatesByType(const
 void FOliveTemplateSystem::RebuildCatalog()
 {
 	CachedCatalog = TEXT("[AVAILABLE BLUEPRINT TEMPLATES]\n");
-	CachedCatalog += TEXT("For NEW Blueprints: check factory templates FIRST. blueprint.create_from_template builds the complete Blueprint (structure + graph logic) in one call (~60ms).\n");
-	CachedCatalog += TEXT("For patterns/reference: search library templates with blueprint.list_templates(query=\"...\"). Read functions with get_template(id, pattern=\"FuncName\").\n\n");
+	CachedCatalog += TEXT("Factory templates below can create complete Blueprints (structure + graph logic) in one call via blueprint.create_from_template.\n");
+	CachedCatalog += TEXT("Library templates provide curated patterns for reference — higher quality than community blueprints. Search with blueprint.list_templates(query=\"...\"), read with get_template(id, pattern=\"FuncName\").\n\n");
 
 	// Group by type
 	TArray<const FOliveTemplateInfo*> Factories;
@@ -288,7 +288,7 @@ void FOliveTemplateSystem::RebuildCatalog()
 
 	if (Factories.Num() > 0)
 	{
-		CachedCatalog += TEXT("Factory templates (USE blueprint.create_from_template for one-call creation):\n");
+		CachedCatalog += TEXT("Factory templates (blueprint.create_from_template for one-call creation):\n");
 		for (const FOliveTemplateInfo* T : Factories)
 		{
 			CachedCatalog += FString::Printf(TEXT("- %s: %s\n"),

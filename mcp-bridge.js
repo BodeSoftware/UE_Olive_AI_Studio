@@ -24,6 +24,12 @@ const PORT_RANGE_START = 3000;
 const PORT_RANGE_END = 3009;
 const DISCOVERY_TIMEOUT = 500; // ms per port check
 
+// Hosts to try during auto-discovery (in order of priority)
+// localhost: bridge runs on the same machine as UE
+// host.docker.internal: bridge runs inside Docker, UE on Windows/Mac host
+// 172.17.0.1: Docker bridge gateway fallback (Linux host)
+const DISCOVERY_HOSTS = ['localhost', 'host.docker.internal', '172.17.0.1'];
+
 // Parse command line arguments
 const args = process.argv.slice(2);
 let serverPort = null; // null means auto-discover
@@ -93,15 +99,20 @@ function checkPort(host, port) {
     });
 }
 
-// Auto-discover MCP server port
-async function discoverPort(host) {
-    log(`Discovering Olive AI MCP server on ${host}...`);
+// Auto-discover MCP server port across one or more hosts.
+// When a specific host is provided (via --host), only that host is tried.
+// Otherwise, tries each host in DISCOVERY_HOSTS until a server is found.
+// Returns { host, port } or null if no server is found.
+async function discoverPort(hosts) {
+    for (const host of hosts) {
+        log(`Discovering Olive AI MCP server on ${host}...`);
 
-    for (let port = PORT_RANGE_START; port <= PORT_RANGE_END; port++) {
-        const found = await checkPort(host, port);
-        if (found) {
-            log(`Found MCP server on port ${port}`);
-            return port;
+        for (let port = PORT_RANGE_START; port <= PORT_RANGE_END; port++) {
+            const found = await checkPort(host, port);
+            if (found) {
+                log(`Found MCP server at ${host}:${port}`);
+                return { host, port };
+            }
         }
     }
 
@@ -154,16 +165,40 @@ function createErrorResponse(id, code, message) {
 
 // Main async entry point
 async function main() {
-    // Determine which port to use
+    // Determine which host and port to use
+    let activeHost = serverHost;
     let activePort = serverPort;
 
-    if (activePort === null) {
-        // Auto-discover
-        activePort = await discoverPort(serverHost);
+    // Track whether the user explicitly set --host
+    const userSpecifiedHost = args.includes('--host');
 
-        if (activePort === null) {
+    if (activePort !== null && !userSpecifiedHost) {
+        // Port is known (e.g., from .mcp.json --port), but host is not.
+        // Try candidate hosts on the known port (handles Docker environments).
+        for (const host of DISCOVERY_HOSTS) {
+            const found = await checkPort(host, activePort);
+            if (found) {
+                activeHost = host;
+                log(`Found MCP server at ${host}:${activePort}`);
+                break;
+            }
+        }
+    }
+
+    if (activePort === null) {
+        // Full auto-discover across candidate hosts and port range
+        const hostsToTry = userSpecifiedHost ? [serverHost] : DISCOVERY_HOSTS;
+        const result = await discoverPort(hostsToTry);
+
+        if (result !== null) {
+            activeHost = result.host;
+            activePort = result.port;
+        } else {
+            const triedHosts = hostsToTry.join(', ');
             log(`ERROR: Could not find Olive AI MCP server on ports ${PORT_RANGE_START}-${PORT_RANGE_END}`);
+            log(`Tried hosts: ${triedHosts}`);
             log('Make sure Unreal Editor is running with the Olive AI Studio plugin enabled.');
+            log('If running inside Docker, ensure the UE editor is reachable via host.docker.internal.');
             log('Check Window > Developer Tools > Output Log for: "MCP Server started on port XXXX"');
 
             // Send a helpful error for the first request and exit
@@ -179,13 +214,13 @@ async function main() {
                     console.log(JSON.stringify(createErrorResponse(
                         request.id,
                         -32000,
-                        'Olive AI MCP server not found. Please ensure Unreal Editor is running with the Olive AI Studio plugin enabled.'
+                        'Olive AI MCP server not found. Ensure Unreal Editor is running with Olive AI Studio enabled. If running in Docker, verify the host is reachable via host.docker.internal.'
                     )));
                 } catch {
                     console.log(JSON.stringify(createErrorResponse(
                         null,
                         -32000,
-                        'Olive AI MCP server not found. Please ensure Unreal Editor is running with the Olive AI Studio plugin enabled.'
+                        'Olive AI MCP server not found. Ensure Unreal Editor is running with Olive AI Studio enabled. If running in Docker, verify the host is reachable via host.docker.internal.'
                     )));
                 }
                 process.exit(1);
@@ -195,7 +230,7 @@ async function main() {
         }
     }
 
-    log(`Connected to Olive AI MCP server at ${serverHost}:${activePort}`);
+    log(`Connected to Olive AI MCP server at ${activeHost}:${activePort}`);
 
     // Setup readline for stdin
     const rl = readline.createInterface({
@@ -204,8 +239,8 @@ async function main() {
         terminal: false
     });
 
-    // Handle incoming JSON-RPC requests
-    rl.on('line', async (line) => {
+    // Handle incoming JSON-RPC requests (concurrent — don't await between lines)
+    rl.on('line', (line) => {
         if (!line.trim()) return;
 
         let request;
@@ -220,18 +255,19 @@ async function main() {
         const method = request.method || 'unknown';
         log(`→ ${method}`);
 
-        try {
-            const response = await forwardRequest(serverHost, activePort, request);
-            log(`← ${method}: ${response.error ? 'error' : 'ok'}`);
-            console.log(JSON.stringify(response));
-        } catch (err) {
-            log(`Error: ${err.message}`);
-            console.log(JSON.stringify(createErrorResponse(
-                request.id,
-                -32603,
-                err.message
-            )));
-        }
+        forwardRequest(activeHost, activePort, request)
+            .then(response => {
+                log(`← ${method}: ${response.error ? 'error' : 'ok'}`);
+                console.log(JSON.stringify(response));
+            })
+            .catch(err => {
+                log(`Error: ${err.message}`);
+                console.log(JSON.stringify(createErrorResponse(
+                    request.id,
+                    -32603,
+                    err.message
+                )));
+            });
     });
 
     rl.on('close', () => {

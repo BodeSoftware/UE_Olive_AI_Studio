@@ -102,9 +102,9 @@ void FOliveBuildTool::RegisterTool()
 
 	FOliveToolRegistry::Get().RegisterTool(
 		TEXT("olive.build"),
-		TEXT("Execute multiple tool operations in a single atomic batch. Use this for multi-step "
-			 "builds instead of calling tools individually -- significantly faster. Each step specifies "
-			 "a tool name and its arguments. Creates a snapshot before execution for one-click rollback."),
+		TEXT("Batch executor. Use this whenever you need 3 or more tool calls -- create, add_component, "
+			 "add_variable, apply_plan_json, compile, read, verify all count. Single call, atomic, faster "
+			 "than calling tools individually. Snapshot created automatically for rollback."),
 		Schema,
 		FOliveToolHandler::CreateStatic(&FOliveBuildTool::HandleBuild),
 		{ TEXT("olive"), TEXT("build"), TEXT("batch") },

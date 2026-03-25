@@ -18,7 +18,7 @@ class FOlivePinSerializer;
 DECLARE_LOG_CATEGORY_EXTERN(LogOliveGraphReader, Log, All);
 
 /** Threshold node count above which graphs are considered "large" and auto-return summary mode */
-static constexpr int32 OLIVE_LARGE_GRAPH_THRESHOLD = 500;
+static constexpr int32 OLIVE_LARGE_GRAPH_THRESHOLD = 100;
 
 /** Default page size for paged graph reads */
 static constexpr int32 OLIVE_GRAPH_PAGE_SIZE = 100;
