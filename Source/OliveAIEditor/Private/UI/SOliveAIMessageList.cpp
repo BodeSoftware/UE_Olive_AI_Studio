@@ -255,7 +255,7 @@ void SOliveAIMessageList::AddToolCallIndicator(const FString& ToolName, const FS
 			[
 				SAssignNew(WidgetState.StatusText, STextBlock)
 				.Text(FText::Format(LOCTEXT("ToolCalling", "Calling {0}..."), FText::FromString(ToolName)))
-				.TextStyle(FAppStyle::Get(), "SmallText")
+				.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 			]
 
 			// Summary text (hidden initially)
@@ -265,7 +265,7 @@ void SOliveAIMessageList::AddToolCallIndicator(const FString& ToolName, const FS
 			.Padding(8, 0, 0, 0)
 			[
 				SAssignNew(WidgetState.SummaryText, STextBlock)
-				.TextStyle(FAppStyle::Get(), "SmallText")
+				.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 				.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 				.Visibility(EVisibility::Collapsed)
 			]
@@ -476,7 +476,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildMessageWidget(TSharedPtr<FOliveUIM
 				[
 					SNew(STextBlock)
 					.Text(RoleName)
-					.TextStyle(FAppStyle::Get(), "SmallText")
+					.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 					.ColorAndOpacity(RoleColor)
 				]
 
@@ -491,7 +491,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildMessageWidget(TSharedPtr<FOliveUIM
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(Message->Timestamp.ToString(TEXT("%H:%M"))))
-					.TextStyle(FAppStyle::Get(), "SmallText")
+					.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 				]
 			]
@@ -647,7 +647,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildBlueprintReadCard(const FOliveResu
 					SNew(STextBlock)
 					.Text(LOCTEXT("ReadSuccess", "Read"))
 					.ColorAndOpacity(FLinearColor(0.2f, 0.8f, 0.4f))
-					.TextStyle(FAppStyle::Get(), "SmallText")
+					.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 				]
 			]
 
@@ -661,13 +661,13 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildBlueprintReadCard(const FOliveResu
 				[
 					SNew(STextBlock)
 					.Text(FText::Format(LOCTEXT("VarCount", "Variables: {0}"), FText::AsNumber(CardData.VariableCount)))
-					.TextStyle(FAppStyle::Get(), "SmallText")
+					.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 				]
 				+ SHorizontalBox::Slot().FillWidth(1.0f)
 				[
 					SNew(STextBlock)
 					.Text(FText::Format(LOCTEXT("FuncCount", "Functions: {0}"), FText::AsNumber(CardData.FunctionCount)))
-					.TextStyle(FAppStyle::Get(), "SmallText")
+					.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 				]
 			]
 
@@ -680,13 +680,13 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildBlueprintReadCard(const FOliveResu
 				[
 					SNew(STextBlock)
 					.Text(FText::Format(LOCTEXT("GraphCount", "Graphs: {0}"), FText::AsNumber(CardData.GraphCount)))
-					.TextStyle(FAppStyle::Get(), "SmallText")
+					.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 				]
 				+ SHorizontalBox::Slot().FillWidth(1.0f)
 				[
 					SNew(STextBlock)
 					.Text(FText::Format(LOCTEXT("CompCount", "Components: {0}"), FText::AsNumber(CardData.ComponentCount)))
-					.TextStyle(FAppStyle::Get(), "SmallText")
+					.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 				]
 			]
 
@@ -700,7 +700,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildBlueprintReadCard(const FOliveResu
 				[
 					SNew(STextBlock)
 					.Text(FText::Format(LOCTEXT("ParentClass", "Parent: {0}"), FText::FromString(CardData.ParentClass)))
-					.TextStyle(FAppStyle::Get(), "SmallText")
+					.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 				]
 			]
@@ -753,7 +753,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildBlueprintWriteCard(const FOliveRes
 					SNew(STextBlock)
 					.Text(CardData.bSuccess ? LOCTEXT("WriteOK", "Done") : LOCTEXT("WriteFail", "Failed"))
 					.ColorAndOpacity(CardData.bSuccess ? FLinearColor(0.2f, 0.8f, 0.4f) : FLinearColor::Red)
-					.TextStyle(FAppStyle::Get(), "SmallText")
+					.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 				]
 			]
 
@@ -765,7 +765,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildBlueprintWriteCard(const FOliveRes
 				SNew(STextBlock)
 				.Text(FText::FromString(CardData.OperationDescription))
 				.AutoWrapText(true)
-				.TextStyle(FAppStyle::Get(), "SmallText")
+				.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 			]
 
 			// Created item
@@ -778,7 +778,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildBlueprintWriteCard(const FOliveRes
 				[
 					SNew(STextBlock)
 					.Text(FText::Format(LOCTEXT("Created", "Created: {0}"), FText::FromString(CardData.CreatedItemName)))
-					.TextStyle(FAppStyle::Get(), "SmallText")
+					.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 					.ColorAndOpacity(FLinearColor(0.2f, 0.8f, 0.4f))
 				]
 			]
@@ -793,7 +793,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildBlueprintWriteCard(const FOliveRes
 				[
 					SNew(STextBlock)
 					.Text(FText::Format(LOCTEXT("ExecTime", "Time: {0}ms"), FText::AsNumber(FMath::RoundToInt(CardData.ExecutionTimeMs))))
-					.TextStyle(FAppStyle::Get(), "SmallText")
+					.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 				]
 			]
@@ -851,7 +851,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildCompileErrorsCard(const FOliveResu
 					[
 						SNew(STextBlock)
 						.Text(FText::Format(LOCTEXT("WarningsHeader", "{0} Warnings"), FText::AsNumber(CardData.Warnings.Num())))
-						.TextStyle(FAppStyle::Get(), "SmallText")
+						.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 						.ColorAndOpacity(FLinearColor(0.9f, 0.8f, 0.1f))
 					]
 					.InitiallyCollapsed(true)
@@ -893,7 +893,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildCompileErrorsCard(const FOliveResu
 						SNew(STextBlock)
 						.Text(FText::FromString(Error.Message))
 						.AutoWrapText(true)
-						.TextStyle(FAppStyle::Get(), "SmallText")
+						.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 					]
 				];
 		}
@@ -924,7 +924,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildSnapshotCard(const FOliveResultCar
 			[
 				SNew(STextBlock)
 				.Text(FText::Format(LOCTEXT("SnapAssets", "{0} assets"), FText::AsNumber(CardData.AssetCount)))
-				.TextStyle(FAppStyle::Get(), "SmallText")
+				.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 			]
 
 			+ SVerticalBox::Slot().AutoHeight()
@@ -947,7 +947,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildSnapshotCard(const FOliveResultCar
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(CardData.ChangedAssets[i]))
-				.TextStyle(FAppStyle::Get(), "SmallText")
+				.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 				.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 			];
 		}
@@ -957,7 +957,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildSnapshotCard(const FOliveResultCar
 			[
 				SNew(STextBlock)
 				.Text(FText::Format(LOCTEXT("MoreAssets", "+{0} more"), FText::AsNumber(CardData.ChangedAssets.Num() - 5)))
-				.TextStyle(FAppStyle::Get(), "SmallText")
+				.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 				.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 			];
 		}
@@ -987,7 +987,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildRawJsonCard(const FOliveResultCard
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(CardData.Subtitle))
-					.TextStyle(FAppStyle::Get(), "SmallText")
+					.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 					.ColorAndOpacity(CardData.bSuccess ? FLinearColor(0.2f, 0.8f, 0.4f) : FLinearColor::Red)
 				]
 			]
@@ -1023,7 +1023,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildNavigationActions(const TArray<FOl
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(CapturedAction.Label))
-					.TextStyle(FAppStyle::Get(), "SmallText")
+					.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 					.ColorAndOpacity(FLinearColor(0.3f, 0.6f, 1.0f))
 				]
 			];
@@ -1053,7 +1053,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildRawJsonExpander(const TSharedPtr<F
 		[
 			SNew(STextBlock)
 			.Text(LOCTEXT("ShowRawJson", "Show Raw JSON"))
-			.TextStyle(FAppStyle::Get(), "SmallText")
+			.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 			.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 		]
 		.BodyContent()
@@ -1064,7 +1064,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildRawJsonExpander(const TSharedPtr<F
 				SNew(SMultiLineEditableTextBox)
 				.IsReadOnly(true)
 				.Text(FText::FromString(*JsonStringPtr))
-				.TextStyle(FAppStyle::Get(), "SmallText")
+				.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 			]
 		];
 }
@@ -1149,7 +1149,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildRunHeaderWidget(const FOliveRun& R
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(Run.StartTime.ToString(TEXT("%H:%M:%S"))))
-					.TextStyle(FAppStyle::Get(), "SmallText")
+					.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 				]
 			]
@@ -1227,7 +1227,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildRunStepWidget(const FOliveRunStep&
 			SNew(STextBlock)
 			.Text(FText::Format(LOCTEXT("StepDesc", "Step {0}: {1}"),
 				FText::AsNumber(StepIndex + 1), FText::FromString(Step.Description)))
-			.TextStyle(FAppStyle::Get(), "SmallText")
+			.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 		]
 
 		// Tool call count
@@ -1241,7 +1241,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildRunStepWidget(const FOliveRunStep&
 			[
 				SNew(STextBlock)
 				.Text(FText::Format(LOCTEXT("ToolCount", "{0} tools"), FText::AsNumber(Step.ToolCalls.Num())))
-				.TextStyle(FAppStyle::Get(), "SmallText")
+				.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 				.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 			]
 		]
@@ -1264,7 +1264,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildRunStepWidget(const FOliveRunStep&
 				[
 					SNew(STextBlock)
 					.Text(LOCTEXT("Retry", "Retry"))
-					.TextStyle(FAppStyle::Get(), "SmallText")
+					.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 					.ColorAndOpacity(FLinearColor(0.3f, 0.6f, 1.0f))
 				]
 			]
@@ -1288,7 +1288,7 @@ TSharedRef<SWidget> SOliveAIMessageList::BuildRunStepWidget(const FOliveRunStep&
 				[
 					SNew(STextBlock)
 					.Text(LOCTEXT("Skip", "Skip"))
-					.TextStyle(FAppStyle::Get(), "SmallText")
+					.Font(FAppStyle::Get().GetFontStyle("SmallText"))
 					.ColorAndOpacity(FLinearColor(0.7f, 0.7f, 0.3f))
 				]
 			]

@@ -597,7 +597,7 @@ FString FOlivePromptAssembler::AssembleWorkerPrompt(
 	{
 		// Fallback: generic worker prompt
 		Result = FString::Printf(
-			TEXT("You are a %s specialist for Unreal Engine 5.5.\n\n"
+			TEXT("You are a %s specialist for Unreal Engine {ENGINE_VERSION}.\n\n"
 				 "## Your Task\n{TASK_DESCRIPTION}\n\n"
 				 "## Context From Previous Steps\n{PREVIOUS_STEP_CONTEXT}\n\n"
 				 "## Project Rules\n{PROJECT_RULES}\n\n"

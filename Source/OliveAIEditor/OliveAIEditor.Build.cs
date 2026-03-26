@@ -50,7 +50,6 @@ public class OliveAIEditor : ModuleRules
 			// Editor
 			"UnrealEd",
 			"EditorFramework",
-			"EditorStyle",
 			"EditorSubsystem",
 			"ToolMenus",
 			"LevelEditor",

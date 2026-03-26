@@ -143,7 +143,10 @@ void FOliveProjectIndex::RebuildIndex()
 void FOliveProjectIndex::BuildProjectConfig()
 {
 	ProjectConfig.ProjectName = FApp::GetProjectName();
-	ProjectConfig.EngineVersion = FEngineVersion::Current().ToString();
+	// Store a clean major.minor version (e.g., "5.5") for use in prompts,
+	// rather than the full build string (e.g., "5.5.0-12345678+++UE5+Release-5.5")
+	const FEngineVersion& EngineVer = FEngineVersion::Current();
+	ProjectConfig.EngineVersion = FString::Printf(TEXT("%u.%u"), EngineVer.GetMajor(), EngineVer.GetMinor());
 
 	// Get enabled plugins
 	IPluginManager& PluginManager = IPluginManager::Get();

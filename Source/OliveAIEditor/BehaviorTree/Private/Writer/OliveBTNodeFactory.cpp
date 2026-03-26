@@ -130,7 +130,7 @@ UClass* FOliveBTNodeFactory::ResolveNodeClass(const FString& ClassName, UClass* 
 	};
 
 	// Strategy 1: Direct lookup
-	if (UClass* Found = ValidateClass(FindObject<UClass>(ANY_PACKAGE, *ClassName)))
+	if (UClass* Found = ValidateClass(FindObject<UClass>(nullptr, *ClassName)))
 	{
 		return Found;
 	}
@@ -139,7 +139,7 @@ UClass* FOliveBTNodeFactory::ResolveNodeClass(const FString& ClassName, UClass* 
 	if (!ClassName.StartsWith(TEXT("U")))
 	{
 		FString WithU = TEXT("U") + ClassName;
-		if (UClass* Found = ValidateClass(FindObject<UClass>(ANY_PACKAGE, *WithU)))
+		if (UClass* Found = ValidateClass(FindObject<UClass>(nullptr, *WithU)))
 		{
 			return Found;
 		}
@@ -165,7 +165,7 @@ UClass* FOliveBTNodeFactory::ResolveNodeClass(const FString& ClassName, UClass* 
 		if (!ClassName.StartsWith(Prefix))
 		{
 			FString WithPrefix = Prefix + ClassName;
-			if (UClass* Found = ValidateClass(FindObject<UClass>(ANY_PACKAGE, *WithPrefix)))
+			if (UClass* Found = ValidateClass(FindObject<UClass>(nullptr, *WithPrefix)))
 			{
 				return Found;
 			}

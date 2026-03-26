@@ -322,14 +322,14 @@ UBlackboardKeyType* FOliveBlackboardWriter::CreateKeyTypeInstance(UObject* Outer
 	// Set base class for Object/Class types
 	if (KeyType == EOliveIRBlackboardKeyType::Object && !BaseClass.IsEmpty())
 	{
-		UClass* FoundClass = FindObject<UClass>(ANY_PACKAGE, *BaseClass);
+		UClass* FoundClass = FindObject<UClass>(nullptr, *BaseClass);
 		if (!FoundClass)
 		{
-			FoundClass = FindObject<UClass>(ANY_PACKAGE, *(TEXT("U") + BaseClass));
+			FoundClass = FindObject<UClass>(nullptr, *(TEXT("U") + BaseClass));
 		}
 		if (!FoundClass)
 		{
-			FoundClass = FindObject<UClass>(ANY_PACKAGE, *(TEXT("A") + BaseClass));
+			FoundClass = FindObject<UClass>(nullptr, *(TEXT("A") + BaseClass));
 		}
 		if (FoundClass)
 		{
@@ -342,14 +342,14 @@ UBlackboardKeyType* FOliveBlackboardWriter::CreateKeyTypeInstance(UObject* Outer
 	}
 	else if (KeyType == EOliveIRBlackboardKeyType::Class && !BaseClass.IsEmpty())
 	{
-		UClass* FoundClass = FindObject<UClass>(ANY_PACKAGE, *BaseClass);
+		UClass* FoundClass = FindObject<UClass>(nullptr, *BaseClass);
 		if (!FoundClass)
 		{
-			FoundClass = FindObject<UClass>(ANY_PACKAGE, *(TEXT("U") + BaseClass));
+			FoundClass = FindObject<UClass>(nullptr, *(TEXT("U") + BaseClass));
 		}
 		if (!FoundClass)
 		{
-			FoundClass = FindObject<UClass>(ANY_PACKAGE, *(TEXT("A") + BaseClass));
+			FoundClass = FindObject<UClass>(nullptr, *(TEXT("A") + BaseClass));
 		}
 		if (FoundClass)
 		{
@@ -362,7 +362,7 @@ UBlackboardKeyType* FOliveBlackboardWriter::CreateKeyTypeInstance(UObject* Outer
 	}
 	else if (KeyType == EOliveIRBlackboardKeyType::Enum && !EnumType.IsEmpty())
 	{
-		UEnum* FoundEnum = FindObject<UEnum>(ANY_PACKAGE, *EnumType);
+		UEnum* FoundEnum = FindObject<UEnum>(nullptr, *EnumType);
 		if (FoundEnum)
 		{
 			Cast<UBlackboardKeyType_Enum>(Instance)->EnumType = FoundEnum;

@@ -141,6 +141,9 @@ public:
 	/** Reload templates from files */
 	void ReloadTemplates();
 
+	/** Substitute engine/project variables (e.g., {ENGINE_VERSION}) in template text */
+	FString SubstituteVariables(const FString& Template) const;
+
 private:
 	FOlivePromptAssembler() = default;
 
@@ -154,9 +157,6 @@ private:
 
 	/** Load prompt templates from Content folder */
 	void LoadPromptTemplates();
-
-	/** Substitute variables in template */
-	FString SubstituteVariables(const FString& Template) const;
 
 	/**
 	 * Returns the mode-specific behavioral suffix appended as the last paragraph

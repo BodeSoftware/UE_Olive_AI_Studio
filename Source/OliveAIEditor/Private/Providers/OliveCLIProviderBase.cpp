@@ -18,6 +18,7 @@
 #include "HAL/PlatformProcess.h"
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
+#include "Misc/EngineVersion.h"
 #include "Misc/Paths.h"
 #include "Async/Async.h"
 #include "Serialization/JsonReader.h"
@@ -392,7 +393,9 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 
 	FString AgentContext;
 	AgentContext += TEXT("# Olive AI Studio - Agent Context\n\n");
-	AgentContext += TEXT("You are an AI assistant integrated with Unreal Engine 5.5 via Olive AI Studio.\n");
+	const FEngineVersion& EngineVer = FEngineVersion::Current();
+	const FString EngineVerStr = FString::Printf(TEXT("%u.%u"), EngineVer.GetMajor(), EngineVer.GetMinor());
+	AgentContext += FString::Printf(TEXT("You are an AI assistant integrated with Unreal Engine %s via Olive AI Studio.\n"), *EngineVerStr);
 	AgentContext += TEXT("Your job is to help users create and modify game assets (Blueprints, Behavior Trees, PCG graphs, etc.) using the MCP tools provided.\n\n");
 	AgentContext += TEXT("## Critical Rules\n");
 	AgentContext += TEXT("- You are NOT a plugin developer. Do NOT modify plugin source code.\n");
@@ -1667,7 +1670,8 @@ FString FOliveCLIProviderBase::BuildCLISystemPrompt(const FString& UserTask, con
 		// Fallback: minimal inline instructions if file missing
 		UE_LOG(LogOliveCLIProvider, Warning,
 			TEXT("cli_blueprint knowledge pack not found. Using minimal fallback."));
-		SystemPrompt += TEXT("You are an Unreal Engine 5.5 Blueprint specialist.\n");
+		const FEngineVersion& FallbackVer = FEngineVersion::Current();
+		SystemPrompt += FString::Printf(TEXT("You are an Unreal Engine %u.%u Blueprint specialist.\n"), FallbackVer.GetMajor(), FallbackVer.GetMinor());
 		SystemPrompt += TEXT("Use blueprint.create, add_component, add_variable, apply_plan_json.\n\n");
 	}
 
@@ -1718,6 +1722,9 @@ FString FOliveCLIProviderBase::BuildCLISystemPrompt(const FString& UserTask, con
 	// Tool call format instructions (CLI-specific)
 	// ==========================================
 	SystemPrompt += FOliveCLIToolCallParser::GetFormatInstructions();
+
+	// Substitute engine/project variables in knowledge pack text
+	SystemPrompt = Assembler.SubstituteVariables(SystemPrompt);
 
 	return SystemPrompt;
 }

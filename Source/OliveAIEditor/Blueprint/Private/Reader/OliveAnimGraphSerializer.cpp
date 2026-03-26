@@ -214,7 +214,7 @@ FOliveIRAnimStateMachine FOliveAnimGraphSerializer::SerializeStateMachine(
 		if (UAnimStateNodeBase* StateNode = Cast<UAnimStateNodeBase>(Node))
 		{
 			// Skip entry nodes
-			if (Cast<UAnimStateEntryNode>(StateNode))
+			if (StateNode->IsA<UAnimStateEntryNode>())
 			{
 				continue;
 			}

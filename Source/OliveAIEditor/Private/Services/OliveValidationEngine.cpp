@@ -1214,7 +1214,7 @@ FOliveValidationResult FOliveCppEnumExistsRule::Validate(
 	}
 
 	// Try to find the enum by name
-	UEnum* FoundEnum = FindObject<UEnum>(ANY_PACKAGE, *EnumName);
+	UEnum* FoundEnum = FindObject<UEnum>(nullptr, *EnumName);
 	if (!FoundEnum)
 	{
 		Result.AddWarning(
@@ -1253,7 +1253,7 @@ FOliveValidationResult FOliveCppStructExistsRule::Validate(
 	}
 
 	// Try to find the struct by name
-	UScriptStruct* FoundStruct = FindObject<UScriptStruct>(ANY_PACKAGE, *StructName);
+	UScriptStruct* FoundStruct = FindObject<UScriptStruct>(nullptr, *StructName);
 	if (!FoundStruct)
 	{
 		Result.AddWarning(
@@ -1703,7 +1703,7 @@ FOliveValidationResult FOliveDuplicateLayerRule::Validate(
 			return Result;
 		}
 
-		UClass* TargetClass = FindObject<UClass>(ANY_PACKAGE, *ClassName);
+		UClass* TargetClass = FindObject<UClass>(nullptr, *ClassName);
 		if (!TargetClass)
 		{
 			return Result; // Class may not be loaded; leave to other rules/tools.
@@ -1987,17 +1987,17 @@ FOliveValidationResult FOlivePCGNodeClassRule::Validate(
 
 	// Try to find the class - check common naming patterns
 	FString FullClassName = FString::Printf(TEXT("PCGSettings_%s"), *SettingsClass);
-	UClass* FoundClass = FindObject<UClass>(ANY_PACKAGE, *FullClassName);
+	UClass* FoundClass = FindObject<UClass>(nullptr, *FullClassName);
 	if (!FoundClass)
 	{
 		// Try with UPCGSettings prefix
 		FullClassName = FString::Printf(TEXT("UPCGSettings_%s"), *SettingsClass);
-		FoundClass = FindObject<UClass>(ANY_PACKAGE, *FullClassName);
+		FoundClass = FindObject<UClass>(nullptr, *FullClassName);
 	}
 	if (!FoundClass)
 	{
 		// Try the exact name provided
-		FoundClass = FindObject<UClass>(ANY_PACKAGE, *SettingsClass);
+		FoundClass = FindObject<UClass>(nullptr, *SettingsClass);
 	}
 
 	if (!FoundClass)
