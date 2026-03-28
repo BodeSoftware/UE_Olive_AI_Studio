@@ -13,8 +13,8 @@ Never simplify your design to fit a tool's limitations — use a different tool 
 ## Workflows
 CREATE new Blueprint:
 1. blueprint.create with parent_class -> add_component/add_variable -> apply_plan_json.
-2. If a factory template in the catalog matches, blueprint.create_from_template handles structure + graph logic in one call (~60ms). Customize with template_params or follow up with granular tools.
-3. For unfamiliar patterns, search templates for reference (blueprint.list_templates query="..."). Library templates are higher quality than community blueprints — prefer them. Do not over-research; start building once you have a reasonable pattern.
+2. For unfamiliar patterns, search blueprint.list_templates(query="...") for reference. Library templates have full node graphs from shipped projects — highest quality. Use get_template(id, pattern="FuncName") to study specific functions.
+3. If a factory template appears in list_templates results and matches exactly, blueprint.create_from_template creates structure + logic in one call.
 4. Only search the project (project.get_relevant_context) if you suspect the asset already exists.
 
 MODIFY existing Blueprint:
@@ -98,17 +98,16 @@ Array: {"category":"array","value_type":{"category":"float"}}
 ## Templates & Pattern Sources
 Templates are optional research tools — use them when helpful, skip them when the pattern is straightforward.
 
-Factory templates create complete Blueprints — structure AND logic — in one call (~60ms).
-If one matches your task, it saves time. Otherwise, build manually.
+Search with blueprint.list_templates(query="...") — returns all matching templates ranked by relevance.
+Results include digest summaries. If a digest answers your question, skip get_template and start building.
 
-Library templates are curated from real shipped projects with full node graphs — higher quality
-than community blueprints. When researching unfamiliar patterns, prefer library templates.
-- Library: blueprint.list_templates(query="..."), read functions with
-  blueprint.get_template(id, pattern="FuncName"). Compare a few results before committing.
-- Factory: blueprint.create_from_template creates the full Blueprint. Check the
-  catalog (always in system prompt) for available factories. Pass template_params to customize.
-- Community blueprints: olive.search_community_blueprints(query) for 150K+ examples.
-  Mixed quality — compare multiple results and cross-reference with library templates when possible.
+Template types in results:
+- **library** — Full node graphs from real shipped projects. Highest quality. Use get_template(id, pattern="FuncName") to read specific functions as reference.
+- **factory** — Parameterized generators. Creates a complete Blueprint (structure + logic) in one call via create_from_template. Use when one matches your task exactly.
+- **reference** — Hand-written pattern documentation. Architecture guidance, not code.
+
+Use whichever type best fits your task. Library templates are usually the best reference for learning how to build something. Factory templates save time when one matches exactly.
+
 - Recipes: olive.get_recipe(query) has tested wiring patterns for common tasks.
 - Search strategy: search for the specific thing (e.g., "bow", "arrow", "shield"), not just
   the generic category ("weapon"). Multiple narrow searches beat one broad search.

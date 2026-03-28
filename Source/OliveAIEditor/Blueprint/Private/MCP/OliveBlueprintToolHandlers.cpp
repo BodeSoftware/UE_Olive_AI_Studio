@@ -10447,9 +10447,8 @@ void FOliveBlueprintToolHandlers::RegisterTemplateTools()
 		Def.InputSchema = OliveBlueprintSchemas::BlueprintCreateFromTemplate();
 		Def.Tags = {TEXT("blueprint"), TEXT("write"), TEXT("template"), TEXT("create")};
 		Def.Category = TEXT("blueprint");
-		Def.WhenToUse = TEXT("ALWAYS check this first when creating a new Blueprint. "
-			"If a factory template matches, use it — it's 100x faster than manual scaffold + apply_plan_json. "
-			"Customize the result with granular tools afterward if needed.");
+		Def.WhenToUse = TEXT("Use when a factory template in list_templates results matches your task exactly. "
+			"Creates structure + graph logic in one call. If no factory matches, build manually or use library templates as reference.");
 		Registry.RegisterTool(Def, FOliveToolHandler::CreateLambda([this](const TSharedPtr<FJsonObject>& Params) -> FOliveToolResult
 		{
 			if (!Params.IsValid())

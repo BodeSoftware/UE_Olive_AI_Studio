@@ -1609,13 +1609,15 @@ FString FOliveCLIProviderBase::BuildConversationPrompt(const TArray<FOliveChatMe
 		Prompt += TEXT("- If the task is modifying EXISTING assets, start with project.search to find exact paths.\n");
 		Prompt += TEXT("- Batch only independent calls (e.g., create + add_component + add_variable).\n");
 		Prompt += TEXT("- Do NOT batch blueprint.preview_plan_json and blueprint.apply_plan_json in the same response.\n");
-		Prompt += TEXT("- Research budget: at most 3-4 read-only calls (list_templates, get_template, get_recipe) before your first mutation. You know UE5 — start building, research more only if you hit a specific error.\n\n");
+		Prompt += TEXT("- Research budget: at most 3-4 read-only calls (list_templates, get_template, get_recipe) before your first mutation. You know UE5 — start building, research more only if you hit a specific error.\n");
+		Prompt += TEXT("- Minimize round-trips: plan ALL operations upfront, then execute in 2-3 olive.build calls max. Batch 1: scaffold all assets + structure. Batch 2: wire all graph logic + compile. Batch 3: fix errors if any.\n\n");
 	}
 	else
 	{
 		Prompt += TEXT("- Tool results are above. Continue with <tool_call> blocks for the next required tools.\n");
 		Prompt += TEXT("- Do not repeat read-only calls you already made (project.search, list_templates, get_template, get_recipe, describe_function). Results are static — reuse them.\n");
-		Prompt += TEXT("- The task is NOT complete until all assets have components, variables, and graph logic wired AND compiled. Do NOT stop after only creating assets.\n\n");
+		Prompt += TEXT("- The task is NOT complete until all assets have components, variables, and graph logic wired AND compiled. Do NOT stop after only creating assets.\n");
+		Prompt += TEXT("- Keep batching. Do NOT make individual tool calls when olive.build can batch them.\n\n");
 	}
 
 	return Prompt;
@@ -1695,6 +1697,58 @@ FString FOliveCLIProviderBase::BuildCLISystemPrompt(const FString& UserTask, con
 	{
 		SystemPrompt += NodeRouting;
 		SystemPrompt += TEXT("\n\n");
+	}
+
+	// ==========================================
+	// Recipe manifest summary (so the AI can make targeted get_recipe calls)
+	// ==========================================
+	{
+		const FString ManifestPath = FPaths::Combine(
+			FPaths::ProjectPluginsDir(), TEXT("UE_Olive_AI_Studio"),
+			TEXT("Content/SystemPrompts/Knowledge/recipes/blueprint/_manifest.json"));
+
+		FString ManifestJson;
+		if (FFileHelper::LoadFileToString(ManifestJson, *ManifestPath))
+		{
+			TSharedPtr<FJsonObject> Manifest;
+			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ManifestJson);
+			if (FJsonSerializer::Deserialize(Reader, Manifest) && Manifest.IsValid())
+			{
+				FString Summary = TEXT("## Available Recipes (call olive.get_recipe with the recipe name for full details)\n");
+				const TArray<TSharedPtr<FJsonValue>>* Recipes = nullptr;
+				if (Manifest->TryGetArrayField(TEXT("recipes"), Recipes) && Recipes)
+				{
+					for (const auto& RecipeVal : *Recipes)
+					{
+						const TSharedPtr<FJsonObject>* RecipeObj = nullptr;
+						if (RecipeVal->TryGetObject(RecipeObj) && RecipeObj && (*RecipeObj).IsValid())
+						{
+							FString Name;
+							(*RecipeObj)->TryGetStringField(TEXT("name"), Name);
+
+							FString TagsStr;
+							const TArray<TSharedPtr<FJsonValue>>* Tags = nullptr;
+							if ((*RecipeObj)->TryGetArrayField(TEXT("tags"), Tags) && Tags)
+							{
+								TArray<FString> TagStrs;
+								for (const auto& T : *Tags)
+								{
+									TagStrs.Add(T->AsString());
+								}
+								TagsStr = FString::Join(TagStrs, TEXT(", "));
+							}
+
+							if (!Name.IsEmpty())
+							{
+								Summary += FString::Printf(TEXT("- %s (%s)\n"), *Name, *TagsStr);
+							}
+						}
+					}
+					SystemPrompt += Summary;
+					SystemPrompt += TEXT("\n");
+				}
+			}
+		}
 	}
 
 	// ==========================================

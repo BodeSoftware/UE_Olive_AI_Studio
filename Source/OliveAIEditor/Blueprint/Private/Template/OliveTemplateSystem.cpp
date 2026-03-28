@@ -267,8 +267,7 @@ TArray<const FOliveTemplateInfo*> FOliveTemplateSystem::GetTemplatesByType(const
 void FOliveTemplateSystem::RebuildCatalog()
 {
 	CachedCatalog = TEXT("[AVAILABLE BLUEPRINT TEMPLATES]\n");
-	CachedCatalog += TEXT("Factory templates below can create complete Blueprints (structure + graph logic) in one call via blueprint.create_from_template.\n");
-	CachedCatalog += TEXT("Library templates provide curated patterns for reference — higher quality than community blueprints. Search with blueprint.list_templates(query=\"...\"), read with get_template(id, pattern=\"FuncName\").\n\n");
+	CachedCatalog += TEXT("Search templates with blueprint.list_templates(query=\"...\"). Library templates (full node graphs from shipped projects) are highest quality for reference. Factory templates create complete Blueprints in one call when available.\n\n");
 
 	// Group by type
 	TArray<const FOliveTemplateInfo*> Factories;
@@ -580,10 +579,8 @@ namespace
 TArray<TSharedPtr<FJsonObject>> FOliveTemplateSystem::SearchTemplates(
 	const FString& Query, int32 MaxResults) const
 {
-	// Reserve slots for factory/reference results so they aren't truncated by library results.
-	// Request fewer library results to leave room for up to 5 factory/reference matches.
-	const int32 LibraryMaxResults = FMath::Max(MaxResults - 5, 1);
-	TArray<TSharedPtr<FJsonObject>> Results = LibraryIndex.Search(Query, LibraryMaxResults);
+	// Let all results (library + factory/reference) compete equally on relevance score.
+	TArray<TSharedPtr<FJsonObject>> Results = LibraryIndex.Search(Query, MaxResults);
 
 	// Also search factory/reference templates (they are excluded from library index)
 	if (!Query.IsEmpty())

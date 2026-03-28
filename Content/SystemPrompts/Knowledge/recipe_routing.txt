@@ -1,6 +1,6 @@
 ## Routing
 - olive.get_recipe(query) has tested wiring patterns. Call it before starting any multi-asset or UI task — dispatcher binding, widget updates, interface calls, and pickup patterns are all covered.
-- NEW blueprint: blueprint.create + components/variables + apply_plan_json. If a factory template in the catalog matches, blueprint.create_from_template handles structure + logic in one call (~60ms). Only search the project (project.get_relevant_context) if you need to check whether the asset already exists.
+- NEW blueprint: blueprint.create + components/variables + apply_plan_json. If a matching template exists (check list_templates results), use it — factory templates create in one call, library templates provide reference patterns. Only search the project (project.get_relevant_context) if you need to check whether the asset already exists.
 - MODIFY existing: project.get_relevant_context (find path) → blueprint.read → templates can provide useful reference patterns → write tools
 - Widget Blueprints that need actor data: wire ownership in Construct (GetPlayerCharacter + Cast) or use expose_on_spawn set before AddToViewport. See blueprint_design_patterns Section "Widget Ownership".
 - MULTI-ASSET: First, list ALL Blueprints the system needs (see System Decomposition in design patterns). Then build each one fully (structure + logic + compile) before starting the next.
@@ -9,8 +9,8 @@
 - Split complex logic into multiple functions when it makes architectural sense.
 
 ## Pattern Research Sources (optional — use when the pattern is unfamiliar)
-- Factory templates — complete Blueprint generators. blueprint.create_from_template for one-call creation when a factory matches your task.
-- Library templates (blueprint.list_templates query="...") — extracted from proven, shipped projects. Full node graphs. Higher quality than community blueprints. Study with get_template, adapt to your project.
+- Library templates (blueprint.list_templates query="...") — extracted from proven, shipped projects. Full node graphs. Highest quality reference. Study with get_template(id, pattern="FuncName"), adapt to your project.
+- Factory templates — parameterized generators. blueprint.create_from_template for one-call creation when a factory matches your exact task.
 - Community blueprints (olive.search_community_blueprints query) — 150K+ community examples. Mixed quality — always compare several results and prefer library templates when both cover the same pattern.
 
 For unfamiliar patterns, check 1-2 results before building. Do not over-research standard UE patterns. Library templates are curated and reliable; community blueprints vary in quality.
