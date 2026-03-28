@@ -85,6 +85,7 @@ namespace OliveNodeTypes
 
 	// Input
 	const FString InputKey = TEXT("InputKey");
+	const FString InputKeyEvent = TEXT("InputKeyEvent");
 	const FString EnhancedInputAction = TEXT("EnhancedInputAction");
 
 	// Utility
@@ -486,6 +487,17 @@ private:
 	 * Required properties: "key" (e.g., "E", "SpaceBar", "Gamepad_FaceButton_Bottom")
 	 */
 	UK2Node* CreateInputKeyNode(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		const TMap<FString, FString>& Properties);
+
+	/**
+	 * Create an InputKeyEvent node (delegate-style key event binding).
+	 * Uses FInputChord internally (supports modifier keys).
+	 * Required properties: "key" (e.g., "E", "SpaceBar", "LeftMouseButton")
+	 * Optional properties: "event_type" (default "Pressed"; also: "Released", "Repeat", "DoubleClick")
+	 */
+	UK2Node* CreateInputKeyEventNode(
 		UBlueprint* Blueprint,
 		UEdGraph* Graph,
 		const TMap<FString, FString>& Properties);

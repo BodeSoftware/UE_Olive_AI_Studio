@@ -1799,6 +1799,9 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleDescribeNodeType(const TShar
 		{ TEXT("makearray"),           TEXT("K2Node_MakeArray") },
 		{ TEXT("makemap"),             TEXT("K2Node_MakeMap") },
 		{ TEXT("makeset"),             TEXT("K2Node_MakeSet") },
+		// Input (key binding)
+		{ TEXT("inputkeyevent"),       TEXT("K2Node_InputKeyEvent") },
+		{ TEXT("inputkey"),            TEXT("K2Node_InputKey") },
 		// Enhanced Input
 		{ TEXT("enhancedinputaction"), TEXT("K2Node_EnhancedInputAction") },
 		{ TEXT("inputaction"),         TEXT("K2Node_EnhancedInputAction") },
@@ -10478,7 +10481,7 @@ void FOliveBlueprintToolHandlers::RegisterTemplateTools()
 		Def.InputSchema = OliveBlueprintSchemas::BlueprintGetTemplate();
 		Def.Tags = {TEXT("blueprint"), TEXT("read"), TEXT("template")};
 		Def.Category = TEXT("blueprint");
-		Def.WhenToUse = TEXT("Only when the digest from list_templates is insufficient. Use the pattern parameter to read a single function's graph — do NOT read the entire template when you only need one function.");
+		Def.WhenToUse = TEXT("Read a template's content. Use the pattern parameter to read a specific function's node graph as reference for building. Omit pattern for structure overview.");
 		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintGetTemplate));
 	}
 	RegisteredToolNames.Add(TEXT("blueprint.get_template"));
@@ -10491,7 +10494,7 @@ void FOliveBlueprintToolHandlers::RegisterTemplateTools()
 		Def.InputSchema = OliveBlueprintSchemas::BlueprintListTemplates();
 		Def.Tags = {TEXT("blueprint"), TEXT("read"), TEXT("template")};
 		Def.Category = TEXT("blueprint");
-		Def.WhenToUse = TEXT("Returns digests with each result. If the digest provides enough context for your task, skip get_template and proceed to building. Only call get_template when you need a specific function's full node graph as reference.");
+		Def.WhenToUse = TEXT("Returns digests with each result. For library templates with relevant functions, call get_template(id, pattern=\"FuncName\") to read the full node graph as reference before building.");
 		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintListTemplates));
 	}
 	RegisteredToolNames.Add(TEXT("blueprint.list_templates"));

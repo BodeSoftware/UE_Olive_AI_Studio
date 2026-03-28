@@ -28,6 +28,7 @@
 #include "K2Node_Knot.h"
 #include "K2Node_MacroInstance.h"
 #include "K2Node_InputKey.h"
+#include "K2Node_InputKeyEvent.h"
 #include "K2Node_ComponentBoundEvent.h"
 #include "K2Node_CallDelegate.h"
 #include "K2Node_AddDelegate.h"
@@ -1203,6 +1204,50 @@ UK2Node* FOliveNodeFactory::CreateInputKeyNode(
 	return InputKeyNode;
 }
 
+UK2Node* FOliveNodeFactory::CreateInputKeyEventNode(
+	UBlueprint* Blueprint,
+	UEdGraph* Graph,
+	const TMap<FString, FString>& Properties)
+{
+	const FString* KeyPtr = Properties.Find(TEXT("key"));
+	if (!KeyPtr || KeyPtr->IsEmpty())
+	{
+		LastError = TEXT("InputKeyEvent node requires 'key' property (e.g., \"E\", \"SpaceBar\", \"LeftMouseButton\")");
+		return nullptr;
+	}
+
+	// Resolve the key from string
+	FKey ResolvedKey(**KeyPtr);
+	if (!ResolvedKey.IsValid())
+	{
+		LastError = FString::Printf(TEXT("Key '%s' is not a valid FKey name"), **KeyPtr);
+		return nullptr;
+	}
+
+	// Resolve optional event type (defaults to Pressed)
+	EInputEvent EventType = IE_Pressed;
+	if (const FString* EventTypePtr = Properties.Find(TEXT("event_type")))
+	{
+		if (EventTypePtr->Equals(TEXT("Released"), ESearchCase::IgnoreCase))
+			EventType = IE_Released;
+		else if (EventTypePtr->Equals(TEXT("Repeat"), ESearchCase::IgnoreCase))
+			EventType = IE_Repeat;
+		else if (EventTypePtr->Equals(TEXT("DoubleClick"), ESearchCase::IgnoreCase))
+			EventType = IE_DoubleClick;
+		// else default to Pressed
+	}
+
+	UK2Node_InputKeyEvent* Node = NewObject<UK2Node_InputKeyEvent>(Graph);
+	Node->InputChord = FInputChord(ResolvedKey);
+	Node->InputKeyEvent = EventType;
+	Node->bConsumeInput = true;
+	Node->bOverrideParentBinding = false;
+	Node->AllocateDefaultPins();
+	Graph->AddNode(Node, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+
+	return Node;
+}
+
 UK2Node* FOliveNodeFactory::CreateCallDelegateNode(
 	UBlueprint* Blueprint,
 	UEdGraph* Graph,
@@ -2186,6 +2231,58 @@ UEdGraphNode* FOliveNodeFactory::CreateNodeByClass(
 					 "Node will have minimal pins. "
 					 "Pass 'struct_type' in properties."),
 				*NodeClass->GetName());
+		}
+	}
+
+	// --- FInputChord support for UK2Node_InputKeyEvent ---
+	// SetNodePropertiesViaReflection cannot set InputChord from a bare key name
+	// string because it's an FInputChord struct (not a bare FKey). The AI
+	// typically passes just a key name. We must construct the FInputChord and
+	// set it BEFORE AllocateDefaultPins.
+	if (NewNode->IsA<UK2Node_InputKeyEvent>())
+	{
+		FString KeyName;
+		const FString* KeyPtr = Properties.Find(TEXT("key"));
+		if (!KeyPtr) KeyPtr = Properties.Find(TEXT("InputKey"));
+		if (!KeyPtr) KeyPtr = Properties.Find(TEXT("InputKeyName"));
+		if (KeyPtr && !KeyPtr->IsEmpty())
+		{
+			KeyName = *KeyPtr;
+		}
+
+		if (!KeyName.IsEmpty())
+		{
+			FKey ResolvedKey(*KeyName);
+			if (ResolvedKey.IsValid())
+			{
+				UK2Node_InputKeyEvent* InputKeyEventNode = CastChecked<UK2Node_InputKeyEvent>(NewNode);
+				InputKeyEventNode->InputChord = FInputChord(ResolvedKey);
+
+				// Also check for event_type
+				EInputEvent EventType = IE_Pressed;
+				if (const FString* EventTypePtr = Properties.Find(TEXT("event_type")))
+				{
+					if (EventTypePtr->Equals(TEXT("Released"), ESearchCase::IgnoreCase))
+						EventType = IE_Released;
+					else if (EventTypePtr->Equals(TEXT("Repeat"), ESearchCase::IgnoreCase))
+						EventType = IE_Repeat;
+					else if (EventTypePtr->Equals(TEXT("DoubleClick"), ESearchCase::IgnoreCase))
+						EventType = IE_DoubleClick;
+				}
+				InputKeyEventNode->InputKeyEvent = EventType;
+				InputKeyEventNode->bConsumeInput = true;
+				InputKeyEventNode->bOverrideParentBinding = false;
+
+				UE_LOG(LogOliveNodeFactory, Log,
+					TEXT("CreateNodeByClass: Set InputChord key='%s' event=%d on %s (defense-in-depth)"),
+					*KeyName, static_cast<int32>(EventType), *NodeClass->GetName());
+			}
+			else
+			{
+				UE_LOG(LogOliveNodeFactory, Warning,
+					TEXT("CreateNodeByClass: Key '%s' is not a valid FKey name for %s"),
+					*KeyName, *NodeClass->GetName());
+			}
 		}
 	}
 
@@ -3819,6 +3916,16 @@ void FOliveNodeFactory::InitializeNodeCreators()
 		return CreateInputKeyNode(BP, G, P);
 	});
 
+	NodeCreators.Add(OliveNodeTypes::InputKeyEvent, [this](UBlueprint* BP, UEdGraph* G, const TMap<FString, FString>& P) -> UEdGraphNode* {
+		return CreateInputKeyEventNode(BP, G, P);
+	});
+
+	// Allow CLI to use K2Node_InputKeyEvent and get routed to the curated creator
+	// (intercepts before universal CreateNodeByClass fallback)
+	NodeCreators.Add(TEXT("K2Node_InputKeyEvent"), [this](UBlueprint* BP, UEdGraph* G, const TMap<FString, FString>& P) -> UEdGraphNode* {
+		return CreateInputKeyEventNode(BP, G, P);
+	});
+
 	NodeCreators.Add(OliveNodeTypes::EnhancedInputAction, [this](UBlueprint* BP, UEdGraph* G, const TMap<FString, FString>& P) -> UEdGraphNode* {
 		return CreateEnhancedInputActionNode(BP, G, P);
 	});
@@ -3902,6 +4009,12 @@ void FOliveNodeFactory::InitializeNodeCreators()
 	TMap<FString, FString> InputKeyProps;
 	InputKeyProps.Add(TEXT("key"), TEXT("Key name to bind (required, e.g., \"E\", \"SpaceBar\", \"Gamepad_FaceButton_Bottom\")"));
 	RequiredPropertiesMap.Add(OliveNodeTypes::InputKey, InputKeyProps);
+
+	// InputKeyEvent
+	TMap<FString, FString> InputKeyEventProps;
+	InputKeyEventProps.Add(TEXT("key"), TEXT("Key name to bind (required, e.g., \"E\", \"SpaceBar\", \"LeftMouseButton\")"));
+	InputKeyEventProps.Add(TEXT("event_type"), TEXT("Input event type (optional, default \"Pressed\"; also: \"Released\", \"Repeat\", \"DoubleClick\")"));
+	RequiredPropertiesMap.Add(OliveNodeTypes::InputKeyEvent, InputKeyEventProps);
 
 	// EnhancedInputAction
 	TMap<FString, FString> EnhancedInputActionProps;

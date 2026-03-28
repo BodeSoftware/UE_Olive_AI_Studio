@@ -166,16 +166,16 @@ FString FOliveAssetResolver::FollowRedirectors(const FString& AssetPath) const
 
 	for (int32 i = 0; i < MaxRedirectorDepth; ++i)
 	{
-		// Try to load as redirector
+		// Try to load as redirector — guard against invalid objects that may have been GC'd
 		UObjectRedirector* Redirector = LoadObject<UObjectRedirector>(nullptr, *CurrentPath);
-		if (!Redirector)
+		if (!Redirector || !IsValid(Redirector))
 		{
 			break;
 		}
 
-		// Get destination
+		// Get destination — validate before dereferencing (may be GC'd between rapid tool calls)
 		UObject* Destination = Redirector->DestinationObject;
-		if (!Destination)
+		if (!Destination || !IsValid(Destination))
 		{
 			break;
 		}

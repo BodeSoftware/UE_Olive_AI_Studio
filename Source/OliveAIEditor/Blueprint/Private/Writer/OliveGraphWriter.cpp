@@ -19,6 +19,7 @@
 #include "K2Node_MakeContainer.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_InputKey.h"
+#include "K2Node_InputKeyEvent.h"
 #include "Kismet/KismetArrayLibrary.h"
 
 // JSON includes
@@ -460,6 +461,59 @@ FOliveBlueprintWriteResult FOliveGraphWriter::SetNodeProperty(
 
 	Blueprint->Modify();
 	Node->Modify();
+
+	// --- UK2Node_InputKeyEvent special case ---
+	// InputChord is an FInputChord struct. The AI typically sends just a key name
+	// string, not the full struct format "(Key=LeftMouseButton,bShift=False,...)".
+	// Handle this by constructing the FInputChord programmatically.
+	if (UK2Node_InputKeyEvent* InputKeyEventNode = Cast<UK2Node_InputKeyEvent>(Node))
+	{
+		if (PropertyName == TEXT("InputChord") || PropertyName == TEXT("key") ||
+			PropertyName == TEXT("InputKey") || PropertyName == TEXT("InputKeyName"))
+		{
+			FKey ResolvedKey(*PropertyValue);
+			if (ResolvedKey.IsValid())
+			{
+				InputKeyEventNode->InputChord = FInputChord(ResolvedKey);
+				Node->ReconstructNode();
+				NotifyGraphChangedForNode(Node);
+				FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+				RefreshBlueprintEditorState(Blueprint, Graph);
+
+				UE_LOG(LogOliveGraphWriter, Log, TEXT("Set InputChord key '%s' on node '%s' in '%s'"),
+					*PropertyValue, *NodeId, *BlueprintPath);
+
+				return FOliveBlueprintWriteResult::Success(BlueprintPath, NodeId);
+			}
+			else
+			{
+				return FOliveBlueprintWriteResult::Error(
+					FString::Printf(TEXT("Key '%s' is not a valid FKey name"), *PropertyValue),
+					BlueprintPath);
+			}
+		}
+		else if (PropertyName == TEXT("InputKeyEvent") || PropertyName == TEXT("event_type"))
+		{
+			EInputEvent EventType = IE_Pressed;
+			if (PropertyValue.Equals(TEXT("Released"), ESearchCase::IgnoreCase))
+				EventType = IE_Released;
+			else if (PropertyValue.Equals(TEXT("Repeat"), ESearchCase::IgnoreCase))
+				EventType = IE_Repeat;
+			else if (PropertyValue.Equals(TEXT("DoubleClick"), ESearchCase::IgnoreCase))
+				EventType = IE_DoubleClick;
+
+			InputKeyEventNode->InputKeyEvent = EventType;
+			Node->ReconstructNode();
+			NotifyGraphChangedForNode(Node);
+			FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+			RefreshBlueprintEditorState(Blueprint, Graph);
+
+			UE_LOG(LogOliveGraphWriter, Log, TEXT("Set InputKeyEvent type '%s' on node '%s' in '%s'"),
+				*PropertyValue, *NodeId, *BlueprintPath);
+
+			return FOliveBlueprintWriteResult::Success(BlueprintPath, NodeId);
+		}
+	}
 
 	// Try to set the property using reflection
 	FProperty* Property = Node->GetClass()->FindPropertyByName(FName(*PropertyName));

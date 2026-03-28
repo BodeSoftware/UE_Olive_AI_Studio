@@ -1605,7 +1605,7 @@ FString FOliveCLIProviderBase::BuildConversationPrompt(const TArray<FOliveChatMe
 	if (UserMessageCount == 1 && ToolResultCount == 0)
 	{
 		Prompt += TEXT("- Respond ONLY with <tool_call> blocks. Do NOT respond with explanation text.\n");
-		Prompt += TEXT("- If the task is creating NEW Blueprints, use blueprint.create with parent_class. If a factory template in the catalog matches, use blueprint.create_from_template instead.\n");
+		Prompt += TEXT("- If the task is creating NEW Blueprints, library templates in the Reference Patterns section below show real wiring from shipped projects — adapt their patterns (spawn setup, collision config, component wiring) to your build even if the template is more complex than your task.\n");
 		Prompt += TEXT("- If the task is modifying EXISTING assets, start with project.search to find exact paths.\n");
 		Prompt += TEXT("- Batch only independent calls (e.g., create + add_component + add_variable).\n");
 		Prompt += TEXT("- Do NOT batch blueprint.preview_plan_json and blueprint.apply_plan_json in the same response.\n");
@@ -1761,6 +1761,90 @@ FString FOliveCLIProviderBase::BuildCLISystemPrompt(const FString& UserTask, con
 		{
 			SystemPrompt += Catalog;
 			SystemPrompt += TEXT("\n\n");
+		}
+	}
+
+	// ==========================================
+	// Task-relevant library template references (auto-injected)
+	// Search library templates using the user's task as query.
+	// Inject top matches so the AI has production-quality wiring
+	// patterns as reference without needing to call get_template.
+	// ==========================================
+	if (!UserTask.IsEmpty() && FOliveTemplateSystem::Get().HasTemplates())
+	{
+		const FOliveLibraryIndex& LibIndex = FOliveTemplateSystem::Get().GetLibraryIndex();
+		TArray<TSharedPtr<FJsonObject>> LibResults = LibIndex.Search(UserTask, /*MaxResults=*/3);
+
+		if (LibResults.Num() > 0)
+		{
+			FString LibBlock = TEXT("## Reference Patterns (from library templates matching your task)\n");
+			LibBlock += TEXT("These are NOT factory templates — they are wiring references from real shipped projects. ");
+			LibBlock += TEXT("You do NOT need to copy them exactly. Study the wiring approach (what functions they call, ");
+			LibBlock += TEXT("how they wire spawn transforms, collision setup, component targets, etc.) and adapt the patterns to your build.\n\n");
+
+			for (const TSharedPtr<FJsonObject>& Result : LibResults)
+			{
+				FString TemplateId, DisplayName, ParentClass, Description;
+				Result->TryGetStringField(TEXT("template_id"), TemplateId);
+				Result->TryGetStringField(TEXT("display_name"), DisplayName);
+				Result->TryGetStringField(TEXT("parent_class"), ParentClass);
+				Result->TryGetStringField(TEXT("catalog_description"), Description);
+
+				LibBlock += FString::Printf(TEXT("### %s (parent: %s)\n"), *DisplayName, *ParentClass);
+				if (!Description.IsEmpty())
+				{
+					LibBlock += Description + TEXT("\n");
+				}
+
+				// Include matched functions with their details
+				const TArray<TSharedPtr<FJsonValue>>* MatchedFunctions = nullptr;
+				if (Result->TryGetArrayField(TEXT("matched_functions"), MatchedFunctions) && MatchedFunctions)
+				{
+					LibBlock += TEXT("Functions: ");
+					for (int32 i = 0; i < MatchedFunctions->Num(); i++)
+					{
+						const TSharedPtr<FJsonObject>* FuncObj = nullptr;
+						if ((*MatchedFunctions)[i]->TryGetObject(FuncObj) && FuncObj && (*FuncObj).IsValid())
+						{
+							FString FuncName, FuncTags;
+							int32 NodeCount = 0;
+							(*FuncObj)->TryGetStringField(TEXT("name"), FuncName);
+							(*FuncObj)->TryGetStringField(TEXT("tags"), FuncTags);
+							(*FuncObj)->TryGetNumberField(TEXT("node_count"), NodeCount);
+							if (i > 0) LibBlock += TEXT(", ");
+							LibBlock += FString::Printf(TEXT("%s (%d nodes, %s)"), *FuncName, NodeCount, *FuncTags);
+						}
+					}
+					LibBlock += TEXT("\n");
+				}
+
+				// Include digest if available
+				const TSharedPtr<FJsonObject>* DigestObj = nullptr;
+				if (Result->TryGetObjectField(TEXT("digest"), DigestObj) && DigestObj && (*DigestObj).IsValid())
+				{
+					FString Purpose;
+					if ((*DigestObj)->TryGetStringField(TEXT("purpose"), Purpose) && !Purpose.IsEmpty())
+					{
+						LibBlock += TEXT("Purpose: ") + Purpose + TEXT("\n");
+					}
+
+					const TArray<TSharedPtr<FJsonValue>>* KeyPatterns = nullptr;
+					if ((*DigestObj)->TryGetArrayField(TEXT("key_patterns"), KeyPatterns) && KeyPatterns && KeyPatterns->Num() > 0)
+					{
+						LibBlock += TEXT("Key patterns: ");
+						for (int32 i = 0; i < KeyPatterns->Num(); i++)
+						{
+							if (i > 0) LibBlock += TEXT("; ");
+							LibBlock += (*KeyPatterns)[i]->AsString();
+						}
+						LibBlock += TEXT("\n");
+					}
+				}
+
+				LibBlock += TEXT("Use: blueprint.get_template(\"") + TemplateId + TEXT("\", pattern=\"FuncName\") for full node graph\n\n");
+			}
+
+			SystemPrompt += LibBlock;
 		}
 	}
 
