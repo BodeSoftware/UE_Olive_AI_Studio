@@ -616,7 +616,7 @@ void FOliveBlueprintToolHandlers::RegisterReaderTools()
 	// blueprint.get_node_pins
 	Registry.RegisterTool(
 		TEXT("blueprint.get_node_pins"),
-		TEXT("Get pin manifest for a specific node in a Blueprint graph"),
+		TEXT("Get pin manifest for ONE node (after set_node_property). For multiple nodes use blueprint.read(section:'graph', mode:'full')"),
 		OliveBlueprintSchemas::BlueprintGetNodePins(),
 		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintGetNodePins),
 		{TEXT("blueprint"), TEXT("read")},
@@ -6344,7 +6344,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintConnectPins(const T
 				ErrorMsg.IsEmpty()
 					? TEXT("Connection failed — pins may already be wired. Use blueprint.read to check current graph state.")
 					: ErrorMsg,
-				TEXT("Call blueprint.get_node_pins on both nodes to verify pin names and types")
+				TEXT("Call blueprint.read(section:'graph', mode:'full') to see all node IDs and pin names")
 			);
 		}
 

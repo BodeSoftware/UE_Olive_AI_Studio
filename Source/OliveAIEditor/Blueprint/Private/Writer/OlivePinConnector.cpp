@@ -949,8 +949,8 @@ TArray<FOliveWiringAlternative> FOlivePinConnector::SuggestAlternatives(
 		}
 
 		Alts.Add({
-			TEXT("Use get_node_pins + connect_pins"),
-			TEXT("Call blueprint.get_node_pins on the source node to see all pins "
+			TEXT("Use blueprint.read + connect_pins"),
+			TEXT("Call blueprint.read(section:'graph', mode:'full') to see all nodes and pins "
 				"(including split sub-pins). Then use connect_pins with the exact sub-pin name."),
 			TEXT("medium")
 		});
@@ -1103,7 +1103,7 @@ TArray<FOliveWiringAlternative> FOlivePinConnector::SuggestAlternatives(
 			Alts.Add({
 				TEXT("Check your pin selection"),
 				TEXT("You are connecting an execution flow pin to a data pin (or vice versa). "
-					"Use blueprint.get_node_pins on the source node to find the correct data output pin."),
+					"Use blueprint.read(section:'graph', mode:'full') to find the correct data output pin."),
 				TEXT("high")
 			});
 		}

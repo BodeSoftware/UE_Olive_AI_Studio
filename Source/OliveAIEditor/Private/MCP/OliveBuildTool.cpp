@@ -254,6 +254,10 @@ FOliveToolResult FOliveBuildTool::HandleBuild(const TSharedPtr<FJsonObject>& Par
 	TArray<TSharedPtr<FJsonValue>> StepResults;
 	StepResults.Reserve(Steps.Num());
 
+	// Batch-level error pattern tracking for enriched failure guidance
+	int32 PinNodeErrorCount = 0;
+	bool bHasPlanJsonRollback = false;
+
 	UE_LOG(LogOliveAI, Log, TEXT("olive.build: executing %d steps%s"),
 		Steps.Num(),
 		*(!Description.IsEmpty() ? FString::Printf(TEXT(" (%s)"), *Description) : TEXT("")));
@@ -301,9 +305,11 @@ FOliveToolResult FOliveBuildTool::HandleBuild(const TSharedPtr<FJsonObject>& Par
 
 			// Include error details
 			FString ErrorMsg;
+			FString ErrorCode;
 			if (StepResult.Messages.Num() > 0)
 			{
 				ErrorMsg = StepResult.Messages[0].Message;
+				ErrorCode = StepResult.Messages[0].Code;
 			}
 			StepJson->SetStringField(TEXT("error"), ErrorMsg);
 
@@ -315,6 +321,55 @@ FOliveToolResult FOliveBuildTool::HandleBuild(const TSharedPtr<FJsonObject>& Par
 			if (StepResult.Data.IsValid())
 			{
 				StepJson->SetObjectField(TEXT("data"), StepResult.Data);
+			}
+
+			// Track error patterns for batch-level analysis
+			if (ErrorCode == TEXT("BP_CONNECT_PINS_FAILED") ||
+				ErrorCode == TEXT("BP_SET_PIN_DEFAULT_FAILED") ||
+				ErrorMsg.Contains(TEXT("pin")) || ErrorMsg.Contains(TEXT("node_")))
+			{
+				PinNodeErrorCount++;
+			}
+			if (Step.ToolName == TEXT("blueprint.apply_plan_json") &&
+				ErrorMsg.Contains(TEXT("ROLLED BACK")))
+			{
+				bHasPlanJsonRollback = true;
+			}
+
+			// Error-code-aware fix guidance for MCP clients
+			FString FixGuidance;
+			if (ErrorCode == TEXT("BP_CONNECT_PINS_FAILED") || ErrorCode == TEXT("BP_SET_PIN_DEFAULT_FAILED"))
+			{
+				FixGuidance = TEXT("Call blueprint.read(section:'graph', mode:'full') to get current node IDs and pin names before retrying.");
+			}
+			else if (ErrorCode == TEXT("BP_ADD_NODE_FAILED"))
+			{
+				FixGuidance = TEXT("Check node type and required properties. Use blueprint.describe_node_type to see available properties.");
+			}
+			else if (ErrorCode == TEXT("PLAN_VALIDATE_FAILED") || ErrorCode == TEXT("PLAN_VALIDATION_FAILED"))
+			{
+				FixGuidance = TEXT("Check exec_after and exec_outputs syntax. exec_outputs goes ON the branch step, not as exec_after on downstream steps.");
+			}
+			else if (ErrorCode == TEXT("PLAN_EXECUTION_FAILED") || ErrorCode == TEXT("PLAN_LOWER_FAILED"))
+			{
+				FixGuidance = TEXT("Plan execution failed and nodes were rolled back. Node IDs from step_to_node_map are INVALID. Call blueprint.read(section:'graph', mode:'full') to get current graph state.");
+			}
+			else if (ErrorCode == TEXT("FUNCTION_NOT_FOUND"))
+			{
+				FixGuidance = TEXT("Use blueprint.describe_function(function_name, target_class) to verify the function exists and get exact pin names.");
+			}
+			else if (ErrorCode == TEXT("ASSET_NOT_FOUND"))
+			{
+				FixGuidance = TEXT("Asset not found at given path. Call project.search to find the correct asset path.");
+			}
+			else if (ErrorCode == TEXT("DUPLICATE_NATIVE_EVENT"))
+			{
+				FixGuidance = TEXT("This event already exists in the graph. Use blueprint.read to find the existing event node and wire from it instead of creating a new one.");
+			}
+
+			if (!FixGuidance.IsEmpty())
+			{
+				StepJson->SetStringField(TEXT("fix_guidance"), FixGuidance);
 			}
 
 			UE_LOG(LogOliveAI, Warning, TEXT("  [%d/%d] %s (%s) - FAILED: %s"),
@@ -386,7 +441,39 @@ FOliveToolResult FOliveBuildTool::HandleBuild(const TSharedPtr<FJsonObject>& Par
 		ErrorMessage.Message = FString::Printf(TEXT("%d of %d steps failed"), FailedCount, Steps.Num());
 		Result.Messages.Add(MoveTemp(ErrorMessage));
 
-		Result.NextStepGuidance = TEXT("Review failed steps and fix the errors. You can re-run olive.build with just the failed steps.");
+		// Build batch-level guidance based on error patterns observed during execution
+		FString BatchGuidance;
+
+		if (bHasPlanJsonRollback)
+		{
+			BatchGuidance += TEXT("PLAN_JSON ROLLBACK: All nodes from the failed apply_plan_json were removed. "
+				"Node IDs from step_to_node_map are INVALID. Call blueprint.read(section:'graph', mode:'full') "
+				"to get the current graph state before referencing any nodes. ");
+		}
+
+		if (PinNodeErrorCount >= 2)
+		{
+			BatchGuidance += TEXT("BEFORE RETRYING: call blueprint.read(section:'graph', mode:'full') "
+				"on the target to get actual node IDs and pin names. ");
+		}
+
+		if (FailedCount >= 3 && CompletedCount == 0)
+		{
+			BatchGuidance += TEXT("ALL STEPS FAILED. Switch to granular tools (add_node + connect_pins "
+				"one at a time) instead of retrying the same batch. ");
+		}
+		else if (FailedCount > 0 && CompletedCount > 0)
+		{
+			BatchGuidance += TEXT("Re-run olive.build with ONLY the corrected failed steps "
+				"(successful steps are already done). ");
+		}
+
+		if (BatchGuidance.IsEmpty())
+		{
+			BatchGuidance = TEXT("Review each failed step's 'fix_guidance' for specific corrections.");
+		}
+
+		Result.NextStepGuidance = BatchGuidance;
 		return Result;
 	}
 }

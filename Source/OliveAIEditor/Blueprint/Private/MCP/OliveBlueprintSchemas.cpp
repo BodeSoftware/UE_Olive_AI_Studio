@@ -373,9 +373,9 @@ namespace OliveBlueprintSchemas
 
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
 		Schema->SetStringField(TEXT("description"),
-			TEXT("Get the pin manifest for a specific node. Returns all pin names, "
-				 "types, directions, defaults, and connection state. Useful after "
-				 "blueprint.set_node_property changes pins via ReconstructNode."));
+			TEXT("Get pin manifest for ONE node. For multiple nodes, use blueprint.read(section:'graph', mode:'full') "
+				 "instead — returns pins for ALL nodes in one call. Only use get_node_pins for a single node "
+				 "after set_node_property reconstructs its pins."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path"), TEXT("graph"), TEXT("node_id")});
 

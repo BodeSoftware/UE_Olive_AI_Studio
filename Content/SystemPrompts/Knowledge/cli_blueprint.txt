@@ -14,7 +14,7 @@ Never simplify your design to fit a tool's limitations — use a different tool 
 CREATE new Blueprint:
 1. blueprint.create with parent_class -> add_component/add_variable -> apply_plan_json.
 2. If a factory template in the catalog matches, blueprint.create_from_template handles structure + graph logic in one call (~60ms). Customize with template_params or follow up with granular tools.
-3. For unfamiliar patterns, search templates for reference (blueprint.list_templates query="..."). Library templates are higher quality than community blueprints — prefer them. Compare a few results before committing to an approach.
+3. For unfamiliar patterns, search templates for reference (blueprint.list_templates query="..."). Library templates are higher quality than community blueprints — prefer them. Do not over-research; start building once you have a reasonable pattern.
 4. Only search the project (project.get_relevant_context) if you suspect the asset already exists.
 
 MODIFY existing Blueprint:
@@ -57,7 +57,17 @@ You cannot wire exec flow INTO them. To trigger a custom event from another even
 - `exec_after` and `exec_outputs` are MUTUALLY EXCLUSIVE on the source step.
 
 WRONG: `exec_after:"@branch.True"` — exec wires do NOT use @ syntax.
-RIGHT: Put `exec_outputs:{"True":"next_step"}` on the branch step itself.
+WRONG: `exec_after:"step_id.True"` or `exec_after:"valid.Is Valid"` — NO dot notation in exec_after.
+RIGHT: Put `exec_outputs` on the SOURCE step. Examples:
+  - Branch: `"exec_outputs":{"True":"step_a","False":"step_b"}`
+  - Cast: `"exec_outputs":{"Cast Succeeded":"step_a","Cast Failed":"step_b"}`
+  - IsValid: `"exec_outputs":{"Is Valid":"step_a","Is Not Valid":"step_b"}`
+  - Sequence: `"exec_outputs":{"Then 0":"step_a","Then 1":"step_b"}`
+  - FlipFlop: `"exec_outputs":{"A":"step_a","B":"step_b"}`
+  - DoOnce: `"exec_outputs":{"Completed":"step_a"}`
+  - Gate: `"exec_outputs":{"Open":"step_a"}`
+  - ForLoop: `"exec_outputs":{"Loop Body":"step_a","Completed":"step_b"}`
+WHY: Named exec outputs are declared on the source step via exec_outputs, not referenced from downstream via exec_after with dot notation.
 
 ## Function Graphs vs EventGraph
 - EventGraph: op:"event" with target:"BeginPlay"/"Tick"/etc.
@@ -131,6 +141,7 @@ For pin wiring, use `@step.auto` — the resolver handles ~80% of connections au
   - `pin_manifests` with complete pin metadata for created nodes
   Use these to fix your plan — do NOT call blueprint.read or get_node_pins to diagnose, the error response already has everything.
   Fix the specific error and retry apply_plan_json, or start fresh with granular tools.
+- To inspect pins on multiple nodes, call blueprint.read(section:'graph', graph_name:'EventGraph', mode:'full') — ONE call returns all nodes with pins. Do NOT loop over get_node_pins per node.
 - After applying plan_json to a complex function (5+ steps), read the function back with blueprint.read_function to verify the graph looks correct. Disconnected data wires don't always cause compile errors.
 - Component functions (SetVelocityInLocalSpace, SetSimulatePhysics, etc.) require target_class when the component is NOT on the current Blueprint's SCS. If you're calling a function on a spawned actor's component, you need a reference to that component first.
 - Calling functions on non-self actors: add `"Target": "@step.auto"` to inputs. Example — set lifespan on a spawned actor:
@@ -210,10 +221,6 @@ WHY: ActorBeginOverlap fires for ANY collision on the entire actor (ground, wall
 WRONG: Using editor.run_python to inspect Blueprint graph nodes (K2Node pins, connections, node types)
 RIGHT: Use blueprint.read_function(asset_path, function_name) or blueprint.get_node_pins(asset_path, node_id)
 WHY: The Python unreal module cannot access K2Node pin data — UK2Node is an editor-internal type not exposed to Python scripting. Blueprint inspection tools (read, read_function, get_node_pins, describe_function) are purpose-built for this.
-
-WRONG: exec_after: "s_branch.True" or exec_after: "s_branch.False"
-RIGHT: Put exec_outputs on the BRANCH step: {"op":"branch",...,"exec_outputs":{"True":"step_a","False":"step_b"}}
-WHY: Branch outputs are declared on the branch step via exec_outputs, not referenced from downstream via exec_after with dot notation.
 
 WRONG: {"op":"call","target":"KismetMathLibrary::Greater_IntInt"}
 RIGHT: {"op":"call","target":"Greater_IntInt"}

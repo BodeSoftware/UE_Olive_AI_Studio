@@ -554,7 +554,7 @@ FString FOliveCLIProviderBase::BuildPrescriptiveGuidance() const
 
 	// === Rule 3: NEVER guess pin names ===
 	G += TEXT("## Rule 3: NEVER Guess Pin Names\n\n");
-	G += TEXT("If you must use `connect_pins`, you MUST call `blueprint.get_node_pins` first.\n");
+	G += TEXT("If you must use `connect_pins`, first call `blueprint.read(section:'graph', mode:'full')` to see all node IDs and pins.\n");
 	G += TEXT("Pin names in Unreal Engine are NOT the same as function parameter names.\n\n");
 	G += TEXT("Common mistakes:\n");
 	G += TEXT("- VariableGet nodes have NO exec pins (no `then`, no `execute`). They only have data output.\n");
@@ -604,7 +604,7 @@ FString FOliveCLIProviderBase::BuildPrescriptiveGuidance() const
 	G += TEXT("- Do NOT fall back to add_node + connect_pins as a workaround\n\n");
 	G += TEXT("When connect_pins fails with 'pin not found':\n");
 	G += TEXT("- The error shows available pins — use THOSE exact names\n");
-	G += TEXT("- Call `blueprint.get_node_pins` to see all pins on a node\n");
+	G += TEXT("- Call `blueprint.read(section:'graph', mode:'full')` to see all nodes and their pins\n");
 	G += TEXT("- Do NOT retry with the same wrong pin name\n\n");
 
 	return G;
@@ -1608,12 +1608,13 @@ FString FOliveCLIProviderBase::BuildConversationPrompt(const TArray<FOliveChatMe
 		Prompt += TEXT("- If the task is creating NEW Blueprints, use blueprint.create with parent_class. If a factory template in the catalog matches, use blueprint.create_from_template instead.\n");
 		Prompt += TEXT("- If the task is modifying EXISTING assets, start with project.search to find exact paths.\n");
 		Prompt += TEXT("- Batch only independent calls (e.g., create + add_component + add_variable).\n");
-		Prompt += TEXT("- Do NOT batch blueprint.preview_plan_json and blueprint.apply_plan_json in the same response.\n\n");
+		Prompt += TEXT("- Do NOT batch blueprint.preview_plan_json and blueprint.apply_plan_json in the same response.\n");
+		Prompt += TEXT("- Research budget: at most 3-4 read-only calls (list_templates, get_template, get_recipe) before your first mutation. You know UE5 — start building, research more only if you hit a specific error.\n\n");
 	}
 	else
 	{
 		Prompt += TEXT("- Tool results are above. Continue with <tool_call> blocks for the next required tools.\n");
-		Prompt += TEXT("- Do not repeat identical project.search queries unless results changed.\n");
+		Prompt += TEXT("- Do not repeat read-only calls you already made (project.search, list_templates, get_template, get_recipe, describe_function). Results are static — reuse them.\n");
 		Prompt += TEXT("- The task is NOT complete until all assets have components, variables, and graph logic wired AND compiled. Do NOT stop after only creating assets.\n\n");
 	}
 

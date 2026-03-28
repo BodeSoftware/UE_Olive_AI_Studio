@@ -21,8 +21,9 @@ Execute Python in UE's editor scripting context. The `unreal` module gives full 
 to editor APIs. Use when neither plan_json nor add_node can express what you need.
 
 ### get_node_pins (blueprint.get_node_pins)
-Re-inspect a node's pins after property changes that reconstruct it.
-Use when: set_node_property changes pin layout (e.g., adding array inputs).
+Re-inspect ONE node's pins after set_node_property changes that reconstruct it.
+For multiple nodes: use blueprint.read(section:'graph', graph_name, mode:'full') —
+returns ALL nodes with pins in one call. Do NOT call get_node_pins in a loop.
 
 ### Mixing approaches
 plan_json creates new nodes — it cannot reference nodes already in the graph by ID.

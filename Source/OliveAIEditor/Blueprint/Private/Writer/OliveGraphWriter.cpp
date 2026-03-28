@@ -18,6 +18,7 @@
 #include "K2Node_CallArrayFunction.h"
 #include "K2Node_MakeContainer.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_InputKey.h"
 #include "Kismet/KismetArrayLibrary.h"
 
 // JSON includes
@@ -502,6 +503,15 @@ FOliveBlueprintWriteResult FOliveGraphWriter::SetNodeProperty(
 
 		// Reconstruct the node to apply changes
 		Node->ReconstructNode();
+
+		// K2Node_InputKey: ReconstructNode reads InputKey before ImportText_Direct
+		// can finish for struct properties. Force a second reconstruct to pick up the
+		// new value and regenerate the title ("Event None" → "Event E").
+		if (Cast<UK2Node_InputKey>(Node))
+		{
+			Node->ReconstructNode();
+		}
+
 		NotifyGraphChangedForNode(Node);
 
 		// Mark the Blueprint as modified
