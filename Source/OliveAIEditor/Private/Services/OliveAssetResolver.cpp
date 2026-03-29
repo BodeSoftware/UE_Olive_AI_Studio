@@ -162,18 +162,44 @@ IAssetEditorInstance* FOliveAssetResolver::GetAssetEditor(const FString& AssetPa
 
 FString FOliveAssetResolver::FollowRedirectors(const FString& AssetPath) const
 {
+	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
 	FString CurrentPath = AssetPath;
 
 	for (int32 i = 0; i < MaxRedirectorDepth; ++i)
 	{
-		// Try to load as redirector — guard against invalid objects that may have been GC'd
+		// Check via asset registry first — avoids LoadObject which can trigger GC
+		// and crash when unrooted UObjects exist in the call chain
+		FString PackagePath = CurrentPath;
+		if (PackagePath.Contains(TEXT(".")))
+		{
+			PackagePath = FPackageName::ObjectPathToPackageName(CurrentPath);
+		}
+
+		TArray<FAssetData> Assets;
+		AssetRegistry.GetAssetsByPackageName(*PackagePath, Assets);
+
+		bool bFoundRedirector = false;
+		for (const FAssetData& Data : Assets)
+		{
+			if (Data.IsRedirector())
+			{
+				bFoundRedirector = true;
+				break;
+			}
+		}
+
+		if (!bFoundRedirector)
+		{
+			break;
+		}
+
+		// Confirmed redirector — safe to load since the package is small
 		UObjectRedirector* Redirector = LoadObject<UObjectRedirector>(nullptr, *CurrentPath);
 		if (!Redirector || !IsValid(Redirector))
 		{
 			break;
 		}
 
-		// Get destination — validate before dereferencing (may be GC'd between rapid tool calls)
 		UObject* Destination = Redirector->DestinationObject;
 		if (!Destination || !IsValid(Destination))
 		{
