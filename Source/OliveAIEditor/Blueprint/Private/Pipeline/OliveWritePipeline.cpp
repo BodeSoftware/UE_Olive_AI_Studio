@@ -193,6 +193,16 @@ FOliveWriteResult FOliveWritePipeline::Execute(const FOliveWriteRequest& Request
 		UE_LOG(LogOliveWritePipeline, Error, TEXT("Execution failed for tool '%s' (%s): %s"),
 			*Request.ToolName, *ErrorCode, *ErrorMessage);
 		Transaction->Cancel(); // Roll back transaction
+
+		// After rollback, force the Blueprint editor to refresh from the reverted
+		// state. This clears any stale caches that may have been updated during
+		// execution (e.g., from graph notifications or pin reconstruction).
+		// Without this, autosave can encounter stale node references → crash.
+		if (UBlueprint* Blueprint = Cast<UBlueprint>(EffectiveTargetAsset))
+		{
+			Blueprint->BroadcastChanged();
+		}
+
 		ExecuteResult.ExecutionTimeMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
 		return ExecuteResult;
 	}

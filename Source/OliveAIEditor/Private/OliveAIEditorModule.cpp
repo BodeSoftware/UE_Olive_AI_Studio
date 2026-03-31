@@ -17,6 +17,11 @@
 #include "MCP/OlivePCGToolHandlers.h"
 #include "Catalog/OlivePCGNodeCatalog.h"
 #include "Utility/OlivePCGAvailability.h"
+#if OLIVE_WITH_NIAGARA
+#include "MCP/OliveNiagaraToolHandlers.h"
+#include "Catalog/OliveNiagaraModuleCatalog.h"
+#include "Utility/OliveNiagaraAvailability.h"
+#endif
 #include "MCP/OliveCppToolHandlers.h"
 #include "MCP/OliveCrossSystemToolHandlers.h"
 #include "MCP/OlivePythonToolHandlers.h"
@@ -154,6 +159,15 @@ void FOliveAIEditorModule::ShutdownModule()
 		FOlivePCGToolHandlers::Get().UnregisterAllTools();
 		FOlivePCGNodeCatalog::Get().Shutdown();
 	}
+
+#if OLIVE_WITH_NIAGARA
+	// Unregister Niagara tools
+	if (FOliveNiagaraAvailability::IsNiagaraAvailable())
+	{
+		FOliveNiagaraToolHandlers::Get().UnregisterAllTools();
+		FOliveNiagaraModuleCatalog::Get().Shutdown();
+	}
+#endif
 
 	// Unregister BT/BB tools
 	FOliveBTToolHandlers::Get().UnregisterAllTools();
@@ -338,6 +352,20 @@ void FOliveAIEditorModule::OnPostEngineInit()
 	{
 		UE_LOG(LogOliveAI, Log, TEXT("PCG plugin not available, skipping PCG tools"));
 	}
+
+#if OLIVE_WITH_NIAGARA
+	// Initialize Niagara tools (guarded by plugin availability)
+	if (FOliveNiagaraAvailability::IsNiagaraAvailable())
+	{
+		FOliveNiagaraModuleCatalog::Get().Initialize();
+		FOliveNiagaraToolHandlers::Get().RegisterAllTools();
+		UE_LOG(LogOliveAI, Log, TEXT("Niagara tools registered"));
+	}
+	else
+	{
+		UE_LOG(LogOliveAI, Log, TEXT("Niagara plugin not available, skipping Niagara tools"));
+	}
+#endif
 
 	// Register C++ tools
 	FOliveCppToolHandlers::Get().RegisterAllTools();

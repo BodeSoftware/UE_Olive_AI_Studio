@@ -138,6 +138,11 @@ public:
 	void RegisterCrossSystemRules();
 
 	/**
+	 * Register built-in Niagara rules
+	 */
+	void RegisterNiagaraRules();
+
+	/**
 	 * Register core rules (PIE protection, schema validation, etc.)
 	 */
 	void RegisterCoreRules();
@@ -383,6 +388,62 @@ public:
 		return { TEXT("pcg.add_node") };
 	}
 	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
+};
+
+// ============================================================================
+// Niagara Validation Rules
+// ============================================================================
+
+/** Validates target asset is a UNiagaraSystem for Niagara write tools */
+class OLIVEAIEDITOR_API FOliveNiagaraAssetTypeRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("NiagaraAssetType")); }
+	virtual FString GetDescription() const override { return TEXT("Validates target is a Niagara system"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return {
+			TEXT("niagara.add_emitter"), TEXT("niagara.add_module"),
+			TEXT("niagara.remove_module"), TEXT("niagara.compile"),
+			TEXT("niagara.set_parameter"), TEXT("niagara.set_emitter_property"),
+		};
+	}
+	virtual FOliveValidationResult Validate(
+		const FString& ToolName,
+		const TSharedPtr<FJsonObject>& Params,
+		UObject* TargetAsset = nullptr) override;
+};
+
+/** Validates the stage parameter is one of the 6 valid Niagara stages */
+class OLIVEAIEDITOR_API FOliveNiagaraStageValidRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("NiagaraStageValid")); }
+	virtual FString GetDescription() const override { return TEXT("Validates stage is a recognized Niagara stage"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return { TEXT("niagara.add_module") };
+	}
+	virtual FOliveValidationResult Validate(
+		const FString& ToolName,
+		const TSharedPtr<FJsonObject>& Params,
+		UObject* TargetAsset = nullptr) override;
+};
+
+/** Validates the Niagara module script exists */
+class OLIVEAIEDITOR_API FOliveNiagaraModuleExistsRule : public IOliveValidationRule
+{
+public:
+	virtual FName GetRuleName() const override { return FName(TEXT("NiagaraModuleExists")); }
+	virtual FString GetDescription() const override { return TEXT("Validates Niagara module script can be found"); }
+	virtual TArray<FString> GetApplicableTools() const override
+	{
+		return { TEXT("niagara.add_module") };
+	}
+	virtual FOliveValidationResult Validate(
+		const FString& ToolName,
+		const TSharedPtr<FJsonObject>& Params,
+		UObject* TargetAsset = nullptr) override;
 };
 
 // ============================================================================

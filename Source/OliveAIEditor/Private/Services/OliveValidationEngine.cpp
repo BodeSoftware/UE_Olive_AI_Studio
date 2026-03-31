@@ -1306,6 +1306,14 @@ void FOliveValidationEngine::RegisterCrossSystemRules()
 	UE_LOG(LogOliveAI, Log, TEXT("Registered Cross-System validation rules"));
 }
 
+void FOliveValidationEngine::RegisterNiagaraRules()
+{
+	RegisterRule(MakeShared<FOliveNiagaraAssetTypeRule>());
+	RegisterRule(MakeShared<FOliveNiagaraStageValidRule>());
+	RegisterRule(MakeShared<FOliveNiagaraModuleExistsRule>());
+	UE_LOG(LogOliveAI, Log, TEXT("Registered Niagara validation rules"));
+}
+
 // FOliveBulkReadLimitRule - limits bulk read operations to 20 assets maximum
 
 FOliveValidationResult FOliveBulkReadLimitRule::Validate(
@@ -2005,6 +2013,131 @@ FOliveValidationResult FOlivePCGNodeClassRule::Validate(
 		Result.AddWarning(TEXT("UNKNOWN_SETTINGS_CLASS"),
 			FString::Printf(TEXT("PCG settings class '%s' was not found. It may not be loaded or uses a different name."), *SettingsClass),
 			TEXT("Common PCG settings: SurfaceSampler, StaticMeshSpawner, PointFilter, PointDensityFilter, AttributeNoise, Difference, Intersection, Union"));
+	}
+
+	return Result;
+}
+
+// ============================================================================
+// Niagara Validation Rules
+// ============================================================================
+
+// FOliveNiagaraAssetTypeRule - validates target is a Niagara system
+// DESIGN NOTE: We check the asset path parameter rather than TargetAsset because
+// the Niagara tool handlers load the asset themselves. TargetAsset is not pre-loaded
+// for Niagara tools (unlike Blueprint). The path non-empty check here is a lightweight
+// guard; the tool handler performs the actual UNiagaraSystem load.
+
+FOliveValidationResult FOliveNiagaraAssetTypeRule::Validate(
+	const FString& ToolName,
+	const TSharedPtr<FJsonObject>& Params,
+	UObject* TargetAsset)
+{
+	FOliveValidationResult Result;
+
+	// If a TargetAsset was pre-loaded, verify it is a Niagara system via class name
+	// (avoids a hard dependency on NiagaraSystem.h in this file)
+	if (TargetAsset)
+	{
+		const FString ClassName = TargetAsset->GetClass()->GetName();
+		if (!ClassName.Contains(TEXT("NiagaraSystem")))
+		{
+			Result.AddError(
+				TEXT("WRONG_ASSET_TYPE"),
+				FString::Printf(TEXT("Tool '%s' requires a Niagara System asset, but got '%s'"),
+					*ToolName, *ClassName),
+				TEXT("Check the asset path points to a UNiagaraSystem asset")
+			);
+		}
+		return Result;
+	}
+
+	// No pre-loaded asset: validate that the path parameter is present and non-empty
+	if (!Params.IsValid())
+	{
+		return Result;
+	}
+
+	FString Path;
+	if (!Params->TryGetStringField(TEXT("path"), Path) || Path.IsEmpty())
+	{
+		Result.AddError(
+			TEXT("MISSING_PATH"),
+			TEXT("Missing 'path' parameter"),
+			TEXT("Provide the content path to a Niagara System asset (e.g., '/Game/Effects/MySystem')")
+		);
+	}
+
+	return Result;
+}
+
+// FOliveNiagaraStageValidRule - validates stage is a recognized Niagara simulation stage
+
+FOliveValidationResult FOliveNiagaraStageValidRule::Validate(
+	const FString& ToolName,
+	const TSharedPtr<FJsonObject>& Params,
+	UObject* TargetAsset)
+{
+	FOliveValidationResult Result;
+
+	if (!Params.IsValid())
+	{
+		return Result;
+	}
+
+	FString Stage;
+	if (!Params->TryGetStringField(TEXT("stage"), Stage) || Stage.IsEmpty())
+	{
+		// Required param check is handled by SchemaValidation rule; skip here
+		return Result;
+	}
+
+	// Accept both PascalCase and snake_case spellings
+	static const TArray<FString> ValidStages = {
+		TEXT("EmitterSpawn"),   TEXT("emitter_spawn"),
+		TEXT("EmitterUpdate"),  TEXT("emitter_update"),
+		TEXT("ParticleSpawn"),  TEXT("particle_spawn"),
+		TEXT("ParticleUpdate"), TEXT("particle_update"),
+		TEXT("SystemSpawn"),    TEXT("system_spawn"),
+		TEXT("SystemUpdate"),   TEXT("system_update")
+	};
+
+	if (!ValidStages.Contains(Stage))
+	{
+		Result.AddError(
+			TEXT("INVALID_NIAGARA_STAGE"),
+			FString::Printf(TEXT("'%s' is not a valid Niagara stage"), *Stage),
+			TEXT("Valid stages: EmitterSpawn, EmitterUpdate, ParticleSpawn, ParticleUpdate, SystemSpawn, SystemUpdate")
+		);
+	}
+
+	return Result;
+}
+
+// FOliveNiagaraModuleExistsRule - validates the module script parameter is present
+// Full resolution (asset path → UNiagaraScript*) is deferred to the tool handler
+// where the module catalog can perform fuzzy matching.
+
+FOliveValidationResult FOliveNiagaraModuleExistsRule::Validate(
+	const FString& ToolName,
+	const TSharedPtr<FJsonObject>& Params,
+	UObject* TargetAsset)
+{
+	FOliveValidationResult Result;
+
+	if (!Params.IsValid())
+	{
+		return Result;
+	}
+
+	FString Module;
+	if (!Params->TryGetStringField(TEXT("module"), Module) || Module.IsEmpty())
+	{
+		Result.AddError(
+			TEXT("MISSING_MODULE"),
+			TEXT("Missing 'module' parameter"),
+			TEXT("Provide the Niagara module script name or content path (e.g., 'Drag' or '/Niagara/Modules/Forces/Drag')")
+		);
 	}
 
 	return Result;

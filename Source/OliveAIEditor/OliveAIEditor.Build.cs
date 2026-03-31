@@ -11,7 +11,7 @@ public class OliveAIEditor : ModuleRules
 
 		// Add recursive include paths for sub-module directories (Blueprint, BehaviorTree, etc.)
 		// so short includes (e.g. "OliveBlueprintTypes.h", "OliveBlackboardReader.h") resolve.
-		string[] SubModules = { "Blueprint", "BehaviorTree", "PCG", "Cpp", "CrossSystem", "Brain", "Python" };
+		string[] SubModules = { "Blueprint", "BehaviorTree", "PCG", "Cpp", "CrossSystem", "Brain", "Python", "Niagara" };
 		foreach (string SubModule in SubModules)
 		{
 			string SubRoot = Path.Combine(ModuleDirectory, SubModule);
@@ -35,6 +35,17 @@ public class OliveAIEditor : ModuleRules
 					PrivateIncludePaths.Add(Dir);
 				}
 			}
+		}
+
+		// Niagara sub-module is optional — only add deps and define when directory exists
+		bool bHasNiagara = Directory.Exists(Path.Combine(ModuleDirectory, "Niagara", "Public"));
+		if (bHasNiagara)
+		{
+			PublicDefinitions.Add("OLIVE_WITH_NIAGARA=1");
+		}
+		else
+		{
+			PublicDefinitions.Add("OLIVE_WITH_NIAGARA=0");
 		}
 
 		PublicDependencyModuleNames.AddRange(new string[]
@@ -121,5 +132,16 @@ public class OliveAIEditor : ModuleRules
 			// Community blueprint search (SQLite FTS5)
 			"SQLiteCore"
 		});
+
+		// Niagara dependencies (conditional — only when Niagara sub-module directory exists)
+		if (bHasNiagara)
+		{
+			PrivateDependencyModuleNames.AddRange(new string[]
+			{
+				"Niagara",
+				"NiagaraCore",
+				"NiagaraEditor"
+			});
+		}
 	}
 }

@@ -748,19 +748,6 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::Execute(
 
     UE_LOG(LogOlivePlanExecutor, Log, TEXT("Phase 6 complete: layout applied"));
 
-    if (Blueprint)
-    {
-        // Re-broadcast after the full batch so any open Blueprint editor invalidates
-        // cached pin/UI state created during programmatic graph edits.
-        FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
-        Blueprint->BroadcastChanged();
-    }
-
-    if (Graph)
-    {
-        Graph->NotifyGraphChanged();
-    }
-
     // Assemble and return result
     const double ElapsedMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
     UE_LOG(LogOlivePlanExecutor, Log,
@@ -772,6 +759,21 @@ FOliveIRBlueprintPlanResult FOlivePlanExecutor::Execute(
         Context.Warnings.Num());
 
     FOliveIRBlueprintPlanResult Result = AssembleResult(Plan, Context);
+
+    // Only broadcast changes on success. On failure, the pipeline will cancel
+    // the transaction (rollback). Broadcasting before rollback leaves the
+    // Blueprint editor with stale cached state referencing nodes that will be
+    // undone — which can cause access violations during autosave/GC.
+    if (Result.bSuccess && Blueprint)
+    {
+        FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+        Blueprint->BroadcastChanged();
+
+        if (Graph)
+        {
+            Graph->NotifyGraphChanged();
+        }
+    }
 
     // Defense-in-depth: clear bOrphanedPin on reused nodes inside the transaction.
     // NOTE: This cleanup runs INSIDE the pipeline's FScopedTransaction, so if the
