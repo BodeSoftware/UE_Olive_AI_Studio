@@ -157,4 +157,22 @@ private:
 	static void CheckCollisionOnTriggerComponent(
 		const FOlivePlanValidationContext& Context,
 		FOlivePlanValidationResult& Result);
+
+	/**
+	 * Check 7: Cross-ubergraph-page event duplication.
+	 * Rejects op:event / op:custom_event / op:component_bound_event /
+	 * op:enhanced_input_action steps when a matching node already exists on
+	 * a SIBLING ubergraph page of the Blueprint. Native events are
+	 * Blueprint-global: a Blueprint can only have one override of each.
+	 * Creating a duplicate on a different page passes structural validation
+	 * but fails Blueprint compilation with "Found more than one function with
+	 * the same name X".
+	 *
+	 * Severity: Error. The suggested fix points the AI at the correct
+	 * graph_target so the executor can reuse the existing node.
+	 */
+	static void CheckEventOnOtherUbergraphPage(
+		const FOlivePlanValidationContext& Context,
+		const FOliveGraphContext& GraphContext,
+		FOlivePlanValidationResult& Result);
 };

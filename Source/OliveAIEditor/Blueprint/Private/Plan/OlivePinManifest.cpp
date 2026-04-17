@@ -10,6 +10,8 @@
 #include "K2Node_Event.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_CallFunction.h"
+#include "UObject/UnrealType.h"
+#include "UObject/Field.h"
 
 // JSON
 #include "Dom/JsonObject.h"
@@ -134,6 +136,127 @@ FOlivePinManifest FOlivePinManifest::Build(
 	Manifest.bHasExecPins = Manifest.Pins.ContainsByPredicate(
 		[](const FOlivePinManifestEntry& E) { return E.bIsExec; });
 	Manifest.bIsPure = !Manifest.bHasExecPins;
+
+	// ================================================================
+	// Populate ParameterAliasName via UFunction reflection.
+	//
+	// Specialized UK2Node_CallFunction subclasses (notably
+	// UK2Node_CreateWidget) rename parameter pins: e.g., the "Class"
+	// parameter on UWidgetBlueprintLibrary::Create becomes a pin named
+	// "WidgetType". When the AI references the underlying parameter
+	// name ("Class") in its plan JSON, FindPinSmart must still resolve
+	// to the correct pin.
+	//
+	// We use a greedy unmatched-set algorithm:
+	//   1. Collect UFunction parameter names (excluding return).
+	//   2. For each parameter, check if a visible data input pin has a
+	//      matching name. If yes, mark both as matched.
+	//   3. Collect unmatched params and unmatched visible data input pins.
+	//   4. If the unmatched sets have the SAME count and > 0, zip them
+	//      in declaration order and set ParameterAliasName on each pin.
+	//
+	// This is safe because:
+	//   - No-op when pin names already match (most CallFunction nodes)
+	//   - Only triggers when counts match (avoids guessing on reshaped nodes)
+	//   - Ignores hidden/exec/self pins (which don't participate in param mapping)
+	//
+	// This is generic: it works for UK2Node_CreateWidget, any other
+	// specialized CallFunction subclass with renamed pins, and any
+	// future K2Node that follows the same pattern — without hardcoding.
+	// ================================================================
+	if (UK2Node_CallFunction* CallNode = Cast<UK2Node_CallFunction>(Node))
+	{
+		if (UFunction* TargetFunc = CallNode->GetTargetFunction())
+		{
+			// Collect UFunction parameter names (excluding return value)
+			TArray<FString> ParamNames;
+			for (TFieldIterator<FProperty> PropIt(TargetFunc); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
+			{
+				if (PropIt->HasAnyPropertyFlags(CPF_ReturnParm))
+				{
+					continue;
+				}
+				ParamNames.Add(PropIt->GetName());
+			}
+
+			// Collect visible data input pin indices in declaration order.
+			// We only consider input pins because UFunction parameters map
+			// to inputs (return value is a separate output pin).
+			TArray<int32> VisibleDataInputIndices;
+			for (int32 i = 0; i < Manifest.Pins.Num(); ++i)
+			{
+				const FOlivePinManifestEntry& E = Manifest.Pins[i];
+				if (E.bIsExec || E.bIsHidden || !E.bIsInput)
+				{
+					continue;
+				}
+				// Skip the hidden self target pin (self isn't in the function param list)
+				if (E.PinName.Equals(TEXT("self"), ESearchCase::IgnoreCase))
+				{
+					continue;
+				}
+				VisibleDataInputIndices.Add(i);
+			}
+
+			// Mark params as matched if any visible pin's name matches.
+			// Use case-insensitive comparison to handle any casing differences.
+			TArray<bool> ParamMatched;
+			ParamMatched.Init(false, ParamNames.Num());
+			TArray<bool> PinMatched;
+			PinMatched.Init(false, VisibleDataInputIndices.Num());
+
+			for (int32 PIdx = 0; PIdx < ParamNames.Num(); ++PIdx)
+			{
+				const FString& ParamName = ParamNames[PIdx];
+				for (int32 VIdx = 0; VIdx < VisibleDataInputIndices.Num(); ++VIdx)
+				{
+					if (PinMatched[VIdx])
+					{
+						continue;
+					}
+					const FOlivePinManifestEntry& E = Manifest.Pins[VisibleDataInputIndices[VIdx]];
+					if (E.PinName.Equals(ParamName, ESearchCase::IgnoreCase))
+					{
+						ParamMatched[PIdx] = true;
+						PinMatched[VIdx] = true;
+						break;
+					}
+				}
+			}
+
+			// Collect the unmatched sets
+			TArray<FString> UnmatchedParams;
+			for (int32 PIdx = 0; PIdx < ParamNames.Num(); ++PIdx)
+			{
+				if (!ParamMatched[PIdx])
+				{
+					UnmatchedParams.Add(ParamNames[PIdx]);
+				}
+			}
+			TArray<int32> UnmatchedPinIndices;
+			for (int32 VIdx = 0; VIdx < VisibleDataInputIndices.Num(); ++VIdx)
+			{
+				if (!PinMatched[VIdx])
+				{
+					UnmatchedPinIndices.Add(VisibleDataInputIndices[VIdx]);
+				}
+			}
+
+			// Zip only if the counts match (ambiguous otherwise — better to skip)
+			if (UnmatchedParams.Num() > 0 && UnmatchedParams.Num() == UnmatchedPinIndices.Num())
+			{
+				for (int32 k = 0; k < UnmatchedParams.Num(); ++k)
+				{
+					Manifest.Pins[UnmatchedPinIndices[k]].ParameterAliasName = UnmatchedParams[k];
+					UE_LOG(LogOlivePinManifest, Verbose,
+						TEXT("Parameter alias: pin '%s' <- param '%s' (function '%s')"),
+						*Manifest.Pins[UnmatchedPinIndices[k]].PinName,
+						*UnmatchedParams[k],
+						*TargetFunc->GetName());
+				}
+			}
+		}
+	}
 
 	UE_LOG(LogOlivePinManifest, Verbose,
 		TEXT("Built manifest for step '%s' (node '%s', type '%s'): %d pins (%s)"),
@@ -427,6 +550,30 @@ const FOlivePinManifestEntry* FOlivePinManifest::FindPinSmart(
 			Entry->DisplayName.Equals(Hint, ESearchCase::IgnoreCase))
 		{
 			if (OutMatchMethod) *OutMatchMethod = TEXT("case_insensitive");
+			return Entry;
+		}
+	}
+
+	// ================================================================
+	// Stage 3.5: PARAMETER ALIAS MATCH
+	//
+	// For K2Node_CallFunction nodes whose pins are renamed relative to
+	// the underlying UFunction parameter (e.g., UK2Node_CreateWidget
+	// exposes "WidgetType" for the "Class" parameter), Build() populates
+	// ParameterAliasName via reflection. This stage lets AIs reference
+	// either the pin name or the underlying parameter name and have
+	// both resolve to the same pin — generically, with no per-node
+	// alias table.
+	// ================================================================
+	for (const FOlivePinManifestEntry* Entry : Candidates)
+	{
+		if (!Entry->ParameterAliasName.IsEmpty() &&
+			Entry->ParameterAliasName.Equals(Hint, ESearchCase::IgnoreCase))
+		{
+			if (OutMatchMethod) *OutMatchMethod = TEXT("parameter_alias");
+			UE_LOG(LogOlivePinManifest, Verbose,
+				TEXT("Parameter alias matched hint '%s' -> pin '%s' (param alias '%s')"),
+				*Hint, *Entry->PinName, *Entry->ParameterAliasName);
 			return Entry;
 		}
 	}

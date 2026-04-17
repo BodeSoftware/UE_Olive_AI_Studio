@@ -1158,7 +1158,11 @@ namespace OliveBlueprintSchemas
 		Properties->SetObjectField(TEXT("graph_target"), GraphTargetProp);
 
 		// mode — optional, defaults to "merge", enum restricted
-		TSharedPtr<FJsonObject> ModeProp = EnumProp(TEXT("Write mode (v1 supports merge only)"), {TEXT("merge")});
+		TSharedPtr<FJsonObject> ModeProp = EnumProp(
+			TEXT("'merge' (default): preserves existing nodes, adds new ones alongside. "
+				 "'replace': clears all non-entry/non-result nodes from the target graph before applying — "
+				 "use to rewrite a function atomically instead of manually deleting nodes."),
+			{TEXT("merge"), TEXT("replace")});
 		ModeProp->SetStringField(TEXT("default"), TEXT("merge"));
 		Properties->SetObjectField(TEXT("mode"), ModeProp);
 
@@ -1190,7 +1194,11 @@ namespace OliveBlueprintSchemas
 		Properties->SetObjectField(TEXT("graph_target"), GraphTargetProp);
 
 		// mode — optional, defaults to "merge", enum restricted
-		TSharedPtr<FJsonObject> ModeProp = EnumProp(TEXT("Write mode (v1 supports merge only)"), {TEXT("merge")});
+		TSharedPtr<FJsonObject> ModeProp = EnumProp(
+			TEXT("'merge' (default): preserves existing nodes, adds new ones alongside. "
+				 "'replace': clears all non-entry/non-result nodes from the target graph before applying — "
+				 "use to rewrite a function atomically instead of manually deleting nodes."),
+			{TEXT("merge"), TEXT("replace")});
 		ModeProp->SetStringField(TEXT("default"), TEXT("merge"));
 		Properties->SetObjectField(TEXT("mode"), ModeProp);
 

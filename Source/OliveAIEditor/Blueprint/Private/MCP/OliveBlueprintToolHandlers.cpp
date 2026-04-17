@@ -915,14 +915,16 @@ void FOliveBlueprintToolHandlers::RegisterGraphWriterTools()
 	RegisteredToolNames.Add(TEXT("blueprint.add_node"));
 
 	// blueprint.remove_node
-	Registry.RegisterTool(
-		TEXT("blueprint.remove_node"),
-		TEXT("Remove a node from a Blueprint graph"),
-		OliveBlueprintSchemas::BlueprintRemoveNode(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintRemoveNode),
-		{TEXT("blueprint"), TEXT("write"), TEXT("graph")},
-		TEXT("blueprint")
-	);
+	{
+		FOliveToolDefinition Def;
+		Def.Name = TEXT("blueprint.remove_node");
+		Def.Description = TEXT("Remove a node from a Blueprint graph");
+		Def.InputSchema = OliveBlueprintSchemas::BlueprintRemoveNode();
+		Def.Tags = {TEXT("blueprint"), TEXT("write"), TEXT("graph")};
+		Def.Category = TEXT("blueprint");
+		Def.WhenToUse = TEXT("For removing 1-2 specific nodes surgically. To rewrite a function, use blueprint.apply_plan_json with mode:\"replace\" instead — never loop remove_node to clear an entire graph.");
+		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintRemoveNode));
+	}
 	RegisteredToolNames.Add(TEXT("blueprint.remove_node"));
 
 	// blueprint.connect_pins
@@ -1894,9 +1896,54 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleDescribeNodeType(const TShar
 		// Before returning an error, try the node catalog fuzzy match.
 		// If the top result has score >= 500 (prefix match or exact ID match),
 		// attempt to resolve it as an actual class instead of just suggesting it.
+		//
+		// Generic camelCase fallback: catalog display names use spaces
+		// ("Create Widget"), but the AI often sends squashed camelCase tokens
+		// ("CreateWidget"). Build a space-split variant of the input and run
+		// fuzzy match against both forms, then pick the better score. This is
+		// generic — it applies to every camelCase node name the AI might use
+		// (CreateWidget, SpawnActorFromClass, GetActorLocation, etc.) without
+		// hardcoding any specific alias.
+		auto SplitCamelCase = [](const FString& In) -> FString
+		{
+			FString Out;
+			Out.Reserve(In.Len() * 2);
+			for (int32 Idx = 0; Idx < In.Len(); ++Idx)
+			{
+				const TCHAR Ch = In[Idx];
+				if (Idx > 0 && FChar::IsUpper(Ch)
+					&& (FChar::IsLower(In[Idx - 1]) || FChar::IsDigit(In[Idx - 1])))
+				{
+					Out.AppendChar(TEXT(' '));
+				}
+				Out.AppendChar(Ch);
+			}
+			return Out;
+		};
+
 		if (FOliveNodeCatalog::Get().IsInitialized())
 		{
 			TArray<FOliveNodeSuggestion> Suggestions = FOliveNodeCatalog::Get().FuzzyMatch(TypeName, 5);
+
+			// Also try the camelCase-split form if it differs from the original.
+			// Keep whichever variant produced the highest top score.
+			const FString SplitVariant = SplitCamelCase(NormalizedInput);
+			if (!SplitVariant.Equals(NormalizedInput, ESearchCase::CaseSensitive)
+				&& !SplitVariant.Equals(TypeName, ESearchCase::CaseSensitive))
+			{
+				TArray<FOliveNodeSuggestion> SplitSuggestions =
+					FOliveNodeCatalog::Get().FuzzyMatch(SplitVariant, 5);
+				const int32 OriginalTop = Suggestions.Num() > 0 ? Suggestions[0].Score : 0;
+				const int32 SplitTop = SplitSuggestions.Num() > 0 ? SplitSuggestions[0].Score : 0;
+				if (SplitTop > OriginalTop)
+				{
+					Suggestions = MoveTemp(SplitSuggestions);
+					UE_LOG(LogOliveBPTools, Verbose,
+						TEXT("HandleDescribeNodeType: camelCase split '%s' -> '%s' improved fuzzy score %d -> %d"),
+						*NormalizedInput, *SplitVariant, OriginalTop, SplitTop);
+				}
+			}
+
 			if (Suggestions.Num() > 0 && Suggestions[0].Score >= 500)
 			{
 				const FString& TopTypeId = Suggestions[0].TypeId;
@@ -9889,20 +9936,65 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const
 					ResultData->SetStringField(TEXT("rollback_warning"),
 						TEXT("All nodes were rolled back. Node IDs are INVALID. Call blueprint.read to get current IDs."));
 
-					// Node creation failed entirely -- transaction rolled back, all node IDs are invalid
-					FString ErrorMsg = FString::Printf(
-						TEXT("Plan execution failed: %d of %d nodes created. "
-							 "IMPORTANT: All nodes from this plan_json call have been ROLLED BACK and removed from the graph. "
-							 "Node IDs from step_to_node_map are NO LONGER VALID. "
-							 "Call blueprint.read on the target function/graph to get current node IDs before "
-							 "referencing any nodes."),
+					// Derive a specific, actionable top-level error code/message from the first
+					// structured plan error when available. The generic rollback notification is
+					// kept as a suffix so the AI still knows state was rolled back, but the prefix
+					// tells it exactly what went wrong so the self-correction loop can act without
+					// guessing. Falling back to PLAN_EXECUTION_FAILED only if there are no
+					// structured errors preserves the legacy behavior for edge cases.
+					FString TopErrorCode = TEXT("PLAN_EXECUTION_FAILED");
+					FString TopErrorMessage;
+					FString TopSuggestion;
+					if (PlanResult.Errors.Num() > 0)
+					{
+						const FOliveIRBlueprintPlanError& FirstErrForTop = PlanResult.Errors[0];
+						if (!FirstErrForTop.ErrorCode.IsEmpty())
+						{
+							TopErrorCode = FirstErrForTop.ErrorCode;
+						}
+						TopErrorMessage = FirstErrForTop.Message;
+						TopSuggestion = FirstErrForTop.Suggestion;
+					}
+
+					const FString RollbackSuffix = FString::Printf(
+						TEXT(" (Plan rolled back: %d of %d nodes created. Node IDs from step_to_node_map are INVALID. "
+							 "Call blueprint.read for current IDs before referencing any nodes.)"),
 						static_cast<int32>(PlanResult.StepToNodeMap.Num()),
 						CapturedPlan.Steps.Num());
 
+					FString ErrorMsg;
+					if (!TopErrorMessage.IsEmpty())
+					{
+						ErrorMsg = TopErrorMessage + RollbackSuffix;
+					}
+					else
+					{
+						ErrorMsg = FString::Printf(
+							TEXT("Plan execution failed: %d of %d nodes created. "
+								 "IMPORTANT: All nodes from this plan_json call have been ROLLED BACK and removed from the graph. "
+								 "Node IDs from step_to_node_map are NO LONGER VALID. "
+								 "Call blueprint.read on the target function/graph to get current node IDs before "
+								 "referencing any nodes."),
+							static_cast<int32>(PlanResult.StepToNodeMap.Num()),
+							CapturedPlan.Steps.Num());
+					}
+
+					// Mirror the top-level error fields onto the handler's rich ResultData
+					// BEFORE we assign it to ErrorResult, so StageExecute's extraction at
+					// OliveWritePipeline.cpp:190 picks them up. Without this mirror, the
+					// assignment at the end of this block overwrites the fresh ResultData
+					// that ExecutionError() created and loses the top-level error fields.
+					ResultData->SetStringField(TEXT("error_code"), TopErrorCode);
+					ResultData->SetStringField(TEXT("error_message"), ErrorMsg);
+					if (!TopSuggestion.IsEmpty())
+					{
+						ResultData->SetStringField(TEXT("suggestion"), TopSuggestion);
+					}
+
 					FOliveWriteResult ErrorResult = FOliveWriteResult::ExecutionError(
-						TEXT("PLAN_EXECUTION_FAILED"),
+						TopErrorCode,
 						ErrorMsg,
-						PlanResult.Errors.Num() > 0 ? PlanResult.Errors[0].Suggestion : TEXT(""));
+						TopSuggestion);
 					ErrorResult.ResultData = ResultData;
 
 					// Build contextual next-step guidance from the first error

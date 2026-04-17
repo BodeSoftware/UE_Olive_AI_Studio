@@ -4,8 +4,12 @@ MODIFY existing Blueprint:
 1. project.get_relevant_context to find exact asset path (never guess paths)
 2. blueprint.read to understand current structure
 3. Add variables/components as needed
-4. Wire graph logic — apply_plan_json mode:"merge" preserves existing nodes
+4. Edit approach:
+   - Small change (1-3 nodes): granular tools (remove_node, add_node, connect_pins) on the specific nodes
+   - Add logic: apply_plan_json mode:"merge" preserves existing nodes
+   - Rewrite function: apply_plan_json mode:"replace" graph_target:"FuncName"
 
-Always search for the path first — paths vary by project.
+NEVER bulk-delete nodes with remove_node loops. mode:"replace" handles it atomically.
+
 Read the graph BEFORE writing to know what events/nodes already exist.
 The plan executor reuses existing event nodes automatically.

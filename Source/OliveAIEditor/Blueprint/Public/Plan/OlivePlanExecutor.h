@@ -378,34 +378,53 @@ private:
         FString& OutStepId,
         FString& OutPinHint);
 
-    /** Find existing event/custom_event node in graph for reuse */
+    /**
+     * Walk every ubergraph page of a Blueprint and invoke `Predicate` on each.
+     * Returns the first non-null node any predicate returns, or nullptr.
+     * Used by the FindExisting*Node helpers to detect Blueprint-global duplicates
+     * across sibling ubergraph pages (events, custom events, component-bound events,
+     * enhanced input actions are all Blueprint-global for uniqueness purposes).
+     */
+    UEdGraphNode* FindNodeAcrossUbergraphPages(
+        UBlueprint* Blueprint,
+        TFunctionRef<UEdGraphNode*(UEdGraph*)> Predicate);
+
+    /**
+     * Find existing event/custom_event node anywhere in the Blueprint for reuse.
+     * Native events are resolved via FBlueprintEditorUtils::FindOverrideForFunction
+     * (already Blueprint-scoped). Custom events are scanned across every ubergraph
+     * page via FindNodeAcrossUbergraphPages. Callers must check the returned node's
+     * GetGraph() to decide whether the match lives on the requested target graph.
+     */
     UEdGraphNode* FindExistingEventNode(
-        UEdGraph* Graph,
         UBlueprint* Blueprint,
         const FString& EventName,
         bool bIsCustomEvent);
 
     /**
-     * Find existing UK2Node_EnhancedInputAction in graph for reuse.
-     * Matches by UInputAction asset name (case-insensitive).
-     * @param Graph The graph to search
+     * Find existing UK2Node_EnhancedInputAction anywhere in the Blueprint for reuse.
+     * Matches by UInputAction asset name (case-insensitive). Walks every ubergraph
+     * page because enhanced input action nodes are Blueprint-global for uniqueness.
+     * @param Blueprint The Blueprint to search
      * @param InputActionName The IA_ name to search for (e.g., "IA_Interact")
      * @return The existing node, or nullptr if not found
      */
     UEdGraphNode* FindExistingEnhancedInputNode(
-        UEdGraph* Graph,
+        UBlueprint* Blueprint,
         const FString& InputActionName);
 
     /**
-     * Find existing UK2Node_ComponentBoundEvent in graph for reuse.
-     * Matches by delegate property name and component property name.
-     * @param Graph The graph to search
+     * Find existing UK2Node_ComponentBoundEvent anywhere in the Blueprint for reuse.
+     * Matches by delegate property name and component property name. Walks every
+     * ubergraph page because component-bound events are Blueprint-global for
+     * uniqueness (a given delegate on a given component can only be bound once).
+     * @param Blueprint The Blueprint to search
      * @param DelegateName The delegate property name (e.g., "OnComponentBeginOverlap")
      * @param ComponentName The component variable name (e.g., "CollisionComp")
      * @return The existing node, or nullptr if not found
      */
     UEdGraphNode* FindExistingComponentBoundEventNode(
-        UEdGraph* Graph,
+        UBlueprint* Blueprint,
         const FString& DelegateName,
         const FString& ComponentName);
 

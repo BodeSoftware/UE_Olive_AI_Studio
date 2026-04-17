@@ -5,6 +5,7 @@
 #include "Writer/OliveNodeFactory.h"
 #include "OliveClassResolver.h"
 #include "Engine/Blueprint.h"
+#include "GameFramework/Actor.h"
 #include "Components/ActorComponent.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
@@ -53,6 +54,7 @@ FOlivePlanValidationResult FOlivePlanValidator::Validate(
 	CheckVariableExists(Context, Result);
 	CheckExecSourceIsReturn(Context, Result);
 	CheckCollisionOnTriggerComponent(Context, Result);
+	CheckEventOnOtherUbergraphPage(Context, GraphContext, Result);
 
 	if (Result.Errors.Num() > 0)
 	{
@@ -170,15 +172,25 @@ void FOlivePlanValidator::CheckComponentFunctionTargets(
 
 		const FOliveIRBlueprintPlanStep& PlanStep = Context.Plan.Steps[*PlanIndexPtr];
 
-		// Check for Target input -- either a @ref or a string-literal component name
+		// Check for Target/self input -- either a @ref or a string-literal component name.
+		// The AI can wire the self pin via "Target" or "self" key (both map to the
+		// hidden self pin on K2Node_CallFunction). Match the resolver's lookup order.
 		const FString* TargetValue = PlanStep.Inputs.Find(TEXT("Target"));
+		if (!TargetValue)
+		{
+			TargetValue = PlanStep.Inputs.Find(TEXT("self"));
+		}
 		bool bHasTargetWired = false;
 
 		if (TargetValue && !TargetValue->IsEmpty())
 		{
 			if (TargetValue->StartsWith(TEXT("@")))
 			{
-				// @ref syntax -- AI provided an explicit component reference
+				// @ref syntax -- AI provided an explicit component/object reference.
+				// Trust the data wire: the referenced step will provide the correct
+				// type at runtime. This covers cross-Blueprint patterns like
+				// get_var → cast → get_var where the target is a component from
+				// an external actor, not from this Blueprint's own component panel.
 				bHasTargetWired = true;
 			}
 			else if (Context.Blueprint->SimpleConstructionScript)
@@ -265,15 +277,36 @@ void FOlivePlanValidator::CheckComponentFunctionTargets(
 				MatchCount, *ClassDisplay, *Resolved.StepId);
 		}
 
+		const bool bIsActorBP = Context.Blueprint->ParentClass &&
+			Context.Blueprint->ParentClass->IsChildOf(AActor::StaticClass());
+		const FString ParentDisplay = Context.Blueprint->ParentClass
+			? Context.Blueprint->ParentClass->GetName() : TEXT("UObject");
+
+		// Build context-appropriate parenthetical based on class type AND match count
+		FString ContextHint;
+		if (!bIsActorBP)
+		{
+			ContextHint = TEXT(" (not an Actor — has no components)");
+		}
+		else if (MatchCount == 0)
+		{
+			ContextHint = TEXT(" (Actor — no matching component found)");
+		}
+		else
+		{
+			ContextHint = FString::Printf(
+				TEXT(" (Actor — %d matching components, ambiguous)"), MatchCount);
+		}
+
 		Result.Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
 			TEXT("COMPONENT_FUNCTION_ON_ACTOR"),
 			Resolved.StepId,
 			FString::Printf(TEXT("/steps/%d/target"), *PlanIndexPtr),
 			FString::Printf(
 				TEXT("Function '%s' belongs to component class '%s', but this Blueprint "
-					 "inherits from Actor. Without a Target pin wired to a component "
-					 "reference, this will target Self (the Actor), causing a compile error."),
-				*FuncDisplay, *ClassDisplay),
+					 "inherits from '%s'%s. Without a Target/self input wired to a component "
+					 "reference, there is no valid target for this call."),
+				*FuncDisplay, *ClassDisplay, *ParentDisplay, *ContextHint),
 			SuggestionText));
 
 		UE_LOG(LogOlivePlanValidator, Warning,
@@ -1053,5 +1086,151 @@ void FOlivePlanValidator::CheckCollisionOnTriggerComponent(
 
 		UE_LOG(LogOlivePlanValidator, Warning,
 			TEXT("Phase 0: COLLISION_ON_TRIGGER_COMPONENT -- %s"), *WarningMessage);
+	}
+}
+
+// ============================================================================
+// Check 7: Cross-Ubergraph-Page Event Duplication
+// ============================================================================
+//
+// Native events (BeginPlay, Tick, etc.), custom events, component-bound events,
+// and enhanced input action nodes are Blueprint-global: a Blueprint can only
+// have ONE instance of each across ALL its ubergraph pages. When the AI targets
+// a page that doesn't currently hold the event, the plan executor's Phase 1 will
+// create a duplicate and the compiler rejects it with:
+//
+//     "Found more than one function with the same name X; second occurance at ..."
+//
+// This check runs BEFORE the transaction opens so we can fail fast with an
+// actionable error telling the AI exactly which graph_target to retry with.
+// This mirrors the runtime EVENT_ON_DIFFERENT_PAGE fail-fast in PhaseCreateNodes;
+// catching it here saves a rollback cycle.
+//
+// This is generic: it covers op:event, op:custom_event,
+// op:component_bound_event, and op:enhanced_input_action via the same scan.
+
+#include "K2Node_Event.h"
+#include "K2Node_CustomEvent.h"
+#include "K2Node_EnhancedInputAction.h"
+#include "K2Node_ComponentBoundEvent.h"
+
+void FOlivePlanValidator::CheckEventOnOtherUbergraphPage(
+	const FOlivePlanValidationContext& Context,
+	const FOliveGraphContext& GraphContext,
+	FOlivePlanValidationResult& Result)
+{
+	if (!Context.Blueprint || GraphContext.GraphName.IsEmpty())
+	{
+		return;
+	}
+
+	// Only meaningful for ubergraph pages. Function/macro graphs don't host
+	// these node types and wouldn't have a cross-page collision.
+	if (GraphContext.bIsFunctionGraph || GraphContext.bIsMacroGraph)
+	{
+		return;
+	}
+
+	// The target page may be any of the Blueprint's ubergraph pages.
+	UBlueprint* BP = Context.Blueprint;
+
+	for (int32 StepIdx = 0; StepIdx < Context.Plan.Steps.Num(); ++StepIdx)
+	{
+		const FOliveIRBlueprintPlanStep& Step = Context.Plan.Steps[StepIdx];
+
+		const bool bIsEvent           = (Step.Op == OlivePlanOps::Event);
+		const bool bIsCustomEvent     = (Step.Op == OlivePlanOps::CustomEvent);
+
+		if (!bIsEvent && !bIsCustomEvent)
+		{
+			// Note: op:component_bound_event and op:enhanced_input_action
+			// are handled by the executor's cross-page fail-fast. They're
+			// less prone to this class of bug because the AI rarely targets
+			// them on the "wrong" ubergraph page deliberately. Skipping here
+			// keeps the Phase 0 check focused on the common case without
+			// duplicating executor logic.
+			continue;
+		}
+
+		const FName EventFName(*Step.Target);
+
+		// Walk every ubergraph page and look for an existing match.
+		UEdGraphNode* FoundOnPage = nullptr;
+		UEdGraph* FoundPage = nullptr;
+
+		for (UEdGraph* Page : BP->UbergraphPages)
+		{
+			if (!Page)
+			{
+				continue;
+			}
+
+			for (UEdGraphNode* Node : Page->Nodes)
+			{
+				if (bIsCustomEvent)
+				{
+					if (UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node))
+					{
+						if (CustomEvent->CustomFunctionName.ToString().Equals(Step.Target, ESearchCase::CaseSensitive))
+						{
+							FoundOnPage = CustomEvent;
+							FoundPage = Page;
+							break;
+						}
+					}
+				}
+				else
+				{
+					if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
+					{
+						if (EventNode->EventReference.GetMemberName() == EventFName)
+						{
+							FoundOnPage = EventNode;
+							FoundPage = Page;
+							break;
+						}
+					}
+				}
+			}
+
+			if (FoundOnPage)
+			{
+				break;
+			}
+		}
+
+		if (!FoundOnPage || !FoundPage)
+		{
+			continue; // No existing match — executor will create fresh on target page
+		}
+
+		const FString OtherPageName = FoundPage->GetName();
+
+		// Same-page match is fine: the executor will reuse it silently.
+		if (OtherPageName.Equals(GraphContext.GraphName, ESearchCase::CaseSensitive))
+		{
+			continue;
+		}
+
+		// Cross-page match: emit a hard error with actionable guidance.
+		const TCHAR* NodeNoun = bIsCustomEvent ? TEXT("Custom event") : TEXT("Event");
+		const FString Message = FString::Printf(
+			TEXT("Step '%s': %s '%s' already exists on ubergraph page '%s', but the plan targets '%s'. "
+				 "Native events are Blueprint-global (one per Blueprint across ALL ubergraph pages); "
+				 "creating a second instance will cause a compile error."),
+			*Step.StepId, NodeNoun, *Step.Target, *OtherPageName, *GraphContext.GraphName);
+
+		Result.Errors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+			TEXT("EVENT_EXISTS_ON_OTHER_PAGE"),
+			Step.StepId,
+			FString::Printf(TEXT("/steps/%d/target"), StepIdx),
+			Message,
+			FString::Printf(
+				TEXT("Retry with graph_target='%s' to reuse the existing node."),
+				*OtherPageName)));
+
+		UE_LOG(LogOlivePlanValidator, Warning,
+			TEXT("Phase 0: EVENT_EXISTS_ON_OTHER_PAGE -- step '%s' target '%s' exists on page '%s' (plan targets '%s')"),
+			*Step.StepId, *Step.Target, *OtherPageName, *GraphContext.GraphName);
 	}
 }

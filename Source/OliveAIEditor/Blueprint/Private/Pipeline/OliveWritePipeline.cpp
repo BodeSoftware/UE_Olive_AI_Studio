@@ -628,18 +628,54 @@ FOliveWriteResult FOliveWritePipeline::StageReport(
 		{
 			FinalResult.bSuccess = false;
 
+			// Build a concrete top-level error message that includes the first
+			// compiler error verbatim. Without this the MCP response body only
+			// surfaces a generic "compiled with N errors" string and the AI has
+			// to dig into compile_result.errors[] to know what actually broke —
+			// which in practice it often fails to do, causing infinite retries
+			// on the same broken plan.
+			FString FirstErrorText;
+			if (CR.Errors.Num() > 0)
+			{
+				FirstErrorText = CR.Errors[0].Message;
+			}
+
+			FString CompileSummary;
+			if (!FirstErrorText.IsEmpty())
+			{
+				CompileSummary = FString::Printf(
+					TEXT("Blueprint compile failed (%d error(s)). First error: %s"),
+					CR.Errors.Num(), *FirstErrorText);
+			}
+			else
+			{
+				CompileSummary = FString::Printf(
+					TEXT("Blueprint compiled with %d error(s). Nodes are committed but Blueprint is in error state."),
+					CR.Errors.Num());
+			}
+
 			FOliveIRMessage CompileErrorMsg;
 			CompileErrorMsg.Severity = EOliveIRSeverity::Error;
 			CompileErrorMsg.Code = TEXT("COMPILE_FAILED");
-			CompileErrorMsg.Message = FString::Printf(
-				TEXT("Blueprint compiled with %d error(s). Nodes are committed but Blueprint is in error state."),
-				CR.Errors.Num());
+			CompileErrorMsg.Message = CompileSummary;
 			CompileErrorMsg.Suggestion = TEXT("Read compile_result.errors and fix with connect_pins or set_pin_default.");
 			FinalResult.ValidationMessages.Add(CompileErrorMsg);
 
+			// Mirror onto top-level ResultData fields so downstream consumers
+			// (MCP response, log extraction at OliveWritePipeline.cpp:190, AI
+			// self-correction prompt) see the concrete error without having to
+			// traverse compile_result.errors[].
+			if (FinalResult.ResultData.IsValid())
+			{
+				FinalResult.ResultData->SetStringField(TEXT("error_code"), TEXT("COMPILE_FAILED"));
+				FinalResult.ResultData->SetStringField(TEXT("error_message"), CompileSummary);
+				FinalResult.ResultData->SetStringField(TEXT("suggestion"),
+					TEXT("Read compile_result.errors and fix with connect_pins or set_pin_default."));
+			}
+
 			UE_LOG(LogOliveWritePipeline, Warning,
-				TEXT("StageReport: Compile errors detected — setting bSuccess=false for tool '%s'"),
-				*Request.ToolName);
+				TEXT("StageReport: Compile errors detected — setting bSuccess=false for tool '%s': %s"),
+				*Request.ToolName, *CompileSummary);
 		}
 	}
 	else

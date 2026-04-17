@@ -1814,6 +1814,13 @@ bool FOliveBlueprintPlanResolver::ResolveStep(
 	else if (Op == OlivePlanOps::Sequence)
 	{
 		bResult = ResolveSimpleOp(Step, OliveNodeTypes::Sequence, OutResolved);
+		if (bResult && Step.ExecOutputs.Num() > 2)
+		{
+			// Sequence node defaults to 2 output pins. Tell the factory to
+			// create additional pins so Phase 3 exec wiring can find them.
+			OutResolved.Properties.Add(TEXT("num_outputs"),
+				FString::FromInt(Step.ExecOutputs.Num()));
+		}
 	}
 	else if (Op == OlivePlanOps::ForLoop)
 	{

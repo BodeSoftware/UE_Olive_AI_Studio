@@ -909,7 +909,35 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
             if (!EventName.IsEmpty())
             {
                 UEdGraphNode* ExistingNode = FindExistingEventNode(
-                    Context.Graph, Context.Blueprint, EventName, bIsCustomEventOp);
+                    Context.Blueprint, EventName, bIsCustomEventOp);
+
+                // Cross-page conflict: event exists on a sibling ubergraph page.
+                // Exec wires cannot cross ubergraph pages (each page compiles to
+                // its own Kismet function), so silent redirection is unsafe.
+                // Fail fast with an actionable error telling the AI which
+                // graph_target to retry against.
+                if (ExistingNode && ExistingNode->GetGraph() != Context.Graph)
+                {
+                    UEdGraph* OtherPage = ExistingNode->GetGraph();
+                    const FString OtherPageName = OtherPage ? OtherPage->GetName() : TEXT("(unknown)");
+                    const TCHAR* NodeNoun = bIsCustomEventOp ? TEXT("Custom event") : TEXT("Event");
+                    const FString ErrorMessage = FString::Printf(
+                        TEXT("Step '%s': %s '%s' already exists on ubergraph page '%s' (not on requested graph '%s'). "
+                             "Exec wires cannot cross ubergraph pages. Retry with graph_target='%s' to reuse the existing node."),
+                        *StepId, NodeNoun, *EventName, *OtherPageName, *Context.GraphName, *OtherPageName);
+
+                    UE_LOG(LogOlivePlanExecutor, Warning, TEXT("%s"), *ErrorMessage);
+
+                    Context.WiringErrors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+                        TEXT("EVENT_ON_DIFFERENT_PAGE"),
+                        StepId,
+                        FString::Printf(TEXT("/steps/%d"), i),
+                        ErrorMessage,
+                        FString::Printf(TEXT("Set graph_target to '%s' in the apply_plan_json call"), *OtherPageName)));
+
+                    CleanupCreatedNodes();
+                    return false;
+                }
 
                 if (ExistingNode)
                 {
@@ -958,7 +986,31 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
             if (ActionNamePtr && !ActionNamePtr->IsEmpty())
             {
                 UEdGraphNode* ExistingNode = FindExistingEnhancedInputNode(
-                    Context.Graph, *ActionNamePtr);
+                    Context.Blueprint, *ActionNamePtr);
+
+                // Cross-page conflict: enhanced input action exists on a sibling
+                // ubergraph page. Fail fast with an actionable error.
+                if (ExistingNode && ExistingNode->GetGraph() != Context.Graph)
+                {
+                    UEdGraph* OtherPage = ExistingNode->GetGraph();
+                    const FString OtherPageName = OtherPage ? OtherPage->GetName() : TEXT("(unknown)");
+                    const FString ErrorMessage = FString::Printf(
+                        TEXT("Step '%s': Enhanced Input Action '%s' already exists on ubergraph page '%s' (not on requested graph '%s'). "
+                             "Exec wires cannot cross ubergraph pages. Retry with graph_target='%s' to reuse the existing node."),
+                        *StepId, **ActionNamePtr, *OtherPageName, *Context.GraphName, *OtherPageName);
+
+                    UE_LOG(LogOlivePlanExecutor, Warning, TEXT("%s"), *ErrorMessage);
+
+                    Context.WiringErrors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+                        TEXT("ENHANCED_INPUT_ON_DIFFERENT_PAGE"),
+                        StepId,
+                        FString::Printf(TEXT("/steps/%d"), i),
+                        ErrorMessage,
+                        FString::Printf(TEXT("Set graph_target to '%s' in the apply_plan_json call"), *OtherPageName)));
+
+                    CleanupCreatedNodes();
+                    return false;
+                }
 
                 if (ExistingNode)
                 {
@@ -1000,7 +1052,31 @@ bool FOlivePlanExecutor::PhaseCreateNodes(
                 && ComponentNamePtr && !ComponentNamePtr->IsEmpty())
             {
                 UEdGraphNode* ExistingNode = FindExistingComponentBoundEventNode(
-                    Context.Graph, *DelegateNamePtr, *ComponentNamePtr);
+                    Context.Blueprint, *DelegateNamePtr, *ComponentNamePtr);
+
+                // Cross-page conflict: component-bound event exists on a sibling
+                // ubergraph page. Fail fast with an actionable error.
+                if (ExistingNode && ExistingNode->GetGraph() != Context.Graph)
+                {
+                    UEdGraph* OtherPage = ExistingNode->GetGraph();
+                    const FString OtherPageName = OtherPage ? OtherPage->GetName() : TEXT("(unknown)");
+                    const FString ErrorMessage = FString::Printf(
+                        TEXT("Step '%s': Component bound event '%s' on '%s' already exists on ubergraph page '%s' (not on requested graph '%s'). "
+                             "Exec wires cannot cross ubergraph pages. Retry with graph_target='%s' to reuse the existing node."),
+                        *StepId, **DelegateNamePtr, **ComponentNamePtr, *OtherPageName, *Context.GraphName, *OtherPageName);
+
+                    UE_LOG(LogOlivePlanExecutor, Warning, TEXT("%s"), *ErrorMessage);
+
+                    Context.WiringErrors.Add(FOliveIRBlueprintPlanError::MakeStepError(
+                        TEXT("BOUND_EVENT_ON_DIFFERENT_PAGE"),
+                        StepId,
+                        FString::Printf(TEXT("/steps/%d"), i),
+                        ErrorMessage,
+                        FString::Printf(TEXT("Set graph_target to '%s' in the apply_plan_json call"), *OtherPageName)));
+
+                    CleanupCreatedNodes();
+                    return false;
+                }
 
                 if (ExistingNode)
                 {
@@ -1324,16 +1400,21 @@ void FOlivePlanExecutor::CleanupStaleEventChains(UEdGraph* Graph, const FOliveIR
 
         if (Step.Op == OlivePlanOps::Event)
         {
-            EventNode = FindExistingEventNode(Graph, Blueprint, Step.Target, /*bIsCustomEvent=*/false);
+            EventNode = FindExistingEventNode(Blueprint, Step.Target, /*bIsCustomEvent=*/false);
             EventDesc = Step.Target;
         }
         else if (Step.Op == OlivePlanOps::CustomEvent)
         {
-            EventNode = FindExistingEventNode(Graph, Blueprint, Step.Target, /*bIsCustomEvent=*/true);
+            EventNode = FindExistingEventNode(Blueprint, Step.Target, /*bIsCustomEvent=*/true);
             EventDesc = FString::Printf(TEXT("CustomEvent:%s"), *Step.Target);
         }
 
-        if (EventNode)
+        // Stale-chain cleanup is scoped to the plan's target graph only.
+        // FindExistingEventNode is Blueprint-scoped and may return a match from
+        // a sibling ubergraph page; skip those here so we do not touch nodes on
+        // a page the current plan does not own. (Cross-page reuse is rejected
+        // later in PhaseCreateNodes with EVENT_ON_DIFFERENT_PAGE.)
+        if (EventNode && EventNode->GetGraph() == Graph)
         {
             EventNodesToClean.Add(TPair<UEdGraphNode*, FString>(EventNode, EventDesc));
         }
@@ -1513,63 +1594,97 @@ void FOlivePlanExecutor::CleanupStaleEventChains(UEdGraph* Graph, const FOliveIR
 }
 
 // ============================================================================
+// FindNodeAcrossUbergraphPages
+// ============================================================================
+
+UEdGraphNode* FOlivePlanExecutor::FindNodeAcrossUbergraphPages(
+    UBlueprint* Blueprint,
+    TFunctionRef<UEdGraphNode*(UEdGraph*)> Predicate)
+{
+    if (!Blueprint)
+    {
+        return nullptr;
+    }
+
+    // Blueprint->UbergraphPages is TArray<TObjectPtr<UEdGraph>>; iterating as
+    // UEdGraph* is safe and matches the idiom used elsewhere in the codebase.
+    for (UEdGraph* Page : Blueprint->UbergraphPages)
+    {
+        if (!Page)
+        {
+            continue;
+        }
+
+        if (UEdGraphNode* Found = Predicate(Page))
+        {
+            return Found;
+        }
+    }
+
+    return nullptr;
+}
+
+// ============================================================================
 // FindExistingEventNode
 // ============================================================================
 
 UEdGraphNode* FOlivePlanExecutor::FindExistingEventNode(
-    UEdGraph* Graph,
     UBlueprint* Blueprint,
     const FString& EventName,
     bool bIsCustomEvent)
 {
-    if (!Graph || !Blueprint)
+    if (!Blueprint)
     {
         return nullptr;
     }
 
     if (bIsCustomEvent)
     {
-        // Search for UK2Node_CustomEvent with matching name
-        for (UEdGraphNode* Node : Graph->Nodes)
-        {
-            UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node);
-            if (CustomEvent && CustomEvent->CustomFunctionName.ToString() == EventName)
+        // Custom events are Blueprint-global — walk every ubergraph page.
+        return FindNodeAcrossUbergraphPages(Blueprint,
+            [&EventName](UEdGraph* Page) -> UEdGraphNode*
             {
-                return CustomEvent;
-            }
+                for (UEdGraphNode* Node : Page->Nodes)
+                {
+                    UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node);
+                    if (CustomEvent && CustomEvent->CustomFunctionName.ToString() == EventName)
+                    {
+                        return CustomEvent;
+                    }
+                }
+                return nullptr;
+            });
+    }
+
+    const FName EventFName(*EventName);
+
+    // 1. Check parent class (native event overrides like ReceiveBeginPlay).
+    //    FBlueprintEditorUtils::FindOverrideForFunction is already Blueprint-
+    //    scoped: it walks every ubergraph page internally. Return whatever it
+    //    hands back — the caller decides whether the owning page matches the
+    //    requested target graph.
+    if (Blueprint->ParentClass)
+    {
+        if (UK2Node_Event* ExistingEvent = FBlueprintEditorUtils::FindOverrideForFunction(
+                Blueprint, Blueprint->ParentClass, EventFName))
+        {
+            return ExistingEvent;
         }
     }
-    else
+
+    // 2. Check implemented interfaces (interface events like Interact, Execute).
+    //    Same Blueprint-scoped semantics as step 1.
+    for (const FBPInterfaceDescription& InterfaceDesc : Blueprint->ImplementedInterfaces)
     {
-        const FName EventFName(*EventName);
-
-        // 1. Check parent class (native event overrides like ReceiveBeginPlay)
-        if (Blueprint->ParentClass)
+        if (!InterfaceDesc.Interface)
         {
-            UK2Node_Event* ExistingEvent = FBlueprintEditorUtils::FindOverrideForFunction(
-                Blueprint, Blueprint->ParentClass, EventFName);
-
-            if (ExistingEvent && ExistingEvent->GetGraph() == Graph)
-            {
-                return ExistingEvent;
-            }
+            continue;
         }
 
-        // 2. Check implemented interfaces (interface events like Interact, Execute)
-        for (const FBPInterfaceDescription& InterfaceDesc : Blueprint->ImplementedInterfaces)
+        if (UK2Node_Event* ExistingEvent = FBlueprintEditorUtils::FindOverrideForFunction(
+                Blueprint, InterfaceDesc.Interface, EventFName))
         {
-            if (!InterfaceDesc.Interface)
-            {
-                continue;
-            }
-
-            UK2Node_Event* ExistingEvent = FBlueprintEditorUtils::FindOverrideForFunction(
-                Blueprint, InterfaceDesc.Interface, EventFName);
-
-            if (ExistingEvent && ExistingEvent->GetGraph() == Graph)
-            {
-                return ExistingEvent;
-            }
+            return ExistingEvent;
         }
     }
 
@@ -1581,28 +1696,32 @@ UEdGraphNode* FOlivePlanExecutor::FindExistingEventNode(
 // ============================================================================
 
 UEdGraphNode* FOlivePlanExecutor::FindExistingEnhancedInputNode(
-    UEdGraph* Graph,
+    UBlueprint* Blueprint,
     const FString& InputActionName)
 {
-    if (!Graph)
+    if (!Blueprint)
     {
         return nullptr;
     }
 
-    for (UEdGraphNode* Node : Graph->Nodes)
-    {
-        UK2Node_EnhancedInputAction* IANode = Cast<UK2Node_EnhancedInputAction>(Node);
-        if (IANode && IANode->InputAction)
+    // Enhanced input actions are Blueprint-global — scan every ubergraph page.
+    return FindNodeAcrossUbergraphPages(Blueprint,
+        [&InputActionName](UEdGraph* Page) -> UEdGraphNode*
         {
-            // Match by asset name (case-insensitive)
-            if (IANode->InputAction->GetName().Equals(InputActionName, ESearchCase::IgnoreCase))
+            for (UEdGraphNode* Node : Page->Nodes)
             {
-                return IANode;
+                UK2Node_EnhancedInputAction* IANode = Cast<UK2Node_EnhancedInputAction>(Node);
+                if (IANode && IANode->InputAction)
+                {
+                    // Match by asset name (case-insensitive)
+                    if (IANode->InputAction->GetName().Equals(InputActionName, ESearchCase::IgnoreCase))
+                    {
+                        return IANode;
+                    }
+                }
             }
-        }
-    }
-
-    return nullptr;
+            return nullptr;
+        });
 }
 
 // ============================================================================
@@ -1610,11 +1729,11 @@ UEdGraphNode* FOlivePlanExecutor::FindExistingEnhancedInputNode(
 // ============================================================================
 
 UEdGraphNode* FOlivePlanExecutor::FindExistingComponentBoundEventNode(
-    UEdGraph* Graph,
+    UBlueprint* Blueprint,
     const FString& DelegateName,
     const FString& ComponentName)
 {
-    if (!Graph)
+    if (!Blueprint)
     {
         return nullptr;
     }
@@ -1622,18 +1741,22 @@ UEdGraphNode* FOlivePlanExecutor::FindExistingComponentBoundEventNode(
     const FName DelegateFName(*DelegateName);
     const FName ComponentFName(*ComponentName);
 
-    for (UEdGraphNode* Node : Graph->Nodes)
-    {
-        UK2Node_ComponentBoundEvent* BoundEvent = Cast<UK2Node_ComponentBoundEvent>(Node);
-        if (BoundEvent
-            && BoundEvent->DelegatePropertyName == DelegateFName
-            && BoundEvent->ComponentPropertyName == ComponentFName)
+    // Component-bound events are Blueprint-global — scan every ubergraph page.
+    return FindNodeAcrossUbergraphPages(Blueprint,
+        [DelegateFName, ComponentFName](UEdGraph* Page) -> UEdGraphNode*
         {
-            return BoundEvent;
-        }
-    }
-
-    return nullptr;
+            for (UEdGraphNode* Node : Page->Nodes)
+            {
+                UK2Node_ComponentBoundEvent* BoundEvent = Cast<UK2Node_ComponentBoundEvent>(Node);
+                if (BoundEvent
+                    && BoundEvent->DelegatePropertyName == DelegateFName
+                    && BoundEvent->ComponentPropertyName == ComponentFName)
+                {
+                    return BoundEvent;
+                }
+            }
+            return nullptr;
+        });
 }
 
 // ============================================================================
@@ -1997,6 +2120,13 @@ void FOlivePlanExecutor::PhaseWireExec(
     const FOliveIRBlueprintPlan& Plan,
     FOlivePlanExecutionContext& Context)
 {
+    // Invariant (audit): by the time this phase runs, every node in
+    // Context.StepToNodePtr is guaranteed to live on Context.Graph. Cross-page
+    // reuse is rejected up-front in PhaseCreateNodes via the EVENT_ON_DIFFERENT_PAGE
+    // / ENHANCED_INPUT_ON_DIFFERENT_PAGE / BOUND_EVENT_ON_DIFFERENT_PAGE fast-fail,
+    // so any references to Context.Graph below are equivalent to a per-step
+    // GetNodePtr(...)->GetGraph() lookup. Do not weaken this invariant without
+    // revisiting the cross-page conflict detection in PhaseCreateNodes.
     for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
     {
         // ----------------------------------------------------------------
@@ -3173,6 +3303,10 @@ void FOlivePlanExecutor::PhaseWireData(
     const FOliveIRBlueprintPlan& Plan,
     FOlivePlanExecutionContext& Context)
 {
+    // Invariant (audit): see PhaseWireExec — every StepToNodePtr entry lives on
+    // Context.Graph because PhaseCreateNodes rejects cross-page reuse. Any
+    // NewObject<>(Context.Graph) / Context.Graph->AddNode calls below are
+    // therefore safe.
     for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
     {
         for (const auto& InputPair : Step.Inputs)
@@ -3216,6 +3350,17 @@ void FOlivePlanExecutor::PhaseWireData(
             else
             {
                 Context.FailedConnectionCount++;
+
+                // Safety net log: ensure every FailedConnectionCount increment in Phase 4
+                // is visible in the log stream, regardless of whether WireDataConnection's
+                // internal failure paths logged inline. Some failure paths (e.g., the
+                // type-incompatible diagnostic fallback in WireDataConnection) build the
+                // ErrorMessage but return without logging; this guarantee makes every
+                // Phase 4 failure auditable from the log alone.
+                UE_LOG(LogOlivePlanExecutor, Warning,
+                    TEXT("  Data wire FAILED: step '%s'.%s <- %s : %s"),
+                    *Step.StepId, *ResolvedPinKey, *PinValue,
+                    Result.ErrorMessage.IsEmpty() ? TEXT("(no error message)") : *Result.ErrorMessage);
 
                 // Use DATA_WIRE_INCOMPATIBLE for type mismatches (diagnostic-enriched),
                 // DATA_PIN_NOT_FOUND for pin resolution failures (existing behavior)
@@ -3356,6 +3501,9 @@ void FOlivePlanExecutor::PhaseWireData(
         if (!ClassPin)
         {
             Context.FailedConnectionCount++;
+            UE_LOG(LogOlivePlanExecutor, Warning,
+                TEXT("  Data wire FAILED (implicit dynamic class): step '%s' -- could not find Class pin on SpawnActor node"),
+                *StepId);
             Context.WiringErrors.Add(FOliveIRBlueprintPlanError::MakeStepError(
                 TEXT("DYNAMIC_CLASS_WIRE_FAILED"),
                 StepId,
@@ -3386,6 +3534,10 @@ void FOlivePlanExecutor::PhaseWireData(
         else
         {
             Context.FailedConnectionCount++;
+            UE_LOG(LogOlivePlanExecutor, Warning,
+                TEXT("  Data wire FAILED (implicit dynamic class): step '%s'.Class <- %s : %s"),
+                *StepId, *DynRef,
+                WireResult.ErrorMessage.IsEmpty() ? TEXT("(no error message)") : *WireResult.ErrorMessage);
             Context.WiringErrors.Add(FOliveIRBlueprintPlanError::MakeStepError(
                 TEXT("DYNAMIC_CLASS_WIRE_FAILED"),
                 StepId,
@@ -4277,6 +4429,14 @@ FOliveSmartWireResult FOlivePlanExecutor::WireDataConnection(
                     *TargetStepId, *TargetPin->PinName,
                     ConnectResult.Errors.Num() > 0 ? *ConnectResult.Errors[0] : TEXT("Unknown"));
             }
+
+            // Log the failure inline so the executor log tells the whole story.
+            // Without this, type-incompatible failures were silently incremented
+            // in FailedConnectionCount (because the caller's log path wasn't
+            // exercised prior to Fix 3), leaving the AI staring at a counter
+            // with no visibility into which wire broke.
+            UE_LOG(LogOlivePlanExecutor, Warning,
+                TEXT("  Data wire FAILED: %s"), *Result.ErrorMessage);
         }
     }
 
@@ -4593,6 +4753,11 @@ void FOlivePlanExecutor::PhaseSetDefaults(
 void FOlivePlanExecutor::PhasePreCompileValidation(
     FOlivePlanExecutionContext& Context)
 {
+    // Invariant (audit): every plan-created/reused node lives on Context.Graph
+    // by this point (PhaseCreateNodes rejects cross-page reuse). The loops
+    // below iterate Context.Graph->Nodes for orphan detection, which is
+    // sufficient — nodes on sibling ubergraph pages are intentionally not
+    // validated here because they are not part of this plan.
     if (!Context.Graph || !Context.Plan)
     {
         return;
@@ -4996,6 +5161,10 @@ void FOlivePlanExecutor::PhaseAutoLayout(
     const FOliveIRBlueprintPlan& Plan,
     FOlivePlanExecutionContext& Context)
 {
+    // Invariant (audit): the layout engine positions every node in
+    // Context.StepToNodePtr relative to Context.Graph. That is safe only
+    // because PhaseCreateNodes rejects cross-page reuse — every StepToNodePtr
+    // entry is guaranteed to live on Context.Graph.
     TMap<FString, FOliveLayoutEntry> Layout = FOliveGraphLayoutEngine::ComputeLayout(Plan, Context);
     FOliveGraphLayoutEngine::ApplyLayout(Layout, Context);
 }

@@ -60,6 +60,19 @@ struct OLIVEAIEDITOR_API FOlivePinManifestEntry
 
     /** IR type category for type-compatibility matching */
     EOliveIRTypeCategory IRTypeCategory = EOliveIRTypeCategory::Unknown;
+
+    /**
+     * If this pin corresponds to a UFunction parameter whose name differs
+     * from the pin's display/internal name (e.g., UK2Node_CreateWidget's
+     * "WidgetType" pin which backs the function parameter "Class"), this
+     * field holds the underlying parameter name. FindPinSmart matches
+     * against this as an additional alias so AIs that reference the
+     * parameter name instead of the renamed pin name resolve correctly.
+     *
+     * Populated generically via UFunction reflection in FOlivePinManifest::Build
+     * for UK2Node_CallFunction nodes. No per-node-type hardcoding.
+     */
+    FString ParameterAliasName;
 };
 
 /**

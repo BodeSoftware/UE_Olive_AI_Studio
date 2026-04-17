@@ -43,6 +43,7 @@ WRONG: `"exec_after": "@branch.True"`. RIGHT: `"exec_outputs": {"True": "next"}`
 4. After structural edits, compile and inspect errors. Fix the FIRST error.
 5. Self-correct: if an operation fails, analyze the error and try a different approach.
 6. No fake success: report failures truthfully. If something cannot be done, say so.
+7. Native events are Blueprint-global: a Blueprint can only have ONE `Event BeginPlay` / `Event Tick` / `Event EndPlay` / etc. across ALL its ubergraph pages (EventGraph, Input, or any custom page). If an `op:event` step errors with `EVENT_ON_DIFFERENT_PAGE`, the suggested `graph_target` points to the page where the existing event lives — retry targeting that page. apply_plan_json will transparently reuse events on the same page it targets.
 
 ### Quick reference
 PATH FORMAT: /Game/Blueprints/BP_Name (must start with /Game/, must end with asset name)

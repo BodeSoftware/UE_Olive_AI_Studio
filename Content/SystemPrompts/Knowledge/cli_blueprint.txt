@@ -18,9 +18,12 @@ CREATE new Blueprint:
 4. Only search the project (project.get_relevant_context) if you suspect the asset already exists.
 
 MODIFY existing Blueprint:
-1. project.get_relevant_context (find path) → blueprint.read
+1. project.get_relevant_context (find path) → blueprint.read (or read_function for a specific function)
 2. Templates can provide useful reference patterns → blueprint.list_templates(query="relevant terms"). Adapt patterns to fit the existing Blueprint.
-3. add_variable/add_component → apply_plan_json
+3. add_variable/add_component as needed
+4. Small change (1-3 nodes): use granular tools (remove_node, add_node, connect_pins) on the specific nodes
+5. Rewrite a function: apply_plan_json with mode:"replace" and graph_target:"FunctionName" — clears non-entry nodes and rebuilds atomically. Never manually delete all nodes with remove_node.
+6. Add logic alongside existing: apply_plan_json with mode:"merge" (default) preserves existing nodes
 
 MULTI-ASSET: First, list ALL Blueprints the system needs (see System Decomposition in design patterns). Then build each one fully (structure + logic + compile) before starting the next.
 
@@ -125,7 +128,7 @@ Before using unfamiliar functions in plan_json (especially component-specific on
 For pin wiring, use `@step.auto` — the resolver handles ~80% of connections automatically. Functions you created with `blueprint.add_function` use the parameter names you specified.
 
 ## plan_json Scope
-- plan_json CREATES new nodes. It cannot reference existing nodes by ID or internal name.
+- plan_json CREATES new nodes. It cannot reference existing nodes by ID or internal name. To rewrite an existing function, use mode:"replace" — do not manually delete nodes before calling plan_json.
 - If you need to wire FROM an existing node (e.g., a ComponentBoundEvent you placed with add_node), use granular connect_pins with the node_id from blueprint.read.
 - Event reuse: plan_json reuses existing event nodes (BeginPlay, Tick) automatically. But it won't find nodes created by add_node unless they are standard events.
 
@@ -240,6 +243,10 @@ WHY: The resolver searches the CURRENT Blueprint's class hierarchy. To call a fu
 WRONG: Building a gun/weapon system without input binding on the character
 RIGHT: A gun system needs THREE things: gun actor, projectile actor, AND input wiring on the character (IA_Fire or InputKey for firing). After building the gun and projectile, add input handling to the character's EventGraph that calls the gun's Fire function.
 WHY: A weapon without input is unusable. Always include character-side input wiring as part of a weapon system. Check the input_handling recipe (olive.get_recipe query="input") for Enhanced Input vs InputKey patterns.
+
+WRONG: Looping blueprint.remove_node over all nodes in a function, then calling apply_plan_json to rebuild
+RIGHT: apply_plan_json with mode:"replace" and graph_target:"FunctionName" — clears and rebuilds atomically
+WHY: Manual bulk deletion + rebuild is fragile. If rebuild fails, the function is gutted with no rollback. mode:"replace" is atomic — if the plan fails, no nodes are removed.
 
 ## Widget Blueprint Design
 
