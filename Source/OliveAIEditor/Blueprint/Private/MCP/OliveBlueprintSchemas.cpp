@@ -1427,53 +1427,21 @@ namespace OliveBlueprintSchemas
 
 	// Templates are reference-only. No create/clone tools -- only get_template and list_templates.
 
-	TSharedPtr<FJsonObject> BlueprintCreateFromTemplate()
-	{
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		TSharedPtr<FJsonObject> Props = MakeProperties();
-
-		Props->SetObjectField(TEXT("template_id"),
-			StringProp(TEXT("Factory template ID (e.g., 'gun', 'projectile'). Use blueprint.list_templates to see available templates."), true));
-
-		Props->SetObjectField(TEXT("path"),
-			StringProp(TEXT("Blueprint asset path to create (e.g., '/Game/Blueprints/BP_Pistol')"), true));
-
-		Props->SetObjectField(TEXT("preset"),
-			StringProp(TEXT("Optional preset name (e.g., 'Pistol', 'Rocket'). Applies preset parameter values from the template."), false));
-
-		// parameters is an object with string values
-		{
-			TSharedPtr<FJsonObject> ParamsProp = MakeSchema(TEXT("object"));
-			ParamsProp->SetStringField(TEXT("description"),
-				TEXT("Optional parameter overrides. Keys are parameter names from the template, values are strings."));
-			TSharedPtr<FJsonObject> AddlProps = MakeSchema(TEXT("string"));
-			ParamsProp->SetObjectField(TEXT("additionalProperties"), AddlProps);
-			Props->SetObjectField(TEXT("parameters"), ParamsProp);
-		}
-
-		Schema->SetObjectField(TEXT("properties"), Props);
-		AddRequired(Schema, {TEXT("template_id"), TEXT("path")});
-
-		return Schema;
-	}
-
 	TSharedPtr<FJsonObject> BlueprintGetTemplate()
 	{
 		TSharedPtr<FJsonObject> Properties = MakeProperties();
 
 		Properties->SetObjectField(TEXT("template_id"),
-			StringProp(TEXT("ID of the template to view (factory, reference, or library)")));
+			StringProp(TEXT("ID of the template to view (reference or library)")));
 
 		Properties->SetObjectField(TEXT("pattern"),
 			StringProp(TEXT("For reference templates: pattern name to filter. "
-				"For factory templates: function name to extract full plan JSON (e.g., pattern=\"Fire\" returns Fire's complete plan). "
 				"For library templates: specify a function name to retrieve its full node graph.")));
 
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
 		Schema->SetStringField(TEXT("description"),
-			TEXT("View a template's content. Without pattern: shows parameters, presets, function outlines. "
-				"With pattern: for factory templates returns a function's full plan_json (ready for apply_plan_json); "
-				"for reference templates returns a specific pattern; "
+			TEXT("View a template's content. Without pattern: shows structure / patterns overview. "
+				"With pattern: for reference templates returns a specific pattern; "
 				"for library templates returns a function's full node graph."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("template_id")});
@@ -1486,7 +1454,7 @@ namespace OliveBlueprintSchemas
 		TSharedPtr<FJsonObject> Properties = MakeProperties();
 
 		Properties->SetObjectField(TEXT("type"),
-			EnumProp(TEXT("Filter by template type"), {TEXT("factory"), TEXT("reference"), TEXT("library")}));
+			EnumProp(TEXT("Filter by template type"), {TEXT("reference"), TEXT("library")}));
 
 		Properties->SetObjectField(TEXT("query"),
 			StringProp(TEXT("Search query to find templates by name, tag, function name, or keyword. "

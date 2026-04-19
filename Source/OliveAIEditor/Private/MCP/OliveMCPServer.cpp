@@ -550,7 +550,7 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleInitialize(
 				 "For multi-step builds, use olive.build to batch all operations in a single call — "
 				 "this is much faster than calling tools individually. "
 				 "For common patterns (guns, projectiles, pickups), check blueprint.list_templates first — "
-				 "factory templates include complete plan_json that olive.build can execute directly."));
+				 "library templates supply real node graphs you can study with blueprint.get_template."));
 	}
 
 	return Result;

@@ -203,6 +203,29 @@ bool FOliveDeletedTestCreateTest::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
+// NEGATIVE: blueprint.create_from_template is hard-deleted with the factory
+// template system. No alias. Calling it MUST return TOOL_NOT_FOUND.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FOliveDeletedCreateFromTemplateTest,
+    "OliveAI.MCP.Deleted.BlueprintCreateFromTemplate",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FOliveDeletedCreateFromTemplateTest::RunTest(const FString& Parameters)
+{
+    TSharedPtr<FJsonObject> P = MakeShared<FJsonObject>();
+    P->SetStringField(TEXT("template_id"), TEXT("anything"));
+    P->SetStringField(TEXT("path"), TEXT("/Game/Tests/X"));
+    FOliveToolResult R = FOliveToolRegistry::Get().ExecuteTool(TEXT("blueprint.create_from_template"), P);
+    TestFalse(TEXT("blueprint.create_from_template must be deleted"), R.bSuccess);
+    if (R.Messages.Num() > 0)
+    {
+        TestEqual(TEXT("Error code"), R.Messages[0].Code, FString(TEXT("TOOL_NOT_FOUND")));
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // NEGATIVE: project.create_ai_character is hard-deleted with NO alias.
 // Calling it MUST return TOOL_NOT_FOUND.
 // ---------------------------------------------------------------------------

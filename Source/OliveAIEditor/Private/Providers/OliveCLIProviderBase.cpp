@@ -418,7 +418,7 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 
 	AgentContext += TEXT("## Research\n\n");
 	AgentContext += TEXT("Research tools help you verify assumptions before writing graph logic:\n");
-	AgentContext += TEXT("- `blueprint.list_templates(query=\"...\")` -- search library/factory templates for patterns\n");
+	AgentContext += TEXT("- `blueprint.list_templates(query=\"...\")` -- search library/reference templates for patterns\n");
 	AgentContext += TEXT("- `blueprint.get_template(id, pattern=\"FuncName\")` -- read specific function implementations\n");
 	AgentContext += TEXT("- `blueprint.describe_function(function_name, target_class)` -- verify function exists and get pin signatures\n");
 	AgentContext += TEXT("- `blueprint.describe_node_type(type)` -- check K2Node properties and pins\n");
@@ -1723,8 +1723,8 @@ FString FOliveCLIProviderBase::BuildCLISystemPrompt(const FString& UserTask, con
 		if (LibResults.Num() > 0)
 		{
 			FString LibBlock = TEXT("## Reference Patterns (from library templates matching your task)\n");
-			LibBlock += TEXT("These are NOT factory templates — they are wiring references from real shipped projects. ");
-			LibBlock += TEXT("You do NOT need to copy them exactly. Study the wiring approach (what functions they call, ");
+			LibBlock += TEXT("These are wiring references from real shipped projects — not boilerplate to copy exactly. ");
+			LibBlock += TEXT("Study the wiring approach (what functions they call, ");
 			LibBlock += TEXT("how they wire spawn transforms, collision setup, component targets, etc.) and adapt the patterns to your build.\n\n");
 
 			for (const TSharedPtr<FJsonObject>& Result : LibResults)
