@@ -357,42 +357,271 @@ namespace
 				}
 			});
 
-			// ------------------------------------------------------------------
-			// Blueprint variable tools -> blueprint.add_variable (upsert)
-			// ------------------------------------------------------------------
+			// get_node_pins -> blueprint.read(section='pins')
+			Map.Add(TEXT("blueprint.get_node_pins"), {
+				TEXT("blueprint.read"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("section"), TEXT("pins"));
+				}
+			});
 
-			Map.Add(TEXT("blueprint.modify_variable"), {
-				TEXT("blueprint.add_variable"),
-				nullptr // all params pass through (add_variable becomes upsert)
+			// describe_function -> blueprint.read(section='function_detail')
+			Map.Add(TEXT("blueprint.describe_function"), {
+				TEXT("blueprint.read"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("section"), TEXT("function_detail"));
+				}
+			});
+
+			// verify_completion -> blueprint.compile(verify=true)
+			Map.Add(TEXT("blueprint.verify_completion"), {
+				TEXT("blueprint.compile"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetBoolField(TEXT("verify"), true);
+					// Legacy tool used 'asset_path'; normalize to 'path' so blueprint.compile accepts it.
+					FString AssetPath;
+					if (P->TryGetStringField(TEXT("asset_path"), AssetPath) && !AssetPath.IsEmpty())
+					{
+						FString Path;
+						if (!P->TryGetStringField(TEXT("path"), Path) || Path.IsEmpty())
+						{
+							P->SetStringField(TEXT("path"), AssetPath);
+						}
+					}
+				}
 			});
 
 			// ------------------------------------------------------------------
-			// Blueprint function tools -> blueprint.add_function with function_type
+			// P5: blueprint.delete entity aliases (consolidated dispatch)
 			// ------------------------------------------------------------------
 
-			Map.Add(TEXT("blueprint.override_function"), {
-				TEXT("blueprint.add_function"),
+			Map.Add(TEXT("blueprint.remove_node"), {
+				TEXT("blueprint.delete"),
 				[](TSharedPtr<FJsonObject>& P)
 				{
-					P->SetStringField(TEXT("function_type"), TEXT("override"));
+					P->SetStringField(TEXT("entity"), TEXT("node"));
+				}
+			});
+			Map.Add(TEXT("blueprint.remove_component"), {
+				TEXT("blueprint.delete"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("component"));
+					// Legacy tool used 'name'; copy to component_name for the dispatcher.
+					FString Name;
+					if (P->TryGetStringField(TEXT("name"), Name) && !Name.IsEmpty())
+					{
+						P->SetStringField(TEXT("component_name"), Name);
+					}
+				}
+			});
+			Map.Add(TEXT("blueprint.remove_variable"), {
+				TEXT("blueprint.delete"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("variable"));
+					FString Name;
+					if (P->TryGetStringField(TEXT("name"), Name) && !Name.IsEmpty())
+					{
+						P->SetStringField(TEXT("variable_name"), Name);
+					}
+				}
+			});
+			Map.Add(TEXT("blueprint.remove_function"), {
+				TEXT("blueprint.delete"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("function"));
+					FString Name;
+					if (P->TryGetStringField(TEXT("name"), Name) && !Name.IsEmpty())
+					{
+						P->SetStringField(TEXT("function_name"), Name);
+					}
+				}
+			});
+			Map.Add(TEXT("blueprint.remove_interface"), {
+				TEXT("blueprint.delete"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("interface"));
+					FString Iface;
+					if (P->TryGetStringField(TEXT("interface"), Iface) && !Iface.IsEmpty())
+					{
+						P->SetStringField(TEXT("interface_path"), Iface);
+					}
+				}
+			});
+
+			// ------------------------------------------------------------------
+			// P5: blueprint.modify entity+action aliases
+			// ------------------------------------------------------------------
+
+			Map.Add(TEXT("blueprint.modify_component"), {
+				TEXT("blueprint.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("component"));
+					P->SetStringField(TEXT("action"), TEXT("set_properties"));
+				}
+			});
+			Map.Add(TEXT("blueprint.reparent_component"), {
+				TEXT("blueprint.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("component"));
+					P->SetStringField(TEXT("action"), TEXT("reparent"));
+				}
+			});
+			Map.Add(TEXT("blueprint.modify_function_signature"), {
+				TEXT("blueprint.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("function"));
+					P->SetStringField(TEXT("action"), TEXT("set_signature"));
+				}
+			});
+			Map.Add(TEXT("blueprint.set_parent_class"), {
+				TEXT("blueprint.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("blueprint"));
+					P->SetStringField(TEXT("action"), TEXT("set_parent_class"));
+				}
+			});
+			Map.Add(TEXT("blueprint.set_defaults"), {
+				TEXT("blueprint.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("blueprint"));
+					P->SetStringField(TEXT("action"), TEXT("set_defaults"));
+				}
+			});
+			Map.Add(TEXT("blueprint.set_pin_default"), {
+				TEXT("blueprint.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("pin_default"));
+				}
+			});
+			Map.Add(TEXT("blueprint.set_node_property"), {
+				TEXT("blueprint.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("node"));
+					P->SetStringField(TEXT("action"), TEXT("set_property"));
+				}
+			});
+			Map.Add(TEXT("blueprint.move_node"), {
+				TEXT("blueprint.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("node"));
+					P->SetStringField(TEXT("action"), TEXT("move"));
+				}
+			});
+
+			// ------------------------------------------------------------------
+			// P5: blueprint.add entity aliases (and legacy variable/function
+			// aliases repoint to the new consolidated dispatch).
+			// ------------------------------------------------------------------
+
+			Map.Add(TEXT("blueprint.add_node"), {
+				TEXT("blueprint.add"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("node"));
+				}
+			});
+			Map.Add(TEXT("blueprint.add_variable"), {
+				TEXT("blueprint.add"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("variable"));
+				}
+			});
+			Map.Add(TEXT("blueprint.add_function"), {
+				TEXT("blueprint.add"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("function"));
+				}
+			});
+			Map.Add(TEXT("blueprint.add_component"), {
+				TEXT("blueprint.add"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("component"));
+				}
+			});
+			Map.Add(TEXT("blueprint.add_interface"), {
+				TEXT("blueprint.add"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("interface"));
+				}
+			});
+			Map.Add(TEXT("blueprint.create_timeline"), {
+				TEXT("blueprint.add"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("timeline"));
+				}
+			});
+
+			// modify_variable now routes through blueprint.modify(entity=variable)
+			Map.Add(TEXT("blueprint.modify_variable"), {
+				TEXT("blueprint.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("variable"));
+					P->SetStringField(TEXT("action"), TEXT("set_properties"));
+				}
+			});
+
+			Map.Add(TEXT("blueprint.override_function"), {
+				TEXT("blueprint.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("function"));
+					P->SetStringField(TEXT("action"), TEXT("override_virtual"));
 				}
 			});
 
 			Map.Add(TEXT("blueprint.add_custom_event"), {
-				TEXT("blueprint.add_function"),
+				TEXT("blueprint.add"),
 				[](TSharedPtr<FJsonObject>& P)
 				{
-					P->SetStringField(TEXT("function_type"), TEXT("custom_event"));
+					P->SetStringField(TEXT("entity"), TEXT("custom_event"));
 				}
 			});
 
 			Map.Add(TEXT("blueprint.add_event_dispatcher"), {
-				TEXT("blueprint.add_function"),
+				TEXT("blueprint.add"),
 				[](TSharedPtr<FJsonObject>& P)
 				{
-					P->SetStringField(TEXT("function_type"), TEXT("event_dispatcher"));
+					P->SetStringField(TEXT("entity"), TEXT("event_dispatcher"));
 				}
 			});
+
+			// create_interface -> blueprint.create with type="Interface"
+			Map.Add(TEXT("blueprint.create_interface"), {
+				TEXT("blueprint.create"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					FString ExistingType;
+					if (!P->TryGetStringField(TEXT("type"), ExistingType) || ExistingType.IsEmpty())
+					{
+						P->SetStringField(TEXT("type"), TEXT("Interface"));
+					}
+				}
+			});
+
+			// NOTE: blueprint.scaffold is deleted per contract §2.6 (no alias).
+			// The composite workflow is now blueprint.create followed by N
+			// blueprint.add calls.
 
 			// ------------------------------------------------------------------
 			// Behavior Tree tools -> behaviortree.add_node with node_kind

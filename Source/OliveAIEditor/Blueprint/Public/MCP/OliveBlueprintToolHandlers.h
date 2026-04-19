@@ -116,6 +116,12 @@ private:
 	FOliveToolResult HandleBlueprintCompile(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlueprintDelete(const TSharedPtr<FJsonObject>& Params);
 
+	/** Unified blueprint.modify dispatcher -- routes on entity + action */
+	FOliveToolResult HandleBlueprintModify(const TSharedPtr<FJsonObject>& Params);
+
+	/** Unified blueprint.add dispatcher -- routes on entity */
+	FOliveToolResult HandleBlueprintAdd(const TSharedPtr<FJsonObject>& Params);
+
 	/** Create a new Blueprint Interface (BPI) asset with function signatures */
 	FOliveToolResult HandleBlueprintCreateInterface(const TSharedPtr<FJsonObject>& Params);
 

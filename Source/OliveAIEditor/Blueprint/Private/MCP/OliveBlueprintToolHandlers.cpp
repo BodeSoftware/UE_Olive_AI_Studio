@@ -600,12 +600,14 @@ void FOliveBlueprintToolHandlers::RegisterReaderTools()
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
 	// blueprint.read (unified reader — routes via 'section' param)
-	// Old tools (blueprint.read_function, read_event_graph, read_variables,
-	// read_components, read_hierarchy, list_overridable_functions) are now
-	// aliases in the tool alias map that redirect here with appropriate section.
+	// Sections: all, summary, graph, variables, components, hierarchy,
+	// overridable_functions, pins, function_detail. Legacy read_* and
+	// describe_function / get_node_pins tool names are aliases that pre-fill
+	// the section field.
 	Registry.RegisterTool(
 		TEXT("blueprint.read"),
-		TEXT("Read any aspect of a Blueprint: overview, specific graph, variables, components, hierarchy, or overridable functions"),
+		TEXT("Read any aspect of a Blueprint: overview, a specific graph, variables, components, hierarchy, "
+			"overridable functions, a single node's pins, or a function's detailed signature"),
 		OliveBlueprintSchemas::BlueprintRead(),
 		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintRead),
 		{TEXT("blueprint"), TEXT("read")},
@@ -613,18 +615,8 @@ void FOliveBlueprintToolHandlers::RegisterReaderTools()
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.read"));
 
-	// blueprint.get_node_pins
-	Registry.RegisterTool(
-		TEXT("blueprint.get_node_pins"),
-		TEXT("Get pin manifest for ONE node (after set_node_property). For multiple nodes use blueprint.read(section:'graph', mode:'full')"),
-		OliveBlueprintSchemas::BlueprintGetNodePins(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintGetNodePins),
-		{TEXT("blueprint"), TEXT("read")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.get_node_pins"));
-
-	// blueprint.describe_node_type
+	// blueprint.describe_node_type (kept as a first-class tool -- discovery for
+	// unfamiliar K2Node types is unrelated to reading an existing Blueprint).
 	{
 		FOliveToolDefinition Def;
 		Def.Name = TEXT("blueprint.describe_node_type");
@@ -637,29 +629,7 @@ void FOliveBlueprintToolHandlers::RegisterReaderTools()
 	}
 	RegisteredToolNames.Add(TEXT("blueprint.describe_node_type"));
 
-	// blueprint.describe_function
-	Registry.RegisterTool(
-		TEXT("blueprint.describe_function"),
-		TEXT("Look up a UFunction by name and return its exact pin signature, or fuzzy suggestions on failure"),
-		OliveBlueprintSchemas::BlueprintDescribeFunction(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleDescribeFunction),
-		{TEXT("blueprint"), TEXT("read"), TEXT("discovery")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.describe_function"));
-
-	// blueprint.verify_completion
-	Registry.RegisterTool(
-		TEXT("blueprint.verify_completion"),
-		TEXT("Verify a Blueprint is complete: compiles, expected functions/variables exist, no orphaned exec flows, no unwired required data pins"),
-		OliveBlueprintSchemas::BlueprintVerifyCompletion(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleVerifyCompletion),
-		{TEXT("blueprint"), TEXT("read")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.verify_completion"));
-
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered %d reader tools"), 5);
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered 2 reader tools (blueprint.read + describe_node_type; describe_function/get_node_pins/verify_completion consolidated)"));
 }
 
 // ============================================================================
@@ -683,72 +653,11 @@ void FOliveBlueprintToolHandlers::RegisterAssetWriterTools()
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.create"));
 
-	// blueprint.scaffold (composite: create + interfaces + components + variables in one call)
-	{
-		FOliveToolDefinition Def;
-		Def.Name = TEXT("blueprint.scaffold");
-		Def.Description = TEXT("Create a Blueprint with components, variables, and interfaces in one call. "
-			"Preferred over separate create + add_component + add_variable calls. "
-			"Sub-operation failures are collected as warnings, not hard failures.");
-		Def.InputSchema = OliveBlueprintSchemas::BlueprintScaffold();
-		Def.Tags = {TEXT("blueprint"), TEXT("write"), TEXT("create"), TEXT("component"), TEXT("variable"), TEXT("interface")};
-		Def.Category = TEXT("blueprint");
-		Def.WhenToUse = TEXT("Preferred over separate blueprint.create + blueprint.add_component + blueprint.add_variable calls. Use this whenever creating a new Blueprint that needs components, variables, or interfaces.");
-		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintScaffold));
-	}
-	RegisteredToolNames.Add(TEXT("blueprint.scaffold"));
-
-	// blueprint.set_parent_class
-	Registry.RegisterTool(
-		TEXT("blueprint.set_parent_class"),
-		TEXT("Change the parent class of a Blueprint (Tier 3 - potentially destructive)"),
-		OliveBlueprintSchemas::BlueprintSetParentClass(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintSetParentClass),
-		{TEXT("blueprint"), TEXT("write"), TEXT("refactor")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.set_parent_class"));
-
-	// blueprint.add_interface
-	Registry.RegisterTool(
-		TEXT("blueprint.add_interface"),
-		TEXT("Add an interface to a Blueprint"),
-		OliveBlueprintSchemas::BlueprintAddInterface(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintAddInterface),
-		{TEXT("blueprint"), TEXT("write"), TEXT("interface")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.add_interface"));
-
-	// blueprint.create_interface
-	Registry.RegisterTool(
-		TEXT("blueprint.create_interface"),
-		TEXT("Create a new Blueprint Interface (BPI) asset with function signatures. "
-			 "Functions without outputs become implementable events. "
-			 "Functions with outputs become implementable functions. "
-			 "After creation, use blueprint.add_interface to implement it on target BPs."),
-		OliveBlueprintSchemas::BlueprintCreateInterface(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintCreateInterface),
-		{TEXT("blueprint"), TEXT("write"), TEXT("create"), TEXT("interface")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.create_interface"));
-
-	// blueprint.remove_interface
-	Registry.RegisterTool(
-		TEXT("blueprint.remove_interface"),
-		TEXT("Remove an interface from a Blueprint"),
-		OliveBlueprintSchemas::BlueprintRemoveInterface(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintRemoveInterface),
-		{TEXT("blueprint"), TEXT("write"), TEXT("interface")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.remove_interface"));
-
-	// blueprint.compile
+	// blueprint.compile (verify:true folds in the old blueprint.verify_completion behavior)
 	Registry.RegisterTool(
 		TEXT("blueprint.compile"),
-		TEXT("Force compile a Blueprint and return compilation results"),
+		TEXT("Force compile a Blueprint and return compilation results. Pass verify:true to run the full "
+			"verification suite (compile + expected structure checks + orphaned exec flow detection)."),
 		OliveBlueprintSchemas::BlueprintCompile(),
 		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintCompile),
 		{TEXT("blueprint"), TEXT("compile")},
@@ -756,10 +665,11 @@ void FOliveBlueprintToolHandlers::RegisterAssetWriterTools()
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.compile"));
 
-	// blueprint.delete
+	// blueprint.delete (consolidated: entity dispatch routes to specialized removers)
 	Registry.RegisterTool(
 		TEXT("blueprint.delete"),
-		TEXT("Delete a Blueprint asset (Tier 3 - requires confirmation)"),
+		TEXT("Delete an entity from a Blueprint. Without 'entity' (or entity='blueprint') deletes the whole asset. "
+			"Legacy remove_* tool names are aliases that pre-fill the entity field."),
 		OliveBlueprintSchemas::BlueprintDelete(),
 		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintDelete),
 		{TEXT("blueprint"), TEXT("write"), TEXT("delete")},
@@ -767,165 +677,65 @@ void FOliveBlueprintToolHandlers::RegisterAssetWriterTools()
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.delete"));
 
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered 8 asset writer tools"));
+	// blueprint.modify (consolidated: entity + action dispatch)
+	Registry.RegisterTool(
+		TEXT("blueprint.modify"),
+		TEXT("Modify an entity inside a Blueprint. Dispatches on entity+action to the matching specialized "
+			"handler. Legacy modify_* / set_* / reparent_* tool names are aliases that pre-fill the entity."),
+		OliveBlueprintSchemas::BlueprintModify(),
+		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintModify),
+		{TEXT("blueprint"), TEXT("write"), TEXT("modify")},
+		TEXT("blueprint")
+	);
+	RegisteredToolNames.Add(TEXT("blueprint.modify"));
+
+	// blueprint.add (consolidated: entity dispatch)
+	Registry.RegisterTool(
+		TEXT("blueprint.add"),
+		TEXT("Add an entity to a Blueprint. Dispatches on entity (node, variable, function, component, "
+			"custom_event, event_dispatcher, interface, timeline) to the matching specialized handler. "
+			"Legacy add_* tool names are aliases that pre-fill the entity."),
+		OliveBlueprintSchemas::BlueprintAdd(),
+		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintAdd),
+		{TEXT("blueprint"), TEXT("write"), TEXT("add")},
+		TEXT("blueprint")
+	);
+	RegisteredToolNames.Add(TEXT("blueprint.add"));
+
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered 5 asset/consolidated writer tools"));
 }
 
 void FOliveBlueprintToolHandlers::RegisterVariableWriterTools()
 {
-	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
-
-	// blueprint.add_variable (upsert: creates if missing, updates if present)
-	Registry.RegisterTool(
-		TEXT("blueprint.add_variable"),
-		TEXT("Add or update a variable (upsert). If the variable already exists, modifies it in-place. "
-			"Set modify_only=true to require the variable to already exist."),
-		OliveBlueprintSchemas::BlueprintAddVariable(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintAddVariable),
-		{TEXT("blueprint"), TEXT("write"), TEXT("variable")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.add_variable"));
-
-	// blueprint.remove_variable
-	Registry.RegisterTool(
-		TEXT("blueprint.remove_variable"),
-		TEXT("Remove a variable from a Blueprint"),
-		OliveBlueprintSchemas::BlueprintRemoveVariable(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintRemoveVariable),
-		{TEXT("blueprint"), TEXT("write"), TEXT("variable")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.remove_variable"));
-
-	// NOTE: blueprint.modify_variable is now an alias that redirects to blueprint.add_variable (upsert).
-	// It is no longer registered as a separate tool.
-
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered 2 variable writer tools"));
+	// Variable writers are now reached via blueprint.add (entity='variable') and
+	// blueprint.delete (entity='variable'). Legacy tool names remain available
+	// as aliases -- see GetToolAliases() in OliveToolRegistry.cpp.
+	UE_LOG(LogOliveBPTools, Log, TEXT("Variable writer tools are consolidated into blueprint.add/delete (aliases in registry)"));
 }
 
 void FOliveBlueprintToolHandlers::RegisterComponentWriterTools()
 {
-	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
-
-	// blueprint.add_component
-	Registry.RegisterTool(
-		TEXT("blueprint.add_component"),
-		TEXT("Add a component to a Blueprint's component hierarchy"),
-		OliveBlueprintSchemas::BlueprintAddComponent(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintAddComponent),
-		{TEXT("blueprint"), TEXT("write"), TEXT("component")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.add_component"));
-
-	// blueprint.remove_component
-	Registry.RegisterTool(
-		TEXT("blueprint.remove_component"),
-		TEXT("Remove a component from a Blueprint's component hierarchy"),
-		OliveBlueprintSchemas::BlueprintRemoveComponent(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintRemoveComponent),
-		{TEXT("blueprint"), TEXT("write"), TEXT("component")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.remove_component"));
-
-	// blueprint.modify_component
-	Registry.RegisterTool(
-		TEXT("blueprint.modify_component"),
-		TEXT("Modify properties of an existing component in a Blueprint"),
-		OliveBlueprintSchemas::BlueprintModifyComponent(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintModifyComponent),
-		{TEXT("blueprint"), TEXT("write"), TEXT("component")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.modify_component"));
-
-	// blueprint.reparent_component
-	Registry.RegisterTool(
-		TEXT("blueprint.reparent_component"),
-		TEXT("Change the parent of a component in the hierarchy"),
-		OliveBlueprintSchemas::BlueprintReparentComponent(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintReparentComponent),
-		{TEXT("blueprint"), TEXT("write"), TEXT("component")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.reparent_component"));
-
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered 4 component writer tools"));
+	// Component writers are now reached via blueprint.add (entity='component'),
+	// blueprint.delete (entity='component'), and blueprint.modify (entity='component').
+	// Legacy tool names remain available as aliases.
+	UE_LOG(LogOliveBPTools, Log, TEXT("Component writer tools are consolidated into blueprint.add/modify/delete (aliases in registry)"));
 }
 
 void FOliveBlueprintToolHandlers::RegisterFunctionWriterTools()
 {
-	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
-
-	// blueprint.add_function (unified — routes by function_type param)
-	// Old tools (blueprint.add_custom_event, blueprint.add_event_dispatcher,
-	// blueprint.override_function) are now aliases in the tool alias map
-	// that redirect here with appropriate function_type.
-	Registry.RegisterTool(
-		TEXT("blueprint.add_function"),
-		TEXT("Add a function, custom event, event dispatcher, or override to a Blueprint"),
-		OliveBlueprintSchemas::BlueprintAddFunction(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintAddFunction),
-		{TEXT("blueprint"), TEXT("write"), TEXT("function")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.add_function"));
-
-	// blueprint.remove_function
-	Registry.RegisterTool(
-		TEXT("blueprint.remove_function"),
-		TEXT("Remove a function from a Blueprint"),
-		OliveBlueprintSchemas::BlueprintRemoveFunction(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintRemoveFunction),
-		{TEXT("blueprint"), TEXT("write"), TEXT("function")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.remove_function"));
-
-	// blueprint.modify_function_signature
-	Registry.RegisterTool(
-		TEXT("blueprint.modify_function_signature"),
-		TEXT("Modify the signature of an existing function (parameters, return values, flags)"),
-		OliveBlueprintSchemas::BlueprintModifyFunctionSignature(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintModifyFunctionSignature),
-		{TEXT("blueprint"), TEXT("write"), TEXT("function")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.modify_function_signature"));
-
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered 3 function writer tools"));
+	// Function writers are now reached via blueprint.add (entity='function' or
+	// 'custom_event' or 'event_dispatcher'), blueprint.modify (entity='function'),
+	// and blueprint.delete (entity='function'). Legacy names remain as aliases.
+	UE_LOG(LogOliveBPTools, Log, TEXT("Function writer tools are consolidated into blueprint.add/modify/delete (aliases in registry)"));
 }
 
 void FOliveBlueprintToolHandlers::RegisterGraphWriterTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
-	// blueprint.add_node
-	{
-		FOliveToolDefinition Def;
-		Def.Name = TEXT("blueprint.add_node");
-		Def.Description = TEXT("Add a node to a Blueprint graph");
-		Def.InputSchema = OliveBlueprintSchemas::BlueprintAddNode();
-		Def.Tags = {TEXT("blueprint"), TEXT("write"), TEXT("graph")};
-		Def.Category = TEXT("blueprint");
-		Def.WhenToUse = TEXT("Do NOT use for function calls or standard logic — use blueprint.apply_plan_json instead. Only use add_node for specialized node types outside plan_json vocabulary (K2Node_Timeline, MakeArray, MakeMap, etc.) or for wiring to existing nodes created by a previous plan_json call.");
-		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintAddNode));
-	}
-	RegisteredToolNames.Add(TEXT("blueprint.add_node"));
-
-	// blueprint.remove_node
-	{
-		FOliveToolDefinition Def;
-		Def.Name = TEXT("blueprint.remove_node");
-		Def.Description = TEXT("Remove a node from a Blueprint graph");
-		Def.InputSchema = OliveBlueprintSchemas::BlueprintRemoveNode();
-		Def.Tags = {TEXT("blueprint"), TEXT("write"), TEXT("graph")};
-		Def.Category = TEXT("blueprint");
-		Def.WhenToUse = TEXT("For removing 1-2 specific nodes surgically. To rewrite a function, use blueprint.apply_plan_json with mode:\"replace\" instead — never loop remove_node to clear an entire graph.");
-		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintRemoveNode));
-	}
-	RegisteredToolNames.Add(TEXT("blueprint.remove_node"));
+	// connect_pins and disconnect_pins remain first-class because they are the
+	// primary wiring verbs used by agents. All other graph writers are reached
+	// through blueprint.add/modify/delete with entity dispatch.
 
 	// blueprint.connect_pins
 	Registry.RegisterTool(
@@ -949,40 +759,7 @@ void FOliveBlueprintToolHandlers::RegisterGraphWriterTools()
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.disconnect_pins"));
 
-	// blueprint.set_pin_default
-	Registry.RegisterTool(
-		TEXT("blueprint.set_pin_default"),
-		TEXT("Set the default value of an input pin"),
-		OliveBlueprintSchemas::BlueprintSetPinDefault(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintSetPinDefault),
-		{TEXT("blueprint"), TEXT("write"), TEXT("graph")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.set_pin_default"));
-
-	// blueprint.set_node_property
-	Registry.RegisterTool(
-		TEXT("blueprint.set_node_property"),
-		TEXT("Set a property on a Blueprint node"),
-		OliveBlueprintSchemas::BlueprintSetNodeProperty(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintSetNodeProperty),
-		{TEXT("blueprint"), TEXT("write"), TEXT("graph")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.set_node_property"));
-
-	// blueprint.create_timeline
-	Registry.RegisterTool(
-		TEXT("blueprint.create_timeline"),
-		TEXT("Create a Timeline node with tracks and curve data in a Blueprint event graph. Returns node_id and all pin names. Wire outputs with connect_pins (e.g., source: 'node_id.Play', target: 'other.execute') or reference track outputs in plan_json (e.g., inputs: {Alpha: '@node_id.TrackName'}). Exec inputs: Play, PlayFromStart, Stop, Reverse, ReverseFromEnd. Track outputs use the track name as pin name."),
-		OliveBlueprintSchemas::BlueprintCreateTimeline(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintCreateTimeline),
-		{TEXT("blueprint"), TEXT("write"), TEXT("graph"), TEXT("timeline")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.create_timeline"));
-
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered 7 graph writer tools"));
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered 2 graph wiring tools (other graph writers via blueprint.add/modify/delete)"));
 }
 
 void FOliveBlueprintToolHandlers::RegisterAnimBPWriterTools()
@@ -1145,13 +922,39 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRead(const TSharedP
 	{
 		return HandleReadSectionOverridableFunctions(Params);
 	}
+	else if (Section == TEXT("pins"))
+	{
+		// blueprint.get_node_pins folded in. Normalize 'graph_name' -> 'graph'
+		// because HandleBlueprintGetNodePins reads 'graph'.
+		TSharedPtr<FJsonObject> SubParams = MakeShared<FJsonObject>();
+		for (const auto& Pair : Params->Values) { SubParams->Values.Add(Pair.Key, Pair.Value); }
+		FString GraphName;
+		if (!SubParams->TryGetStringField(TEXT("graph"), GraphName) || GraphName.IsEmpty())
+		{
+			if (SubParams->TryGetStringField(TEXT("graph_name"), GraphName) && !GraphName.IsEmpty())
+			{
+				SubParams->SetStringField(TEXT("graph"), GraphName);
+			}
+			else if (SubParams->TryGetStringField(TEXT("function_name"), GraphName) && !GraphName.IsEmpty())
+			{
+				SubParams->SetStringField(TEXT("graph"), GraphName);
+			}
+		}
+		return HandleBlueprintGetNodePins(SubParams);
+	}
+	else if (Section == TEXT("function_detail"))
+	{
+		// blueprint.describe_function folded in. The legacy handler accepts
+		// 'function_name', 'target_class', 'path' directly, so just pass through.
+		return HandleDescribeFunction(Params);
+	}
 	else
 	{
 		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintRead: Invalid section '%s' for path='%s'"), *Section, *AssetPath);
 		return FOliveToolResult::Error(
 			TEXT("VALIDATION_INVALID_VALUE"),
-			FString::Printf(TEXT("Invalid section '%s'. Must be one of: all, summary, graph, variables, components, hierarchy, overridable_functions"), *Section),
-			TEXT("Use section='all' for a full overview, or section='graph' with graph_name to read a specific graph")
+			FString::Printf(TEXT("Invalid section '%s'. Must be one of: all, summary, graph, variables, components, hierarchy, overridable_functions, pins, function_detail"), *Section),
+			TEXT("Use section='all' for a full overview, section='graph' with graph_name to read a specific graph, 'pins' with graph_name+node_id for a single node's pins, or 'function_detail' with function_name for signature details")
 		);
 	}
 }
@@ -3695,9 +3498,13 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCompile(const TShar
 		);
 	}
 
-	// Extract path
+	// Extract path -- accept 'path' or 'asset_path' (the legacy verify tool used asset_path).
 	FString AssetPath;
 	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
+	{
+		Params->TryGetStringField(TEXT("asset_path"), AssetPath);
+	}
+	if (AssetPath.IsEmpty())
 	{
 		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintCompile: Missing required param 'path'"));
 		return FOliveToolResult::Error(
@@ -3705,6 +3512,18 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCompile(const TShar
 			TEXT("Required parameter 'path' is missing or empty"),
 			TEXT("Provide the Blueprint asset path")
 		);
+	}
+
+	// verify:true routes to the completion-verification path (folded in from the
+	// former blueprint.verify_completion tool). HandleVerifyCompletion expects
+	// 'asset_path', so normalize before delegating.
+	bool bVerify = false;
+	if (Params->TryGetBoolField(TEXT("verify"), bVerify) && bVerify)
+	{
+		TSharedPtr<FJsonObject> SubParams = MakeShared<FJsonObject>();
+		for (const auto& Pair : Params->Values) { SubParams->Values.Add(Pair.Key, Pair.Value); }
+		SubParams->SetStringField(TEXT("asset_path"), AssetPath);
+		return HandleVerifyCompletion(SubParams);
 	}
 
 	// Load Blueprint for target asset
@@ -3783,6 +3602,119 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintDelete(const TShare
 		);
 	}
 
+	// --- Consolidated entity dispatch (P5) ---
+	// Legacy callers (no 'entity' field) keep the previous behavior of deleting
+	// the whole Blueprint asset. When 'entity' is provided we route to a
+	// specialized handler, validating entity-specific required fields first.
+	FString Entity;
+	Params->TryGetStringField(TEXT("entity"), Entity);
+	Entity = Entity.ToLower();
+	if (!Entity.IsEmpty() && Entity != TEXT("blueprint"))
+	{
+		// Clone params so we can normalize field aliases without mutating caller state.
+		TSharedPtr<FJsonObject> SubParams = MakeShared<FJsonObject>();
+		for (const auto& Pair : Params->Values) { SubParams->Values.Add(Pair.Key, Pair.Value); }
+
+		auto MissingParam = [](const FString& FieldName, const FString& WhenEntity) -> FOliveToolResult
+		{
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_MISSING_PARAM"),
+				FString::Printf(TEXT("Missing required parameter '%s' for entity='%s'"), *FieldName, *WhenEntity),
+				FString::Printf(TEXT("Provide '%s' when entity='%s'."), *FieldName, *WhenEntity));
+		};
+
+		if (Entity == TEXT("node"))
+		{
+			FString NodeId;
+			if (!SubParams->TryGetStringField(TEXT("node_id"), NodeId) || NodeId.IsEmpty())
+			{
+				return MissingParam(TEXT("node_id"), Entity);
+			}
+			// HandleBlueprintRemoveNode reads 'graph'; accept graph_name and function_name as aliases.
+			FString GraphName;
+			if (!SubParams->TryGetStringField(TEXT("graph"), GraphName) || GraphName.IsEmpty())
+			{
+				if (SubParams->TryGetStringField(TEXT("graph_name"), GraphName) && !GraphName.IsEmpty())
+				{
+					SubParams->SetStringField(TEXT("graph"), GraphName);
+				}
+				else if (SubParams->TryGetStringField(TEXT("function_name"), GraphName) && !GraphName.IsEmpty())
+				{
+					SubParams->SetStringField(TEXT("graph"), GraphName);
+				}
+				else
+				{
+					// Default to EventGraph if caller did not specify — matches legacy behavior
+					// and keeps the common case (remove an event graph node) ergonomic.
+					SubParams->SetStringField(TEXT("graph"), TEXT("EventGraph"));
+				}
+			}
+			return HandleBlueprintRemoveNode(SubParams);
+		}
+		if (Entity == TEXT("component"))
+		{
+			FString CompName;
+			if (!SubParams->TryGetStringField(TEXT("component_name"), CompName) || CompName.IsEmpty())
+			{
+				SubParams->TryGetStringField(TEXT("name"), CompName);
+			}
+			if (CompName.IsEmpty())
+			{
+				return MissingParam(TEXT("component_name"), Entity);
+			}
+			SubParams->SetStringField(TEXT("name"), CompName);
+			return HandleBlueprintRemoveComponent(SubParams);
+		}
+		if (Entity == TEXT("variable"))
+		{
+			FString VarName;
+			if (!SubParams->TryGetStringField(TEXT("variable_name"), VarName) || VarName.IsEmpty())
+			{
+				SubParams->TryGetStringField(TEXT("name"), VarName);
+			}
+			if (VarName.IsEmpty())
+			{
+				return MissingParam(TEXT("variable_name"), Entity);
+			}
+			SubParams->SetStringField(TEXT("name"), VarName);
+			return HandleBlueprintRemoveVariable(SubParams);
+		}
+		if (Entity == TEXT("function"))
+		{
+			FString FuncName;
+			if (!SubParams->TryGetStringField(TEXT("function_name"), FuncName) || FuncName.IsEmpty())
+			{
+				SubParams->TryGetStringField(TEXT("name"), FuncName);
+			}
+			if (FuncName.IsEmpty())
+			{
+				return MissingParam(TEXT("function_name"), Entity);
+			}
+			SubParams->SetStringField(TEXT("name"), FuncName);
+			return HandleBlueprintRemoveFunction(SubParams);
+		}
+		if (Entity == TEXT("interface"))
+		{
+			FString InterfacePath;
+			if (!SubParams->TryGetStringField(TEXT("interface_path"), InterfacePath) || InterfacePath.IsEmpty())
+			{
+				SubParams->TryGetStringField(TEXT("interface"), InterfacePath);
+			}
+			if (InterfacePath.IsEmpty())
+			{
+				return MissingParam(TEXT("interface_path"), Entity);
+			}
+			SubParams->SetStringField(TEXT("interface"), InterfacePath);
+			return HandleBlueprintRemoveInterface(SubParams);
+		}
+
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_VALUE"),
+			FString::Printf(TEXT("Unknown entity '%s'"), *Entity),
+			TEXT("entity must be one of: blueprint, node, component, variable, function, interface"));
+	}
+
+	// --- Whole-Blueprint delete (legacy behavior) ---
 	// Load Blueprint for target asset
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
 	if (!Blueprint)
@@ -3838,6 +3770,395 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintDelete(const TShare
 	FOliveWriteResult Result = ExecuteWithOptionalConfirmation(Pipeline, Request, Executor);
 
 	return Result.ToToolResult();
+}
+
+// ============================================================================
+// Consolidated Dispatchers (P5): blueprint.modify and blueprint.add
+//
+// These dispatchers route on 'entity' (+ optional 'action') to the existing
+// specialized handlers. Legacy tool names are preserved as aliases that
+// pre-fill entity/action before dispatch. Dispatchers validate the minimum
+// fields they need to route correctly; downstream handlers perform their own
+// per-operation validation.
+// ============================================================================
+
+namespace
+{
+	/** Clone a JSON params object so we can inject/rename fields without mutating the caller. */
+	TSharedPtr<FJsonObject> CloneModifyParams(const TSharedPtr<FJsonObject>& Params)
+	{
+		TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
+		if (Params.IsValid())
+		{
+			for (const auto& Pair : Params->Values) { Out->Values.Add(Pair.Key, Pair.Value); }
+		}
+		return Out;
+	}
+
+	/** Ensure Target has a string field 'Dst' — copy from 'Src' if 'Dst' is missing/empty. */
+	void EnsureStringField(TSharedPtr<FJsonObject>& Target, const TCHAR* Dst, const TCHAR* Src)
+	{
+		FString Existing;
+		if (Target->TryGetStringField(Dst, Existing) && !Existing.IsEmpty())
+		{
+			return;
+		}
+		FString SrcValue;
+		if (Target->TryGetStringField(Src, SrcValue) && !SrcValue.IsEmpty())
+		{
+			Target->SetStringField(Dst, SrcValue);
+		}
+	}
+
+	FOliveToolResult MissingEntityParam(const FString& FieldName, const FString& Entity, const FString& Action)
+	{
+		FString Label = Action.IsEmpty()
+			? FString::Printf(TEXT("entity='%s'"), *Entity)
+			: FString::Printf(TEXT("entity='%s', action='%s'"), *Entity, *Action);
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			FString::Printf(TEXT("Missing required parameter '%s' for %s"), *FieldName, *Label),
+			FString::Printf(TEXT("Provide '%s' when %s."), *FieldName, *Label));
+	}
+} // anonymous namespace
+
+FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintModify(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a params object with 'path' and 'entity' fields."));
+	}
+
+	FString AssetPath;
+	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'path'"),
+			TEXT("Provide the Blueprint asset path."));
+	}
+
+	FString Entity;
+	Params->TryGetStringField(TEXT("entity"), Entity);
+	Entity = Entity.ToLower();
+	if (Entity.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'entity'"),
+			TEXT("entity must be one of: component, function, variable, node, pin_default, blueprint"));
+	}
+
+	FString Action;
+	Params->TryGetStringField(TEXT("action"), Action);
+	Action = Action.ToLower();
+
+	TSharedPtr<FJsonObject> SubParams = CloneModifyParams(Params);
+
+	if (Entity == TEXT("component"))
+	{
+		EnsureStringField(SubParams, TEXT("name"), TEXT("component_name"));
+		FString Name;
+		if (!SubParams->TryGetStringField(TEXT("name"), Name) || Name.IsEmpty())
+		{
+			return MissingEntityParam(TEXT("component_name"), Entity, Action);
+		}
+
+		if (Action == TEXT("reparent"))
+		{
+			if (!SubParams->HasField(TEXT("new_parent")))
+			{
+				return MissingEntityParam(TEXT("new_parent"), Entity, Action);
+			}
+			return HandleBlueprintReparentComponent(SubParams);
+		}
+		// Default / set_properties path
+		if (!SubParams->HasField(TEXT("properties")))
+		{
+			return MissingEntityParam(TEXT("properties"), Entity,
+				Action.IsEmpty() ? FString(TEXT("set_properties")) : Action);
+		}
+		return HandleBlueprintModifyComponent(SubParams);
+	}
+
+	if (Entity == TEXT("function"))
+	{
+		EnsureStringField(SubParams, TEXT("name"), TEXT("function_name"));
+		FString Name;
+		if (!SubParams->TryGetStringField(TEXT("name"), Name) || Name.IsEmpty())
+		{
+			return MissingEntityParam(TEXT("function_name"), Entity, Action);
+		}
+
+		if (Action == TEXT("override_virtual"))
+		{
+			// Reuse the add_function path with function_type=override.
+			SubParams->SetStringField(TEXT("function_type"), TEXT("override"));
+			EnsureStringField(SubParams, TEXT("function_name"), TEXT("name"));
+			return HandleBlueprintAddFunction(SubParams);
+		}
+
+		// Default / set_signature
+		if (!SubParams->HasField(TEXT("changes")))
+		{
+			return MissingEntityParam(TEXT("changes"), Entity,
+				Action.IsEmpty() ? FString(TEXT("set_signature")) : Action);
+		}
+		return HandleBlueprintModifyFunctionSignature(SubParams);
+	}
+
+	if (Entity == TEXT("variable"))
+	{
+		// HandleBlueprintAddVariable accepts either nested {variable: {...}} or
+		// flat {name, type, ...}. For modify we want set_properties semantics
+		// (upsert with modify_only=true). Ensure a variable_name is present.
+		FString VarName;
+		if (!SubParams->TryGetStringField(TEXT("variable_name"), VarName) || VarName.IsEmpty())
+		{
+			SubParams->TryGetStringField(TEXT("name"), VarName);
+		}
+		if (VarName.IsEmpty())
+		{
+			// Maybe nested
+			const TSharedPtr<FJsonObject>* VarObj = nullptr;
+			if (SubParams->TryGetObjectField(TEXT("variable"), VarObj) && VarObj && VarObj->IsValid())
+			{
+				(*VarObj)->TryGetStringField(TEXT("name"), VarName);
+			}
+		}
+		if (VarName.IsEmpty())
+		{
+			return MissingEntityParam(TEXT("variable_name"), Entity, Action);
+		}
+
+		// Require at least something to set — either a 'properties' map
+		// (rich kwargs) or 'changes' or a 'variable' spec. Otherwise this
+		// would be a no-op.
+		if (!SubParams->HasField(TEXT("properties"))
+			&& !SubParams->HasField(TEXT("changes"))
+			&& !SubParams->HasField(TEXT("variable")))
+		{
+			return FOliveToolResult::Error(
+				TEXT("VALIDATION_MISSING_PARAM"),
+				TEXT("Missing modification payload for entity='variable'"),
+				TEXT("Provide 'properties' (rich kwargs), 'changes', or a 'variable' spec."));
+		}
+
+		// Ensure HandleBlueprintAddVariable sees the variable name.
+		if (!SubParams->HasField(TEXT("name")))
+		{
+			SubParams->SetStringField(TEXT("name"), VarName);
+		}
+		// Force upsert-modify semantics so we don't accidentally create a new variable.
+		SubParams->SetBoolField(TEXT("modify_only"), true);
+		return HandleBlueprintAddVariable(SubParams);
+	}
+
+	if (Entity == TEXT("node"))
+	{
+		// Ensure we have graph + node_id routing info
+		if (!SubParams->HasField(TEXT("graph")))
+		{
+			EnsureStringField(SubParams, TEXT("graph"), TEXT("graph_name"));
+		}
+		if (Action == TEXT("move"))
+		{
+			// HandleBlueprintSetNodeProperty can technically be used, but there's no
+			// dedicated move handler. Implement inline as a graph-writer call.
+			FString GraphName, NodeId;
+			if (!SubParams->TryGetStringField(TEXT("graph"), GraphName) || GraphName.IsEmpty())
+			{
+				return MissingEntityParam(TEXT("graph"), Entity, Action);
+			}
+			if (!SubParams->TryGetStringField(TEXT("node_id"), NodeId) || NodeId.IsEmpty())
+			{
+				return MissingEntityParam(TEXT("node_id"), Entity, Action);
+			}
+			int32 PosX = 0, PosY = 0;
+			const bool bHasX = SubParams->HasField(TEXT("pos_x"));
+			const bool bHasY = SubParams->HasField(TEXT("pos_y"));
+			if (bHasX) { PosX = static_cast<int32>(SubParams->GetNumberField(TEXT("pos_x"))); }
+			if (bHasY) { PosY = static_cast<int32>(SubParams->GetNumberField(TEXT("pos_y"))); }
+			if (!bHasX && !bHasY)
+			{
+				return FOliveToolResult::Error(
+					TEXT("VALIDATION_MISSING_PARAM"),
+					TEXT("Missing 'pos_x' and/or 'pos_y' for node.move"),
+					TEXT("Provide at least one of pos_x / pos_y."));
+			}
+
+			// Load Blueprint and move the cached node in a transaction.
+			UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+			if (!Blueprint)
+			{
+				return FOliveToolResult::Error(
+					TEXT("ASSET_NOT_FOUND"),
+					FString::Printf(TEXT("Blueprint not found at path '%s'"), *AssetPath),
+					TEXT("Verify the asset path is correct."));
+			}
+
+			FOliveGraphWriter& GraphWriter = FOliveGraphWriter::Get();
+			UEdGraphNode* Node = GraphWriter.GetCachedNode(AssetPath, NodeId);
+			if (!Node)
+			{
+				return FOliveToolResult::Error(
+					TEXT("NODE_NOT_FOUND"),
+					FString::Printf(TEXT("Node '%s' not found (may not have been created in this session)"), *NodeId),
+					TEXT("Re-read the graph to refresh node IDs, or use add_node first."));
+			}
+
+			// Build a write request / pipeline execution so the move participates in undo.
+			FOliveWriteRequest Request;
+			Request.ToolName = TEXT("blueprint.modify");
+			Request.Params = SubParams;
+			Request.AssetPath = AssetPath;
+			Request.TargetAsset = Blueprint;
+			Request.OperationDescription = FText::FromString(
+				FString::Printf(TEXT("Move node '%s' to (%d, %d)"), *NodeId, PosX, PosY));
+			Request.OperationCategory = TEXT("graph_editing");
+			Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
+			Request.bAutoCompile = false;
+			Request.bSkipVerification = true;
+
+			FOliveWriteExecutor Executor;
+			Executor.BindLambda([Node, PosX, PosY, bHasX, bHasY](const FOliveWriteRequest& Req, UObject* Target) -> FOliveWriteResult
+			{
+				Node->Modify();
+				if (bHasX) { Node->NodePosX = PosX; }
+				if (bHasY) { Node->NodePosY = PosY; }
+				TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+				Data->SetNumberField(TEXT("pos_x"), Node->NodePosX);
+				Data->SetNumberField(TEXT("pos_y"), Node->NodePosY);
+				return FOliveWriteResult::Success(Data);
+			});
+
+			FOliveWriteResult R = ExecuteWithOptionalConfirmation(FOliveWritePipeline::Get(), Request, Executor);
+			return R.ToToolResult();
+		}
+
+		// Default / set_property
+		return HandleBlueprintSetNodeProperty(SubParams);
+	}
+
+	if (Entity == TEXT("pin_default"))
+	{
+		// HandleBlueprintSetPinDefault uses 'pin' + 'value'. Accept 'pin_name' as alias.
+		EnsureStringField(SubParams, TEXT("pin"), TEXT("pin_name"));
+		return HandleBlueprintSetPinDefault(SubParams);
+	}
+
+	if (Entity == TEXT("blueprint"))
+	{
+		if (Action == TEXT("set_parent_class"))
+		{
+			return HandleBlueprintSetParentClass(SubParams);
+		}
+		if (Action == TEXT("set_defaults"))
+		{
+			// DESIGN NOTE: No dedicated HandleBlueprintSetDefaults exists yet.
+			// Until it is added we surface a structured "not implemented" error
+			// so callers can still discover the entity shape from the schema.
+			return FOliveToolResult::Error(
+				TEXT("NOT_IMPLEMENTED"),
+				TEXT("entity='blueprint', action='set_defaults' is not implemented yet"),
+				TEXT("Use editor.run_python to set Class Defaults, or modify individual components/variables."));
+		}
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_VALUE"),
+			FString::Printf(TEXT("Unknown action '%s' for entity='blueprint'"), *Action),
+			TEXT("action must be 'set_parent_class' or 'set_defaults'."));
+	}
+
+	return FOliveToolResult::Error(
+		TEXT("VALIDATION_INVALID_VALUE"),
+		FString::Printf(TEXT("Unknown entity '%s'"), *Entity),
+		TEXT("entity must be one of: component, function, variable, node, pin_default, blueprint"));
+}
+
+FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAdd(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a params object with 'path' and 'entity' fields."));
+	}
+
+	FString AssetPath;
+	if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'path'"),
+			TEXT("Provide the Blueprint asset path."));
+	}
+
+	FString Entity;
+	Params->TryGetStringField(TEXT("entity"), Entity);
+	Entity = Entity.ToLower();
+	if (Entity.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'entity'"),
+			TEXT("entity must be one of: node, variable, function, component, custom_event, event_dispatcher, interface, timeline"));
+	}
+
+	TSharedPtr<FJsonObject> SubParams = CloneModifyParams(Params);
+
+	if (Entity == TEXT("node"))
+	{
+		// HandleBlueprintAddNode expects 'type'. Accept 'node_type' as an alias.
+		EnsureStringField(SubParams, TEXT("type"), TEXT("node_type"));
+		return HandleBlueprintAddNode(SubParams);
+	}
+	if (Entity == TEXT("variable"))
+	{
+		return HandleBlueprintAddVariable(SubParams);
+	}
+	if (Entity == TEXT("function"))
+	{
+		// Ensure function_type=function if caller didn't set one.
+		if (!SubParams->HasField(TEXT("function_type")))
+		{
+			SubParams->SetStringField(TEXT("function_type"), TEXT("function"));
+		}
+		return HandleBlueprintAddFunction(SubParams);
+	}
+	if (Entity == TEXT("component"))
+	{
+		return HandleBlueprintAddComponent(SubParams);
+	}
+	if (Entity == TEXT("custom_event"))
+	{
+		SubParams->SetStringField(TEXT("function_type"), TEXT("custom_event"));
+		return HandleBlueprintAddFunction(SubParams);
+	}
+	if (Entity == TEXT("event_dispatcher"))
+	{
+		SubParams->SetStringField(TEXT("function_type"), TEXT("event_dispatcher"));
+		return HandleBlueprintAddFunction(SubParams);
+	}
+	if (Entity == TEXT("interface"))
+	{
+		// HandleBlueprintAddInterface uses 'interface' string field — alias interface_path.
+		EnsureStringField(SubParams, TEXT("interface"), TEXT("interface_path"));
+		return HandleBlueprintAddInterface(SubParams);
+	}
+	if (Entity == TEXT("timeline"))
+	{
+		// HandleBlueprintCreateTimeline accepts its params directly.
+		return HandleBlueprintCreateTimeline(SubParams);
+	}
+
+	return FOliveToolResult::Error(
+		TEXT("VALIDATION_INVALID_VALUE"),
+		FString::Printf(TEXT("Unknown entity '%s'"), *Entity),
+		TEXT("entity must be one of: node, variable, function, component, custom_event, event_dispatcher, interface, timeline"));
 }
 
 // ============================================================================
