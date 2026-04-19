@@ -13,11 +13,19 @@ DECLARE_LOG_CATEGORY_EXTERN(LogOliveCppTools, Log, All);
  * Registers and handles all C++ integration MCP tools.
  * Bridges between the MCP tool registry and the C++ reader/writer infrastructure.
  *
- * Tool Categories:
- * - Reflection: cpp.read_class, cpp.list_blueprint_callable, cpp.list_overridable,
- *               cpp.read_enum, cpp.read_struct
- * - Source: cpp.read_header, cpp.read_source, cpp.list_project_classes
- * - Write: cpp.create_class, cpp.add_property, cpp.add_function, cpp.modify_source, cpp.compile
+ * P5 consolidated tools (6 real):
+ *   cpp.read (entity: class|enum|struct|header|source)
+ *   cpp.list (kind: project|blueprint_callable|overridable)
+ *   cpp.create_class
+ *   cpp.add (entity: function|property)
+ *   cpp.modify_source
+ *   cpp.compile
+ *
+ * Legacy tool names (cpp.read_class, cpp.read_enum, cpp.read_struct,
+ * cpp.read_header, cpp.read_source, cpp.list_project_classes,
+ * cpp.list_blueprint_callable, cpp.list_overridable, cpp.add_function,
+ * cpp.add_property) continue to work as aliases registered in
+ * OliveToolRegistry::GetToolAliases().
  */
 class OLIVEAIEDITOR_API FOliveCppToolHandlers
 {
@@ -42,7 +50,12 @@ private:
 	void RegisterSourceTools();
 	void RegisterWriteTools();
 
-	// Reflection handlers
+	// P5 consolidated dispatchers
+	FOliveToolResult HandleCppRead(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandleCppList(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandleCppAdd(const TSharedPtr<FJsonObject>& Params);
+
+	// Internal handlers (invoked by dispatchers; legacy names reach them via aliases)
 	FOliveToolResult HandleReadClass(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleListBlueprintCallable(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleListOverridable(const TSharedPtr<FJsonObject>& Params);

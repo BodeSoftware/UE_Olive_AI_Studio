@@ -49,98 +49,48 @@ void FOliveCppToolHandlers::RegisterReflectionTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
+	// P5 consolidation: C++ exposes 6 real tools. Legacy names
+	// (cpp.read_class, cpp.read_enum, cpp.read_struct, cpp.read_header,
+	// cpp.read_source, cpp.list_project_classes, cpp.list_blueprint_callable,
+	// cpp.list_overridable, cpp.add_function, cpp.add_property) continue to
+	// work as aliases registered in OliveToolRegistry::GetToolAliases().
+
+	// 1. cpp.read (P5: replaces read_class/read_enum/read_struct/read_header/read_source)
 	Registry.RegisterTool(
-		TEXT("cpp.read_class"),
-		TEXT("Read full reflection data for a C++ class (properties, functions, interfaces, metadata)"),
-		OliveCppSchemas::CppReadClass(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCppToolHandlers::HandleReadClass),
+		TEXT("cpp.read"),
+		TEXT("Read C++ entities via reflection or source files. Dispatches on 'entity' "
+			"(class|enum|struct|header|source). Legacy read_class/read_enum/read_struct/"
+			"read_header/read_source are aliases."),
+		OliveCppSchemas::CppRead(),
+		FOliveToolHandler::CreateRaw(this, &FOliveCppToolHandlers::HandleCppRead),
 		{TEXT("cpp"), TEXT("read")},
 		TEXT("cpp")
 	);
-	RegisteredToolNames.Add(TEXT("cpp.read_class"));
-
-	// Removed in AI Freedom Phase 2 — merged into cpp.read_class with include="callable"
-	// Registry.RegisterTool(
-	// 	TEXT("cpp.list_blueprint_callable"),
-	// 	TEXT("List all BlueprintCallable and BlueprintPure functions on a class"),
-	// 	OliveCppSchemas::CppListBlueprintCallable(),
-	// 	FOliveToolHandler::CreateRaw(this, &FOliveCppToolHandlers::HandleListBlueprintCallable),
-	// 	{TEXT("cpp"), TEXT("read")},
-	// 	TEXT("cpp")
-	// );
-	// RegisteredToolNames.Add(TEXT("cpp.list_blueprint_callable"));
-
-	// Removed in AI Freedom Phase 2 — merged into cpp.read_class with include="overridable"
-	// Registry.RegisterTool(
-	// 	TEXT("cpp.list_overridable"),
-	// 	TEXT("List overridable functions (BlueprintImplementableEvent, BlueprintNativeEvent)"),
-	// 	OliveCppSchemas::CppListOverridable(),
-	// 	FOliveToolHandler::CreateRaw(this, &FOliveCppToolHandlers::HandleListOverridable),
-	// 	{TEXT("cpp"), TEXT("read")},
-	// 	TEXT("cpp")
-	// );
-	// RegisteredToolNames.Add(TEXT("cpp.list_overridable"));
-
-	Registry.RegisterTool(
-		TEXT("cpp.read_enum"),
-		TEXT("Read enum values and metadata via reflection"),
-		OliveCppSchemas::CppReadEnum(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCppToolHandlers::HandleReadEnum),
-		{TEXT("cpp"), TEXT("read")},
-		TEXT("cpp")
-	);
-	RegisteredToolNames.Add(TEXT("cpp.read_enum"));
-
-	Registry.RegisterTool(
-		TEXT("cpp.read_struct"),
-		TEXT("Read struct members via reflection"),
-		OliveCppSchemas::CppReadStruct(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCppToolHandlers::HandleReadStruct),
-		{TEXT("cpp"), TEXT("read")},
-		TEXT("cpp")
-	);
-	RegisteredToolNames.Add(TEXT("cpp.read_struct"));
+	RegisteredToolNames.Add(TEXT("cpp.read"));
 }
 
 void FOliveCppToolHandlers::RegisterSourceTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
+	// 2. cpp.list (P5: replaces list_project_classes/list_blueprint_callable/list_overridable)
 	Registry.RegisterTool(
-		TEXT("cpp.read_header"),
-		TEXT("Read a project .h file with optional line range"),
-		OliveCppSchemas::CppReadHeader(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCppToolHandlers::HandleReadHeader),
+		TEXT("cpp.list"),
+		TEXT("List C++ entities. Dispatches on 'kind' (project|blueprint_callable|overridable). "
+			"Legacy list_project_classes/list_blueprint_callable/list_overridable are aliases."),
+		OliveCppSchemas::CppList(),
+		FOliveToolHandler::CreateRaw(this, &FOliveCppToolHandlers::HandleCppList),
 		{TEXT("cpp"), TEXT("read")},
 		TEXT("cpp")
 	);
-	RegisteredToolNames.Add(TEXT("cpp.read_header"));
-
-	Registry.RegisterTool(
-		TEXT("cpp.read_source"),
-		TEXT("Read a project .cpp file with optional line range"),
-		OliveCppSchemas::CppReadSource(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCppToolHandlers::HandleReadSource),
-		{TEXT("cpp"), TEXT("read")},
-		TEXT("cpp")
-	);
-	RegisteredToolNames.Add(TEXT("cpp.read_source"));
-
-	Registry.RegisterTool(
-		TEXT("cpp.list_project_classes"),
-		TEXT("List C++ classes defined in project Source/ directory"),
-		OliveCppSchemas::CppListProjectClasses(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCppToolHandlers::HandleListProjectClasses),
-		{TEXT("cpp"), TEXT("read")},
-		TEXT("cpp")
-	);
-	RegisteredToolNames.Add(TEXT("cpp.list_project_classes"));
+	RegisteredToolNames.Add(TEXT("cpp.list"));
 }
 
 void FOliveCppToolHandlers::RegisterWriteTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
+	// 3. cpp.create_class (unchanged)
 	Registry.RegisterTool(
 		TEXT("cpp.create_class"),
 		TEXT("Create a new UE C++ class with header and source boilerplate"),
@@ -151,26 +101,19 @@ void FOliveCppToolHandlers::RegisterWriteTools()
 	);
 	RegisteredToolNames.Add(TEXT("cpp.create_class"));
 
+	// 4. cpp.add (P5: replaces add_function + add_property)
 	Registry.RegisterTool(
-		TEXT("cpp.add_property"),
-		TEXT("Add a UPROPERTY to an existing header file"),
-		OliveCppSchemas::CppAddProperty(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCppToolHandlers::HandleAddProperty),
-		{TEXT("cpp"), TEXT("write")},
+		TEXT("cpp.add"),
+		TEXT("Add a UFUNCTION or UPROPERTY to a header. Dispatches on 'entity' (function|property). "
+			"Legacy cpp.add_function and cpp.add_property are aliases that pre-fill 'entity'."),
+		OliveCppSchemas::CppAdd(),
+		FOliveToolHandler::CreateRaw(this, &FOliveCppToolHandlers::HandleCppAdd),
+		{TEXT("cpp"), TEXT("write"), TEXT("add")},
 		TEXT("cpp")
 	);
-	RegisteredToolNames.Add(TEXT("cpp.add_property"));
+	RegisteredToolNames.Add(TEXT("cpp.add"));
 
-	Registry.RegisterTool(
-		TEXT("cpp.add_function"),
-		TEXT("Add a UFUNCTION declaration and stub body"),
-		OliveCppSchemas::CppAddFunction(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCppToolHandlers::HandleAddFunction),
-		{TEXT("cpp"), TEXT("write")},
-		TEXT("cpp")
-	);
-	RegisteredToolNames.Add(TEXT("cpp.add_function"));
-
+	// 5. cpp.modify_source (unchanged)
 	Registry.RegisterTool(
 		TEXT("cpp.modify_source"),
 		TEXT("Apply a bounded anchor-based source patch"),
@@ -181,6 +124,7 @@ void FOliveCppToolHandlers::RegisterWriteTools()
 	);
 	RegisteredToolNames.Add(TEXT("cpp.modify_source"));
 
+	// 6. cpp.compile (unchanged)
 	Registry.RegisterTool(
 		TEXT("cpp.compile"),
 		TEXT("Trigger Live Coding hot reload compilation"),
@@ -720,4 +664,159 @@ FOliveToolResult FOliveCppToolHandlers::HandleModifySource(const TSharedPtr<FJso
 		StartLine,
 		EndLine,
 		bRequireUniqueMatch);
+}
+
+// ============================================================================
+// Consolidated Dispatchers (P5)
+//
+// These dispatchers route on entity / kind to the existing specialized
+// handlers. Legacy tool names (cpp.read_class, cpp.read_enum, cpp.read_struct,
+// cpp.read_header, cpp.read_source, cpp.list_project_classes,
+// cpp.list_blueprint_callable, cpp.list_overridable, cpp.add_function,
+// cpp.add_property) are preserved as aliases that pre-fill the dispatch field
+// in OliveToolRegistry::GetToolAliases().
+// ============================================================================
+
+namespace
+{
+	/** Clone params so we can normalize fields without mutating the caller. */
+	static TSharedPtr<FJsonObject> CloneCppParams(const TSharedPtr<FJsonObject>& Params)
+	{
+		TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
+		if (Params.IsValid())
+		{
+			for (const auto& Pair : Params->Values) { Out->Values.Add(Pair.Key, Pair.Value); }
+		}
+		return Out;
+	}
+} // anonymous namespace
+
+FOliveToolResult FOliveCppToolHandlers::HandleCppRead(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a params object with an 'entity' field."));
+	}
+
+	FString Entity;
+	Params->TryGetStringField(TEXT("entity"), Entity);
+	Entity = Entity.ToLower();
+	if (Entity.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'entity'"),
+			TEXT("entity must be one of: class, enum, struct, header, source"));
+	}
+
+	TSharedPtr<FJsonObject> SubParams = CloneCppParams(Params);
+
+	if (Entity == TEXT("class"))
+	{
+		return HandleReadClass(SubParams);
+	}
+	if (Entity == TEXT("enum"))
+	{
+		return HandleReadEnum(SubParams);
+	}
+	if (Entity == TEXT("struct"))
+	{
+		return HandleReadStruct(SubParams);
+	}
+	if (Entity == TEXT("header"))
+	{
+		return HandleReadHeader(SubParams);
+	}
+	if (Entity == TEXT("source"))
+	{
+		return HandleReadSource(SubParams);
+	}
+
+	return FOliveToolResult::Error(
+		TEXT("VALIDATION_INVALID_VALUE"),
+		FString::Printf(TEXT("Unknown entity '%s'"), *Entity),
+		TEXT("entity must be one of: class, enum, struct, header, source"));
+}
+
+FOliveToolResult FOliveCppToolHandlers::HandleCppList(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a params object with a 'kind' field."));
+	}
+
+	FString Kind;
+	Params->TryGetStringField(TEXT("kind"), Kind);
+	Kind = Kind.ToLower();
+	if (Kind.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'kind'"),
+			TEXT("kind must be one of: project, blueprint_callable, overridable"));
+	}
+
+	TSharedPtr<FJsonObject> SubParams = CloneCppParams(Params);
+
+	if (Kind == TEXT("project"))
+	{
+		return HandleListProjectClasses(SubParams);
+	}
+	if (Kind == TEXT("blueprint_callable"))
+	{
+		return HandleListBlueprintCallable(SubParams);
+	}
+	if (Kind == TEXT("overridable"))
+	{
+		return HandleListOverridable(SubParams);
+	}
+
+	return FOliveToolResult::Error(
+		TEXT("VALIDATION_INVALID_VALUE"),
+		FString::Printf(TEXT("Unknown kind '%s'"), *Kind),
+		TEXT("kind must be one of: project, blueprint_callable, overridable"));
+}
+
+FOliveToolResult FOliveCppToolHandlers::HandleCppAdd(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a params object with 'entity' and 'file_path' fields."));
+	}
+
+	FString Entity;
+	Params->TryGetStringField(TEXT("entity"), Entity);
+	Entity = Entity.ToLower();
+	if (Entity.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'entity'"),
+			TEXT("entity must be one of: function, property"));
+	}
+
+	TSharedPtr<FJsonObject> SubParams = CloneCppParams(Params);
+
+	if (Entity == TEXT("function"))
+	{
+		return HandleAddFunction(SubParams);
+	}
+	if (Entity == TEXT("property"))
+	{
+		return HandleAddProperty(SubParams);
+	}
+
+	return FOliveToolResult::Error(
+		TEXT("VALIDATION_INVALID_VALUE"),
+		FString::Printf(TEXT("Unknown entity '%s'"), *Entity),
+		TEXT("entity must be one of: function, property"));
 }

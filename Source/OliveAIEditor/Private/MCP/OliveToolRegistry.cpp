@@ -218,6 +218,53 @@ namespace
 		{
 			TryApplyAlias(Effective, TEXT("struct_name"), TEXT("name"), OutNormalizedFields);
 		}
+		// P5 consolidated dispatchers: normalize 'name' based on entity/kind.
+		else if (ToolName == TEXT("cpp.read"))
+		{
+			FString Entity;
+			Effective->TryGetStringField(TEXT("entity"), Entity);
+			Entity = Entity.ToLower();
+			if (Entity == TEXT("class"))
+			{
+				TryApplyAlias(Effective, TEXT("class_name"), TEXT("name"), OutNormalizedFields)
+					|| TryApplyAlias(Effective, TEXT("class_name"), TEXT("class"), OutNormalizedFields);
+			}
+			else if (Entity == TEXT("enum"))
+			{
+				TryApplyAlias(Effective, TEXT("enum_name"), TEXT("name"), OutNormalizedFields);
+			}
+			else if (Entity == TEXT("struct"))
+			{
+				TryApplyAlias(Effective, TEXT("struct_name"), TEXT("name"), OutNormalizedFields);
+			}
+		}
+		else if (ToolName == TEXT("cpp.list"))
+		{
+			FString Kind;
+			Effective->TryGetStringField(TEXT("kind"), Kind);
+			Kind = Kind.ToLower();
+			if (Kind == TEXT("blueprint_callable") || Kind == TEXT("overridable"))
+			{
+				TryApplyAlias(Effective, TEXT("class_name"), TEXT("name"), OutNormalizedFields)
+					|| TryApplyAlias(Effective, TEXT("class_name"), TEXT("class"), OutNormalizedFields);
+			}
+		}
+		else if (ToolName == TEXT("cpp.add"))
+		{
+			FString Entity;
+			Effective->TryGetStringField(TEXT("entity"), Entity);
+			Entity = Entity.ToLower();
+			if (Entity == TEXT("property"))
+			{
+				TryApplyAlias(Effective, TEXT("property_name"), TEXT("name"), OutNormalizedFields);
+				TryApplyAlias(Effective, TEXT("property_type"), TEXT("type"), OutNormalizedFields);
+			}
+			else if (Entity == TEXT("function"))
+			{
+				TryApplyAlias(Effective, TEXT("function_name"), TEXT("name"), OutNormalizedFields)
+					|| TryApplyAlias(Effective, TEXT("function_name"), TEXT("function"), OutNormalizedFields);
+			}
+		}
 	}
 
 	/** Normalize parameters for project.* tools. */
@@ -903,22 +950,96 @@ namespace
 			});
 
 			// ------------------------------------------------------------------
-			// C++ tools -> cpp.read_class with include param
+			// C++ tools -> cpp.{read,list,add} (P5 consolidation)
 			// ------------------------------------------------------------------
 
-			Map.Add(TEXT("cpp.list_blueprint_callable"), {
-				TEXT("cpp.read_class"),
+			// cpp.read_class -> cpp.read(entity='class')
+			Map.Add(TEXT("cpp.read_class"), {
+				TEXT("cpp.read"),
 				[](TSharedPtr<FJsonObject>& P)
 				{
-					P->SetStringField(TEXT("include"), TEXT("callable"));
+					P->SetStringField(TEXT("entity"), TEXT("class"));
 				}
 			});
 
-			Map.Add(TEXT("cpp.list_overridable"), {
-				TEXT("cpp.read_class"),
+			// cpp.read_enum -> cpp.read(entity='enum')
+			Map.Add(TEXT("cpp.read_enum"), {
+				TEXT("cpp.read"),
 				[](TSharedPtr<FJsonObject>& P)
 				{
-					P->SetStringField(TEXT("include"), TEXT("overridable"));
+					P->SetStringField(TEXT("entity"), TEXT("enum"));
+				}
+			});
+
+			// cpp.read_struct -> cpp.read(entity='struct')
+			Map.Add(TEXT("cpp.read_struct"), {
+				TEXT("cpp.read"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("struct"));
+				}
+			});
+
+			// cpp.read_header -> cpp.read(entity='header')
+			Map.Add(TEXT("cpp.read_header"), {
+				TEXT("cpp.read"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("header"));
+				}
+			});
+
+			// cpp.read_source -> cpp.read(entity='source')
+			Map.Add(TEXT("cpp.read_source"), {
+				TEXT("cpp.read"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("source"));
+				}
+			});
+
+			// cpp.list_project_classes -> cpp.list(kind='project')
+			Map.Add(TEXT("cpp.list_project_classes"), {
+				TEXT("cpp.list"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("kind"), TEXT("project"));
+				}
+			});
+
+			// cpp.list_blueprint_callable -> cpp.list(kind='blueprint_callable')
+			Map.Add(TEXT("cpp.list_blueprint_callable"), {
+				TEXT("cpp.list"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("kind"), TEXT("blueprint_callable"));
+				}
+			});
+
+			// cpp.list_overridable -> cpp.list(kind='overridable')
+			Map.Add(TEXT("cpp.list_overridable"), {
+				TEXT("cpp.list"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("kind"), TEXT("overridable"));
+				}
+			});
+
+			// cpp.add_function -> cpp.add(entity='function')
+			Map.Add(TEXT("cpp.add_function"), {
+				TEXT("cpp.add"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("function"));
+				}
+			});
+
+			// cpp.add_property -> cpp.add(entity='property')
+			Map.Add(TEXT("cpp.add_property"), {
+				TEXT("cpp.add"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("property"));
 				}
 			});
 
