@@ -260,11 +260,6 @@ public:
 		meta=(DisplayName="Max Write Ops Per Minute", ClampMin=0, ClampMax=120))
 	int32 MaxWriteOpsPerMinute = 120;
 
-	/** Steps between automatic checkpoints in Run Mode (0 = manual only) */
-	UPROPERTY(Config, EditAnywhere, Category="Policy",
-		meta=(DisplayName="Checkpoint Interval (Steps)", ClampMin=0, ClampMax=50))
-	int32 CheckpointIntervalSteps = 5;
-
 	// ==========================================
 	// Brain Layer Settings
 	// ==========================================
@@ -276,14 +271,6 @@ public:
 	/** Maximum number of assets returned by project.get_relevant_context */
 	UPROPERTY(Config, EditAnywhere, Category = "Brain Layer", meta = (ClampMin = 1, ClampMax = 50))
 	int32 RelevantContextMaxAssets = 10;
-
-	/** Number of recent tool result pairs to keep at full detail in distilled prompts */
-	UPROPERTY(Config, EditAnywhere, Category = "Brain Layer", meta = (ClampMin = 1, ClampMax = 5))
-	int32 PromptDistillationRawResults = 2;
-
-	/** Maximum correction cycles before the brain layer stops retrying a failed operation */
-	UPROPERTY(Config, EditAnywhere, Category = "Brain Layer", meta = (ClampMin = 1, ClampMax = 20))
-	int32 MaxCorrectionCyclesPerRun = 5;
 
 	// ==========================================
 	// Blueprint Plan JSON
