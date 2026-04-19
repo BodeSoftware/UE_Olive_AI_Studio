@@ -338,13 +338,6 @@ namespace OliveBlueprintSchemas
 	// ============================================================================
 
 	/**
-	 * Schema for blueprint.create_from_template
-	 * Create a complete Blueprint from a factory template.
-	 * Params: {template_id: string, path: string, preset?: string, parameters?: object}
-	 */
-	TSharedPtr<FJsonObject> BlueprintCreateFromTemplate();
-
-	/**
 	 * Schema for blueprint.get_template
 	 * View a template's full content
 	 * Params: {template_id: string, pattern?: string}

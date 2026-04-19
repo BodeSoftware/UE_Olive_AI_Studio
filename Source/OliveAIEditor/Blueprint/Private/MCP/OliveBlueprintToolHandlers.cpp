@@ -640,15 +640,13 @@ void FOliveBlueprintToolHandlers::RegisterAssetWriterTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
-	// blueprint.create (also handles template creation when template_id is set)
+	// blueprint.create
 	Registry.RegisterTool(
 		TEXT("blueprint.create"),
-		TEXT("Create a new Blueprint asset. When template_id is provided, creates from a factory template "
-			"with parameterized, pre-wired logic. Without template_id, creates an empty Blueprint. "
-			"Use blueprint.list_templates to discover available factory templates."),
+		TEXT("Create a new empty Blueprint asset with the specified parent_class."),
 		OliveBlueprintSchemas::BlueprintCreate(),
 		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintCreate),
-		{TEXT("blueprint"), TEXT("write"), TEXT("create"), TEXT("template")},
+		{TEXT("blueprint"), TEXT("write"), TEXT("create")},
 		TEXT("blueprint")
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.create"));
@@ -2503,14 +2501,6 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 			}
 			return Result;
 		}
-	}
-
-	// Check for template_id -- if set, delegate to template creation
-	FString TemplateId;
-	if (Params->TryGetStringField(TEXT("template_id"), TemplateId) && !TemplateId.IsEmpty())
-	{
-		UE_LOG(LogOliveBPTools, Log, TEXT("blueprint.create: template_id='%s' detected, delegating to template system"), *TemplateId);
-		return HandleBlueprintCreateFromTemplate(TemplateId, AssetPath, Params);
 	}
 
 	// Extract type first (needed for parent_class defaults)
@@ -10851,40 +10841,6 @@ void FOliveBlueprintToolHandlers::RegisterTemplateTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
-	// blueprint.create_from_template
-	{
-		FOliveToolDefinition Def;
-		Def.Name = TEXT("blueprint.create_from_template");
-		Def.Description = TEXT("Create a complete Blueprint from a factory template. "
-			"Handles structure (components, variables, dispatchers) AND graph logic "
-			"(functions with plan_json) in one call (~60ms). This is the fastest way to create "
-			"standard Blueprint types. Check the template catalog for available factories.");
-		Def.InputSchema = OliveBlueprintSchemas::BlueprintCreateFromTemplate();
-		Def.Tags = {TEXT("blueprint"), TEXT("write"), TEXT("template"), TEXT("create")};
-		Def.Category = TEXT("blueprint");
-		Def.WhenToUse = TEXT("Use when a factory template in list_templates results matches your task exactly. "
-			"Creates structure + graph logic in one call. If no factory matches, build manually or use library templates as reference.");
-		Registry.RegisterTool(Def, FOliveToolHandler::CreateLambda([this](const TSharedPtr<FJsonObject>& Params) -> FOliveToolResult
-		{
-			if (!Params.IsValid())
-			{
-				return FOliveToolResult::Error(TEXT("VALIDATION_INVALID_PARAMS"), TEXT("Parameters object is null"), TEXT("Provide template_id and path"));
-			}
-			FString TemplateId;
-			if (!Params->TryGetStringField(TEXT("template_id"), TemplateId) || TemplateId.IsEmpty())
-			{
-				return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"), TEXT("Required parameter 'template_id' is missing"), TEXT("Provide a factory template ID"));
-			}
-			FString AssetPath;
-			if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
-			{
-				return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"), TEXT("Required parameter 'path' is missing"), TEXT("Provide the Blueprint asset path"));
-			}
-			return HandleBlueprintCreateFromTemplate(TemplateId, AssetPath, Params);
-		}));
-	}
-	RegisteredToolNames.Add(TEXT("blueprint.create_from_template"));
-
 	{
 		FOliveToolDefinition Def;
 		Def.Name = TEXT("blueprint.get_template");
@@ -10911,7 +10867,7 @@ void FOliveBlueprintToolHandlers::RegisterTemplateTools()
 	}
 	RegisteredToolNames.Add(TEXT("blueprint.list_templates"));
 
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered template tools (create_from_template, get_template, list_templates)"));
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered template tools (get_template, list_templates)"));
 }
 
 FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintListTemplates(const TSharedPtr<FJsonObject>& Params)
@@ -10928,13 +10884,13 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintListTemplates(const
 	Query.TrimStartAndEndInline();
 
 	// If a search query is provided, delegate to SearchTemplates which covers
-	// both factory/reference templates and library templates from extracted projects.
+	// both reference templates and library templates from extracted projects.
 	if (!Query.IsEmpty())
 	{
 		TArray<TSharedPtr<FJsonObject>> SearchResults = FOliveTemplateSystem::Get().SearchTemplates(Query);
 
 		// Post-filter by type if a type filter was also provided.
-		// Search results carry a "type" field ("library", "factory", or "reference").
+		// Search results carry a "type" field ("library" or "reference").
 		if (!TypeFilter.IsEmpty())
 		{
 			SearchResults.RemoveAll([&TypeFilter](const TSharedPtr<FJsonObject>& Entry)
@@ -10973,7 +10929,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintListTemplates(const
 	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
 	TArray<TSharedPtr<FJsonValue>> TemplatesArray;
 
-	// Include factory/reference templates (unless filtering to library only)
+	// Include reference templates (unless filtering to library only)
 	if (!bWantsLibrary)
 	{
 		const auto& AllTemplates = FOliveTemplateSystem::Get().GetAllTemplates();
@@ -11067,13 +11023,13 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintGetTemplate(const T
 	// Sentinel prefix used by GetFunctionContent to signal "function not found"
 	const FString& FUNC_NOT_FOUND_SENTINEL = FOliveLibraryIndex::GetFuncNotFoundSentinel();
 
-	// Check library index — but skip if the template exists as a factory/reference template
-	// (factory templates need the richer format with parameters/presets from GetTemplateContent)
+	// Check library index — but skip if the template exists as a reference template
+	// (reference templates need the richer pattern-formatted output from GetTemplateContent).
 	const FOliveLibraryIndex& LibIndex = FOliveTemplateSystem::Get().GetLibraryIndex();
 	const FOliveLibraryTemplateInfo* LibInfo = LibIndex.FindTemplate(TemplateId);
-	const bool bExistsAsFactoryOrReference = (FOliveTemplateSystem::Get().FindTemplate(TemplateId) != nullptr);
+	const bool bExistsAsReference = (FOliveTemplateSystem::Get().FindTemplate(TemplateId) != nullptr);
 
-	if (LibInfo && !bExistsAsFactoryOrReference)
+	if (LibInfo && !bExistsAsReference)
 	{
 		FString Content;
 		if (PatternName.IsEmpty())
@@ -11152,43 +11108,3 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintGetTemplate(const T
 	return FOliveToolResult::Success(ResultData);
 }
 
-// ============================================================
-// HandleBlueprintCreateFromTemplate
-// ============================================================
-
-FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreateFromTemplate(
-	const FString& TemplateId,
-	const FString& AssetPath,
-	const TSharedPtr<FJsonObject>& Params)
-{
-	FString PresetName;
-	if (Params.IsValid())
-	{
-		Params->TryGetStringField(TEXT("preset"), PresetName);
-	}
-
-	// Extract template parameters -- accept both "template_params" and "parameters"
-	TMap<FString, FString> UserParams;
-	const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
-	if (Params.IsValid())
-	{
-		if (!(Params->TryGetObjectField(TEXT("template_params"), ParamsObj) && ParamsObj && (*ParamsObj).IsValid()))
-		{
-			// Fallback: accept "parameters" for backward compatibility with old create_from_template format
-			Params->TryGetObjectField(TEXT("parameters"), ParamsObj);
-		}
-	}
-	if (ParamsObj && (*ParamsObj).IsValid())
-	{
-		for (const auto& KV : (*ParamsObj)->Values)
-		{
-			FString Value;
-			if (KV.Value->TryGetString(Value))
-			{
-				UserParams.Add(KV.Key, Value);
-			}
-		}
-	}
-
-	return FOliveTemplateSystem::Get().ApplyTemplate(TemplateId, UserParams, PresetName, AssetPath);
-}
