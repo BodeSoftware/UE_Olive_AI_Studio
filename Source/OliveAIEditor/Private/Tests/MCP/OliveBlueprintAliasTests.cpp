@@ -216,3 +216,154 @@ bool FOliveBPAliasVerifyCompletionTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Should fail because target Blueprint does not exist"), R.bSuccess);
 	return true;
 }
+
+// ===========================================================================
+// P5 BT + Blackboard family consolidation -- alias round-trip coverage.
+//
+// Same shape as the Blueprint tests above: legacy tool names must resolve (no
+// TOOL_NOT_FOUND) and the per-handler validation can return whatever error
+// code it likes.
+// ===========================================================================
+
+namespace OliveBTAliasTests
+{
+	using OliveBlueprintAliasTests::TestFlags;
+	using OliveBlueprintAliasTests::AliasResolved;
+
+	static TSharedPtr<FJsonObject> MakeBTParams(const FString& Path)
+	{
+		TSharedPtr<FJsonObject> P = MakeShared<FJsonObject>();
+		P->SetStringField(TEXT("path"), Path);
+		return P;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// behaviortree.add_composite -> behaviortree.add(node_type='composite')
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FOliveBTAliasAddCompositeTest,
+	"OliveAI.MCP.Alias.BT.AddComposite",
+	OliveBTAliasTests::TestFlags)
+
+bool FOliveBTAliasAddCompositeTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> P = OliveBTAliasTests::MakeBTParams(TEXT("/Game/Tests/BT_DoesNotExist_P5Alias"));
+	P->SetStringField(TEXT("parent_node_id"), TEXT("root"));
+	P->SetStringField(TEXT("composite_type"), TEXT("Selector"));
+
+	FOliveToolResult R = FOliveToolRegistry::Get().ExecuteTool(TEXT("behaviortree.add_composite"), P);
+
+	TestTrue(TEXT("Alias behaviortree.add_composite must resolve (no TOOL_NOT_FOUND)"),
+		OliveBTAliasTests::AliasResolved(R));
+	TestFalse(TEXT("Should fail because target Behavior Tree does not exist"), R.bSuccess);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// behaviortree.modify_node -> behaviortree.modify(entity='node')
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FOliveBTAliasModifyNodeTest,
+	"OliveAI.MCP.Alias.BT.ModifyNode",
+	OliveBTAliasTests::TestFlags)
+
+bool FOliveBTAliasModifyNodeTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> P = OliveBTAliasTests::MakeBTParams(TEXT("/Game/Tests/BT_DoesNotExist_P5Alias"));
+	P->SetStringField(TEXT("node_id"), TEXT("fake_node_0"));
+	P->SetStringField(TEXT("property"), TEXT("FlowAbortMode"));
+	P->SetStringField(TEXT("value"), TEXT("Both"));
+
+	FOliveToolResult R = FOliveToolRegistry::Get().ExecuteTool(TEXT("behaviortree.modify_node"), P);
+
+	TestTrue(TEXT("Alias behaviortree.modify_node must resolve (no TOOL_NOT_FOUND)"),
+		OliveBTAliasTests::AliasResolved(R));
+	TestFalse(TEXT("Should fail because target Behavior Tree does not exist"), R.bSuccess);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// behaviortree.set_blackboard -> behaviortree.modify(entity='blackboard_ref')
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FOliveBTAliasSetBlackboardTest,
+	"OliveAI.MCP.Alias.BT.SetBlackboard",
+	OliveBTAliasTests::TestFlags)
+
+bool FOliveBTAliasSetBlackboardTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> P = OliveBTAliasTests::MakeBTParams(TEXT("/Game/Tests/BT_DoesNotExist_P5Alias"));
+	P->SetStringField(TEXT("blackboard"), TEXT("/Game/Tests/BB_DoesNotExist_P5Alias"));
+
+	FOliveToolResult R = FOliveToolRegistry::Get().ExecuteTool(TEXT("behaviortree.set_blackboard"), P);
+
+	TestTrue(TEXT("Alias behaviortree.set_blackboard must resolve (no TOOL_NOT_FOUND)"),
+		OliveBTAliasTests::AliasResolved(R));
+	TestFalse(TEXT("Should fail because target Behavior Tree does not exist"), R.bSuccess);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// behaviortree.remove_node -> behaviortree.remove (pass-through)
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FOliveBTAliasRemoveNodeTest,
+	"OliveAI.MCP.Alias.BT.RemoveNode",
+	OliveBTAliasTests::TestFlags)
+
+bool FOliveBTAliasRemoveNodeTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> P = OliveBTAliasTests::MakeBTParams(TEXT("/Game/Tests/BT_DoesNotExist_P5Alias"));
+	P->SetStringField(TEXT("node_id"), TEXT("fake_node_0"));
+
+	FOliveToolResult R = FOliveToolRegistry::Get().ExecuteTool(TEXT("behaviortree.remove_node"), P);
+
+	TestTrue(TEXT("Alias behaviortree.remove_node must resolve (no TOOL_NOT_FOUND)"),
+		OliveBTAliasTests::AliasResolved(R));
+	TestFalse(TEXT("Should fail because target Behavior Tree does not exist"), R.bSuccess);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// blackboard.add_key -> blackboard.modify(action='add_key')
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FOliveBBAliasAddKeyTest,
+	"OliveAI.MCP.Alias.Blackboard.AddKey",
+	OliveBTAliasTests::TestFlags)
+
+bool FOliveBBAliasAddKeyTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> P = OliveBTAliasTests::MakeBTParams(TEXT("/Game/Tests/BB_DoesNotExist_P5Alias"));
+	P->SetStringField(TEXT("name"), TEXT("FakeKey"));
+	P->SetStringField(TEXT("key_type"), TEXT("bool"));
+
+	FOliveToolResult R = FOliveToolRegistry::Get().ExecuteTool(TEXT("blackboard.add_key"), P);
+
+	TestTrue(TEXT("Alias blackboard.add_key must resolve (no TOOL_NOT_FOUND)"),
+		OliveBTAliasTests::AliasResolved(R));
+	TestFalse(TEXT("Should fail because target Blackboard does not exist"), R.bSuccess);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// blackboard.set_parent -> blackboard.modify(action='set_parent')
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FOliveBBAliasSetParentTest,
+	"OliveAI.MCP.Alias.Blackboard.SetParent",
+	OliveBTAliasTests::TestFlags)
+
+bool FOliveBBAliasSetParentTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> P = OliveBTAliasTests::MakeBTParams(TEXT("/Game/Tests/BB_DoesNotExist_P5Alias"));
+	P->SetStringField(TEXT("parent_path"), TEXT("/Game/Tests/BB_Parent_DoesNotExist"));
+
+	FOliveToolResult R = FOliveToolRegistry::Get().ExecuteTool(TEXT("blackboard.set_parent"), P);
+
+	TestTrue(TEXT("Alias blackboard.set_parent must resolve (no TOOL_NOT_FOUND)"),
+		OliveBTAliasTests::AliasResolved(R));
+	TestFalse(TEXT("Should fail because target Blackboard does not exist"), R.bSuccess);
+	return true;
+}

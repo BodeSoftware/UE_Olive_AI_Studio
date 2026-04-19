@@ -110,6 +110,55 @@ namespace OliveBTSchemas
 
 	// Removed in AI Freedom Phase 2 — blackboard.modify_key merged into blackboard.add_key (upsert)
 
+	TSharedPtr<FJsonObject> BlackboardModify()
+	{
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		TSharedPtr<FJsonObject> Props = MakeProperties();
+
+		Props->SetObjectField(TEXT("path"),
+			OliveBlueprintSchemas::StringProp(TEXT("Asset path of the Blackboard (or the target path when action='create')")));
+		Props->SetObjectField(TEXT("action"),
+			OliveBlueprintSchemas::EnumProp(TEXT("Operation to perform"),
+				{ TEXT("create"), TEXT("read"), TEXT("add_key"),
+				  TEXT("modify_key"), TEXT("remove_key"), TEXT("set_parent") }));
+
+		// Fields used by create / set_parent (parent Blackboard reference)
+		Props->SetObjectField(TEXT("parent"),
+			OliveBlueprintSchemas::StringProp(TEXT("Parent Blackboard path (action='create'). Optional.")));
+		Props->SetObjectField(TEXT("parent_path"),
+			OliveBlueprintSchemas::StringProp(TEXT("Parent Blackboard path (action='set_parent'). Required for set_parent.")));
+
+		// Fields used by read
+		Props->SetObjectField(TEXT("include_inherited"),
+			OliveBlueprintSchemas::BoolProp(TEXT("Include keys inherited from parent Blackboards (action='read')"), false));
+
+		// Fields used by add_key / modify_key / remove_key
+		Props->SetObjectField(TEXT("name"),
+			OliveBlueprintSchemas::StringProp(TEXT("Key name (required for add_key/modify_key/remove_key)")));
+		Props->SetObjectField(TEXT("new_name"),
+			OliveBlueprintSchemas::StringProp(TEXT("Rename target (action='modify_key' or upsert on add_key)")));
+		Props->SetObjectField(TEXT("key_type"),
+			OliveBlueprintSchemas::EnumProp(TEXT("Key type (action='add_key', required for new keys)"),
+				{ TEXT("bool"), TEXT("int"), TEXT("float"), TEXT("string"), TEXT("name"),
+				  TEXT("vector"), TEXT("rotator"), TEXT("enum"), TEXT("object"), TEXT("class") }));
+		Props->SetObjectField(TEXT("base_class"),
+			OliveBlueprintSchemas::StringProp(TEXT("For Object/Class keys: base class name (action='add_key')")));
+		Props->SetObjectField(TEXT("enum_type"),
+			OliveBlueprintSchemas::StringProp(TEXT("For Enum keys: enum type name (action='add_key')")));
+		Props->SetObjectField(TEXT("instance_synced"),
+			OliveBlueprintSchemas::BoolProp(TEXT("Instance-synced flag (action='add_key' or 'modify_key')"), false));
+		Props->SetObjectField(TEXT("description"),
+			OliveBlueprintSchemas::StringProp(TEXT("Key description/tooltip (action='add_key' or 'modify_key')")));
+
+		Schema->SetStringField(TEXT("description"),
+			TEXT("Modify a Blackboard asset. Dispatches on 'action' to create/read/add_key/modify_key/"
+				"remove_key/set_parent. Legacy blackboard.{create,read,add_key,modify_key,remove_key,"
+				"set_parent} tool names are aliases that pre-fill the 'action' field."));
+		Schema->SetObjectField(TEXT("properties"), Props);
+		AddRequired(Schema, { TEXT("path"), TEXT("action") });
+		return Schema;
+	}
+
 	TSharedPtr<FJsonObject> BlackboardSetParent()
 	{
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
@@ -215,6 +264,75 @@ namespace OliveBTSchemas
 
 		Schema->SetObjectField(TEXT("properties"), Props);
 		AddRequired(Schema, { TEXT("path"), TEXT("node_kind") });
+		return Schema;
+	}
+
+	TSharedPtr<FJsonObject> BehaviorTreeAdd()
+	{
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		TSharedPtr<FJsonObject> Props = MakeProperties();
+
+		Props->SetObjectField(TEXT("path"),
+			OliveBlueprintSchemas::StringProp(TEXT("Asset path of the Behavior Tree")));
+		Props->SetObjectField(TEXT("node_type"),
+			OliveBlueprintSchemas::EnumProp(TEXT("Kind of node to add"),
+				{ TEXT("composite"), TEXT("task"), TEXT("decorator"), TEXT("service"), TEXT("node") }));
+
+		// Passthrough fields (shape matches BehaviorTreeAddNode)
+		Props->SetObjectField(TEXT("node_kind"),
+			OliveBlueprintSchemas::StringProp(TEXT("Legacy alias for 'node_type'. 'node_type' takes precedence when both are set.")));
+		Props->SetObjectField(TEXT("composite_type"),
+			OliveBlueprintSchemas::EnumProp(TEXT("For composite: Selector, Sequence, or SimpleParallel"),
+				{ TEXT("Selector"), TEXT("Sequence"), TEXT("SimpleParallel") }));
+		Props->SetObjectField(TEXT("class"),
+			OliveBlueprintSchemas::StringProp(TEXT("Class name for task/decorator/service (e.g., BTTask_MoveTo, BTDecorator_Blackboard)")));
+		Props->SetObjectField(TEXT("parent_node_id"),
+			OliveBlueprintSchemas::StringProp(TEXT("Node ID of parent composite. Required for composite/task. Use 'root' for root.")));
+		Props->SetObjectField(TEXT("node_id"),
+			OliveBlueprintSchemas::StringProp(TEXT("Node ID to attach decorator/service to.")));
+		Props->SetObjectField(TEXT("child_index"),
+			OliveBlueprintSchemas::IntProp(TEXT("Insert position among siblings (-1 for end). For composite/task.")));
+		Props->SetObjectField(TEXT("properties"),
+			OliveBlueprintSchemas::ObjectProp(TEXT("Initial property values as key-value pairs (for task/decorator/service)"), MakeProperties()));
+
+		Schema->SetStringField(TEXT("description"),
+			TEXT("Add a node to a Behavior Tree. Dispatches on 'node_type' (composite|task|decorator|"
+				"service|node) to the matching internal handler. Legacy behaviortree.add_{composite,"
+				"task,decorator,service,node} tool names are aliases that pre-fill 'node_type'."));
+		Schema->SetObjectField(TEXT("properties"), Props);
+		AddRequired(Schema, { TEXT("path"), TEXT("node_type") });
+		return Schema;
+	}
+
+	TSharedPtr<FJsonObject> BehaviorTreeModify()
+	{
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		TSharedPtr<FJsonObject> Props = MakeProperties();
+
+		Props->SetObjectField(TEXT("path"),
+			OliveBlueprintSchemas::StringProp(TEXT("Asset path of the Behavior Tree")));
+		Props->SetObjectField(TEXT("entity"),
+			OliveBlueprintSchemas::EnumProp(TEXT("What to modify"),
+				{ TEXT("node"), TEXT("decorator"), TEXT("blackboard_ref") }));
+
+		// Fields used by entity='node' / entity='decorator' (set_node_property shape)
+		Props->SetObjectField(TEXT("node_id"),
+			OliveBlueprintSchemas::StringProp(TEXT("Node ID of the target node (entity='node' or 'decorator')")));
+		Props->SetObjectField(TEXT("property"),
+			OliveBlueprintSchemas::StringProp(TEXT("UPROPERTY name to set (entity='node' or 'decorator')")));
+		Props->SetObjectField(TEXT("value"),
+			OliveBlueprintSchemas::StringProp(TEXT("Value as string in UE ImportText format")));
+
+		// Fields used by entity='blueprint'/'blackboard_ref' — sets the BT's Blackboard
+		Props->SetObjectField(TEXT("blackboard"),
+			OliveBlueprintSchemas::StringProp(TEXT("Blackboard asset path (entity='blackboard_ref')")));
+
+		Schema->SetStringField(TEXT("description"),
+			TEXT("Modify a Behavior Tree. Dispatches on 'entity' (node|decorator|blackboard_ref) to "
+				"the matching internal handler. Legacy behaviortree.{modify_node,set_node_property,"
+				"set_decorator,set_blackboard} tool names are aliases that pre-fill 'entity'."));
+		Schema->SetObjectField(TEXT("properties"), Props);
+		AddRequired(Schema, { TEXT("path"), TEXT("entity") });
 		return Schema;
 	}
 

@@ -624,48 +624,162 @@ namespace
 			// blueprint.add calls.
 
 			// ------------------------------------------------------------------
-			// Behavior Tree tools -> behaviortree.add_node with node_kind
+			// Behavior Tree tools -> behaviortree.add / .modify / .remove / .move
 			// ------------------------------------------------------------------
 
 			Map.Add(TEXT("behaviortree.add_composite"), {
-				TEXT("behaviortree.add_node"),
+				TEXT("behaviortree.add"),
 				[](TSharedPtr<FJsonObject>& P)
 				{
-					P->SetStringField(TEXT("node_kind"), TEXT("composite"));
+					P->SetStringField(TEXT("node_type"), TEXT("composite"));
 				}
 			});
 
 			Map.Add(TEXT("behaviortree.add_task"), {
-				TEXT("behaviortree.add_node"),
+				TEXT("behaviortree.add"),
 				[](TSharedPtr<FJsonObject>& P)
 				{
-					P->SetStringField(TEXT("node_kind"), TEXT("task"));
+					P->SetStringField(TEXT("node_type"), TEXT("task"));
 				}
 			});
 
 			Map.Add(TEXT("behaviortree.add_decorator"), {
-				TEXT("behaviortree.add_node"),
+				TEXT("behaviortree.add"),
 				[](TSharedPtr<FJsonObject>& P)
 				{
-					P->SetStringField(TEXT("node_kind"), TEXT("decorator"));
+					P->SetStringField(TEXT("node_type"), TEXT("decorator"));
 				}
 			});
 
 			Map.Add(TEXT("behaviortree.add_service"), {
-				TEXT("behaviortree.add_node"),
+				TEXT("behaviortree.add"),
 				[](TSharedPtr<FJsonObject>& P)
 				{
-					P->SetStringField(TEXT("node_kind"), TEXT("service"));
+					P->SetStringField(TEXT("node_type"), TEXT("service"));
 				}
 			});
 
+			// Pass-through: legacy add_node forwards to behaviortree.add. The
+			// dispatcher honors an existing 'node_type' / 'node_kind' on params so
+			// no field injection is needed — if node_kind=... is already set
+			// (e.g. from templates) the dispatcher reuses it.
+			Map.Add(TEXT("behaviortree.add_node"), {
+				TEXT("behaviortree.add"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					// If the caller supplied node_kind but not node_type, mirror it
+					// to node_type so HandleBehaviorTreeAdd's canonical field is populated.
+					FString NodeType;
+					if (!P->TryGetStringField(TEXT("node_type"), NodeType) || NodeType.IsEmpty())
+					{
+						FString NodeKind;
+						if (P->TryGetStringField(TEXT("node_kind"), NodeKind) && !NodeKind.IsEmpty())
+						{
+							P->SetStringField(TEXT("node_type"), NodeKind);
+						}
+						else
+						{
+							// No hint — the dispatcher will return a helpful error.
+							P->SetStringField(TEXT("node_type"), TEXT("node"));
+						}
+					}
+				}
+			});
+
+			// Modify aliases
+			Map.Add(TEXT("behaviortree.modify_node"), {
+				TEXT("behaviortree.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("node"));
+				}
+			});
+
+			Map.Add(TEXT("behaviortree.set_node_property"), {
+				TEXT("behaviortree.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("node"));
+				}
+			});
+
+			Map.Add(TEXT("behaviortree.set_decorator"), {
+				TEXT("behaviortree.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("decorator"));
+				}
+			});
+
+			Map.Add(TEXT("behaviortree.set_blackboard"), {
+				TEXT("behaviortree.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("blackboard_ref"));
+				}
+			});
+
+			// Remove/move renames (pass-through)
+			Map.Add(TEXT("behaviortree.remove_node"), {
+				TEXT("behaviortree.remove"),
+				nullptr
+			});
+
+			Map.Add(TEXT("behaviortree.move_node"), {
+				TEXT("behaviortree.move"),
+				nullptr
+			});
+
 			// ------------------------------------------------------------------
-			// Blackboard tools -> blackboard.add_key (upsert)
+			// Blackboard tools -> blackboard.modify (action dispatch)
 			// ------------------------------------------------------------------
 
+			Map.Add(TEXT("blackboard.create"), {
+				TEXT("blackboard.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("action"), TEXT("create"));
+				}
+			});
+
+			Map.Add(TEXT("blackboard.read"), {
+				TEXT("blackboard.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("action"), TEXT("read"));
+				}
+			});
+
+			Map.Add(TEXT("blackboard.add_key"), {
+				TEXT("blackboard.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("action"), TEXT("add_key"));
+				}
+			});
+
 			Map.Add(TEXT("blackboard.modify_key"), {
-				TEXT("blackboard.add_key"),
-				nullptr // all params pass through
+				TEXT("blackboard.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("action"), TEXT("modify_key"));
+				}
+			});
+
+			Map.Add(TEXT("blackboard.remove_key"), {
+				TEXT("blackboard.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("action"), TEXT("remove_key"));
+				}
+			});
+
+			Map.Add(TEXT("blackboard.set_parent"), {
+				TEXT("blackboard.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("action"), TEXT("set_parent"));
+				}
 			});
 
 			// ------------------------------------------------------------------
