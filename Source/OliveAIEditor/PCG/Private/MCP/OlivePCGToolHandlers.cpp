@@ -30,7 +30,12 @@ void FOlivePCGToolHandlers::RegisterAllTools()
 
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
-	// pcg.create
+	// P5 consolidation: PCG exposes 7 real tools. Legacy names (pcg.create_graph,
+	// pcg.add_node, pcg.add_subgraph, pcg.modify_node, pcg.set_settings,
+	// pcg.remove_node, pcg.connect_pins, pcg.disconnect) continue to work as
+	// aliases registered in OliveToolRegistry::GetToolAliases().
+
+	// 1. pcg.create (unchanged)
 	Registry.RegisterTool(
 		TEXT("pcg.create"),
 		TEXT("Create a new PCG graph asset"),
@@ -41,7 +46,7 @@ void FOlivePCGToolHandlers::RegisterAllTools()
 	);
 	RegisteredToolNames.Add(TEXT("pcg.create"));
 
-	// pcg.read
+	// 2. pcg.read (unchanged)
 	Registry.RegisterTool(
 		TEXT("pcg.read"),
 		TEXT("Read a PCG graph as structured IR data with nodes, pins, edges, and settings"),
@@ -52,73 +57,55 @@ void FOlivePCGToolHandlers::RegisterAllTools()
 	);
 	RegisteredToolNames.Add(TEXT("pcg.read"));
 
-	// pcg.add_node
+	// 3. pcg.add (P5: consolidated dispatcher; replaces pcg.add_node + pcg.add_subgraph)
 	Registry.RegisterTool(
-		TEXT("pcg.add_node"),
-		TEXT("Add a PCG node by settings class name (e.g., SurfaceSampler, StaticMeshSpawner)"),
-		OlivePCGSchemas::PCGAddNode(),
-		FOliveToolHandler::CreateRaw(this, &FOlivePCGToolHandlers::HandleAddNode),
-		{TEXT("pcg"), TEXT("write")},
+		TEXT("pcg.add"),
+		TEXT("Add a node to a PCG graph. Dispatches on 'node_kind' (node|subgraph). "
+			"Legacy pcg.add_node and pcg.add_subgraph are aliases that pre-fill 'node_kind'."),
+		OlivePCGSchemas::PCGAdd(),
+		FOliveToolHandler::CreateRaw(this, &FOlivePCGToolHandlers::HandlePCGAdd),
+		{TEXT("pcg"), TEXT("write"), TEXT("add")},
 		TEXT("pcg")
 	);
-	RegisteredToolNames.Add(TEXT("pcg.add_node"));
+	RegisteredToolNames.Add(TEXT("pcg.add"));
 
-	// pcg.remove_node
+	// 4. pcg.modify (P5: consolidated dispatcher; replaces pcg.modify_node + pcg.set_settings)
 	Registry.RegisterTool(
-		TEXT("pcg.remove_node"),
+		TEXT("pcg.modify"),
+		TEXT("Modify a PCG node. Dispatches on 'entity' (node|settings). "
+			"Legacy pcg.modify_node and pcg.set_settings are aliases that pre-fill 'entity'."),
+		OlivePCGSchemas::PCGModify(),
+		FOliveToolHandler::CreateRaw(this, &FOlivePCGToolHandlers::HandlePCGModify),
+		{TEXT("pcg"), TEXT("write"), TEXT("modify")},
+		TEXT("pcg")
+	);
+	RegisteredToolNames.Add(TEXT("pcg.modify"));
+
+	// 5. pcg.remove (unchanged; legacy pcg.remove_node aliases to this)
+	Registry.RegisterTool(
+		TEXT("pcg.remove"),
 		TEXT("Remove a node from a PCG graph (cannot remove Input/Output nodes)"),
 		OlivePCGSchemas::PCGRemoveNode(),
 		FOliveToolHandler::CreateRaw(this, &FOlivePCGToolHandlers::HandleRemoveNode),
-		{TEXT("pcg"), TEXT("write")},
+		{TEXT("pcg"), TEXT("write"), TEXT("delete")},
 		TEXT("pcg")
 	);
-	RegisteredToolNames.Add(TEXT("pcg.remove_node"));
+	RegisteredToolNames.Add(TEXT("pcg.remove"));
 
-	// pcg.connect
+	// 6. pcg.connect (P5: consolidated dispatcher; absorbs pcg.connect_pins + pcg.disconnect via break:true)
 	Registry.RegisterTool(
 		TEXT("pcg.connect"),
-		TEXT("Connect two pins in a PCG graph (source output -> target input)"),
-		OlivePCGSchemas::PCGConnect(),
-		FOliveToolHandler::CreateRaw(this, &FOlivePCGToolHandlers::HandleConnect),
+		TEXT("Connect or disconnect two pins in a PCG graph. Set 'break':true to disconnect. "
+			"Legacy pcg.connect_pins is a pass-through alias; pcg.disconnect is an alias that "
+			"pre-fills 'break':true."),
+		OlivePCGSchemas::PCGConnectUnified(),
+		FOliveToolHandler::CreateRaw(this, &FOlivePCGToolHandlers::HandlePCGConnect),
 		{TEXT("pcg"), TEXT("write")},
 		TEXT("pcg")
 	);
 	RegisteredToolNames.Add(TEXT("pcg.connect"));
 
-	// pcg.disconnect
-	Registry.RegisterTool(
-		TEXT("pcg.disconnect"),
-		TEXT("Disconnect two pins in a PCG graph"),
-		OlivePCGSchemas::PCGDisconnect(),
-		FOliveToolHandler::CreateRaw(this, &FOlivePCGToolHandlers::HandleDisconnect),
-		{TEXT("pcg"), TEXT("write")},
-		TEXT("pcg")
-	);
-	RegisteredToolNames.Add(TEXT("pcg.disconnect"));
-
-	// pcg.set_settings
-	Registry.RegisterTool(
-		TEXT("pcg.set_settings"),
-		TEXT("Set properties on a PCG node's settings via reflection"),
-		OlivePCGSchemas::PCGSetSettings(),
-		FOliveToolHandler::CreateRaw(this, &FOlivePCGToolHandlers::HandleSetSettings),
-		{TEXT("pcg"), TEXT("write")},
-		TEXT("pcg")
-	);
-	RegisteredToolNames.Add(TEXT("pcg.set_settings"));
-
-	// pcg.add_subgraph
-	Registry.RegisterTool(
-		TEXT("pcg.add_subgraph"),
-		TEXT("Add a subgraph node referencing another PCG graph"),
-		OlivePCGSchemas::PCGAddSubgraph(),
-		FOliveToolHandler::CreateRaw(this, &FOlivePCGToolHandlers::HandleAddSubgraph),
-		{TEXT("pcg"), TEXT("write")},
-		TEXT("pcg")
-	);
-	RegisteredToolNames.Add(TEXT("pcg.add_subgraph"));
-
-	// pcg.execute
+	// 7. pcg.execute (unchanged)
 	Registry.RegisterTool(
 		TEXT("pcg.execute"),
 		TEXT("Execute a PCG graph and return a summary of results"),
@@ -527,4 +514,147 @@ FOliveToolResult FOlivePCGToolHandlers::HandleExecute(const TSharedPtr<FJsonObje
 		return FOliveToolResult::Error(TEXT("EXECUTE_FAILED"), ExecResult.Summary,
 			TEXT("Check the PCG graph for invalid connections or missing settings. Use pcg.read to inspect the graph."));
 	}
+}
+
+// ============================================================================
+// Consolidated Dispatchers (P5)
+//
+// These dispatchers route on node_kind / entity / break to the existing
+// specialized handlers. Legacy tool names (pcg.add_node, pcg.add_subgraph,
+// pcg.modify_node, pcg.set_settings, pcg.connect_pins, pcg.disconnect,
+// pcg.remove_node, pcg.create_graph) are preserved as aliases that pre-fill
+// the dispatch field in OliveToolRegistry::GetToolAliases().
+// ============================================================================
+
+namespace
+{
+	/** Clone params so we can normalize fields without mutating the caller. */
+	static TSharedPtr<FJsonObject> ClonePCGParams(const TSharedPtr<FJsonObject>& Params)
+	{
+		TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
+		if (Params.IsValid())
+		{
+			for (const auto& Pair : Params->Values) { Out->Values.Add(Pair.Key, Pair.Value); }
+		}
+		return Out;
+	}
+} // anonymous namespace
+
+FOliveToolResult FOlivePCGToolHandlers::HandlePCGAdd(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a params object with 'path' and (optionally) 'node_kind'."));
+	}
+
+	FString Path;
+	if (!Params->TryGetStringField(TEXT("path"), Path) || Path.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'path'"),
+			TEXT("Provide the PCG graph asset path."));
+	}
+
+	// node_kind defaults to 'node' to preserve the historical ergonomics of
+	// pcg.add_node being the most common caller.
+	FString NodeKind;
+	Params->TryGetStringField(TEXT("node_kind"), NodeKind);
+	NodeKind = NodeKind.ToLower();
+	if (NodeKind.IsEmpty())
+	{
+		NodeKind = TEXT("node");
+	}
+
+	TSharedPtr<FJsonObject> SubParams = ClonePCGParams(Params);
+
+	if (NodeKind == TEXT("node"))
+	{
+		return HandleAddNode(SubParams);
+	}
+	if (NodeKind == TEXT("subgraph"))
+	{
+		return HandleAddSubgraph(SubParams);
+	}
+
+	return FOliveToolResult::Error(
+		TEXT("VALIDATION_INVALID_VALUE"),
+		FString::Printf(TEXT("Unknown node_kind '%s'"), *NodeKind),
+		TEXT("node_kind must be one of: node, subgraph"));
+}
+
+FOliveToolResult FOlivePCGToolHandlers::HandlePCGModify(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a params object with 'path' and 'entity' fields."));
+	}
+
+	FString Path;
+	if (!Params->TryGetStringField(TEXT("path"), Path) || Path.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'path'"),
+			TEXT("Provide the PCG graph asset path."));
+	}
+
+	FString Entity;
+	Params->TryGetStringField(TEXT("entity"), Entity);
+	Entity = Entity.ToLower();
+	if (Entity.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'entity'"),
+			TEXT("entity must be one of: node, settings"));
+	}
+
+	TSharedPtr<FJsonObject> SubParams = ClonePCGParams(Params);
+
+	// DESIGN NOTE: 'node' and 'settings' both route to HandleSetSettings because
+	// the current PCG writer exposes node-level attributes exclusively via
+	// settings-class reflection. If a future pcg.modify_node acquires non-settings
+	// attributes (e.g., position, alias name), split the dispatch here.
+	if (Entity == TEXT("node") || Entity == TEXT("settings"))
+	{
+		return HandleSetSettings(SubParams);
+	}
+
+	return FOliveToolResult::Error(
+		TEXT("VALIDATION_INVALID_VALUE"),
+		FString::Printf(TEXT("Unknown entity '%s'"), *Entity),
+		TEXT("entity must be one of: node, settings"));
+}
+
+FOliveToolResult FOlivePCGToolHandlers::HandlePCGConnect(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a params object with 'path', 'source_node_id', 'source_pin', 'target_node_id', 'target_pin'."));
+	}
+
+	// DESIGN NOTE: pcg.connect and the previously-registered (legacy-contract)
+	// pcg.connect_pins share the same wiring semantics in the current writer.
+	// We use HandleConnect as the canonical implementation and route break=true
+	// to HandleDisconnect. If a future pcg.connect_pins diverges (e.g., bulk
+	// array form), split the dispatch here.
+	bool bBreak = false;
+	Params->TryGetBoolField(TEXT("break"), bBreak);
+
+	TSharedPtr<FJsonObject> SubParams = ClonePCGParams(Params);
+	if (bBreak)
+	{
+		return HandleDisconnect(SubParams);
+	}
+	return HandleConnect(SubParams);
 }

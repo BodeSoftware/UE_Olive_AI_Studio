@@ -16,9 +16,14 @@ DECLARE_LOG_CATEGORY_EXTERN(LogOlivePCGTools, Log, All);
  * Acts as a bridge between the MCP tool registry and the PCG
  * reader/writer/catalog infrastructure.
  *
- * Tools: pcg.create, pcg.read, pcg.add_node, pcg.remove_node,
- *        pcg.connect, pcg.disconnect, pcg.set_settings,
- *        pcg.add_subgraph, pcg.execute
+ * P5 consolidated tools:
+ *   pcg.create, pcg.read, pcg.add, pcg.modify, pcg.remove,
+ *   pcg.connect, pcg.execute
+ *
+ * Legacy tool names (pcg.create_graph, pcg.add_node, pcg.add_subgraph,
+ * pcg.modify_node, pcg.set_settings, pcg.remove_node, pcg.connect_pins,
+ * pcg.disconnect) continue to work as aliases registered in
+ * OliveToolRegistry::GetToolAliases().
  */
 class OLIVEAIEDITOR_API FOlivePCGToolHandlers
 {
@@ -37,7 +42,12 @@ private:
 	FOlivePCGToolHandlers(const FOlivePCGToolHandlers&) = delete;
 	FOlivePCGToolHandlers& operator=(const FOlivePCGToolHandlers&) = delete;
 
-	// Tool handlers
+	// P5 consolidated dispatchers
+	FOliveToolResult HandlePCGAdd(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandlePCGModify(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandlePCGConnect(const TSharedPtr<FJsonObject>& Params);
+
+	// Internal tool handlers (invoked by dispatchers and directly for unchanged tools)
 	FOliveToolResult HandleCreate(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleRead(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleAddNode(const TSharedPtr<FJsonObject>& Params);

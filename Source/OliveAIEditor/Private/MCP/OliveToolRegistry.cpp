@@ -783,6 +783,74 @@ namespace
 			});
 
 			// ------------------------------------------------------------------
+			// PCG tools -> pcg.{create,add,modify,remove,connect} (P5 consolidation)
+			// ------------------------------------------------------------------
+
+			// pcg.create_graph -> pcg.create (pass-through rename)
+			Map.Add(TEXT("pcg.create_graph"), {
+				TEXT("pcg.create"),
+				nullptr
+			});
+
+			// pcg.add_node -> pcg.add(node_kind='node')
+			Map.Add(TEXT("pcg.add_node"), {
+				TEXT("pcg.add"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("node_kind"), TEXT("node"));
+				}
+			});
+
+			// pcg.add_subgraph -> pcg.add(node_kind='subgraph')
+			Map.Add(TEXT("pcg.add_subgraph"), {
+				TEXT("pcg.add"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("node_kind"), TEXT("subgraph"));
+				}
+			});
+
+			// pcg.modify_node -> pcg.modify(entity='node')
+			Map.Add(TEXT("pcg.modify_node"), {
+				TEXT("pcg.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("node"));
+				}
+			});
+
+			// pcg.set_settings -> pcg.modify(entity='settings')
+			Map.Add(TEXT("pcg.set_settings"), {
+				TEXT("pcg.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("settings"));
+				}
+			});
+
+			// pcg.remove_node -> pcg.remove (pass-through rename)
+			Map.Add(TEXT("pcg.remove_node"), {
+				TEXT("pcg.remove"),
+				nullptr
+			});
+
+			// pcg.connect_pins -> pcg.connect (pass-through alias for contract-only
+			// name; the canonical has always been pcg.connect).
+			Map.Add(TEXT("pcg.connect_pins"), {
+				TEXT("pcg.connect"),
+				nullptr
+			});
+
+			// pcg.disconnect -> pcg.connect with break=true
+			Map.Add(TEXT("pcg.disconnect"), {
+				TEXT("pcg.connect"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetBoolField(TEXT("break"), true);
+				}
+			});
+
+			// ------------------------------------------------------------------
 			// C++ tools -> cpp.read_class with include param
 			// ------------------------------------------------------------------
 

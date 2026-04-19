@@ -39,4 +39,17 @@ namespace OlivePCGSchemas
 
 	/** Schema for pcg.execute: {path, timeout?} */
 	TSharedPtr<FJsonObject> PCGExecute();
+
+	// ---------------------------------------------------------------------
+	// P5 consolidated schemas
+	// ---------------------------------------------------------------------
+
+	/** Schema for pcg.add: {path, node_kind, ...} — dispatches on node_kind to node|subgraph */
+	TSharedPtr<FJsonObject> PCGAdd();
+
+	/** Schema for pcg.modify: {path, entity, ...} — dispatches on entity to node|settings */
+	TSharedPtr<FJsonObject> PCGModify();
+
+	/** Schema for pcg.connect: {path, source_*, target_*, break?} — dispatches on break to connect|disconnect */
+	TSharedPtr<FJsonObject> PCGConnectUnified();
 }
