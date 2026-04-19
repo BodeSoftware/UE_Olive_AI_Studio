@@ -271,35 +271,6 @@ public:
 	/** Clear the tool filter, returning to full tool list. */
 	void ClearToolFilter();
 
-	// ==========================================
-	// Internal Agent Chat Mode
-	// ==========================================
-
-	/**
-	 * Set the chat mode for in-engine autonomous runs.
-	 * When an internal agent is active, MCP tool calls will carry this mode
-	 * in FOliveToolCallContext::ChatMode, enabling the write pipeline's mode gate
-	 * to enforce Plan/Ask restrictions.
-	 *
-	 * External agents (not launched from in-engine chat) are unaffected --
-	 * they default to Code mode.
-	 *
-	 * @param Mode The active chat mode from the editor's conversation manager
-	 */
-	void SetChatModeForInternalAgent(EOliveChatMode Mode);
-
-	/**
-	 * Clear the internal agent chat mode, reverting to default Code mode.
-	 * Called when the autonomous run completes, errors, or is cancelled.
-	 */
-	void ClearChatModeForInternalAgent();
-
-	/** Get the current internal agent chat mode. Returns Code if no internal agent is active. */
-	EOliveChatMode GetInternalAgentChatMode() const { return InternalAgentChatMode; }
-
-	/** Check whether an in-engine autonomous agent is currently active. */
-	bool HasInternalAgent() const { return bHasInternalAgent; }
-
 private:
 	FOliveMCPServer();
 	~FOliveMCPServer();
@@ -480,17 +451,4 @@ private:
 
 	/** Lock for tool filter access (filter set on game thread, read on HTTP thread) */
 	mutable FCriticalSection ToolFilterLock;
-
-	// ==========================================
-	// Internal Agent State
-	// ==========================================
-
-	/** Chat mode set by ConversationManager for in-engine autonomous runs.
-	 *  Defaults to Code so external MCP agents (Claude Code CLI, Cursor, etc.)
-	 *  get unrestricted access -- only in-engine chat respects Plan/Ask gating. */
-	EOliveChatMode InternalAgentChatMode = EOliveChatMode::Code;
-
-	/** Whether an in-engine autonomous agent is currently active.
-	 *  When false, MCP tool calls default to Code mode regardless of InternalAgentChatMode. */
-	bool bHasInternalAgent = false;
 };

@@ -767,14 +767,9 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsCall(
 	// Execute tool with MCP origin context.
 	// If an in-engine autonomous agent is active, propagate its chat mode
 	// so the write pipeline's mode gate can enforce Plan/Ask restrictions.
-	// External MCP agents default to Code mode (unrestricted).
 	FOliveToolCallContext ToolContext;
 	ToolContext.Origin = EOliveToolCallOrigin::MCP;
 	ToolContext.SessionId = ClientId;
-	if (bHasInternalAgent)
-	{
-		ToolContext.ChatMode = InternalAgentChatMode;
-	}
 	FOliveToolExecutionContextScope ContextScope(ToolContext);
 
 	FOliveToolResult ToolResult = FOliveToolRegistry::Get().ExecuteTool(ToolName, Arguments);
@@ -925,24 +920,13 @@ void FOliveMCPServer::HandleToolsCallAsync(
 	// Capture start time before dispatching to game thread for accurate wall-clock duration
 	const double ToolStartTime = FPlatformTime::Seconds();
 
-	// Capture internal agent state before dispatching -- these are read on the HTTP
-	// thread but only written on the game thread, so the snapshot is safe.
-	const bool bCapturedHasInternalAgent = bHasInternalAgent;
-	const EOliveChatMode CapturedChatMode = InternalAgentChatMode;
-
 	// Dispatch tool execution to the game thread
-	AsyncTask(ENamedThreads::GameThread, [this, ToolName, Arguments, ClientId, RequestId, OnComplete, ToolStartTime, bCapturedHasInternalAgent, CapturedChatMode]()
+	AsyncTask(ENamedThreads::GameThread, [this, ToolName, Arguments, ClientId, RequestId, OnComplete, ToolStartTime]()
 	{
 		// Set up execution context on the game thread.
-		// Propagate internal agent chat mode so the write pipeline's mode gate
-		// can enforce Plan/Ask restrictions for in-engine autonomous runs.
 		FOliveToolCallContext ToolContext;
 		ToolContext.Origin = EOliveToolCallOrigin::MCP;
 		ToolContext.SessionId = ClientId;
-		if (bCapturedHasInternalAgent)
-		{
-			ToolContext.ChatMode = CapturedChatMode;
-		}
 		FOliveToolExecutionContextScope ContextScope(ToolContext);
 
 		FOliveToolResult ToolResult = FOliveToolRegistry::Get().ExecuteTool(ToolName, Arguments);
@@ -1643,20 +1627,6 @@ void FOliveMCPServer::ClearToolFilter()
 	FScopeLock Lock(&ToolFilterLock);
 	ToolFilterPrefixes.Empty();
 	UE_LOG(LogOliveAI, Log, TEXT("MCP tool filter cleared"));
-}
-
-void FOliveMCPServer::SetChatModeForInternalAgent(EOliveChatMode Mode)
-{
-	InternalAgentChatMode = Mode;
-	bHasInternalAgent = true;
-	UE_LOG(LogOliveAI, Log, TEXT("MCP internal agent chat mode set to %s"), LexToString(Mode));
-}
-
-void FOliveMCPServer::ClearChatModeForInternalAgent()
-{
-	InternalAgentChatMode = EOliveChatMode::Code;
-	bHasInternalAgent = false;
-	UE_LOG(LogOliveAI, Log, TEXT("MCP internal agent chat mode cleared"));
 }
 
 // ==========================================
