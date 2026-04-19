@@ -1044,18 +1044,81 @@ namespace
 			});
 
 			// ------------------------------------------------------------------
-			// Project tools -> project.get_asset_info
+			// Project family (P5 consolidation — 19 legacy → 7 real survivors)
+			// Survivors: project.search, project.read, project.snapshot,
+			//            project.rollback, project.diff, project.refactor_rename,
+			//            project.index
 			// ------------------------------------------------------------------
 
-			Map.Add(TEXT("project.get_dependencies"), {
-				TEXT("project.get_asset_info"),
-				nullptr // all params pass through
+			// -- project.read (include-array dispatch) --------------------------
+
+			auto MakeProjectReadAlias = [](const TCHAR* IncludeKey)
+			{
+				const FString Key(IncludeKey);
+				return FOliveToolAlias{
+					TEXT("project.read"),
+					[Key](TSharedPtr<FJsonObject>& P)
+					{
+						// Only fill include if caller didn't already.
+						if (!P->HasField(TEXT("include")))
+						{
+							TArray<TSharedPtr<FJsonValue>> Arr;
+							Arr.Add(MakeShared<FJsonValueString>(Key));
+							P->SetArrayField(TEXT("include"), Arr);
+						}
+					}
+				};
+			};
+
+			Map.Add(TEXT("project.get_asset_info"),      MakeProjectReadAlias(TEXT("asset_info")));
+			Map.Add(TEXT("project.get_class_hierarchy"), MakeProjectReadAlias(TEXT("class_hierarchy")));
+			Map.Add(TEXT("project.get_config"),          MakeProjectReadAlias(TEXT("config")));
+			Map.Add(TEXT("project.get_dependencies"),    MakeProjectReadAlias(TEXT("dependencies")));
+			Map.Add(TEXT("project.get_info"),            MakeProjectReadAlias(TEXT("info")));
+			Map.Add(TEXT("project.get_referencers"),     MakeProjectReadAlias(TEXT("referencers")));
+			Map.Add(TEXT("project.get_relevant_context"),MakeProjectReadAlias(TEXT("relevant_context")));
+			Map.Add(TEXT("project.bulk_read"),           MakeProjectReadAlias(TEXT("bulk")));
+
+			// -- project.snapshot (action=list subsumes project.list_snapshots) --
+
+			Map.Add(TEXT("project.list_snapshots"), {
+				TEXT("project.snapshot"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					if (!P->HasField(TEXT("action")))
+					{
+						P->SetStringField(TEXT("action"), TEXT("list"));
+					}
+				}
 			});
 
-			Map.Add(TEXT("project.get_referencers"), {
-				TEXT("project.get_asset_info"),
-				nullptr // all params pass through
+			// -- project.index (action=build/status subsumes index_build/index_status) --
+
+			Map.Add(TEXT("project.index_build"), {
+				TEXT("project.index"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					if (!P->HasField(TEXT("action")))
+					{
+						P->SetStringField(TEXT("action"), TEXT("build"));
+					}
+				}
 			});
+
+			Map.Add(TEXT("project.index_status"), {
+				TEXT("project.index"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					if (!P->HasField(TEXT("action")))
+					{
+						P->SetStringField(TEXT("action"), TEXT("status"));
+					}
+				}
+			});
+
+			// NOTE: project.create_ai_character, project.implement_interface,
+			// project.move_to_cpp, and project.batch_write are deleted with NO
+			// alias — calling them returns TOOL_NOT_FOUND per contract §7.4.
 
 			return Map;
 		}();
@@ -1628,57 +1691,12 @@ void FOliveToolRegistry::RegisterProjectTools()
 		);
 	}
 
-	// project.get_asset_info
-	{
-		TSharedPtr<FJsonObject> Schema = MakeShared<FJsonObject>();
-		Schema->SetStringField(TEXT("type"), TEXT("object"));
-
-		TSharedPtr<FJsonObject> Properties = MakeShared<FJsonObject>();
-
-		TSharedPtr<FJsonObject> PathProp = MakeShared<FJsonObject>();
-		PathProp->SetStringField(TEXT("type"), TEXT("string"));
-		PathProp->SetStringField(TEXT("description"), TEXT("Asset path (e.g., /Game/Blueprints/BP_Player)"));
-		Properties->SetObjectField(TEXT("path"), PathProp);
-
-		Schema->SetObjectField(TEXT("properties"), Properties);
-
-		TArray<TSharedPtr<FJsonValue>> Required;
-		Required.Add(MakeShared<FJsonValueString>(TEXT("path")));
-		Schema->SetArrayField(TEXT("required"), Required);
-
-		RegisterTool(
-			TEXT("project.get_asset_info"),
-			TEXT("Get detailed information about an asset including dependencies, referencers, and metadata."),
-			Schema,
-			FOliveToolHandler::CreateRaw(this, &FOliveToolRegistry::HandleProjectGetAssetInfo),
-			{ TEXT("project"), TEXT("info") },
-			TEXT("project")
-		);
-	}
-
-	// project.get_class_hierarchy
-	{
-		TSharedPtr<FJsonObject> Schema = MakeShared<FJsonObject>();
-		Schema->SetStringField(TEXT("type"), TEXT("object"));
-
-		TSharedPtr<FJsonObject> Properties = MakeShared<FJsonObject>();
-
-		TSharedPtr<FJsonObject> RootClassProp = MakeShared<FJsonObject>();
-		RootClassProp->SetStringField(TEXT("type"), TEXT("string"));
-		RootClassProp->SetStringField(TEXT("description"), TEXT("Root class name (optional, defaults to Actor)"));
-		Properties->SetObjectField(TEXT("root_class"), RootClassProp);
-
-		Schema->SetObjectField(TEXT("properties"), Properties);
-
-		RegisterTool(
-			TEXT("project.get_class_hierarchy"),
-			TEXT("Get the class inheritance hierarchy starting from a root class."),
-			Schema,
-			FOliveToolHandler::CreateRaw(this, &FOliveToolRegistry::HandleProjectGetClassHierarchy),
-			{ TEXT("project"), TEXT("hierarchy") },
-			TEXT("project")
-		);
-	}
+	// Removed in P5 consolidation:
+	//   project.get_asset_info       → alias to project.read (include=["asset_info"])
+	//   project.get_class_hierarchy  → alias to project.read (include=["class_hierarchy"])
+	// Legacy handlers HandleProjectGetAssetInfo / HandleProjectGetClassHierarchy
+	// remain as private methods in case anything links against them directly;
+	// the tool names are no longer registered. See GetToolAliases() for routing.
 
 	// Removed in AI Freedom Phase 2 — already returned by project.get_asset_info
 	// project.get_dependencies
