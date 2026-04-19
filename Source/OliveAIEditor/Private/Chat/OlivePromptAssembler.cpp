@@ -30,25 +30,22 @@ void FOlivePromptAssembler::Initialize()
 // ==========================================
 
 FString FOlivePromptAssembler::AssembleSystemPrompt(
-	EOliveChatMode Mode,
 	const TArray<FString>& ContextAssetPaths,
 	int32 MaxTokens)
 {
-	return AssembleSystemPromptInternal(BasePromptTemplate, Mode, ContextAssetPaths, MaxTokens);
+	return AssembleSystemPromptInternal(BasePromptTemplate, ContextAssetPaths, MaxTokens);
 }
 
 FString FOlivePromptAssembler::AssembleSystemPromptWithBase(
 	const FString& BasePromptOverride,
-	EOliveChatMode Mode,
 	const TArray<FString>& ContextAssetPaths,
 	int32 MaxTokens)
 {
-	return AssembleSystemPromptInternal(BasePromptOverride, Mode, ContextAssetPaths, MaxTokens);
+	return AssembleSystemPromptInternal(BasePromptOverride, ContextAssetPaths, MaxTokens);
 }
 
 FString FOlivePromptAssembler::AssembleSystemPromptInternal(
 	const FString& BasePrompt,
-	EOliveChatMode Mode,
 	const TArray<FString>& ContextAssetPaths,
 	int32 MaxTokens)
 {
@@ -99,14 +96,6 @@ FString FOlivePromptAssembler::AssembleSystemPromptInternal(
 			FullPrompt += TEXT("\n\n## Active Context Assets\n");
 			FullPrompt += AssetContext;
 		}
-	}
-
-	// Mode suffix is the LAST paragraph -- highest attention position
-	const FString ModeSuffix = GetModeSuffix(Mode);
-	if (!ModeSuffix.IsEmpty())
-	{
-		FullPrompt += TEXT("\n\n## Active Mode\n");
-		FullPrompt += ModeSuffix;
 	}
 
 	return FullPrompt;
@@ -396,38 +385,6 @@ FString FOlivePromptAssembler::BuildBlueprintContextBlock(const FString& AssetPa
 	}
 
 	return Block;
-}
-
-// ==========================================
-// Mode Suffix
-// ==========================================
-
-FString FOlivePromptAssembler::GetModeSuffix(EOliveChatMode Mode) const
-{
-	switch (Mode)
-	{
-	case EOliveChatMode::Code:
-		return TEXT("You are in Code mode. Execute the user's request fully -- research, plan, build, "
-			"compile, and verify. Use whatever tools and approach you judge best. Take a snapshot "
-			"before destructive changes. Do not ask for permission on standard operations.");
-
-	case EOliveChatMode::Plan:
-		return TEXT("You are in Plan mode. Treat this as an ongoing planning session, not a one-turn answer. "
-			"When the user sends follow-up messages, revise the current plan unless they clearly start a new task. "
-			"Preserve task identity across follow-ups and mode switches. Do not execute write operations. "
-			"Use read tools freely to understand the current state. Present your plan as: 1) what assets to create/modify, "
-			"2) what each asset needs (components, variables, functions), 3) how assets communicate. "
-			"The user will approve before you build.\n\n"
-			"When transitioning to Code mode, build execution context from the active plan and frame implementation "
-			"as 'implement this active approved plan' without starting over.");
-
-	case EOliveChatMode::Ask:
-		return TEXT("You are in Ask mode. Answer questions about the project using read tools. "
-			"Explain what you find clearly. Do not make any changes to assets.");
-
-	default:
-		return FString();
-	}
 }
 
 // ==========================================
