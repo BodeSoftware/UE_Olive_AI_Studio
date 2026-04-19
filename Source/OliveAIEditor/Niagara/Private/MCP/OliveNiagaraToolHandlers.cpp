@@ -34,7 +34,12 @@ void FOliveNiagaraToolHandlers::RegisterAllTools()
 
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
-	// niagara.create_system
+	// P5 consolidation: Niagara exposes 8 real tools. Legacy names
+	// (niagara.read_system, niagara.add_emitter, niagara.add_module,
+	// niagara.set_emitter_property, niagara.set_parameter, niagara.remove_module)
+	// continue to work as aliases registered in OliveToolRegistry::GetToolAliases().
+
+	// 1. niagara.create_system (unchanged)
 	Registry.RegisterTool(
 		TEXT("niagara.create_system"),
 		TEXT("Create a new Niagara particle system asset"),
@@ -45,62 +50,55 @@ void FOliveNiagaraToolHandlers::RegisterAllTools()
 	);
 	RegisteredToolNames.Add(TEXT("niagara.create_system"));
 
-	// niagara.read_system
+	// 2. niagara.read (P5: replaces niagara.read_system via alias)
 	Registry.RegisterTool(
-		TEXT("niagara.read_system"),
-		TEXT("Read the structure of a Niagara system (emitters, modules, renderers)"),
-		OliveNiagaraSchemas::NiagaraReadSystem(),
-		FOliveToolHandler::CreateRaw(this, &FOliveNiagaraToolHandlers::HandleReadSystem),
+		TEXT("niagara.read"),
+		TEXT("Read the structure of a Niagara system (emitters, modules, renderers). "
+			"Legacy niagara.read_system is a pass-through alias."),
+		OliveNiagaraSchemas::NiagaraRead(),
+		FOliveToolHandler::CreateRaw(this, &FOliveNiagaraToolHandlers::HandleNiagaraRead),
 		{TEXT("niagara"), TEXT("read")},
 		TEXT("niagara")
 	);
-	RegisteredToolNames.Add(TEXT("niagara.read_system"));
+	RegisteredToolNames.Add(TEXT("niagara.read"));
 
-	// niagara.add_emitter
+	// 3. niagara.add (P5: consolidated dispatcher; replaces niagara.add_emitter + niagara.add_module)
 	Registry.RegisterTool(
-		TEXT("niagara.add_emitter"),
-		TEXT("Add an emitter to a Niagara system"),
-		OliveNiagaraSchemas::NiagaraAddEmitter(),
-		FOliveToolHandler::CreateRaw(this, &FOliveNiagaraToolHandlers::HandleAddEmitter),
-		{TEXT("niagara"), TEXT("write")},
+		TEXT("niagara.add"),
+		TEXT("Add an emitter or module to a Niagara system. Dispatches on 'kind' (emitter|module). "
+			"Legacy niagara.add_emitter and niagara.add_module are aliases that pre-fill 'kind'."),
+		OliveNiagaraSchemas::NiagaraAdd(),
+		FOliveToolHandler::CreateRaw(this, &FOliveNiagaraToolHandlers::HandleNiagaraAdd),
+		{TEXT("niagara"), TEXT("write"), TEXT("add")},
 		TEXT("niagara")
 	);
-	RegisteredToolNames.Add(TEXT("niagara.add_emitter"));
+	RegisteredToolNames.Add(TEXT("niagara.add"));
 
-	// niagara.add_module
+	// 4. niagara.modify (P5: consolidated dispatcher; replaces niagara.set_emitter_property + niagara.set_parameter)
 	Registry.RegisterTool(
-		TEXT("niagara.add_module"),
-		TEXT("Add a module to a Niagara emitter's stage stack"),
-		OliveNiagaraSchemas::NiagaraAddModule(),
-		FOliveToolHandler::CreateRaw(this, &FOliveNiagaraToolHandlers::HandleAddModule),
-		{TEXT("niagara"), TEXT("write")},
+		TEXT("niagara.modify"),
+		TEXT("Modify a Niagara emitter or parameter. Dispatches on 'entity' (emitter|parameter). "
+			"Legacy niagara.set_emitter_property and niagara.set_parameter are aliases that pre-fill 'entity'."),
+		OliveNiagaraSchemas::NiagaraModify(),
+		FOliveToolHandler::CreateRaw(this, &FOliveNiagaraToolHandlers::HandleNiagaraModify),
+		{TEXT("niagara"), TEXT("write"), TEXT("modify")},
 		TEXT("niagara")
 	);
-	RegisteredToolNames.Add(TEXT("niagara.add_module"));
+	RegisteredToolNames.Add(TEXT("niagara.modify"));
 
-	// niagara.remove_module
+	// 5. niagara.remove (P5: pass-through for niagara.remove_module; structure leaves room to grow)
 	Registry.RegisterTool(
-		TEXT("niagara.remove_module"),
-		TEXT("Remove a module from a Niagara emitter's stage stack"),
-		OliveNiagaraSchemas::NiagaraRemoveModule(),
-		FOliveToolHandler::CreateRaw(this, &FOliveNiagaraToolHandlers::HandleRemoveModule),
-		{TEXT("niagara"), TEXT("write")},
+		TEXT("niagara.remove"),
+		TEXT("Remove a module from a Niagara emitter's stage stack. "
+			"Legacy niagara.remove_module is a pass-through alias."),
+		OliveNiagaraSchemas::NiagaraRemove(),
+		FOliveToolHandler::CreateRaw(this, &FOliveNiagaraToolHandlers::HandleNiagaraRemove),
+		{TEXT("niagara"), TEXT("write"), TEXT("delete")},
 		TEXT("niagara")
 	);
-	RegisteredToolNames.Add(TEXT("niagara.remove_module"));
+	RegisteredToolNames.Add(TEXT("niagara.remove"));
 
-	// niagara.list_modules
-	Registry.RegisterTool(
-		TEXT("niagara.list_modules"),
-		TEXT("Search available Niagara modules by name, category, or stage"),
-		OliveNiagaraSchemas::NiagaraListModules(),
-		FOliveToolHandler::CreateRaw(this, &FOliveNiagaraToolHandlers::HandleListModules),
-		{TEXT("niagara"), TEXT("read")},
-		TEXT("niagara")
-	);
-	RegisteredToolNames.Add(TEXT("niagara.list_modules"));
-
-	// niagara.compile
+	// 6. niagara.compile (unchanged)
 	Registry.RegisterTool(
 		TEXT("niagara.compile"),
 		TEXT("Compile a Niagara system (async)"),
@@ -111,18 +109,7 @@ void FOliveNiagaraToolHandlers::RegisterAllTools()
 	);
 	RegisteredToolNames.Add(TEXT("niagara.compile"));
 
-	// niagara.set_parameter
-	Registry.RegisterTool(
-		TEXT("niagara.set_parameter"),
-		TEXT("Set a module parameter value (supports float, int, vector, color)"),
-		OliveNiagaraSchemas::NiagaraSetParameter(),
-		FOliveToolHandler::CreateRaw(this, &FOliveNiagaraToolHandlers::HandleSetParameter),
-		{TEXT("niagara"), TEXT("write")},
-		TEXT("niagara")
-	);
-	RegisteredToolNames.Add(TEXT("niagara.set_parameter"));
-
-	// niagara.describe_module
+	// 7. niagara.describe_module (unchanged; helper)
 	Registry.RegisterTool(
 		TEXT("niagara.describe_module"),
 		TEXT("Describe a module's parameters (names, types, defaults, current values)"),
@@ -133,16 +120,16 @@ void FOliveNiagaraToolHandlers::RegisterAllTools()
 	);
 	RegisteredToolNames.Add(TEXT("niagara.describe_module"));
 
-	// niagara.set_emitter_property
+	// 8. niagara.list_modules (unchanged; helper)
 	Registry.RegisterTool(
-		TEXT("niagara.set_emitter_property"),
-		TEXT("Set an emitter-level property (SimTarget, bounds, determinism, etc.)"),
-		OliveNiagaraSchemas::NiagaraSetEmitterProperty(),
-		FOliveToolHandler::CreateRaw(this, &FOliveNiagaraToolHandlers::HandleSetEmitterProperty),
-		{TEXT("niagara"), TEXT("write")},
+		TEXT("niagara.list_modules"),
+		TEXT("Search available Niagara modules by name, category, or stage"),
+		OliveNiagaraSchemas::NiagaraListModules(),
+		FOliveToolHandler::CreateRaw(this, &FOliveNiagaraToolHandlers::HandleListModules),
+		{TEXT("niagara"), TEXT("read")},
 		TEXT("niagara")
 	);
-	RegisteredToolNames.Add(TEXT("niagara.set_emitter_property"));
+	RegisteredToolNames.Add(TEXT("niagara.list_modules"));
 
 	UE_LOG(LogOliveNiagaraTools, Log, TEXT("Registered %d Niagara MCP tools"), RegisteredToolNames.Num());
 }
@@ -637,4 +624,136 @@ FOliveToolResult FOliveNiagaraToolHandlers::HandleSetEmitterProperty(const TShar
 	Result->SetBoolField(TEXT("requires_recompile"), true);
 
 	return FOliveToolResult::Success(Result);
+}
+
+// ============================================================================
+// Consolidated Dispatchers (P5)
+//
+// These dispatchers route on kind / entity to the existing specialized
+// handlers. Legacy tool names (niagara.read_system, niagara.add_emitter,
+// niagara.add_module, niagara.set_emitter_property, niagara.set_parameter,
+// niagara.remove_module) are preserved as aliases that pre-fill the dispatch
+// field in OliveToolRegistry::GetToolAliases().
+// ============================================================================
+
+namespace
+{
+	/** Clone params so we can normalize fields without mutating the caller. */
+	static TSharedPtr<FJsonObject> CloneNiagaraParams(const TSharedPtr<FJsonObject>& Params)
+	{
+		TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
+		if (Params.IsValid())
+		{
+			for (const auto& Pair : Params->Values) { Out->Values.Add(Pair.Key, Pair.Value); }
+		}
+		return Out;
+	}
+} // anonymous namespace
+
+FOliveToolResult FOliveNiagaraToolHandlers::HandleNiagaraRead(const TSharedPtr<FJsonObject>& Params)
+{
+	// Pass-through: niagara.read and niagara.read_system share identical semantics.
+	return HandleReadSystem(Params);
+}
+
+FOliveToolResult FOliveNiagaraToolHandlers::HandleNiagaraAdd(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a params object with 'path' and 'kind' fields."));
+	}
+
+	FString Path;
+	if (!Params->TryGetStringField(TEXT("path"), Path) || Path.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'path'"),
+			TEXT("Provide the Niagara system asset path."));
+	}
+
+	FString Kind;
+	Params->TryGetStringField(TEXT("kind"), Kind);
+	Kind = Kind.ToLower();
+	if (Kind.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'kind'"),
+			TEXT("kind must be one of: emitter, module"));
+	}
+
+	TSharedPtr<FJsonObject> SubParams = CloneNiagaraParams(Params);
+
+	if (Kind == TEXT("emitter"))
+	{
+		return HandleAddEmitter(SubParams);
+	}
+	if (Kind == TEXT("module"))
+	{
+		return HandleAddModule(SubParams);
+	}
+
+	return FOliveToolResult::Error(
+		TEXT("VALIDATION_INVALID_VALUE"),
+		FString::Printf(TEXT("Unknown kind '%s'"), *Kind),
+		TEXT("kind must be one of: emitter, module"));
+}
+
+FOliveToolResult FOliveNiagaraToolHandlers::HandleNiagaraModify(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a params object with 'path' and 'entity' fields."));
+	}
+
+	FString Path;
+	if (!Params->TryGetStringField(TEXT("path"), Path) || Path.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'path'"),
+			TEXT("Provide the Niagara system asset path."));
+	}
+
+	FString Entity;
+	Params->TryGetStringField(TEXT("entity"), Entity);
+	Entity = Entity.ToLower();
+	if (Entity.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'entity'"),
+			TEXT("entity must be one of: emitter, parameter"));
+	}
+
+	TSharedPtr<FJsonObject> SubParams = CloneNiagaraParams(Params);
+
+	if (Entity == TEXT("emitter"))
+	{
+		return HandleSetEmitterProperty(SubParams);
+	}
+	if (Entity == TEXT("parameter"))
+	{
+		return HandleSetParameter(SubParams);
+	}
+
+	return FOliveToolResult::Error(
+		TEXT("VALIDATION_INVALID_VALUE"),
+		FString::Printf(TEXT("Unknown entity '%s'"), *Entity),
+		TEXT("entity must be one of: emitter, parameter"));
+}
+
+FOliveToolResult FOliveNiagaraToolHandlers::HandleNiagaraRemove(const TSharedPtr<FJsonObject>& Params)
+{
+	// DESIGN NOTE: Today Niagara only supports removing modules. The dispatcher
+	// shape is preserved so a future add of 'entity' (e.g., "emitter") only
+	// requires editing this function.
+	return HandleRemoveModule(Params);
 }

@@ -17,10 +17,15 @@ DECLARE_LOG_CATEGORY_EXTERN(LogOliveNiagaraTools, Log, All);
  * Acts as a bridge between the MCP tool registry and the Niagara
  * reader/writer/catalog infrastructure.
  *
- * Tools: niagara.create_system, niagara.read_system, niagara.add_emitter,
- *        niagara.add_module, niagara.remove_module, niagara.list_modules,
- *        niagara.compile, niagara.set_parameter, niagara.describe_module,
- *        niagara.set_emitter_property
+ * P5 consolidated tools:
+ *   niagara.create_system, niagara.read, niagara.add, niagara.modify,
+ *   niagara.remove, niagara.compile, niagara.describe_module,
+ *   niagara.list_modules
+ *
+ * Legacy tool names (niagara.read_system, niagara.add_emitter,
+ * niagara.add_module, niagara.set_emitter_property, niagara.set_parameter,
+ * niagara.remove_module) continue to work as aliases registered in
+ * OliveToolRegistry::GetToolAliases().
  */
 class OLIVEAIEDITOR_API FOliveNiagaraToolHandlers
 {
@@ -39,7 +44,13 @@ private:
 	FOliveNiagaraToolHandlers(const FOliveNiagaraToolHandlers&) = delete;
 	FOliveNiagaraToolHandlers& operator=(const FOliveNiagaraToolHandlers&) = delete;
 
-	// Tool handlers
+	// P5 consolidated dispatchers
+	FOliveToolResult HandleNiagaraRead(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandleNiagaraAdd(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandleNiagaraModify(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandleNiagaraRemove(const TSharedPtr<FJsonObject>& Params);
+
+	// Internal tool handlers (invoked by dispatchers and directly for unchanged tools)
 	FOliveToolResult HandleCreateSystem(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleReadSystem(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleAddEmitter(const TSharedPtr<FJsonObject>& Params);

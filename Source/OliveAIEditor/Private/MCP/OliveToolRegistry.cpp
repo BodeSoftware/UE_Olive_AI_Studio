@@ -851,6 +851,58 @@ namespace
 			});
 
 			// ------------------------------------------------------------------
+			// Niagara tools -> niagara.{read,add,modify,remove} (P5 consolidation)
+			// ------------------------------------------------------------------
+
+			// niagara.read_system -> niagara.read (pass-through rename)
+			Map.Add(TEXT("niagara.read_system"), {
+				TEXT("niagara.read"),
+				nullptr
+			});
+
+			// niagara.add_emitter -> niagara.add(kind='emitter')
+			Map.Add(TEXT("niagara.add_emitter"), {
+				TEXT("niagara.add"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("kind"), TEXT("emitter"));
+				}
+			});
+
+			// niagara.add_module -> niagara.add(kind='module')
+			Map.Add(TEXT("niagara.add_module"), {
+				TEXT("niagara.add"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("kind"), TEXT("module"));
+				}
+			});
+
+			// niagara.set_emitter_property -> niagara.modify(entity='emitter')
+			Map.Add(TEXT("niagara.set_emitter_property"), {
+				TEXT("niagara.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("emitter"));
+				}
+			});
+
+			// niagara.set_parameter -> niagara.modify(entity='parameter')
+			Map.Add(TEXT("niagara.set_parameter"), {
+				TEXT("niagara.modify"),
+				[](TSharedPtr<FJsonObject>& P)
+				{
+					P->SetStringField(TEXT("entity"), TEXT("parameter"));
+				}
+			});
+
+			// niagara.remove_module -> niagara.remove (pass-through rename)
+			Map.Add(TEXT("niagara.remove_module"), {
+				TEXT("niagara.remove"),
+				nullptr
+			});
+
+			// ------------------------------------------------------------------
 			// C++ tools -> cpp.read_class with include param
 			// ------------------------------------------------------------------
 
