@@ -7,7 +7,6 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Chat/OliveConversationManager.h"
 #include "Chat/OliveRunManager.h"
-#include "Brain/OliveBrainState.h"
 
 class SOliveAIMessageList;
 class SOliveAIContextBar;
@@ -66,13 +65,6 @@ private:
 	/** Build the status bar */
 	TSharedRef<SWidget> BuildStatusBar();
 
-	/**
-	 * Build the compact mode badge widget.
-	 * Shows "CODE", "PLAN", or "ASK" with color coding.
-	 * Clickable to cycle through modes.
-	 */
-	TSharedRef<SWidget> BuildModeBadge();
-
 	/** Build provider selector */
 	TSharedRef<SWidget> BuildProviderSelector();
 
@@ -89,29 +81,8 @@ private:
 	/** Handle message submitted from input field */
 	void OnMessageSubmitted(const FString& Message);
 
-	/** Handle mode badge click -- cycles through Code/Plan/Ask */
-	FReply OnModeBadgeClicked();
-
-	/** Cycle through modes: Code -> Plan -> Ask -> Code */
-	void CycleMode();
-
-	/** Get the display text for the mode badge (e.g. "CODE") */
-	FText GetModeBadgeText() const;
-
-	/** Get the color for the mode badge text */
-	FSlateColor GetModeBadgeColor() const;
-
-	/** Get the background color for the mode badge */
-	FLinearColor GetModeBadgeBackgroundColor() const;
-
-	/** Handle slash command from input field (e.g. /code, /plan, /ask) */
+	/** Handle slash command from input field (e.g. /status) */
 	void HandleSlashCommand(const FString& Command);
-
-	/** Handle mode changed from ConversationManager (update badge + system message) */
-	void HandleModeChanged(EOliveChatMode NewMode);
-
-	/** Handle deferred mode switch notification */
-	void HandleModeSwitchDeferred(EOliveChatMode PendingMode);
 
 	/** Insert a system message into the message list */
 	void AddSystemMessage(const FString& Message);
