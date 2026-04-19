@@ -228,7 +228,7 @@ void FOliveMCPServer::WriteMcpConfigFile()
 	const FString ConfigContent = FString::Printf(
 		TEXT("{\n")
 		TEXT("  \"mcpServers\": {\n")
-		TEXT("    \"olive-ai-studio\": {\n")
+		TEXT("    \"olive_ai_studio\": {\n")
 		TEXT("      \"command\": \"node\",\n")
 		TEXT("      \"args\": [\"mcp-bridge.js\"]\n")
 		TEXT("    }\n")

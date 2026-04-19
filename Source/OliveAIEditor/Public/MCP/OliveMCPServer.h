@@ -31,7 +31,7 @@ enum class EOliveMCPServerState : uint8
 /**
  * MCP Server Info
  */
-#define OLIVE_MCP_SERVER_NAME TEXT("olive-ai-studio")
+#define OLIVE_MCP_SERVER_NAME TEXT("olive_ai_studio")
 #define OLIVE_MCP_SERVER_VERSION TEXT("0.1.0")
 
 /**

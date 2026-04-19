@@ -415,7 +415,7 @@ void FOliveClaudeCodeProvider::WriteProviderSpecificSandboxFiles(const FString& 
 	const FString McpConfig = FString::Printf(
 		TEXT("{\n")
 		TEXT("  \"mcpServers\": {\n")
-		TEXT("    \"olive-ai-studio\": {\n")
+		TEXT("    \"olive_ai_studio\": {\n")
 		TEXT("      \"command\": \"node\",\n")
 		TEXT("      \"args\": [\"%s\"]\n")
 		TEXT("    }\n")
