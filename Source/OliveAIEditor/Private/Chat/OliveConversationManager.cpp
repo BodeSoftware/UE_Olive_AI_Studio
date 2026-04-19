@@ -117,16 +117,11 @@ FOliveConversationManager::FOliveConversationManager()
 	Brain = MakeShared<FOliveBrainLayer>();
 	StartNewSession();
 
-	// Wire retry policy from settings
-	if (const UOliveAISettings* Settings = UOliveAISettings::Get())
-	{
-		RetryPolicy.MaxCorrectionCyclesPerWorker = Settings->MaxCorrectionCyclesPerRun;
-	}
 }
 
 namespace OliveConversationManagerInternal
 {
-/** Build distilled operation history context for injection into the system prompt */
+/** Build operation history context for injection into the system prompt */
 FString BuildOperationHistoryContext(const FOliveOperationHistoryStore& HistoryStore)
 {
 	if (HistoryStore.GetTotalRecordCount() == 0)
@@ -134,9 +129,10 @@ FString BuildOperationHistoryContext(const FOliveOperationHistoryStore& HistoryS
 		return TEXT("");
 	}
 
-	const UOliveAISettings* Settings = UOliveAISettings::Get();
-	const int32 RawResults = Settings ? Settings->PromptDistillationRawResults : 2;
-	const int32 TokenBudget = 2000;
+	// Fixed raw-result count: the old setting PromptDistillationRawResults
+	// was removed alongside the PromptDistiller in the P3 makeover.
+	constexpr int32 RawResults = 2;
+	constexpr int32 TokenBudget = 2000;
 
 	return HistoryStore.BuildModelContext(TokenBudget, RawResults);
 }
@@ -416,7 +412,6 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 	// Reset tool iteration counter and Brain components
 	CurrentToolIteration = 0;
 	LoopDetector.Reset();
-	SelfCorrectionPolicy.Reset();
 	bTurnHasExplicitWriteIntent = DetectWriteIntent(Message);
 
 	// Dynamic iteration budget for multi-asset tasks
@@ -594,48 +589,6 @@ void FOliveConversationManager::SendToProvider()
 	TArray<FOliveChatMessage> MessagesToSend;
 	MessagesToSend.Add(BuildSystemMessage());
 	MessagesToSend.Append(MessageHistory);
-
-	// Distill conversation history to save tokens
-	FOliveDistillationConfig DistillConfig;
-	if (const UOliveAISettings* Settings = UOliveAISettings::Get())
-	{
-		DistillConfig.RecentPairsToKeep = Settings->PromptDistillationRawResults;
-	}
-	DistillConfig.MaxTotalResultChars = 80000; // ~20K tokens // TODO: make configurable via UOliveAISettings
-	DistillConfig.MaxAssistantChars = 4000;
-	const FOliveDistillationResult DistillResult = PromptDistiller.Distill(MessagesToSend, DistillConfig);
-
-	// Inject a context truncation note so the model knows earlier messages were summarized.
-	// Insert just before the final user message to maximize visibility in the context window.
-	if (DistillResult.DidTruncate())
-	{
-		FString TruncationNote = FString::Printf(
-			TEXT("[CONTEXT NOTE: %d older messages were summarized to save tokens. "
-				 "%d tool results were truncated. If you need details from earlier "
-				 "in the conversation, ask the user to re-provide the relevant context.]"),
-			DistillResult.MessagesSummarized,
-			DistillResult.ToolResultsTruncated);
-
-		FOliveChatMessage TruncationMessage;
-		TruncationMessage.Role = EOliveChatRole::System;
-		TruncationMessage.Content = TruncationNote;
-		TruncationMessage.Timestamp = FDateTime::UtcNow();
-
-		// Find the last user message and insert the note just before it
-		int32 InsertIndex = MessagesToSend.Num(); // fallback: append at end
-		for (int32 i = MessagesToSend.Num() - 1; i >= 0; --i)
-		{
-			if (MessagesToSend[i].Role == EOliveChatRole::User)
-			{
-				InsertIndex = i;
-				break;
-			}
-		}
-		MessagesToSend.Insert(TruncationMessage, InsertIndex);
-
-		UE_LOG(LogOliveAI, Log, TEXT("Injected context truncation note (%d summarized, %d truncated, ~%d tokens saved)"),
-			DistillResult.MessagesSummarized, DistillResult.ToolResultsTruncated, DistillResult.TokensSaved);
-	}
 
 	// Inject iteration budget awareness
 	if (CurrentToolIteration > 0)
@@ -863,15 +816,16 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 			return;
 		}
 
-		// Determine final outcome based on whether corrections were resolved
-		EOliveRunOutcome FinalOutcome = bHasPendingCorrections
-			? EOliveRunOutcome::PartialSuccess
-			: EOliveRunOutcome::Completed;
+		// P3: All non-Failed/non-Cancelled outcomes map to Completed.
+		// A partial result that bubbles to completion counts as Completed
+		// -- the LLM saw what happened and decided to stop.
+		const EOliveRunOutcome FinalOutcome = EOliveRunOutcome::Completed;
 
 		if (bHasPendingCorrections)
 		{
-			UE_LOG(LogOliveAI, Warning,
-				TEXT("Completing with PartialSuccess: unresolved corrections remain after %d re-prompts"),
+			UE_LOG(LogOliveAI, Log,
+				TEXT("Completing with unresolved corrections after %d re-prompts "
+					 "(treated as Completed -- LLM decided to stop)"),
 				CorrectionRepromptCount);
 		}
 
@@ -881,7 +835,7 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 			FOliveRunManager::Get().CompleteRun();
 			bRunModeActive = false;
 		}
-		// Brain: transition to Completed/PartialSuccess -> Idle (CompleteRun already transitions)
+		// Brain: transition to Completed -> Idle (CompleteRun already transitions)
 		if (Brain.IsValid() && Brain->GetState() != EOliveBrainState::Idle)
 		{
 			Brain->CompleteRun(FinalOutcome);
@@ -1116,6 +1070,18 @@ void FOliveConversationManager::ExecuteToolCall(const FOliveStreamChunk& ToolCal
 
 	FOliveToolResult Result = FOliveToolRegistry::Get().ExecuteTool(ToolCall.ToolName, ToolCall.ToolArguments);
 
+	// Retry-once-on-transient: if the tool failed with a transient error
+	// (TIMEOUT, RATE_LIMIT, HTTP_5xx, TRANSIENT), re-run the same call with
+	// the same args. The LLM is not re-prompted for transient failures --
+	// this is a transport-level retry only. Non-transient errors pass
+	// through to the LLM, which decides what to do based on the 3-part
+	// error (code + message + suggestion) that tools already return.
+	if (SelfCorrectionPolicy.ShouldRetry(Result, 1))
+	{
+		UE_LOG(LogOliveAI, Log, TEXT("Transient error from '%s' -- retrying once"), *ToolCall.ToolName);
+		Result = FOliveToolRegistry::Get().ExecuteTool(ToolCall.ToolName, ToolCall.ToolArguments);
+	}
+
 	// Log full arguments on failure for debugging
 	if (!Result.bSuccess)
 	{
@@ -1167,79 +1133,35 @@ void FOliveConversationManager::HandleToolResult(
 			0.0, Result.Data);
 	}
 
-	// Use SelfCorrectionPolicy to evaluate the result
+	// P3: Deliver the 3-part error (code + message + suggestion) to the LLM
+	// verbatim. No progressive disclosure, no A/B/C classification, no plan
+	// dedup. The LLM decides what to do based on the structured error that
+	// tools already return. Transport-level retry for transient errors is
+	// handled inline in ExecuteToolCall.
 	FString ResultContent = Result.ToJsonString();
+
+	// Loop-detector safety backstop: record every failure so ongoing
+	// oscillation/budget-exhaustion checks still work. Signature is kept
+	// coarse (tool + error-code) since fine-grained disambiguation is no
+	// longer needed -- the detector is a hard backstop, not a routing
+	// decision input.
+	if (!Result.bSuccess)
 	{
-		// Extract asset context from original tool args for per-asset signature tracking
-		FString AssetContext;
-		if (const TSharedPtr<FJsonObject>* FoundArgs = ActiveToolCallArgs.Find(ToolCallId))
+		FString ErrorCodeForLoop = TEXT("UNKNOWN");
+		if (Result.Messages.Num() > 0)
 		{
-			if (!(*FoundArgs)->TryGetStringField(TEXT("path"), AssetContext))
-			{
-				(*FoundArgs)->TryGetStringField(TEXT("asset_path"), AssetContext);
-			}
-
-			// Add finer-grained context for variable operations so batched writes
-			// on different variable names do not collapse into one retry signature.
-			if (ToolName == TEXT("blueprint.add_variable")
-				|| ToolName == TEXT("blueprint.modify_variable")
-				|| ToolName == TEXT("blueprint.remove_variable"))
-			{
-				FString VariableName;
-				const TSharedPtr<FJsonObject>* VariableObj = nullptr;
-				if ((*FoundArgs)->TryGetObjectField(TEXT("variable"), VariableObj) && VariableObj && (*VariableObj).IsValid())
-				{
-					(*VariableObj)->TryGetStringField(TEXT("name"), VariableName);
-				}
-				if (VariableName.IsEmpty())
-				{
-					(*FoundArgs)->TryGetStringField(TEXT("name"), VariableName);
-				}
-				if (VariableName.IsEmpty())
-				{
-					(*FoundArgs)->TryGetStringField(TEXT("variable_name"), VariableName);
-				}
-				if (!VariableName.IsEmpty())
-				{
-					AssetContext = AssetContext.IsEmpty()
-						? FString::Printf(TEXT("var=%s"), *VariableName)
-						: FString::Printf(TEXT("%s|var=%s"), *AssetContext, *VariableName);
-				}
-			}
+			ErrorCodeForLoop = Result.Messages[0].Code;
 		}
+		const FString Signature = FOliveLoopDetector::BuildToolErrorSignature(
+			ToolName, ErrorCodeForLoop, TEXT(""));
+		LoopDetector.RecordAttempt(Signature, TEXT("tool_failure"));
 
-		// Look up tool call arguments for plan dedup
-		TSharedPtr<FJsonObject> ToolCallArgsForEval;
-		if (const TSharedPtr<FJsonObject>* FoundArgs = ActiveToolCallArgs.Find(ToolCallId))
+		// If the loop-detector budget is exhausted, stop the worker.
+		if (LoopDetector.IsBudgetExhausted(RetryPolicy) || LoopDetector.IsOscillating())
 		{
-			ToolCallArgsForEval = *FoundArgs;
-		}
-
-		FOliveCorrectionDecision Decision = SelfCorrectionPolicy.Evaluate(
-			ToolName, ResultContent, LoopDetector, RetryPolicy, AssetContext, ToolCallArgsForEval);
-
-		switch (Decision.Action)
-		{
-		case EOliveCorrectionAction::FeedBackErrors:
-			// Enrich the result content with retry instructions
-			ResultContent = ResultContent + TEXT("\n\n") + Decision.EnrichedMessage;
-			if (Brain.IsValid())
-			{
-				Brain->SetWorkerPhase(EOliveWorkerPhase::SelfCorrecting);
-			}
-			break;
-
-		case EOliveCorrectionAction::StopWorker:
-			// Loop detected — stop and report
-			ResultContent = ResultContent + TEXT("\n\n") + Decision.LoopReport;
-			UE_LOG(LogOliveAI, Warning, TEXT("Self-correction loop detected for tool '%s'. Stopping."), *ToolName);
+			UE_LOG(LogOliveAI, Warning,
+				TEXT("Loop detector tripped on tool '%s'. Stopping."), *ToolName);
 			bStopAfterToolResults = true;
-			// CompleteRun(Failed) is called once in ContinueAfterToolResults after all results are collected
-			break;
-
-		case EOliveCorrectionAction::Continue:
-		default:
-			break;
 		}
 	}
 

@@ -8,7 +8,6 @@
 #include "Chat/OliveRunManager.h"
 #include "Brain/OliveBrainLayer.h"
 #include "Brain/OliveOperationHistory.h"
-#include "Brain/OlivePromptDistiller.h"
 #include "Brain/OliveRetryPolicy.h"
 #include "Brain/OliveSelfCorrectionPolicy.h"
 
@@ -351,9 +350,6 @@ private:
 
 	/** Operation history for this session */
 	FOliveOperationHistoryStore HistoryStore;
-
-	/** Prompt distiller for token efficiency */
-	FOlivePromptDistiller PromptDistiller;
 
 	/** Loop detector for current run */
 	FOliveLoopDetector LoopDetector;
