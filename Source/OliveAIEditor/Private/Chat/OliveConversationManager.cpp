@@ -902,7 +902,9 @@ void FOliveConversationManager::ProcessPendingToolCalls()
 		return;
 	}
 
-	// Run mode: check pause, begin step, auto-checkpoint
+	// Run mode: check pause, begin step. Auto-checkpointing was removed in
+	// the P3 makeover -- rollback is now driven entirely by the UI's
+	// operation-card snapshots, not multi-step run checkpoints.
 	if (bRunModeActive && FOliveRunManager::Get().HasActiveRun())
 	{
 		const FOliveRun* Run = FOliveRunManager::Get().GetActiveRun();
@@ -912,10 +914,6 @@ void FOliveConversationManager::ProcessPendingToolCalls()
 		}
 		FOliveRunManager::Get().BeginStep(
 			FString::Printf(TEXT("Tool iteration %d"), CurrentToolIteration));
-		if (FOliveRunManager::Get().ShouldCheckpoint() && ActiveContextPaths.Num() > 0)
-		{
-			FOliveRunManager::Get().CreateCheckpoint(ActiveContextPaths);
-		}
 	}
 
 	// Clear previous results

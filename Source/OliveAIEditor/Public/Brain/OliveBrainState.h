@@ -31,12 +31,15 @@ enum class EOliveWorkerPhase : uint8
 
 /**
  * Outcome of a completed run -- stored on the brain layer after transitioning back to Idle.
+ *
+ * P3 collapsed the enum to 3 values. A partial result that bubbles to
+ * completion counts as Completed (the LLM saw what happened and decided
+ * to stop). Only a fatal loop-detector trip or provider error is Failed.
  */
 enum class EOliveRunOutcome : uint8
 {
-	Completed,          // All steps done successfully
-	PartialSuccess,     // Some steps completed, some failed
-	Failed,             // All/critical steps failed
+	Completed,          // All steps done (or LLM decided to stop after partial work)
+	Failed,             // Fatal: loop detector tripped, provider error, etc.
 	Cancelled           // User cancelled
 };
 
@@ -69,10 +72,9 @@ inline const TCHAR* LexToString(EOliveRunOutcome Outcome)
 {
 	switch (Outcome)
 	{
-	case EOliveRunOutcome::Completed:      return TEXT("Completed");
-	case EOliveRunOutcome::PartialSuccess: return TEXT("PartialSuccess");
-	case EOliveRunOutcome::Failed:         return TEXT("Failed");
-	case EOliveRunOutcome::Cancelled:      return TEXT("Cancelled");
+	case EOliveRunOutcome::Completed: return TEXT("Completed");
+	case EOliveRunOutcome::Failed:    return TEXT("Failed");
+	case EOliveRunOutcome::Cancelled: return TEXT("Cancelled");
 	default: return TEXT("Unknown");
 	}
 }

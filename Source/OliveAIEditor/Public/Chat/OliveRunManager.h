@@ -62,7 +62,6 @@ struct FOliveRun
 	FDateTime StartTime;
 	FDateTime EndTime;
 	TArray<FOliveRunStep> Steps;
-	TArray<FString> CheckpointSnapshotIds;
 	int32 CurrentStepIndex = -1;
 
 	int32 GetCompletedStepCount() const
@@ -104,10 +103,6 @@ public:
 		const TSharedPtr<FJsonObject>& ResultData);
 	void CompleteStep(bool bSuccess);
 
-	FString CreateCheckpoint(const TArray<FString>& AssetPaths);
-	bool ShouldCheckpoint() const;
-	int32 GetCheckpointInterval() const;
-
 	void PauseRun();
 	void ResumeRun();
 	void CancelRun();
@@ -122,5 +117,4 @@ private:
 	FOliveRunManager() = default;
 
 	TOptional<FOliveRun> ActiveRun;
-	int32 StepsSinceLastCheckpoint = 0;
 };
