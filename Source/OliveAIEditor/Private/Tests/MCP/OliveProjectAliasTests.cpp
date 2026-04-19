@@ -165,6 +165,44 @@ bool FOliveProjectAliasIndexStatusTest::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
+// NEGATIVE: olive.get_recipe is hard-deleted (P5 rails removal). No alias.
+// Calling it MUST return TOOL_NOT_FOUND.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FOliveDeletedGetRecipeTest,
+	"OliveAI.MCP.Deleted.OliveGetRecipe",
+	OliveProjectAliasTests::TestFlags)
+
+bool FOliveDeletedGetRecipeTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> P = MakeShared<FJsonObject>();
+	FOliveToolResult R = FOliveToolRegistry::Get().ExecuteTool(TEXT("olive.get_recipe"), P);
+	TestFalse(TEXT("olive.get_recipe must be deleted"), R.bSuccess);
+	if (R.Messages.Num() > 0)
+	{
+		TestEqual(TEXT("Error code"), R.Messages[0].Code, FString(TEXT("TOOL_NOT_FOUND")));
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// NEGATIVE: test.create is hard-deleted (dev-only tool). No alias.
+// Calling it MUST return TOOL_NOT_FOUND.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FOliveDeletedTestCreateTest,
+	"OliveAI.MCP.Deleted.TestCreate",
+	OliveProjectAliasTests::TestFlags)
+
+bool FOliveDeletedTestCreateTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> P = MakeShared<FJsonObject>();
+	FOliveToolResult R = FOliveToolRegistry::Get().ExecuteTool(TEXT("test.create"), P);
+	TestFalse(TEXT("test.create must be deleted"), R.bSuccess);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // NEGATIVE: project.create_ai_character is hard-deleted with NO alias.
 // Calling it MUST return TOOL_NOT_FOUND.
 // ---------------------------------------------------------------------------

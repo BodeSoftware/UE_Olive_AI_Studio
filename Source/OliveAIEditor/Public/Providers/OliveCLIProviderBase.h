@@ -425,10 +425,6 @@ protected:
 	 *  read on background thread for adaptive idle timeout. */
 	std::atomic<int32> ScaffoldingOpCount{0};
 
-	/** Count of olive.get_recipe calls in the current run. Multiple recipe lookups
-	 *  signal complex multi-function planning ahead — triggers extended idle timeout. */
-	std::atomic<int32> RecipeCallCount{0};
-
 	/** Delegate handle for MCP tool call subscription (cleaned up on process exit) */
 	FDelegateHandle ToolCallDelegateHandle;
 

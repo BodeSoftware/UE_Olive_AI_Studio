@@ -20,7 +20,7 @@ class FSQLiteDatabase;
  * - Snapshot: project.snapshot (action-dispatch, subsumes list), project.rollback, project.diff
  * - Index: project.index (action-dispatch, subsumes build/status)
  * - Search: project.search (alias for get_relevant_context)
- * - Recipe: olive.get_recipe, olive.search_community_blueprints
+ * - Community: olive.search_community_blueprints
  */
 class OLIVEAIEDITOR_API FOliveCrossSystemToolHandlers
 {
@@ -68,23 +68,6 @@ private:
 	// Index sub-handlers used by HandleProjectIndex
 	FOliveToolResult HandleIndexBuild(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleIndexStatus(const TSharedPtr<FJsonObject>& Params);
-
-	// Recipe system
-	void RegisterRecipeTools();
-	void LoadRecipeLibrary();
-	FOliveToolResult HandleGetRecipe(const TSharedPtr<FJsonObject>& Params);
-
-	/** Loaded recipes: Key = "category/name", Value = file content */
-	TMap<FString, FString> RecipeLibrary;
-
-	/** Manifest data: Key = "category/name", Value = description */
-	TMap<FString, FString> RecipeDescriptions;
-
-	/** Categories discovered from manifest */
-	TArray<FString> RecipeCategories;
-
-	/** Tags per recipe entry for keyword search. Key = "category/name" */
-	TMap<FString, TArray<FString>> RecipeTags;
 
 	// Community Blueprint search
 	void RegisterCommunityTools();

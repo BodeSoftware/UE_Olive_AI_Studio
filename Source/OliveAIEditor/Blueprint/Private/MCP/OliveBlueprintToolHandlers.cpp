@@ -5594,8 +5594,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAddFunctionType_Function(
 		ResultData->SetStringField(TEXT("function_name"), WriteResult.CreatedItemName);
 		ResultData->SetStringField(TEXT("message"), FString::Printf(
 			TEXT("Successfully added function '%s'. "
-				 "NEXT STEP: Call olive.get_recipe for this function, then "
-				 "blueprint.preview_plan_json + blueprint.apply_plan_json to implement it. "
+				 "NEXT STEP: Use blueprint.preview_plan_json + blueprint.apply_plan_json to implement it. "
 				 "Do NOT add another function until this one has graph logic."),
 			*WriteResult.CreatedItemName));
 

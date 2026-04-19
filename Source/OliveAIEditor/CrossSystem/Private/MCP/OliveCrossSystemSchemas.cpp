@@ -295,23 +295,6 @@ namespace OliveCrossSystemSchemas
 	}
 
 	// ============================================================================
-	// Recipe Operations
-	// ============================================================================
-
-	TSharedPtr<FJsonObject> RecipeGetRecipe()
-	{
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		TSharedPtr<FJsonObject> Props = MakeProperties();
-
-		Props->SetObjectField(TEXT("query"),
-			OliveBlueprintSchemas::StringProp(TEXT("Free-text search query (e.g. 'spawn actor transform', 'variable type object class', 'function graph entry')")));
-
-		Schema->SetObjectField(TEXT("properties"), Props);
-		AddRequired(Schema, { TEXT("query") });
-		return Schema;
-	}
-
-	// ============================================================================
 	// Community Blueprint Search
 	// ============================================================================
 

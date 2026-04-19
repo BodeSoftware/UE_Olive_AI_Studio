@@ -45,7 +45,7 @@ FOliveCorrectionDecision FOliveSelfCorrectionPolicy::Evaluate(
 				Decision.Action = EOliveCorrectionAction::FeedBackErrors;
 				Decision.EnrichedMessage = FString::Printf(
 					TEXT("[IDENTICAL PLAN - Seen %d time(s)] Previous error: %s %s\n"
-						 "Change the failing step's approach or call olive.get_recipe for the correct pattern."),
+						 "Change the failing step's approach or use blueprint.list_templates to find the correct pattern."),
 					SubmitCount, *ErrorCode, *ErrorMessage);
 
 				UE_LOG(LogOliveAI, Warning,
@@ -949,7 +949,7 @@ FString FOliveSelfCorrectionPolicy::BuildToolErrorMessage(
 		Result += FString::Printf(
 			TEXT("\n\n[ESCALATION - Attempt %d/%d] Previous approaches have not worked. "
 				 "You MUST try a fundamentally different strategy:\n"
-				 "- Use olive.get_recipe to find the correct pattern for this task\n"
+				 "- Search blueprint.list_templates to find the correct pattern for this task\n"
 				 "- Use @step.auto for ALL data wires instead of explicit pin names\n"
 				 "- Simplify the plan by breaking it into smaller operations\n"
 				 "- Read the Blueprint state with blueprint.read before retrying"),
