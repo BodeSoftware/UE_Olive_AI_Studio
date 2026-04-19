@@ -59,13 +59,17 @@ struct OLIVEAIEDITOR_API FOliveOperationRecord
 /**
  * Operation History Store
  *
- * Per-session log of all tool calls. Provides prompt summarization
- * at multiple budget tiers for token-efficient context passing.
+ * Per-session log of all tool calls. After the P3 makeover the store
+ * exposes only the three operations the conversation manager actually
+ * needs: append a new record, ask how many records exist, and build a
+ * model-facing context string. The previous prompt-summary/run-report/
+ * worker-handoff helpers were removed alongside the self-correction
+ * and prompt-distillation machinery they served.
  */
 class OLIVEAIEDITOR_API FOliveOperationHistoryStore
 {
 public:
-	FOliveOperationHistoryStore();
+	FOliveOperationHistoryStore() = default;
 
 	// ==========================================
 	// Recording
@@ -75,27 +79,8 @@ public:
 	void RecordOperation(FOliveOperationRecord& Record);
 
 	// ==========================================
-	// Summarization
+	// Context
 	// ==========================================
-
-	/**
-	 * Build a prompt summary at the given token budget.
-	 * - >2000 tokens: per-operation detail with params and results
-	 * - 500-2000 tokens: grouped by asset with outcome summary
-	 * - <500 tokens: one-line session summary
-	 */
-	FString BuildPromptSummary(int32 TokenBudget) const;
-
-	/**
-	 * Build compact context summary for inter-worker handoff.
-	 * Summarizes operations up to a given step in a specific run.
-	 */
-	FString BuildWorkerContext(const FString& RunId, int32 UpToStep) const;
-
-	/**
-	 * Build a run report with stats (successes, failures, skips).
-	 */
-	FString BuildRunReport(const FString& RunId) const;
 
 	/**
 	 * Build a distilled context string for model consumption with 3-tier detail.
@@ -114,18 +99,8 @@ public:
 	// Queries
 	// ==========================================
 
-	/** Get all records for a run */
-	TArray<FOliveOperationRecord> GetRunHistory(const FString& RunId) const;
-
-	/** Get records for a specific step in a run */
-	TArray<FOliveOperationRecord> GetStepHistory(const FString& RunId, int32 StepIndex) const;
-
 	/** Get total record count */
 	int32 GetTotalRecordCount() const { return Records.Num(); }
-
-	/** Get run stats */
-	void GetRunStats(const FString& RunId,
-		int32& OutSucceeded, int32& OutFailed, int32& OutSkipped) const;
 
 	/** Clear all history */
 	void Clear();
