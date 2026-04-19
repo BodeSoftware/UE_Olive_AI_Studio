@@ -48,58 +48,22 @@ void FOliveBTToolHandlers::RegisterBlackboardTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
+	// P5 consolidation: all blackboard operations flow through blackboard.modify,
+	// which dispatches on 'action'. Legacy tool names (blackboard.create,
+	// blackboard.read, blackboard.add_key, blackboard.modify_key,
+	// blackboard.remove_key, blackboard.set_parent) continue to work as aliases
+	// that pre-fill the 'action' parameter. See OliveToolRegistry::GetToolAliases().
 	Registry.RegisterTool(
-		TEXT("blackboard.create"),
-		TEXT("Create a new Blackboard Data asset with optional parent inheritance"),
-		OliveBTSchemas::BlackboardCreate(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBlackboardCreate),
-		{TEXT("blackboard"), TEXT("write")},
+		TEXT("blackboard.modify"),
+		TEXT("Modify a Blackboard asset. Dispatches on 'action' (create|read|add_key|modify_key|"
+			"remove_key|set_parent) to the matching internal handler. Legacy blackboard.* tool names "
+			"are aliases that pre-fill 'action'."),
+		OliveBTSchemas::BlackboardModify(),
+		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBlackboardModify),
+		{TEXT("blackboard"), TEXT("write"), TEXT("read")},
 		TEXT("blackboard")
 	);
-	RegisteredToolNames.Add(TEXT("blackboard.create"));
-
-	Registry.RegisterTool(
-		TEXT("blackboard.read"),
-		TEXT("Read a Blackboard asset as structured IR data"),
-		OliveBTSchemas::BlackboardRead(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBlackboardRead),
-		{TEXT("blackboard"), TEXT("read")},
-		TEXT("blackboard")
-	);
-	RegisteredToolNames.Add(TEXT("blackboard.read"));
-
-	Registry.RegisterTool(
-		TEXT("blackboard.add_key"),
-		TEXT("Add or modify a Blackboard key (upsert). If the key exists, modifies it instead of erroring."),
-		OliveBTSchemas::BlackboardAddKey(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBlackboardAddKey),
-		{TEXT("blackboard"), TEXT("write")},
-		TEXT("blackboard")
-	);
-	RegisteredToolNames.Add(TEXT("blackboard.add_key"));
-
-	Registry.RegisterTool(
-		TEXT("blackboard.remove_key"),
-		TEXT("Remove a key from a Blackboard"),
-		OliveBTSchemas::BlackboardRemoveKey(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBlackboardRemoveKey),
-		{TEXT("blackboard"), TEXT("write")},
-		TEXT("blackboard")
-	);
-	RegisteredToolNames.Add(TEXT("blackboard.remove_key"));
-
-	// Removed in AI Freedom Phase 2 — blackboard.modify_key consolidated into blackboard.add_key (upsert)
-	// Old tool name still works via redirect aliases in OliveToolRegistry.cpp
-
-	Registry.RegisterTool(
-		TEXT("blackboard.set_parent"),
-		TEXT("Set the parent Blackboard for key inheritance"),
-		OliveBTSchemas::BlackboardSetParent(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBlackboardSetParent),
-		{TEXT("blackboard"), TEXT("write")},
-		TEXT("blackboard")
-	);
-	RegisteredToolNames.Add(TEXT("blackboard.set_parent"));
+	RegisteredToolNames.Add(TEXT("blackboard.modify"));
 }
 
 void FOliveBTToolHandlers::RegisterBehaviorTreeTools()
@@ -126,59 +90,53 @@ void FOliveBTToolHandlers::RegisterBehaviorTreeTools()
 	);
 	RegisteredToolNames.Add(TEXT("behaviortree.read"));
 
+	// P5: consolidated add dispatcher. Replaces behaviortree.add_node as the
+	// canonical entry point. Legacy behaviortree.{add_composite,add_task,
+	// add_decorator,add_service,add_node} are aliases that pre-fill 'node_type'.
 	Registry.RegisterTool(
-		TEXT("behaviortree.set_blackboard"),
-		TEXT("Associate a Blackboard with a Behavior Tree"),
-		OliveBTSchemas::BehaviorTreeSetBlackboard(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBehaviorTreeSetBlackboard),
-		{TEXT("behaviortree"), TEXT("write")},
+		TEXT("behaviortree.add"),
+		TEXT("Add a node to a Behavior Tree. Dispatches on 'node_type' (composite|task|decorator|"
+			"service|node) to the matching internal handler."),
+		OliveBTSchemas::BehaviorTreeAdd(),
+		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBehaviorTreeAdd),
+		{TEXT("behaviortree"), TEXT("write"), TEXT("add")},
 		TEXT("behaviortree")
 	);
-	RegisteredToolNames.Add(TEXT("behaviortree.set_blackboard"));
+	RegisteredToolNames.Add(TEXT("behaviortree.add"));
 
+	// P5: consolidated modify dispatcher. Replaces set_blackboard, set_node_property,
+	// modify_node, set_decorator. Legacy names remain as aliases.
 	Registry.RegisterTool(
-		TEXT("behaviortree.add_node"),
-		TEXT("Add a node to a Behavior Tree. Use node_kind to specify: composite, task, decorator, or service."),
-		OliveBTSchemas::BehaviorTreeAddNode(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBehaviorTreeAddNode),
-		{TEXT("behaviortree"), TEXT("write")},
+		TEXT("behaviortree.modify"),
+		TEXT("Modify a Behavior Tree. Dispatches on 'entity' (node|decorator|blackboard_ref)."),
+		OliveBTSchemas::BehaviorTreeModify(),
+		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBehaviorTreeModify),
+		{TEXT("behaviortree"), TEXT("write"), TEXT("modify")},
 		TEXT("behaviortree")
 	);
-	RegisteredToolNames.Add(TEXT("behaviortree.add_node"));
+	RegisteredToolNames.Add(TEXT("behaviortree.modify"));
 
-	// Removed in AI Freedom Phase 2 — behaviortree.add_composite, add_task, add_decorator, add_service
-	// consolidated into behaviortree.add_node. Old tool names still work via redirect aliases
-	// in OliveToolRegistry.cpp that inject the appropriate node_kind parameter.
-
+	// P5: rename behaviortree.remove_node -> behaviortree.remove (legacy alias in registry).
 	Registry.RegisterTool(
-		TEXT("behaviortree.remove_node"),
+		TEXT("behaviortree.remove"),
 		TEXT("Remove a node from the Behavior Tree"),
 		OliveBTSchemas::BehaviorTreeRemoveNode(),
 		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBehaviorTreeRemoveNode),
-		{TEXT("behaviortree"), TEXT("write")},
+		{TEXT("behaviortree"), TEXT("write"), TEXT("delete")},
 		TEXT("behaviortree")
 	);
-	RegisteredToolNames.Add(TEXT("behaviortree.remove_node"));
+	RegisteredToolNames.Add(TEXT("behaviortree.remove"));
 
+	// P5: rename behaviortree.move_node -> behaviortree.move (legacy alias in registry).
 	Registry.RegisterTool(
-		TEXT("behaviortree.move_node"),
+		TEXT("behaviortree.move"),
 		TEXT("Move a node to a different parent composite"),
 		OliveBTSchemas::BehaviorTreeMoveNode(),
 		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBehaviorTreeMoveNode),
 		{TEXT("behaviortree"), TEXT("write")},
 		TEXT("behaviortree")
 	);
-	RegisteredToolNames.Add(TEXT("behaviortree.move_node"));
-
-	Registry.RegisterTool(
-		TEXT("behaviortree.set_node_property"),
-		TEXT("Set a UPROPERTY value on a Behavior Tree node"),
-		OliveBTSchemas::BehaviorTreeSetNodeProperty(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBTToolHandlers::HandleBehaviorTreeSetNodeProperty),
-		{TEXT("behaviortree"), TEXT("write")},
-		TEXT("behaviortree")
-	);
-	RegisteredToolNames.Add(TEXT("behaviortree.set_node_property"));
+	RegisteredToolNames.Add(TEXT("behaviortree.move"));
 }
 
 // ============================================================================
@@ -999,4 +957,222 @@ FOliveToolResult FOliveBTToolHandlers::HandleBehaviorTreeSetNodeProperty(const T
 	Result->SetStringField(TEXT("status"), TEXT("property_set"));
 
 	return FOliveToolResult::Success(Result);
+}
+
+// ============================================================================
+// Consolidated Dispatchers (P5)
+//
+// These dispatchers route on action/node_type/entity to the existing specialized
+// handlers. Legacy tool names (blackboard.create/read/add_key/modify_key/
+// remove_key/set_parent, behaviortree.{add_node,add_composite,add_task,
+// add_decorator,add_service,modify_node,set_node_property,set_decorator,
+// set_blackboard,remove_node,move_node}) are preserved as aliases that pre-fill
+// action/node_type/entity before dispatch. See OliveToolRegistry::GetToolAliases().
+// ============================================================================
+
+namespace
+{
+	/** Clone params so we can normalize fields without mutating the caller. */
+	TSharedPtr<FJsonObject> CloneBTParams(const TSharedPtr<FJsonObject>& Params)
+	{
+		TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
+		if (Params.IsValid())
+		{
+			for (const auto& Pair : Params->Values) { Out->Values.Add(Pair.Key, Pair.Value); }
+		}
+		return Out;
+	}
+} // anonymous namespace
+
+FOliveToolResult FOliveBTToolHandlers::HandleBlackboardModify(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a params object with 'path' and 'action' fields."));
+	}
+
+	FString Path;
+	if (!Params->TryGetStringField(TEXT("path"), Path) || Path.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'path'"),
+			TEXT("Provide the Blackboard asset path."));
+	}
+
+	FString Action;
+	Params->TryGetStringField(TEXT("action"), Action);
+	Action = Action.ToLower();
+	if (Action.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'action'"),
+			TEXT("action must be one of: create, read, add_key, modify_key, remove_key, set_parent"));
+	}
+
+	TSharedPtr<FJsonObject> SubParams = CloneBTParams(Params);
+
+	if (Action == TEXT("create"))
+	{
+		return HandleBlackboardCreate(SubParams);
+	}
+	if (Action == TEXT("read"))
+	{
+		return HandleBlackboardRead(SubParams);
+	}
+	if (Action == TEXT("add_key"))
+	{
+		return HandleBlackboardAddKey(SubParams);
+	}
+	if (Action == TEXT("modify_key"))
+	{
+		return HandleBlackboardModifyKey(SubParams);
+	}
+	if (Action == TEXT("remove_key"))
+	{
+		return HandleBlackboardRemoveKey(SubParams);
+	}
+	if (Action == TEXT("set_parent"))
+	{
+		return HandleBlackboardSetParent(SubParams);
+	}
+
+	return FOliveToolResult::Error(
+		TEXT("VALIDATION_INVALID_VALUE"),
+		FString::Printf(TEXT("Unknown action '%s'"), *Action),
+		TEXT("action must be one of: create, read, add_key, modify_key, remove_key, set_parent"));
+}
+
+FOliveToolResult FOliveBTToolHandlers::HandleBehaviorTreeAdd(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a params object with 'path' and 'node_type' fields."));
+	}
+
+	FString Path;
+	if (!Params->TryGetStringField(TEXT("path"), Path) || Path.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'path'"),
+			TEXT("Provide the Behavior Tree asset path."));
+	}
+
+	// Accept 'node_type' (canonical) or 'node_kind' (legacy). 'node_type' wins.
+	FString NodeType;
+	Params->TryGetStringField(TEXT("node_type"), NodeType);
+	if (NodeType.IsEmpty())
+	{
+		Params->TryGetStringField(TEXT("node_kind"), NodeType);
+	}
+	NodeType = NodeType.ToLower();
+
+	if (NodeType.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'node_type'"),
+			TEXT("node_type must be one of: composite, task, decorator, service, node"));
+	}
+
+	TSharedPtr<FJsonObject> SubParams = CloneBTParams(Params);
+
+	if (NodeType == TEXT("node"))
+	{
+		// Generic pass-through: forward to the legacy add_node dispatcher.
+		// Legacy callers supplied node_kind inside Params and the old handler
+		// routes on that. Ensure node_kind is set so downstream validation passes.
+		FString InnerKind;
+		if (!SubParams->TryGetStringField(TEXT("node_kind"), InnerKind) || InnerKind.IsEmpty())
+		{
+			// Try inferring from 'composite_type' / 'class' but fall back to a
+			// helpful error rather than silently guessing.
+			FString CompositeType;
+			if (SubParams->TryGetStringField(TEXT("composite_type"), CompositeType) && !CompositeType.IsEmpty())
+			{
+				SubParams->SetStringField(TEXT("node_kind"), TEXT("composite"));
+			}
+			else
+			{
+				return FOliveToolResult::Error(
+					TEXT("VALIDATION_MISSING_PARAM"),
+					TEXT("node_type='node' requires an inner 'node_kind' field"),
+					TEXT("Either use node_type=\"composite\"|\"task\"|\"decorator\"|\"service\" directly, "
+						"or supply node_kind inside params."));
+			}
+		}
+		return HandleBehaviorTreeAddNode(SubParams);
+	}
+
+	if (NodeType == TEXT("composite") || NodeType == TEXT("task")
+		|| NodeType == TEXT("decorator") || NodeType == TEXT("service"))
+	{
+		// Inject node_kind for the legacy dispatcher which still reads that field.
+		SubParams->SetStringField(TEXT("node_kind"), NodeType);
+		return HandleBehaviorTreeAddNode(SubParams);
+	}
+
+	return FOliveToolResult::Error(
+		TEXT("VALIDATION_INVALID_VALUE"),
+		FString::Printf(TEXT("Unknown node_type '%s'"), *NodeType),
+		TEXT("node_type must be one of: composite, task, decorator, service, node"));
+}
+
+FOliveToolResult FOliveBTToolHandlers::HandleBehaviorTreeModify(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a params object with 'path' and 'entity' fields."));
+	}
+
+	FString Path;
+	if (!Params->TryGetStringField(TEXT("path"), Path) || Path.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'path'"),
+			TEXT("Provide the Behavior Tree asset path."));
+	}
+
+	FString Entity;
+	Params->TryGetStringField(TEXT("entity"), Entity);
+	Entity = Entity.ToLower();
+	if (Entity.IsEmpty())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing required parameter 'entity'"),
+			TEXT("entity must be one of: node, decorator, blackboard_ref"));
+	}
+
+	TSharedPtr<FJsonObject> SubParams = CloneBTParams(Params);
+
+	if (Entity == TEXT("node") || Entity == TEXT("decorator"))
+	{
+		// DESIGN NOTE: BT decorators are individually-identifiable via node_id in
+		// the current reader/writer model, so entity='decorator' routes to the
+		// same set_node_property handler as entity='node'. If decorator-specific
+		// operations diverge later, split the dispatch here.
+		return HandleBehaviorTreeSetNodeProperty(SubParams);
+	}
+	if (Entity == TEXT("blackboard_ref"))
+	{
+		return HandleBehaviorTreeSetBlackboard(SubParams);
+	}
+
+	return FOliveToolResult::Error(
+		TEXT("VALIDATION_INVALID_VALUE"),
+		FString::Printf(TEXT("Unknown entity '%s'"), *Entity),
+		TEXT("entity must be one of: node, decorator, blackboard_ref"));
 }

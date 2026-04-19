@@ -42,4 +42,20 @@ namespace OliveNiagaraSchemas
 
 	/** Schema for niagara.set_emitter_property: {path, emitter_id, property, value} */
 	TSharedPtr<FJsonObject> NiagaraSetEmitterProperty();
+
+	// ---------------------------------------------------------------------
+	// P5 consolidated schemas
+	// ---------------------------------------------------------------------
+
+	/** Schema for niagara.read: {path} — pass-through of niagara.read_system */
+	TSharedPtr<FJsonObject> NiagaraRead();
+
+	/** Schema for niagara.add: {path, kind, ...} — dispatches on kind to emitter|module */
+	TSharedPtr<FJsonObject> NiagaraAdd();
+
+	/** Schema for niagara.modify: {path, entity, ...} — dispatches on entity to emitter|parameter */
+	TSharedPtr<FJsonObject> NiagaraModify();
+
+	/** Schema for niagara.remove: {path, emitter_id, module_id} — pass-through of niagara.remove_module */
+	TSharedPtr<FJsonObject> NiagaraRemove();
 }

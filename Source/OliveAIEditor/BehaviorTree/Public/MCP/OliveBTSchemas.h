@@ -37,6 +37,15 @@ namespace OliveBTSchemas
 	/** Schema for blackboard.set_parent: {path: string, parent_path: string} */
 	TSharedPtr<FJsonObject> BlackboardSetParent();
 
+	/**
+	 * Schema for blackboard.modify (consolidated, P5): routes on 'action' to the
+	 * matching sub-handler. Legacy blackboard.{create,read,add_key,modify_key,
+	 * remove_key,set_parent} are aliases that pre-fill 'action'.
+	 * {path, action: "create"|"read"|"add_key"|"modify_key"|"remove_key"|"set_parent",
+	 *  ...action-specific fields (name, key_type, parent_path, etc.)}
+	 */
+	TSharedPtr<FJsonObject> BlackboardModify();
+
 	// ============================================================================
 	// Behavior Tree Tool Schemas
 	// ============================================================================
@@ -56,6 +65,19 @@ namespace OliveBTSchemas
 	 * node_kind routes to composite/task/decorator/service logic.
 	 */
 	TSharedPtr<FJsonObject> BehaviorTreeAddNode();
+
+	/**
+	 * Schema for behaviortree.add (consolidated, P5): {path, node_type, ...}
+	 * node_type enum: composite|task|decorator|service|node. 'node_type' is the
+	 * canonical name; 'node_kind' is accepted as a legacy alias.
+	 */
+	TSharedPtr<FJsonObject> BehaviorTreeAdd();
+
+	/**
+	 * Schema for behaviortree.modify (consolidated, P5): {path, entity, ...}
+	 * entity enum: node|decorator|blackboard_ref.
+	 */
+	TSharedPtr<FJsonObject> BehaviorTreeModify();
 
 	/** Schema for behaviortree.remove_node: {path: string, node_id: string} */
 	TSharedPtr<FJsonObject> BehaviorTreeRemoveNode();

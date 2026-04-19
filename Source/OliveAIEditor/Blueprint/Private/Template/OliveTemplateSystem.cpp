@@ -2227,9 +2227,9 @@ FOliveToolResult FOliveTemplateSystem::ApplyTemplate(
 				if (i > 0) { Message += TEXT(", "); }
 				Message += EmptyFunctions[i] + TEXT(" (empty)");
 			}
-			Message += TEXT(". REQUIRED: For each empty function, call olive.get_recipe then "
-				"blueprint.preview_plan_json + blueprint.apply_plan_json. "
-				"Work ONE function at a time -- do NOT batch all recipes before writing plans.");
+			Message += TEXT(". REQUIRED: For each empty function, use "
+				"blueprint.preview_plan_json + blueprint.apply_plan_json to implement it. "
+				"Work ONE function at a time.");
 		}
 
 		ResultData->SetStringField(TEXT("message"), Message);

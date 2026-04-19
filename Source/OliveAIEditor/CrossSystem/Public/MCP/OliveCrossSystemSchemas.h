@@ -66,13 +66,6 @@ namespace OliveCrossSystemSchemas
 	TSharedPtr<FJsonObject> ProjectGetRelevantContext();
 
 	// ============================================================================
-	// Recipe Operations
-	// ============================================================================
-
-	/** Schema for olive.get_recipe: {query: string} -- free-text keyword search */
-	TSharedPtr<FJsonObject> RecipeGetRecipe();
-
-	// ============================================================================
 	// Community Blueprint Search
 	// ============================================================================
 

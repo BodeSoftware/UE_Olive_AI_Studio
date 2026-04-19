@@ -6,16 +6,8 @@
 #include "OliveMultiAssetOperations.h"
 #include "Index/OliveProjectIndex.h"
 #include "Settings/OliveAISettings.h"
-#include "Writer/OliveGraphWriter.h"
-#include "Compile/OliveCompileManager.h"
-#include "Services/OliveBatchExecutionScope.h"
-#include "Services/OliveToolParamHelpers.h"
-#include "Services/OliveGraphBatchExecutor.h"
-#include "Engine/Blueprint.h"
-#include "Misc/FileHelper.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
-#include "Internationalization/Regex.h"
 #include "SQLiteDatabase.h"
 
 #define LOCTEXT_NAMESPACE "OliveCrossSystemToolHandlers"
@@ -32,14 +24,9 @@ void FOliveCrossSystemToolHandlers::RegisterAllTools()
 {
 	UE_LOG(LogOliveCrossSystemTools, Log, TEXT("Registering Cross-System MCP tools..."));
 
-	RegisterBulkTools();
-	RegisterBatchTools();
+	RegisterReadTools();
 	RegisterSnapshotTools();
 	RegisterIndexTools();
-
-	// Recipe system
-	LoadRecipeLibrary();
-	RegisterRecipeTools();
 
 	// Community blueprint search
 	RegisterCommunityTools();
@@ -63,30 +50,98 @@ void FOliveCrossSystemToolHandlers::UnregisterAllTools()
 	UE_LOG(LogOliveCrossSystemTools, Log, TEXT("Cross-System MCP tools unregistered"));
 }
 
-void FOliveCrossSystemToolHandlers::RegisterBulkTools()
+void FOliveCrossSystemToolHandlers::RegisterReadTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
-	Registry.RegisterTool(
-		TEXT("project.bulk_read"),
-		TEXT("Read up to 20 assets of any type in a single call"),
-		OliveCrossSystemSchemas::ProjectBulkRead(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleBulkRead),
-		{TEXT("crosssystem"), TEXT("read")},
-		TEXT("crosssystem")
-	);
-	RegisteredToolNames.Add(TEXT("project.bulk_read"));
+	// project.read — consolidated read dispatcher. Accepts an `include` array
+	// that selects which read-family sub-responses to merge into the output.
+	// Legacy tools (project.get_asset_info, project.get_class_hierarchy,
+	// project.get_config, project.get_dependencies, project.get_info,
+	// project.get_referencers, project.get_relevant_context, project.bulk_read)
+	// are silent aliases registered in OliveToolRegistry::GetToolAliases().
+	{
+		TSharedPtr<FJsonObject> Schema = MakeShareable(new FJsonObject());
+		Schema->SetStringField(TEXT("type"), TEXT("object"));
 
-	Registry.RegisterTool(
-		TEXT("project.implement_interface"),
-		TEXT("Add an interface to multiple Blueprint assets"),
-		OliveCrossSystemSchemas::ProjectImplementInterface(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleImplementInterface),
-		{TEXT("crosssystem"), TEXT("write")},
-		TEXT("crosssystem")
-	);
-	RegisteredToolNames.Add(TEXT("project.implement_interface"));
+		TSharedPtr<FJsonObject> Props = MakeShareable(new FJsonObject());
 
+		TSharedPtr<FJsonObject> PathProp = MakeShareable(new FJsonObject());
+		PathProp->SetStringField(TEXT("type"), TEXT("string"));
+		PathProp->SetStringField(TEXT("description"),
+			TEXT("Asset path (required for asset_info/dependencies/referencers; optional for class_hierarchy/config/info). Use /Game/... form."));
+		Props->SetObjectField(TEXT("path"), PathProp);
+
+		TSharedPtr<FJsonObject> IncludeItemSchema = MakeShareable(new FJsonObject());
+		IncludeItemSchema->SetStringField(TEXT("type"), TEXT("string"));
+		TArray<TSharedPtr<FJsonValue>> EnumVals;
+		for (const TCHAR* V : { TEXT("asset_info"), TEXT("class_hierarchy"), TEXT("config"),
+			TEXT("dependencies"), TEXT("info"), TEXT("referencers"), TEXT("relevant_context"), TEXT("bulk") })
+		{
+			EnumVals.Add(MakeShareable(new FJsonValueString(V)));
+		}
+		IncludeItemSchema->SetArrayField(TEXT("enum"), EnumVals);
+
+		TSharedPtr<FJsonObject> IncludeProp = MakeShareable(new FJsonObject());
+		IncludeProp->SetStringField(TEXT("type"), TEXT("array"));
+		IncludeProp->SetStringField(TEXT("description"),
+			TEXT("Which read-family sections to include. Each key maps to a named sub-object in the result. Default: [\"asset_info\"]."));
+		IncludeProp->SetObjectField(TEXT("items"), IncludeItemSchema);
+		Props->SetObjectField(TEXT("include"), IncludeProp);
+
+		// Relevant-context pass-through params
+		TSharedPtr<FJsonObject> QueryProp = MakeShareable(new FJsonObject());
+		QueryProp->SetStringField(TEXT("type"), TEXT("string"));
+		QueryProp->SetStringField(TEXT("description"), TEXT("Query string for include=[\"relevant_context\"]"));
+		Props->SetObjectField(TEXT("query"), QueryProp);
+
+		TSharedPtr<FJsonObject> MaxAssetsProp = MakeShareable(new FJsonObject());
+		MaxAssetsProp->SetStringField(TEXT("type"), TEXT("integer"));
+		MaxAssetsProp->SetStringField(TEXT("description"), TEXT("max_assets for include=[\"relevant_context\"]"));
+		Props->SetObjectField(TEXT("max_assets"), MaxAssetsProp);
+
+		TSharedPtr<FJsonObject> KindsProp = MakeShareable(new FJsonObject());
+		KindsProp->SetStringField(TEXT("type"), TEXT("array"));
+		TSharedPtr<FJsonObject> KindsItem = MakeShareable(new FJsonObject());
+		KindsItem->SetStringField(TEXT("type"), TEXT("string"));
+		KindsProp->SetObjectField(TEXT("items"), KindsItem);
+		KindsProp->SetStringField(TEXT("description"), TEXT("kinds filter for include=[\"relevant_context\"]"));
+		Props->SetObjectField(TEXT("kinds"), KindsProp);
+
+		// bulk_read pass-through params
+		TSharedPtr<FJsonObject> PathsProp = MakeShareable(new FJsonObject());
+		PathsProp->SetStringField(TEXT("type"), TEXT("array"));
+		TSharedPtr<FJsonObject> PathsItem = MakeShareable(new FJsonObject());
+		PathsItem->SetStringField(TEXT("type"), TEXT("string"));
+		PathsProp->SetObjectField(TEXT("items"), PathsItem);
+		PathsProp->SetStringField(TEXT("description"), TEXT("Paths array for include=[\"bulk\"] (up to 20)"));
+		Props->SetObjectField(TEXT("paths"), PathsProp);
+
+		TSharedPtr<FJsonObject> ReadModeProp = MakeShareable(new FJsonObject());
+		ReadModeProp->SetStringField(TEXT("type"), TEXT("string"));
+		ReadModeProp->SetStringField(TEXT("description"), TEXT("read_mode for include=[\"bulk\"]: summary|full"));
+		Props->SetObjectField(TEXT("read_mode"), ReadModeProp);
+
+		// class_hierarchy pass-through
+		TSharedPtr<FJsonObject> RootClassProp = MakeShareable(new FJsonObject());
+		RootClassProp->SetStringField(TEXT("type"), TEXT("string"));
+		RootClassProp->SetStringField(TEXT("description"), TEXT("root_class for include=[\"class_hierarchy\"] (defaults to Actor)"));
+		Props->SetObjectField(TEXT("root_class"), RootClassProp);
+
+		Schema->SetObjectField(TEXT("properties"), Props);
+
+		Registry.RegisterTool(
+			TEXT("project.read"),
+			TEXT("Read project data. Use `include` to pick sections: asset_info, class_hierarchy, config, dependencies, info, referencers, relevant_context, bulk. Multiple keys are merged into a single response."),
+			Schema,
+			FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleProjectRead),
+			{TEXT("crosssystem"), TEXT("read")},
+			TEXT("crosssystem")
+		);
+		RegisteredToolNames.Add(TEXT("project.read"));
+	}
+
+	// project.refactor_rename — unchanged (survives as-is).
 	Registry.RegisterTool(
 		TEXT("project.refactor_rename"),
 		TEXT("Rename an asset with dependency-aware reference updates"),
@@ -97,52 +152,72 @@ void FOliveCrossSystemToolHandlers::RegisterBulkTools()
 	);
 	RegisteredToolNames.Add(TEXT("project.refactor_rename"));
 
-	// Removed in AI Freedom Phase 2 — AI uses individual tools (blueprint.create, behaviortree.create, blackboard.create)
-	// Registry.RegisterTool(
-	// 	TEXT("project.create_ai_character"),
-	// 	TEXT("Create a complete AI character setup (Blueprint + BehaviorTree + Blackboard)"),
-	// 	OliveCrossSystemSchemas::ProjectCreateAICharacter(),
-	// 	FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleCreateAICharacter),
-	// 	{TEXT("crosssystem"), TEXT("write")},
-	// 	TEXT("crosssystem")
-	// );
-	// RegisteredToolNames.Add(TEXT("project.create_ai_character"));
-
-	// Removed in AI Freedom Phase 2 — rarely used, high maintenance cost
-	// Registry.RegisterTool(
-	// 	TEXT("project.move_to_cpp"),
-	// 	TEXT("Analyze Blueprint and scaffold C++ migration artifacts"),
-	// 	OliveCrossSystemSchemas::ProjectMoveToCpp(),
-	// 	FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleMoveToCpp),
-	// 	{TEXT("crosssystem"), TEXT("write")},
-	// 	TEXT("crosssystem")
-	// );
-	// RegisteredToolNames.Add(TEXT("project.move_to_cpp"));
+	// Deleted (no alias) in P5 consolidation:
+	//   - project.bulk_read         -> alias to project.read (include=["bulk"])
+	//   - project.implement_interface -> hard delete (duplicate of blueprint.add entity=interface)
+	//   - project.create_ai_character -> hard delete (too specialized)
+	//   - project.move_to_cpp         -> hard delete (low usage)
 }
 
 void FOliveCrossSystemToolHandlers::RegisterSnapshotTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
-	Registry.RegisterTool(
-		TEXT("project.snapshot"),
-		TEXT("Save IR state of assets for later comparison or rollback"),
-		OliveCrossSystemSchemas::ProjectSnapshot(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleSnapshot),
-		{TEXT("crosssystem"), TEXT("read")},
-		TEXT("crosssystem")
-	);
-	RegisteredToolNames.Add(TEXT("project.snapshot"));
+	// project.snapshot — consolidated: default action "create" takes a snapshot,
+	// action="list" lists existing snapshots (subsumes project.list_snapshots).
+	// The "list" action is reached via the project.list_snapshots silent alias
+	// in OliveToolRegistry::GetToolAliases() or by passing action explicitly.
+	{
+		TSharedPtr<FJsonObject> Schema = MakeShareable(new FJsonObject());
+		Schema->SetStringField(TEXT("type"), TEXT("object"));
 
-	Registry.RegisterTool(
-		TEXT("project.list_snapshots"),
-		TEXT("List available snapshots with filtering"),
-		OliveCrossSystemSchemas::ProjectListSnapshots(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleListSnapshots),
-		{TEXT("crosssystem"), TEXT("read")},
-		TEXT("crosssystem")
-	);
-	RegisteredToolNames.Add(TEXT("project.list_snapshots"));
+		TSharedPtr<FJsonObject> Props = MakeShareable(new FJsonObject());
+
+		TSharedPtr<FJsonObject> ActionProp = MakeShareable(new FJsonObject());
+		ActionProp->SetStringField(TEXT("type"), TEXT("string"));
+		TArray<TSharedPtr<FJsonValue>> ActionEnum;
+		ActionEnum.Add(MakeShareable(new FJsonValueString(TEXT("create"))));
+		ActionEnum.Add(MakeShareable(new FJsonValueString(TEXT("list"))));
+		ActionProp->SetArrayField(TEXT("enum"), ActionEnum);
+		ActionProp->SetStringField(TEXT("description"),
+			TEXT("'create' (default) saves IR state of assets; 'list' returns available snapshots with optional asset_filter"));
+		Props->SetObjectField(TEXT("action"), ActionProp);
+
+		TSharedPtr<FJsonObject> NameProp = MakeShareable(new FJsonObject());
+		NameProp->SetStringField(TEXT("type"), TEXT("string"));
+		NameProp->SetStringField(TEXT("description"), TEXT("Name for this snapshot (required for action='create')"));
+		Props->SetObjectField(TEXT("name"), NameProp);
+
+		TSharedPtr<FJsonObject> PathsProp = MakeShareable(new FJsonObject());
+		PathsProp->SetStringField(TEXT("type"), TEXT("array"));
+		TSharedPtr<FJsonObject> PathsItem = MakeShareable(new FJsonObject());
+		PathsItem->SetStringField(TEXT("type"), TEXT("string"));
+		PathsProp->SetObjectField(TEXT("items"), PathsItem);
+		PathsProp->SetStringField(TEXT("description"), TEXT("Asset paths to snapshot (required for action='create')"));
+		Props->SetObjectField(TEXT("paths"), PathsProp);
+
+		TSharedPtr<FJsonObject> DescProp = MakeShareable(new FJsonObject());
+		DescProp->SetStringField(TEXT("type"), TEXT("string"));
+		DescProp->SetStringField(TEXT("description"), TEXT("Optional description of why this snapshot was taken (action='create')"));
+		Props->SetObjectField(TEXT("description"), DescProp);
+
+		TSharedPtr<FJsonObject> AssetFilterProp = MakeShareable(new FJsonObject());
+		AssetFilterProp->SetStringField(TEXT("type"), TEXT("string"));
+		AssetFilterProp->SetStringField(TEXT("description"), TEXT("Filter snapshots containing this asset path (action='list' only)"));
+		Props->SetObjectField(TEXT("asset_filter"), AssetFilterProp);
+
+		Schema->SetObjectField(TEXT("properties"), Props);
+
+		Registry.RegisterTool(
+			TEXT("project.snapshot"),
+			TEXT("Snapshot operations. action='create' (default) saves IR state of assets for later comparison/rollback. action='list' returns existing snapshots filtered by asset_filter."),
+			Schema,
+			FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleSnapshot),
+			{TEXT("crosssystem"), TEXT("read")},
+			TEXT("crosssystem")
+		);
+		RegisteredToolNames.Add(TEXT("project.snapshot"));
+	}
 
 	Registry.RegisterTool(
 		TEXT("project.rollback"),
@@ -166,7 +241,7 @@ void FOliveCrossSystemToolHandlers::RegisterSnapshotTools()
 }
 
 // =============================================================================
-// Bulk Operation Handlers
+// Read / Refactor Handlers (post-P5)
 // =============================================================================
 
 FOliveToolResult FOliveCrossSystemToolHandlers::HandleBulkRead(const TSharedPtr<FJsonObject>& Params)
@@ -187,30 +262,6 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleBulkRead(const TSharedPtr<
 	Params->TryGetStringField(TEXT("read_mode"), ReadMode);
 
 	return FOliveMultiAssetOperations::Get().BulkRead(Paths, ReadMode);
-}
-
-FOliveToolResult FOliveCrossSystemToolHandlers::HandleImplementInterface(const TSharedPtr<FJsonObject>& Params)
-{
-	TArray<FString> Paths;
-	const TArray<TSharedPtr<FJsonValue>>* PathsArray;
-	if (!Params->TryGetArrayField(TEXT("paths"), PathsArray))
-	{
-		return FOliveToolResult::Error(TEXT("MISSING_PATHS"), TEXT("'paths' array is required"),
-			TEXT("Provide an array of Blueprint asset paths. Example: [\"paths\": [\"/Game/BP_Player\"]]"));
-	}
-	for (const auto& Value : *PathsArray)
-	{
-		Paths.Add(Value->AsString());
-	}
-
-	FString Interface;
-	if (!Params->TryGetStringField(TEXT("interface"), Interface) || Interface.IsEmpty())
-	{
-		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'interface' is missing"),
-			TEXT("Provide the interface name. Example: \"BPI_Interactable\", \"BPI_Damageable\""));
-	}
-	return FOliveMultiAssetOperations::Get().ImplementInterface(Paths, Interface);
 }
 
 FOliveToolResult FOliveCrossSystemToolHandlers::HandleRefactorRename(const TSharedPtr<FJsonObject>& Params)
@@ -235,567 +286,16 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleRefactorRename(const TShar
 	return FOliveMultiAssetOperations::Get().RefactorRename(AssetPath, NewName, bUpdateReferences);
 }
 
-FOliveToolResult FOliveCrossSystemToolHandlers::HandleCreateAICharacter(const TSharedPtr<FJsonObject>& Params)
-{
-	FString Name;
-	if (!Params->TryGetStringField(TEXT("name"), Name) || Name.IsEmpty())
-	{
-		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'name' is missing"),
-			TEXT("Provide the base name for the AI character. Example: \"EnemyGuard\""));
-	}
-	FString Path;
-	if (!Params->TryGetStringField(TEXT("path"), Path) || Path.IsEmpty())
-	{
-		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'path' is missing"),
-			TEXT("Provide the /Game/... directory path. Example: \"/Game/AI/Characters\""));
-	}
-
-	FString ParentClass = TEXT("ACharacter");
-	Params->TryGetStringField(TEXT("parent_class"), ParentClass);
-
-	FString BehaviorTreeRoot = TEXT("Selector");
-	Params->TryGetStringField(TEXT("behavior_tree_root"), BehaviorTreeRoot);
-
-	TArray<TPair<FString, FString>> BlackboardKeys;
-	const TArray<TSharedPtr<FJsonValue>>* KeysArray;
-	if (Params->TryGetArrayField(TEXT("blackboard_keys"), KeysArray))
-	{
-		for (const auto& Value : *KeysArray)
-		{
-			TSharedPtr<FJsonObject> KeyObj = Value->AsObject();
-			if (KeyObj.IsValid())
-			{
-				FString KeyName = KeyObj->GetStringField(TEXT("name"));
-				FString KeyType = KeyObj->GetStringField(TEXT("key_type"));
-				BlackboardKeys.Add(TPair<FString, FString>(KeyName, KeyType));
-			}
-		}
-	}
-
-	return FOliveMultiAssetOperations::Get().CreateAICharacter(Name, Path, ParentClass, BlackboardKeys, BehaviorTreeRoot);
-}
-
-FOliveToolResult FOliveCrossSystemToolHandlers::HandleMoveToCpp(const TSharedPtr<FJsonObject>& Params)
-{
-	FString AssetPath;
-	if (!Params->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
-	{
-		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'asset_path' is missing"),
-			TEXT("Provide the Blueprint asset path to migrate. Example: \"/Game/Blueprints/BP_Player\""));
-	}
-	FString ModuleName;
-	if (!Params->TryGetStringField(TEXT("module_name"), ModuleName) || ModuleName.IsEmpty())
-	{
-		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'module_name' is missing"),
-			TEXT("Provide the target C++ module name. Use cpp.list_project_classes to see available modules."));
-	}
-	FString TargetClassName;
-	if (!Params->TryGetStringField(TEXT("target_class_name"), TargetClassName) || TargetClassName.IsEmpty())
-	{
-		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'target_class_name' is missing"),
-			TEXT("Provide the target C++ class name. Example: \"AMyPlayerCharacter\""));
-	}
-
-	FString ParentClass;
-	Params->TryGetStringField(TEXT("parent_class"), ParentClass);
-
-	bool bCreateWrapperBlueprint = true;
-	Params->TryGetBoolField(TEXT("create_wrapper_blueprint"), bCreateWrapperBlueprint);
-
-	bool bCompileAfter = false;
-	Params->TryGetBoolField(TEXT("compile_after"), bCompileAfter);
-
-	return FOliveMultiAssetOperations::Get().MoveToCpp(
-		AssetPath,
-		ModuleName,
-		TargetClassName,
-		ParentClass,
-		bCreateWrapperBlueprint,
-		bCompileAfter);
-}
-
 // =============================================================================
-// Batch Write Registration
+// Deleted in P5 (no alias):
+//   - project.batch_write (callers can loop)
+//   - project.create_ai_character (too specialized)
+//   - project.implement_interface (duplicate of blueprint.add entity=interface)
+//   - project.move_to_cpp (low usage)
+// Their handler method bodies have been removed. If needed as direct API,
+// call FOliveMultiAssetOperations::Get() helpers instead.
 // =============================================================================
 
-void FOliveCrossSystemToolHandlers::RegisterBatchTools()
-{
-	// Removed in AI Freedom Phase 2 — plan-JSON handles Blueprint batching; individual BT/PCG/C++ ops are fast enough
-	// FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
-	//
-	// Registry.RegisterTool(
-	// 	TEXT("project.batch_write"),
-	// 	TEXT("Execute multiple Blueprint graph operations atomically under a single undo transaction"),
-	// 	OliveCrossSystemSchemas::ProjectBatchWrite(),
-	// 	FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleBatchWrite),
-	// 	{TEXT("crosssystem"), TEXT("write")},
-	// 	TEXT("crosssystem")
-	// );
-	// RegisteredToolNames.Add(TEXT("project.batch_write"));
-}
-
-// =============================================================================
-// Batch Write — Thin wrappers delegating to FOliveGraphBatchExecutor
-// =============================================================================
-
-static bool ResolveTemplateReferences(
-	TSharedPtr<FJsonObject>& OpParams,
-	const TMap<FString, TSharedPtr<FJsonObject>>& OpResults,
-	FString& OutError)
-{
-	return FOliveGraphBatchExecutor::ResolveTemplateReferences(OpParams, OpResults, OutError);
-}
-
-static const TSet<FString>& GetBatchWriteAllowlist()
-{
-	return FOliveGraphBatchExecutor::GetBatchWriteAllowlist();
-}
-
-static FOliveBlueprintWriteResult DispatchWriterOp(
-	const FString& ToolName,
-	const FString& BlueprintPath,
-	const TSharedPtr<FJsonObject>& OpParams)
-{
-	return FOliveGraphBatchExecutor::DispatchWriterOp(ToolName, BlueprintPath, OpParams);
-}
-
-// =============================================================================
-// Batch Write Handler
-// =============================================================================
-
-FOliveToolResult FOliveCrossSystemToolHandlers::HandleBatchWrite(const TSharedPtr<FJsonObject>& Params)
-{
-	// -------------------------------------------------------------------------
-	// Phase 1 — Validate (no mutation)
-	// -------------------------------------------------------------------------
-
-	// 1. Parse and resolve asset path
-	FString BlueprintPath;
-	if (!Params->TryGetStringField(TEXT("path"), BlueprintPath) || BlueprintPath.IsEmpty())
-	{
-		return FOliveToolResult::Error(TEXT("MISSING_PATH"), TEXT("'path' parameter is required"),
-			TEXT("Provide the Blueprint asset path. Example: \"/Game/Blueprints/BP_Player\""));
-	}
-
-	// 2. Get ops array
-	const TArray<TSharedPtr<FJsonValue>>* OpsArray = nullptr;
-	if (!Params->TryGetArrayField(TEXT("ops"), OpsArray) || !OpsArray || OpsArray->Num() == 0)
-	{
-		return FOliveToolResult::Error(TEXT("MISSING_OPS"), TEXT("'ops' array is required and must not be empty"),
-			TEXT("Provide an 'ops' array of {tool, params} objects. Example: [{\"tool\":\"blueprint.add_node\",\"params\":{\"type\":\"PrintString\"}}]"));
-	}
-
-	// 3. Check ops count against settings limit
-	int32 MaxOps = 200;
-	if (UOliveAISettings* Settings = UOliveAISettings::Get())
-	{
-		MaxOps = Settings->BatchWriteMaxOps;
-	}
-	if (OpsArray->Num() > MaxOps)
-	{
-		return FOliveToolResult::Error(TEXT("TOO_MANY_OPS"),
-			FString::Printf(TEXT("Batch contains %d ops but maximum is %d (configurable via BatchWriteMaxOps)"),
-				OpsArray->Num(), MaxOps),
-			TEXT("Split the batch into smaller chunks, or increase BatchWriteMaxOps in settings."));
-	}
-
-	// Parse options
-	bool bDryRun = false;
-	Params->TryGetBoolField(TEXT("dry_run"), bDryRun);
-
-	bool bAutoCompile = true;
-	Params->TryGetBoolField(TEXT("auto_compile"), bAutoCompile);
-
-	bool bStopOnError = true;
-	Params->TryGetBoolField(TEXT("stop_on_error"), bStopOnError);
-
-	FString TopLevelGraph;
-	Params->TryGetStringField(TEXT("graph"), TopLevelGraph);
-
-	const TSet<FString>& Allowlist = GetBatchWriteAllowlist();
-
-	// 4-7. Parse ops, validate tool names, inject defaults, validate template refs
-	struct FBatchOp
-	{
-		FString Id;
-		FString ToolName;
-		TSharedPtr<FJsonObject> OpParams;
-	};
-	TArray<FBatchOp> Ops;
-	TSet<FString> DeclaredIds;
-
-	for (int32 i = 0; i < OpsArray->Num(); ++i)
-	{
-		TSharedPtr<FJsonObject> OpObj = (*OpsArray)[i]->AsObject();
-		if (!OpObj.IsValid())
-		{
-			return FOliveToolResult::Error(TEXT("INVALID_OP"),
-				FString::Printf(TEXT("Op at index %d is not a valid JSON object"), i + 1));
-		}
-
-		FBatchOp Op;
-		OpObj->TryGetStringField(TEXT("id"), Op.Id);
-		Op.ToolName = OpObj->GetStringField(TEXT("tool"));
-		const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
-		if (OpObj->TryGetObjectField(TEXT("params"), ParamsObj) && ParamsObj && ParamsObj->IsValid())
-		{
-			Op.OpParams = *ParamsObj;
-		}
-
-		if (Op.ToolName.IsEmpty())
-		{
-			return FOliveToolResult::Error(TEXT("MISSING_TOOL"),
-				FString::Printf(TEXT("Op at index %d is missing 'tool' field"), i + 1));
-		}
-
-		// Allowlist check
-		if (!Allowlist.Contains(Op.ToolName))
-		{
-			return FOliveToolResult::Error(TEXT("TOOL_NOT_ALLOWED"),
-				FString::Printf(TEXT("Op %d: tool '%s' is not allowed in batch_write. Allowed: blueprint.add_node, blueprint.connect_pins, blueprint.disconnect_pins, blueprint.set_pin_default, blueprint.set_node_property, blueprint.remove_node"),
-					i + 1, *Op.ToolName));
-		}
-
-		if (!Op.OpParams.IsValid())
-		{
-			Op.OpParams = MakeShared<FJsonObject>();
-		}
-
-		// Inject top-level path if missing from op params
-		if (!Op.OpParams->HasField(TEXT("path")))
-		{
-			Op.OpParams->SetStringField(TEXT("path"), BlueprintPath);
-		}
-
-		// Inject top-level graph if provided and missing from op params
-		if (!TopLevelGraph.IsEmpty() && !Op.OpParams->HasField(TEXT("graph")))
-		{
-			Op.OpParams->SetStringField(TEXT("graph"), TopLevelGraph);
-		}
-
-		// Track declared ids for forward-reference validation
-		if (!Op.Id.IsEmpty())
-		{
-			if (DeclaredIds.Contains(Op.Id))
-			{
-				return FOliveToolResult::Error(TEXT("DUPLICATE_OP_ID"),
-					FString::Printf(TEXT("Op %d: duplicate id '%s'"), i + 1, *Op.Id));
-			}
-			DeclaredIds.Add(Op.Id);
-		}
-
-		// Validate template references point to earlier ops
-		for (const auto& ParamPair : Op.OpParams->Values)
-		{
-			if (!ParamPair.Value.IsValid())
-			{
-				return FOliveToolResult::Error(
-					TEXT("INVALID_PARAM_VALUE"),
-					FString::Printf(TEXT("Op %d: param '%s' has an invalid null JSON value"), i + 1, *ParamPair.Key));
-			}
-
-			if (ParamPair.Value->Type != EJson::String)
-			{
-				continue;
-			}
-
-			FString ParamValue = ParamPair.Value->AsString();
-			int32 SearchIdx = 0;
-			while (SearchIdx < ParamValue.Len())
-			{
-				int32 TplStart = ParamValue.Find(TEXT("${"), ESearchCase::CaseSensitive, ESearchDir::FromStart, SearchIdx);
-				if (TplStart == INDEX_NONE)
-				{
-					break;
-				}
-				int32 TplEnd = ParamValue.Find(TEXT("}"), ESearchCase::CaseSensitive, ESearchDir::FromStart, TplStart + 2);
-				if (TplEnd == INDEX_NONE)
-				{
-					return FOliveToolResult::Error(TEXT("INVALID_TEMPLATE"),
-						FString::Printf(TEXT("Op %d: unclosed template in param '%s'"), i + 1, *ParamPair.Key));
-				}
-				FString Content = ParamValue.Mid(TplStart + 2, TplEnd - TplStart - 2);
-				FString RefId;
-				FString RefField;
-				if (!Content.Split(TEXT("."), &RefId, &RefField))
-				{
-					return FOliveToolResult::Error(TEXT("INVALID_TEMPLATE"),
-						FString::Printf(TEXT("Op %d: invalid template '${%s}' — expected ${opId.field}"), i + 1, *Content));
-				}
-
-				// Check that referenced id was declared in an earlier op
-				bool bFoundEarlier = false;
-				for (int32 j = 0; j < Ops.Num(); ++j)
-				{
-					if (Ops[j].Id == RefId)
-					{
-						bFoundEarlier = true;
-						break;
-					}
-				}
-				if (!bFoundEarlier)
-				{
-					return FOliveToolResult::Error(TEXT("FORWARD_REFERENCE"),
-						FString::Printf(TEXT("Op %d: template '${%s}' references id '%s' which is not declared in an earlier op"),
-							i + 1, *Content, *RefId));
-				}
-
-				SearchIdx = TplEnd + 1;
-			}
-		}
-
-		Ops.Add(MoveTemp(Op));
-	}
-
-	// -------------------------------------------------------------------------
-	// Phase 2 — Dry run: return normalized ops without executing
-	// -------------------------------------------------------------------------
-	if (bDryRun)
-	{
-		TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
-		Data->SetStringField(TEXT("asset_path"), BlueprintPath);
-		Data->SetNumberField(TEXT("total_ops"), Ops.Num());
-		Data->SetBoolField(TEXT("dry_run"), true);
-		Data->SetStringField(TEXT("validation"), TEXT("passed"));
-
-		TArray<TSharedPtr<FJsonValue>> NormalizedOps;
-		for (int32 i = 0; i < Ops.Num(); ++i)
-		{
-			TSharedPtr<FJsonObject> OpJson = MakeShared<FJsonObject>();
-			OpJson->SetNumberField(TEXT("index_1based"), i + 1);
-			OpJson->SetStringField(TEXT("tool"), Ops[i].ToolName);
-			if (!Ops[i].Id.IsEmpty())
-			{
-				OpJson->SetStringField(TEXT("id"), Ops[i].Id);
-			}
-			OpJson->SetObjectField(TEXT("params"), Ops[i].OpParams);
-			NormalizedOps.Add(MakeShared<FJsonValueObject>(OpJson));
-		}
-		Data->SetArrayField(TEXT("ops"), NormalizedOps);
-
-		return FOliveToolResult::Success(Data);
-	}
-
-	// -------------------------------------------------------------------------
-	// Phase 3 — Execute
-	// -------------------------------------------------------------------------
-
-	// Load the Blueprint once
-	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *BlueprintPath);
-	if (!Blueprint)
-	{
-		return FOliveToolResult::Error(TEXT("ASSET_NOT_FOUND"),
-			FString::Printf(TEXT("Could not load Blueprint at '%s'"), *BlueprintPath),
-			TEXT("Verify the asset exists and is a Blueprint. Use project.search to find the correct path."));
-	}
-
-	// Results storage
-	TArray<TSharedPtr<FJsonValue>> ResultsArray;
-	TMap<FString, TSharedPtr<FJsonObject>> OpResultsById;
-	TSharedPtr<FJsonObject> FailedOp;
-	int32 CompletedCount = 0;
-
-	{
-		// One outer transaction for the entire batch
-		FScopedTransaction Transaction(LOCTEXT("BatchWrite", "Batch Write"));
-
-		// Enter batch scope to suppress inner transactions in writer methods
-		FOliveBatchExecutionScope BatchScope;
-
-		Blueprint->Modify();
-
-		for (int32 i = 0; i < Ops.Num(); ++i)
-		{
-			FBatchOp& Op = Ops[i];
-
-			// Resolve template references from prior op results
-			FString TemplateError;
-			if (!ResolveTemplateReferences(Op.OpParams, OpResultsById, TemplateError))
-			{
-				// Template resolution failed
-				if (!FailedOp.IsValid())
-				{
-					FailedOp = MakeShared<FJsonObject>();
-					FailedOp->SetNumberField(TEXT("index_1based"), i + 1);
-					FailedOp->SetStringField(TEXT("tool"), Op.ToolName);
-					FailedOp->SetStringField(TEXT("error_code"), TEXT("TEMPLATE_RESOLUTION_FAILED"));
-					FailedOp->SetStringField(TEXT("error_message"), TemplateError);
-				}
-
-				TSharedPtr<FJsonObject> OpResult = MakeShared<FJsonObject>();
-				OpResult->SetNumberField(TEXT("index_1based"), i + 1);
-				OpResult->SetStringField(TEXT("tool"), Op.ToolName);
-				OpResult->SetBoolField(TEXT("success"), false);
-				OpResult->SetStringField(TEXT("error"), TemplateError);
-				ResultsArray.Add(MakeShared<FJsonValueObject>(OpResult));
-
-				if (bStopOnError)
-				{
-					break;
-				}
-				continue;
-			}
-
-			// Dispatch to writer
-			FOliveBlueprintWriteResult WriteResult = DispatchWriterOp(Op.ToolName, BlueprintPath, Op.OpParams);
-
-			// Build result entry
-			TSharedPtr<FJsonObject> OpResult = MakeShared<FJsonObject>();
-			OpResult->SetNumberField(TEXT("index_1based"), i + 1);
-			OpResult->SetStringField(TEXT("tool"), Op.ToolName);
-			OpResult->SetBoolField(TEXT("success"), WriteResult.bSuccess);
-
-			if (WriteResult.bSuccess)
-			{
-				CompletedCount++;
-
-				// Build data from the write result
-				TSharedPtr<FJsonObject> OpData = MakeShared<FJsonObject>();
-				if (!WriteResult.CreatedNodeId.IsEmpty())
-				{
-					OpData->SetStringField(TEXT("node_id"), WriteResult.CreatedNodeId);
-				}
-				if (!WriteResult.CreatedItemName.IsEmpty())
-				{
-					OpData->SetStringField(TEXT("item_name"), WriteResult.CreatedItemName);
-				}
-				if (WriteResult.Warnings.Num() > 0)
-				{
-					TArray<TSharedPtr<FJsonValue>> WarningsArr;
-					for (const FString& W : WriteResult.Warnings)
-					{
-						WarningsArr.Add(MakeShared<FJsonValueString>(W));
-					}
-					OpData->SetArrayField(TEXT("warnings"), WarningsArr);
-				}
-
-				OpResult->SetObjectField(TEXT("data"), OpData);
-
-				// Store for template resolution by later ops
-				if (!Op.Id.IsEmpty())
-				{
-					OpResultsById.Add(Op.Id, OpData);
-				}
-			}
-			else
-			{
-				FString ErrorMsg = WriteResult.Errors.Num() > 0 ? WriteResult.Errors[0] : TEXT("Unknown error");
-				OpResult->SetStringField(TEXT("error"), ErrorMsg);
-
-				if (!FailedOp.IsValid())
-				{
-					FailedOp = MakeShared<FJsonObject>();
-					FailedOp->SetNumberField(TEXT("index_1based"), i + 1);
-					FailedOp->SetStringField(TEXT("tool"), Op.ToolName);
-					FailedOp->SetStringField(TEXT("error_code"), TEXT("OP_FAILED"));
-					FailedOp->SetStringField(TEXT("error_message"), ErrorMsg);
-				}
-
-				ResultsArray.Add(MakeShared<FJsonValueObject>(OpResult));
-
-				if (bStopOnError)
-				{
-					break;
-				}
-				continue;
-			}
-
-			ResultsArray.Add(MakeShared<FJsonValueObject>(OpResult));
-		}
-
-		// If any op failed, cancel the transaction so no partial mutations remain.
-		// This is required for the tool's "atomic batch" contract.
-		if (FailedOp.IsValid())
-		{
-			Transaction.Cancel();
-		}
-	} // FScopedTransaction destroyed here — commits if we reach this point
-
-	// -------------------------------------------------------------------------
-	// Compile (if all succeeded and auto_compile is true)
-	// -------------------------------------------------------------------------
-	TSharedPtr<FJsonObject> CompileResult;
-	bool bAllSucceeded = !FailedOp.IsValid();
-
-	if (bAllSucceeded && bAutoCompile)
-	{
-		FOliveIRCompileResult CompileIR = FOliveCompileManager::Get().Compile(Blueprint);
-
-		CompileResult = MakeShared<FJsonObject>();
-		CompileResult->SetBoolField(TEXT("success"), CompileIR.bSuccess);
-
-		TArray<TSharedPtr<FJsonValue>> CompileErrors;
-		for (const FOliveIRCompileError& Err : CompileIR.Errors)
-		{
-			CompileErrors.Add(MakeShared<FJsonValueString>(Err.Message));
-		}
-		CompileResult->SetArrayField(TEXT("errors"), CompileErrors);
-
-		TArray<TSharedPtr<FJsonValue>> CompileWarnings;
-		for (const FOliveIRCompileError& Warn : CompileIR.Warnings)
-		{
-			CompileWarnings.Add(MakeShared<FJsonValueString>(Warn.Message));
-		}
-		CompileResult->SetArrayField(TEXT("warnings"), CompileWarnings);
-	}
-
-	// -------------------------------------------------------------------------
-	// Phase 4 — Build output
-	// -------------------------------------------------------------------------
-	TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
-	Data->SetStringField(TEXT("asset_path"), BlueprintPath);
-	Data->SetNumberField(TEXT("total_ops"), Ops.Num());
-	Data->SetNumberField(TEXT("completed_ops"), CompletedCount);
-	Data->SetBoolField(TEXT("rolled_back"), FailedOp.IsValid());
-
-	if (FailedOp.IsValid())
-	{
-		Data->SetObjectField(TEXT("failed_op"), FailedOp);
-	}
-	else
-	{
-		Data->SetField(TEXT("failed_op"), MakeShared<FJsonValueNull>());
-	}
-
-	Data->SetArrayField(TEXT("results"), ResultsArray);
-
-	// Build id_map: declared op ids -> created node ids
-	TSharedPtr<FJsonObject> IdMap = MakeShared<FJsonObject>();
-	for (const auto& Pair : OpResultsById)
-	{
-		FString NodeId;
-		if (Pair.Value->TryGetStringField(TEXT("node_id"), NodeId))
-		{
-			IdMap->SetStringField(Pair.Key, NodeId);
-		}
-	}
-	Data->SetObjectField(TEXT("id_map"), IdMap);
-
-	if (CompileResult.IsValid())
-	{
-		Data->SetObjectField(TEXT("compile_result"), CompileResult);
-	}
-
-	if (bAllSucceeded)
-	{
-		return FOliveToolResult::Success(Data);
-	}
-	else
-	{
-		FOliveToolResult Result = FOliveToolResult::Error(
-			TEXT("BATCH_FAILED"),
-			TEXT("project.batch_write failed"),
-			TEXT("Inspect data.failed_op and data.results for details; fix the first failing op and retry.")
-		);
-		Result.Data = Data;
-		return Result;
-	}
-}
 
 // =============================================================================
 // Snapshot Handlers
@@ -803,6 +303,27 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleBatchWrite(const TSharedPt
 
 FOliveToolResult FOliveCrossSystemToolHandlers::HandleSnapshot(const TSharedPtr<FJsonObject>& Params)
 {
+	// P5: action-dispatch. Default "create" mirrors the legacy create-a-snapshot
+	// behavior. action="list" folds in project.list_snapshots.
+	FString Action = TEXT("create");
+	if (Params.IsValid())
+	{
+		Params->TryGetStringField(TEXT("action"), Action);
+	}
+	Action = Action.ToLower();
+
+	if (Action == TEXT("list"))
+	{
+		return HandleListSnapshots(Params);
+	}
+
+	if (Action != TEXT("create"))
+	{
+		return FOliveToolResult::Error(TEXT("INVALID_ACTION"),
+			FString::Printf(TEXT("Unknown action '%s' for project.snapshot"), *Action),
+			TEXT("Use action='create' (default) to snapshot assets, or action='list' to list snapshots."));
+	}
+
 	FString Name;
 	if (!Params->TryGetStringField(TEXT("name"), Name) || Name.IsEmpty())
 	{
@@ -894,48 +415,270 @@ void FOliveCrossSystemToolHandlers::RegisterIndexTools()
 {
 	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
 
-	// Removed in AI Freedom Phase 2 — project indexing is now automatic (on-demand)
-	// Registry.RegisterTool(
-	// 	TEXT("project.index_build"),
-	// 	TEXT("Export the project index to a JSON file for external consumption"),
-	// 	OliveCrossSystemSchemas::ProjectIndexBuild(),
-	// 	FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleIndexBuild),
-	// 	{TEXT("crosssystem"), TEXT("read")},
-	// 	TEXT("crosssystem")
-	// );
-	// RegisteredToolNames.Add(TEXT("project.index_build"));
+	// project.index — action-dispatch: "status" (default) checks staleness/readiness,
+	// "build" exports the project map JSON for external consumption.
+	// Legacy tools project.index_build / project.index_status are silent aliases
+	// registered in OliveToolRegistry::GetToolAliases().
+	{
+		TSharedPtr<FJsonObject> Schema = MakeShareable(new FJsonObject());
+		Schema->SetStringField(TEXT("type"), TEXT("object"));
 
-	// Removed in AI Freedom Phase 2 — not needed (was only needed when index_build was manual)
-	// Registry.RegisterTool(
-	// 	TEXT("project.index_status"),
-	// 	TEXT("Check whether the project index is stale and needs re-export"),
-	// 	OliveCrossSystemSchemas::ProjectIndexStatus(),
-	// 	FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleIndexStatus),
-	// 	{TEXT("crosssystem"), TEXT("read")},
-	// 	TEXT("crosssystem")
-	// );
-	// RegisteredToolNames.Add(TEXT("project.index_status"));
+		TSharedPtr<FJsonObject> Props = MakeShareable(new FJsonObject());
 
-	Registry.RegisterTool(
-		TEXT("project.get_relevant_context"),
-		TEXT("Search the project index and return the most relevant assets for a query"),
-		OliveCrossSystemSchemas::ProjectGetRelevantContext(),
-		FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleGetRelevantContext),
-		{TEXT("crosssystem"), TEXT("read")},
-		TEXT("crosssystem")
-	);
-	RegisteredToolNames.Add(TEXT("project.get_relevant_context"));
+		TSharedPtr<FJsonObject> ActionProp = MakeShareable(new FJsonObject());
+		ActionProp->SetStringField(TEXT("type"), TEXT("string"));
+		TArray<TSharedPtr<FJsonValue>> ActionEnum;
+		ActionEnum.Add(MakeShareable(new FJsonValueString(TEXT("status"))));
+		ActionEnum.Add(MakeShareable(new FJsonValueString(TEXT("build"))));
+		ActionProp->SetArrayField(TEXT("enum"), ActionEnum);
+		ActionProp->SetStringField(TEXT("description"),
+			TEXT("'status' (default) checks whether the project index is stale. 'build' exports the index JSON."));
+		Props->SetObjectField(TEXT("action"), ActionProp);
 
-	// Alias: project.search → same handler (many prompts reference this name)
+		TSharedPtr<FJsonObject> ForceProp = MakeShareable(new FJsonObject());
+		ForceProp->SetStringField(TEXT("type"), TEXT("boolean"));
+		ForceProp->SetStringField(TEXT("description"), TEXT("Force re-export even if the index is not stale (action='build' only)"));
+		Props->SetObjectField(TEXT("force"), ForceProp);
+
+		Schema->SetObjectField(TEXT("properties"), Props);
+
+		Registry.RegisterTool(
+			TEXT("project.index"),
+			TEXT("Project index management. action='status' (default) reports staleness/readiness; action='build' exports the project map JSON."),
+			Schema,
+			FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleProjectIndex),
+			{TEXT("crosssystem"), TEXT("read")},
+			TEXT("crosssystem")
+		);
+		RegisteredToolNames.Add(TEXT("project.index"));
+	}
+
+	// project.search — unchanged (relevant-context search; many prompts reference it).
 	Registry.RegisterTool(
 		TEXT("project.search"),
-		TEXT("Search the project index and return the most relevant assets for a query (alias for project.get_relevant_context)"),
+		TEXT("Search the project index and return the most relevant assets for a query."),
 		OliveCrossSystemSchemas::ProjectGetRelevantContext(),
 		FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleGetRelevantContext),
 		{TEXT("crosssystem"), TEXT("read")},
 		TEXT("crosssystem")
 	);
 	RegisteredToolNames.Add(TEXT("project.search"));
+}
+
+// -----------------------------------------------------------------------------
+// P5 Dispatchers
+// -----------------------------------------------------------------------------
+
+FOliveToolResult FOliveCrossSystemToolHandlers::HandleProjectRead(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Parameters required"),
+			TEXT("Provide at least 'include': [\"asset_info\"] and a 'path'."));
+	}
+
+	// Parse include list. Default: ["asset_info"] (backwards-compat, requires 'path').
+	TArray<FString> Include;
+	const TArray<TSharedPtr<FJsonValue>>* IncludeArray = nullptr;
+	if (Params->TryGetArrayField(TEXT("include"), IncludeArray) && IncludeArray)
+	{
+		for (const TSharedPtr<FJsonValue>& V : *IncludeArray)
+		{
+			if (V.IsValid())
+			{
+				const FString Key = V->AsString().ToLower();
+				if (!Key.IsEmpty())
+				{
+					Include.AddUnique(Key);
+				}
+			}
+		}
+	}
+	if (Include.Num() == 0)
+	{
+		Include.Add(TEXT("asset_info"));
+	}
+
+	FString Path;
+	Params->TryGetStringField(TEXT("path"), Path);
+
+	FOliveProjectIndex& Index = FOliveProjectIndex::Get();
+
+	TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
+	TArray<TSharedPtr<FJsonValue>> Missing;
+	TArray<TSharedPtr<FJsonValue>> Errors;
+
+	// Helper: emit a per-include error entry (non-fatal; we keep going).
+	auto PushErr = [&Errors](const FString& Key, const FString& Code, const FString& Message)
+	{
+		TSharedPtr<FJsonObject> E = MakeShared<FJsonObject>();
+		E->SetStringField(TEXT("include"), Key);
+		E->SetStringField(TEXT("code"), Code);
+		E->SetStringField(TEXT("message"), Message);
+		Errors.Add(MakeShared<FJsonValueObject>(E));
+	};
+
+	for (const FString& Key : Include)
+	{
+		if (Key == TEXT("asset_info"))
+		{
+			if (Path.IsEmpty())
+			{
+				PushErr(Key, TEXT("MISSING_PATH"), TEXT("'path' is required for include=asset_info"));
+				continue;
+			}
+			TOptional<FOliveAssetInfo> AssetInfo = Index.GetAssetByPath(Path);
+			if (AssetInfo.IsSet())
+			{
+				Out->SetObjectField(Key, AssetInfo->ToJson());
+			}
+			else
+			{
+				PushErr(Key, TEXT("ASSET_NOT_FOUND"), FString::Printf(TEXT("Asset not found: %s"), *Path));
+			}
+		}
+		else if (Key == TEXT("dependencies"))
+		{
+			if (Path.IsEmpty())
+			{
+				PushErr(Key, TEXT("MISSING_PATH"), TEXT("'path' is required for include=dependencies"));
+				continue;
+			}
+			TArray<FString> Deps = Index.GetDependencies(Path);
+			TSharedPtr<FJsonObject> Sub = MakeShared<FJsonObject>();
+			Sub->SetStringField(TEXT("asset"), Path);
+			Sub->SetNumberField(TEXT("count"), Deps.Num());
+			TArray<TSharedPtr<FJsonValue>> DepsArr;
+			for (const FString& D : Deps) { DepsArr.Add(MakeShared<FJsonValueString>(D)); }
+			Sub->SetArrayField(TEXT("dependencies"), DepsArr);
+			Out->SetObjectField(Key, Sub);
+		}
+		else if (Key == TEXT("referencers"))
+		{
+			if (Path.IsEmpty())
+			{
+				PushErr(Key, TEXT("MISSING_PATH"), TEXT("'path' is required for include=referencers"));
+				continue;
+			}
+			TArray<FString> Refs = Index.GetReferencers(Path);
+			TSharedPtr<FJsonObject> Sub = MakeShared<FJsonObject>();
+			Sub->SetStringField(TEXT("asset"), Path);
+			Sub->SetNumberField(TEXT("count"), Refs.Num());
+			TArray<TSharedPtr<FJsonValue>> RefsArr;
+			for (const FString& R : Refs) { RefsArr.Add(MakeShared<FJsonValueString>(R)); }
+			Sub->SetArrayField(TEXT("referencers"), RefsArr);
+			Out->SetObjectField(Key, Sub);
+		}
+		else if (Key == TEXT("class_hierarchy"))
+		{
+			FName RootClass = NAME_None;
+			FString RootClassStr;
+			if (Params->TryGetStringField(TEXT("root_class"), RootClassStr) && !RootClassStr.IsEmpty())
+			{
+				RootClass = FName(*RootClassStr);
+			}
+			const FString Json = Index.GetClassHierarchyJson(RootClass);
+			TSharedPtr<FJsonObject> Sub;
+			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Json);
+			if (FJsonSerializer::Deserialize(Reader, Sub) && Sub.IsValid())
+			{
+				Out->SetObjectField(Key, Sub);
+			}
+			else
+			{
+				TSharedPtr<FJsonObject> Empty = MakeShared<FJsonObject>();
+				Empty->SetArrayField(TEXT("hierarchy"), TArray<TSharedPtr<FJsonValue>>());
+				Out->SetObjectField(Key, Empty);
+			}
+		}
+		else if (Key == TEXT("config") || Key == TEXT("info"))
+		{
+			// "info" is an alias of "config" here — both return project configuration.
+			const FString Json = Index.GetProjectConfigJson();
+			TSharedPtr<FJsonObject> Sub;
+			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Json);
+			if (FJsonSerializer::Deserialize(Reader, Sub) && Sub.IsValid())
+			{
+				Out->SetObjectField(Key, Sub);
+			}
+			else
+			{
+				Out->SetObjectField(Key, MakeShared<FJsonObject>());
+			}
+		}
+		else if (Key == TEXT("relevant_context"))
+		{
+			FOliveToolResult R = HandleGetRelevantContext(Params);
+			if (R.bSuccess && R.Data.IsValid())
+			{
+				Out->SetObjectField(Key, R.Data);
+			}
+			else
+			{
+				const FString Code = (R.Messages.Num() > 0) ? R.Messages[0].Code : TEXT("RELEVANT_CONTEXT_FAILED");
+				const FString Msg = (R.Messages.Num() > 0) ? R.Messages[0].Message : TEXT("Unknown error");
+				PushErr(Key, Code, Msg);
+			}
+		}
+		else if (Key == TEXT("bulk"))
+		{
+			FOliveToolResult R = HandleBulkRead(Params);
+			if (R.bSuccess && R.Data.IsValid())
+			{
+				Out->SetObjectField(Key, R.Data);
+			}
+			else
+			{
+				const FString Code = (R.Messages.Num() > 0) ? R.Messages[0].Code : TEXT("BULK_READ_FAILED");
+				const FString Msg = (R.Messages.Num() > 0) ? R.Messages[0].Message : TEXT("Unknown error");
+				PushErr(Key, Code, Msg);
+			}
+		}
+		else
+		{
+			Missing.Add(MakeShared<FJsonValueString>(Key));
+		}
+	}
+
+	// Emit metadata so callers can diagnose partial responses.
+	TArray<TSharedPtr<FJsonValue>> IncludeOut;
+	for (const FString& K : Include) { IncludeOut.Add(MakeShared<FJsonValueString>(K)); }
+	Out->SetArrayField(TEXT("include"), IncludeOut);
+
+	if (Missing.Num() > 0)
+	{
+		Out->SetArrayField(TEXT("unknown_include_keys"), Missing);
+	}
+	if (Errors.Num() > 0)
+	{
+		Out->SetArrayField(TEXT("errors"), Errors);
+	}
+
+	return FOliveToolResult::Success(Out);
+}
+
+FOliveToolResult FOliveCrossSystemToolHandlers::HandleProjectIndex(const TSharedPtr<FJsonObject>& Params)
+{
+	FString Action = TEXT("status");
+	if (Params.IsValid())
+	{
+		Params->TryGetStringField(TEXT("action"), Action);
+	}
+	Action = Action.ToLower();
+
+	if (Action == TEXT("build"))
+	{
+		return HandleIndexBuild(Params);
+	}
+	if (Action == TEXT("status") || Action.IsEmpty())
+	{
+		return HandleIndexStatus(Params);
+	}
+
+	return FOliveToolResult::Error(TEXT("INVALID_ACTION"),
+		FString::Printf(TEXT("Unknown action '%s' for project.index"), *Action),
+		TEXT("Use action='status' (default) or action='build'."));
 }
 
 FOliveToolResult FOliveCrossSystemToolHandlers::HandleIndexBuild(const TSharedPtr<FJsonObject>& Params)
@@ -1084,351 +827,6 @@ FOliveToolResult FOliveCrossSystemToolHandlers::HandleGetRelevantContext(const T
 	}
 	Data->SetArrayField(TEXT("assets"), AssetsArray);
 	Data->SetArrayField(TEXT("suggested_bulk_read_paths"), PathsArray);
-
-	return FOliveToolResult::Success(Data);
-}
-
-// =============================================================================
-// Recipe System
-// =============================================================================
-
-void FOliveCrossSystemToolHandlers::LoadRecipeLibrary()
-{
-	const FString RecipesDir = FPaths::Combine(
-		FPaths::ProjectPluginsDir(),
-		TEXT("UE_Olive_AI_Studio/Content/SystemPrompts/Knowledge/recipes"));
-
-	if (!IFileManager::Get().DirectoryExists(*RecipesDir))
-	{
-		UE_LOG(LogOliveCrossSystemTools, Warning, TEXT("Recipe directory not found: %s"), *RecipesDir);
-		return;
-	}
-
-	// Load manifest
-	const FString ManifestPath = FPaths::Combine(RecipesDir, TEXT("_manifest.json"));
-	FString ManifestContent;
-	if (!FFileHelper::LoadFileToString(ManifestContent, *ManifestPath))
-	{
-		UE_LOG(LogOliveCrossSystemTools, Warning, TEXT("Recipe manifest not found: %s"), *ManifestPath);
-		return;
-	}
-
-	TSharedPtr<FJsonObject> ManifestJson;
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ManifestContent);
-	if (!FJsonSerializer::Deserialize(Reader, ManifestJson) || !ManifestJson.IsValid())
-	{
-		UE_LOG(LogOliveCrossSystemTools, Error, TEXT("Failed to parse recipe manifest"));
-		return;
-	}
-
-	// NIT 3: Check format_version for forward compatibility
-	FString FormatVersion;
-	ManifestJson->TryGetStringField(TEXT("format_version"), FormatVersion);
-	if (FormatVersion.IsEmpty())
-	{
-		UE_LOG(LogOliveCrossSystemTools, Warning,
-			TEXT("Recipe manifest missing format_version — assuming 1.0"));
-		FormatVersion = TEXT("1.0");
-	}
-	else if (!FormatVersion.StartsWith(TEXT("1.")) && !FormatVersion.StartsWith(TEXT("2.")))
-	{
-		UE_LOG(LogOliveCrossSystemTools, Error,
-			TEXT("Recipe manifest format_version '%s' is not supported (expected 1.x or 2.x). Skipping recipe loading."),
-			*FormatVersion);
-		return;
-	}
-
-	const TSharedPtr<FJsonObject>* CategoriesObj;
-	if (!ManifestJson->TryGetObjectField(TEXT("categories"), CategoriesObj))
-	{
-		UE_LOG(LogOliveCrossSystemTools, Warning, TEXT("Recipe manifest has no 'categories' field"));
-		return;
-	}
-
-	for (const auto& CategoryPair : (*CategoriesObj)->Values)
-	{
-		const FString& CategoryName = CategoryPair.Key;
-		RecipeCategories.Add(CategoryName);
-
-		const TSharedPtr<FJsonObject>* CategoryObj;
-		if (!CategoryPair.Value->TryGetObject(CategoryObj))
-		{
-			continue;
-		}
-
-		const TSharedPtr<FJsonObject>* RecipesObj;
-		if (!(*CategoryObj)->TryGetObjectField(TEXT("recipes"), RecipesObj))
-		{
-			continue;
-		}
-
-		for (const auto& RecipePair : (*RecipesObj)->Values)
-		{
-			const FString& RecipeName = RecipePair.Key;
-			const FString Key = FString::Printf(TEXT("%s/%s"), *CategoryName, *RecipeName);
-
-			const TSharedPtr<FJsonObject>* RecipeMetaObj;
-			if (RecipePair.Value->TryGetObject(RecipeMetaObj))
-			{
-				FString Description;
-				(*RecipeMetaObj)->TryGetStringField(TEXT("description"), Description);
-				RecipeDescriptions.Add(Key, Description);
-			}
-
-			const FString FilePath = FPaths::Combine(RecipesDir, CategoryName, RecipeName + TEXT(".txt"));
-			FString Content;
-			if (FFileHelper::LoadFileToString(Content, *FilePath))
-			{
-				// Parse TAGS header if present (format: "TAGS: keyword1 keyword2\n---\ncontent")
-				TArray<FString> FileTags;
-				FString ActualContent = Content;
-
-				// Handle both \n and \r\n line endings for the --- separator
-				int32 SepIndex = Content.Find(TEXT("---\n"));
-				if (SepIndex == INDEX_NONE)
-				{
-					SepIndex = Content.Find(TEXT("---\r\n"));
-				}
-
-				if (SepIndex != INDEX_NONE)
-				{
-					const FString Header = Content.Left(SepIndex).TrimStartAndEnd();
-					if (Header.StartsWith(TEXT("TAGS:"), ESearchCase::IgnoreCase))
-					{
-						const FString TagLine = Header.Mid(5).TrimStartAndEnd();
-						TagLine.ParseIntoArray(FileTags, TEXT(" "), true);
-						for (FString& Tag : FileTags)
-						{
-							Tag = Tag.ToLower();
-						}
-						// Strip the TAGS header + separator, keep only body content
-						int32 ContentStart = SepIndex + 3;
-						if (ContentStart < Content.Len() && Content[ContentStart] == TEXT('\r'))
-						{
-							ContentStart++;
-						}
-						if (ContentStart < Content.Len() && Content[ContentStart] == TEXT('\n'))
-						{
-							ContentStart++;
-						}
-						ActualContent = Content.Mid(ContentStart);
-					}
-				}
-
-				RecipeLibrary.Add(Key, ActualContent);
-				RecipeTags.Add(Key, FileTags);
-				UE_LOG(LogOliveCrossSystemTools, Log, TEXT("Loaded recipe: %s (%d chars, %d tags)"),
-					*Key, ActualContent.Len(), FileTags.Num());
-			}
-			else
-			{
-				UE_LOG(LogOliveCrossSystemTools, Warning, TEXT("Recipe file not found: %s"), *FilePath);
-			}
-		}
-	}
-
-	UE_LOG(LogOliveCrossSystemTools, Log, TEXT("Recipe library loaded: %d recipes in %d categories"),
-		RecipeLibrary.Num(), RecipeCategories.Num());
-
-	// Validate tool references in recipe content against the registry.
-	// Catches stale tool names after renames/removals.
-	const FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
-	// Match only real MCP tool namespaces to avoid false positives from
-	// recipe pin refs (e.g. @get_hp.auto) and prose (e.g. "e.g.").
-	const FRegexPattern ToolRefPattern(
-		TEXT("\\b((?:blueprint|project|behaviortree|blackboard|pcg|cpp|olive)\\.[a-z_]+)\\b"));
-	for (const auto& Pair : RecipeLibrary)
-	{
-		FRegexMatcher Matcher(ToolRefPattern, Pair.Value);
-		while (Matcher.FindNext())
-		{
-			const FString ToolRef = Matcher.GetCaptureGroup(1);
-			if (!Registry.HasTool(ToolRef))
-			{
-				UE_LOG(LogOliveCrossSystemTools, Warning,
-					TEXT("Recipe '%s' references unregistered tool '%s'"),
-					*Pair.Key, *ToolRef);
-			}
-		}
-	}
-}
-
-void FOliveCrossSystemToolHandlers::RegisterRecipeTools()
-{
-	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
-
-	{
-		FOliveToolDefinition Def;
-		Def.Name = TEXT("olive.get_recipe");
-		Def.Description = TEXT("Search for patterns, examples, and gotchas for Blueprint workflows. "
-			"Query with keywords related to your task or error "
-			"(e.g. 'spawn actor transform', 'variable type object', 'function graph entry'). "
-			"Returns the most relevant reference entry.");
-		Def.InputSchema = OliveCrossSystemSchemas::RecipeGetRecipe();
-		Def.Tags = {TEXT("crosssystem"), TEXT("read")};
-		// Category is intentionally "crosssystem" — NOT "olive". Focus profiles filter
-		// by category, and "crosssystem" ensures visibility in Blueprint/Auto profiles
-		// without adding a new category to the profile filter config.
-		Def.Category = TEXT("crosssystem");
-		Def.WhenToUse = TEXT("Call ONCE at task start to get patterns and gotchas for your workflow. Do NOT call repeatedly mid-build — recipe content is static and does not change between calls.");
-		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveCrossSystemToolHandlers::HandleGetRecipe));
-	}
-	RegisteredToolNames.Add(TEXT("olive.get_recipe"));
-
-	UE_LOG(LogOliveCrossSystemTools, Log, TEXT("Registered recipe tool with %d recipes available"), RecipeLibrary.Num());
-}
-
-FOliveToolResult FOliveCrossSystemToolHandlers::HandleGetRecipe(const TSharedPtr<FJsonObject>& Params)
-{
-	if (!Params.IsValid())
-	{
-		return FOliveToolResult::Error(
-			TEXT("RECIPE_INVALID_PARAMS"),
-			TEXT("Parameters required"),
-			TEXT("Call with {\"query\":\"keywords\"} to search for reference entries."));
-	}
-
-	FString Query;
-	if (!Params->TryGetStringField(TEXT("query"), Query) || Query.IsEmpty())
-	{
-		return FOliveToolResult::Error(
-			TEXT("RECIPE_MISSING_QUERY"),
-			TEXT("'query' parameter is required"),
-			TEXT("Call with {\"query\":\"spawn actor transform\"} to search for relevant patterns and examples."));
-	}
-
-	// Lowercase the query and split into search terms
-	const FString LowerQuery = Query.ToLower();
-	TArray<FString> QueryTerms;
-	LowerQuery.ParseIntoArray(QueryTerms, TEXT(" "), true);
-
-	if (QueryTerms.Num() == 0)
-	{
-		return FOliveToolResult::Error(
-			TEXT("RECIPE_EMPTY_QUERY"),
-			TEXT("Query must contain at least one search term"));
-	}
-
-	// Score each recipe entry by keyword matching
-	struct FScoredEntry
-	{
-		FString Key;
-		int32 Score;
-	};
-	TArray<FScoredEntry> ScoredEntries;
-
-	for (const auto& Pair : RecipeLibrary)
-	{
-		const FString& Key = Pair.Key;
-		const FString& Content = Pair.Value;
-		const TArray<FString>* Tags = RecipeTags.Find(Key);
-
-		int32 Score = 0;
-		const FString LowerContent = Content.ToLower();
-
-		for (const FString& Term : QueryTerms)
-		{
-			// Tag match: +2 points (exact match in curated tags)
-			bool bTagMatch = false;
-			if (Tags)
-			{
-				for (const FString& Tag : *Tags)
-				{
-					if (Tag == Term)
-					{
-						bTagMatch = true;
-						break;
-					}
-				}
-			}
-
-			if (bTagMatch)
-			{
-				Score += 2;
-			}
-			else if (LowerContent.Contains(Term))
-			{
-				// Content substring match: +1 point (fallback)
-				Score += 1;
-			}
-		}
-
-		if (Score > 0)
-		{
-			ScoredEntries.Add({ Key, Score });
-		}
-	}
-
-	// Sort by score descending
-	ScoredEntries.Sort([](const FScoredEntry& A, const FScoredEntry& B)
-	{
-		return A.Score > B.Score;
-	});
-
-	// Build result
-	TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
-	Data->SetStringField(TEXT("query"), Query);
-
-	// Return top 3 matches
-	static constexpr int32 MaxResults = 3;
-	TArray<TSharedPtr<FJsonValue>> MatchesArray;
-
-	const int32 ResultCount = FMath::Min(ScoredEntries.Num(), MaxResults);
-	for (int32 i = 0; i < ResultCount; ++i)
-	{
-		const FScoredEntry& Entry = ScoredEntries[i];
-		const FString* Content = RecipeLibrary.Find(Entry.Key);
-		const TArray<FString>* Tags = RecipeTags.Find(Entry.Key);
-
-		TSharedPtr<FJsonObject> MatchObj = MakeShared<FJsonObject>();
-		MatchObj->SetStringField(TEXT("key"), Entry.Key);
-		MatchObj->SetNumberField(TEXT("score"), Entry.Score);
-
-		// Include tags array
-		TArray<TSharedPtr<FJsonValue>> TagsJsonArray;
-		if (Tags)
-		{
-			for (const FString& Tag : *Tags)
-			{
-				TagsJsonArray.Add(MakeShared<FJsonValueString>(Tag));
-			}
-		}
-		MatchObj->SetArrayField(TEXT("tags"), TagsJsonArray);
-
-		if (Content)
-		{
-			MatchObj->SetStringField(TEXT("content"), *Content);
-		}
-
-		MatchesArray.Add(MakeShared<FJsonValueObject>(MatchObj));
-	}
-
-	Data->SetArrayField(TEXT("matches"), MatchesArray);
-
-	// If no matches, provide a summary of all available entries so the AI can refine its query
-	if (ScoredEntries.Num() == 0)
-	{
-		TArray<TSharedPtr<FJsonValue>> AvailableArray;
-		for (const auto& Pair : RecipeLibrary)
-		{
-			TSharedPtr<FJsonObject> EntryObj = MakeShared<FJsonObject>();
-			EntryObj->SetStringField(TEXT("key"), Pair.Key);
-
-			const TArray<FString>* Tags = RecipeTags.Find(Pair.Key);
-			TArray<TSharedPtr<FJsonValue>> TagsJsonArray;
-			if (Tags)
-			{
-				for (const FString& Tag : *Tags)
-				{
-					TagsJsonArray.Add(MakeShared<FJsonValueString>(Tag));
-				}
-			}
-			EntryObj->SetArrayField(TEXT("tags"), TagsJsonArray);
-
-			AvailableArray.Add(MakeShared<FJsonValueObject>(EntryObj));
-		}
-		Data->SetArrayField(TEXT("available_entries"), AvailableArray);
-	}
 
 	return FOliveToolResult::Success(Data);
 }
