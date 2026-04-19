@@ -40,17 +40,6 @@ enum class EOliveRunOutcome : uint8
 	Cancelled           // User cancelled
 };
 
-/**
- * Chat interaction mode -- controls tool access and AI behavior.
- * Modeled after Claude Code CLI's /code, /plan, /ask commands.
- */
-enum class EOliveChatMode : uint8
-{
-	Code,   // Full autonomous execution -- all tools, no confirmation except destructive ops
-	Plan,   // Read + plan -- write tools return PLAN_MODE error, preview allowed
-	Ask     // Read-only -- write tools return ASK_MODE error
-};
-
 /** Convert state enum to string for logging */
 inline const TCHAR* LexToString(EOliveBrainState State)
 {
@@ -88,30 +77,3 @@ inline const TCHAR* LexToString(EOliveRunOutcome Outcome)
 	}
 }
 
-inline const TCHAR* LexToString(EOliveChatMode Mode)
-{
-	switch (Mode)
-	{
-	case EOliveChatMode::Code: return TEXT("Code");
-	case EOliveChatMode::Plan: return TEXT("Plan");
-	case EOliveChatMode::Ask:  return TEXT("Ask");
-	default: return TEXT("Unknown");
-	}
-}
-
-// Forward declaration -- full UENUM definition lives in OliveAISettings.h (Task 4).
-// The enums are value-identical (Code=0, Plan=1, Ask=2), so static_cast is safe.
-enum class EOliveChatModeConfig : uint8;
-
-/**
- * Converts the settings-serializable EOliveChatModeConfig to the runtime EOliveChatMode.
- * Both enums share the same ordinal layout so a static_cast is sufficient.
- *
- * NOTE: This function cannot be defined inline here because EOliveChatModeConfig is only
- * forward-declared. Include OliveAISettings.h before calling this, or use the definition
- * provided in OliveAISettings.h after EOliveChatModeConfig is fully defined there.
- */
-inline EOliveChatMode ChatModeFromConfig(EOliveChatModeConfig C)
-{
-	return static_cast<EOliveChatMode>(static_cast<uint8>(C));
-}

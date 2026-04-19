@@ -24,18 +24,6 @@ enum class EOliveAIProvider : uint8
 };
 
 /**
- * Default chat mode for the built-in chat panel.
- * Mirrors EOliveChatMode (runtime enum in OliveBrainState.h) for Config serialization.
- */
-UENUM(BlueprintType)
-enum class EOliveChatModeConfig : uint8
-{
-	Code UMETA(DisplayName = "Code (Autonomous)"),
-	Plan UMETA(DisplayName = "Plan (Review First)"),
-	Ask  UMETA(DisplayName = "Ask (Read-Only)")
-};
-
-/**
  * Olive AI Studio Settings
  *
  * Configuration settings for the AI-powered development assistant.
@@ -242,12 +230,6 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category="User Interface",
 		meta=(DisplayName="Auto-Scroll Chat"))
 	bool bAutoScrollChat = true;
-
-	/** Default chat mode when opening the chat panel.
-	 *  Code: full autonomous execution. Plan: read + plan, writes require confirmation. Ask: read-only. */
-	UPROPERTY(Config, EditAnywhere, Category="Chat",
-		meta=(DisplayName="Default Chat Mode"))
-	EOliveChatModeConfig DefaultChatMode = EOliveChatModeConfig::Code;
 
 	// ==========================================
 	// Policy Settings

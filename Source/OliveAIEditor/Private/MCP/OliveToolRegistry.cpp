@@ -1407,50 +1407,6 @@ TOptional<FOliveToolDefinition> FOliveToolRegistry::GetTool(const FString& Name)
 	return TOptional<FOliveToolDefinition>();
 }
 
-TArray<FOliveToolDefinition> FOliveToolRegistry::GetToolsForMode(EOliveChatMode Mode) const
-{
-	// Code and Plan modes return all tools.
-	// Plan mode blocks writes at the pipeline level (Stage 2 mode gate), not here.
-	// This lets the AI see write tool schemas for planning purposes.
-	if (Mode != EOliveChatMode::Ask)
-	{
-		return GetAllTools();
-	}
-
-	// Ask mode: return only read/discovery tools.
-	// Exclude tools with any write-family tag. Include everything else (safe default).
-	// Write-family tags that cause exclusion:
-	static const TSet<FString> ExcludeTags = {
-		TEXT("write"), TEXT("danger"), TEXT("refactor"),
-		TEXT("create"), TEXT("delete")
-	};
-
-	TArray<FOliveToolDefinition> Result;
-
-	FRWScopeLock ReadLock(ToolsLock, SLT_ReadOnly);
-	for (const auto& Pair : Tools)
-	{
-		const FOliveToolDefinition& Definition = Pair.Value.Definition;
-
-		bool bHasExcludeTag = false;
-		for (const FString& Tag : Definition.Tags)
-		{
-			if (ExcludeTags.Contains(Tag))
-			{
-				bHasExcludeTag = true;
-				break;
-			}
-		}
-
-		if (!bHasExcludeTag)
-		{
-			Result.Add(Definition);
-		}
-	}
-
-	return Result;
-}
-
 TArray<FOliveToolDefinition> FOliveToolRegistry::GetToolsByCategory(const FString& Category) const
 {
 	TArray<FOliveToolDefinition> Result;

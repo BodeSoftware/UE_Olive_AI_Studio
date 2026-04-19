@@ -135,9 +135,6 @@ void UOliveAISettings::PostInitProperties()
 		Provider = EOliveAIProvider::OpenRouter;
 	}
 
-	UE_LOG(LogOliveAI, Log, TEXT("OliveAISettings: DefaultChatMode = %s"),
-		DefaultChatMode == EOliveChatModeConfig::Code ? TEXT("Code") :
-		DefaultChatMode == EOliveChatModeConfig::Plan ? TEXT("Plan") : TEXT("Ask"));
 }
 
 #if WITH_EDITOR
