@@ -208,6 +208,8 @@ void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 	ConversationManager->OnProcessingStarted.AddSP(this, &SOliveAIChatPanel::HandleProcessingStarted);
 	ConversationManager->OnProcessingComplete.AddSP(this, &SOliveAIChatPanel::HandleProcessingComplete);
 	ConversationManager->OnError.AddSP(this, &SOliveAIChatPanel::HandleError);
+	ConversationManager->OnModeChanged.AddSP(this, &SOliveAIChatPanel::HandleModeChanged);
+	ConversationManager->OnModeSwitchDeferred.AddSP(this, &SOliveAIChatPanel::HandleModeSwitchDeferred);
 
 	// Subscribe to editor events for auto-context
 	SubscribeToEditorEvents();
@@ -304,6 +306,16 @@ void SOliveAIChatPanel::Construct(const FArguments& InArgs)
 
 FReply SOliveAIChatPanel::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
 {
+	// Ctrl+Shift+M cycles through chat modes
+	if (InKeyEvent.GetKey() == EKeys::M
+		&& InKeyEvent.IsControlDown()
+		&& InKeyEvent.IsShiftDown()
+		&& !InKeyEvent.IsAltDown())
+	{
+		CycleMode();
+		return FReply::Handled();
+	}
+
 	return SCompoundWidget::OnKeyDown(MyGeometry, InKeyEvent);
 }
 
@@ -334,6 +346,8 @@ SOliveAIChatPanel::~SOliveAIChatPanel()
 		ConversationManager->OnProcessingStarted.RemoveAll(this);
 		ConversationManager->OnProcessingComplete.RemoveAll(this);
 		ConversationManager->OnError.RemoveAll(this);
+		ConversationManager->OnModeChanged.RemoveAll(this);
+		ConversationManager->OnModeSwitchDeferred.RemoveAll(this);
 	}
 
 	// Notify the session that the panel is closed. Operations in flight
@@ -480,6 +494,15 @@ TSharedRef<SWidget> SOliveAIChatPanel::BuildMessageArea()
 TSharedRef<SWidget> SOliveAIChatPanel::BuildInputArea()
 {
 	return SNew(SHorizontalBox)
+
+		// Mode Badge
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		.Padding(0, 0, 4, 0)
+		[
+			BuildModeBadge()
+		]
 
 		// Input Field
 		+ SHorizontalBox::Slot()
@@ -1105,6 +1128,108 @@ bool SOliveAIChatPanel::IsSendEnabled() const
 }
 
 // ==========================================
+// Mode Badge
+// ==========================================
+
+TSharedRef<SWidget> SOliveAIChatPanel::BuildModeBadge()
+{
+	return SNew(SButton)
+		.ButtonStyle(&FAppStyle::Get().GetWidgetStyle<FButtonStyle>("FlatButton"))
+		.OnClicked(this, &SOliveAIChatPanel::OnModeBadgeClicked)
+		.ToolTipText(LOCTEXT("ModeBadgeTooltip", "Click to cycle mode (Code/Plan/Ask), or type /code /plan /ask.\nCtrl+Shift+M to cycle."))
+		.ContentPadding(FMargin(8, 2))
+		[
+			SNew(SBorder)
+			.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
+			.BorderBackgroundColor_Lambda([this]() -> FSlateColor
+			{
+				return FSlateColor(GetModeBadgeBackgroundColor());
+			})
+			.Padding(FMargin(6, 2))
+			[
+				SNew(STextBlock)
+				.Text(this, &SOliveAIChatPanel::GetModeBadgeText)
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+				.ColorAndOpacity(this, &SOliveAIChatPanel::GetModeBadgeColor)
+			]
+		];
+}
+
+FReply SOliveAIChatPanel::OnModeBadgeClicked()
+{
+	CycleMode();
+	return FReply::Handled();
+}
+
+void SOliveAIChatPanel::CycleMode()
+{
+	if (!ConversationManager.IsValid())
+	{
+		return;
+	}
+
+	const EOliveChatMode Current = ConversationManager->GetChatMode();
+	EOliveChatMode Next;
+	switch (Current)
+	{
+	case EOliveChatMode::Code: Next = EOliveChatMode::Plan; break;
+	case EOliveChatMode::Plan: Next = EOliveChatMode::Ask;  break;
+	case EOliveChatMode::Ask:  Next = EOliveChatMode::Code; break;
+	default:                   Next = EOliveChatMode::Code; break;
+	}
+
+	ConversationManager->SetChatMode(Next);
+}
+
+FText SOliveAIChatPanel::GetModeBadgeText() const
+{
+	if (!ConversationManager.IsValid())
+	{
+		return LOCTEXT("ModeBadgeCode", "CODE");
+	}
+
+	switch (ConversationManager->GetChatMode())
+	{
+	case EOliveChatMode::Code: return LOCTEXT("ModeBadgeCode", "CODE");
+	case EOliveChatMode::Plan: return LOCTEXT("ModeBadgePlan", "PLAN");
+	case EOliveChatMode::Ask:  return LOCTEXT("ModeBadgeAsk", "ASK");
+	default:                   return LOCTEXT("ModeBadgeCode", "CODE");
+	}
+}
+
+FSlateColor SOliveAIChatPanel::GetModeBadgeColor() const
+{
+	if (!ConversationManager.IsValid())
+	{
+		return FSlateColor(FLinearColor(0.298f, 0.686f, 0.314f)); // Green
+	}
+
+	switch (ConversationManager->GetChatMode())
+	{
+	case EOliveChatMode::Code: return FSlateColor(FLinearColor(0.298f, 0.686f, 0.314f)); // #4CAF50
+	case EOliveChatMode::Plan: return FSlateColor(FLinearColor(1.0f, 0.757f, 0.027f));   // #FFC107
+	case EOliveChatMode::Ask:  return FSlateColor(FLinearColor(0.129f, 0.588f, 0.953f)); // #2196F3
+	default:                   return FSlateColor(FLinearColor(0.298f, 0.686f, 0.314f));
+	}
+}
+
+FLinearColor SOliveAIChatPanel::GetModeBadgeBackgroundColor() const
+{
+	if (!ConversationManager.IsValid())
+	{
+		return FLinearColor(0.298f, 0.686f, 0.314f, 0.2f);
+	}
+
+	switch (ConversationManager->GetChatMode())
+	{
+	case EOliveChatMode::Code: return FLinearColor(0.298f, 0.686f, 0.314f, 0.2f); // Green at 20%
+	case EOliveChatMode::Plan: return FLinearColor(1.0f, 0.596f, 0.0f, 0.2f);     // Amber at 20%
+	case EOliveChatMode::Ask:  return FLinearColor(0.129f, 0.588f, 0.953f, 0.2f); // Blue at 20%
+	default:                   return FLinearColor(0.298f, 0.686f, 0.314f, 0.2f);
+	}
+}
+
+// ==========================================
 // Slash Commands
 // ==========================================
 
@@ -1115,21 +1240,62 @@ void SOliveAIChatPanel::HandleSlashCommand(const FString& Command)
 		return;
 	}
 
-	const FString Cmd = Command.ToLower().TrimStartAndEnd();
+	FString Cmd = Command.ToLower().TrimStartAndEnd();
 
-	if (Cmd == TEXT("/code") || Cmd == TEXT("/plan") || Cmd == TEXT("/ask"))
+	if (Cmd == TEXT("/code"))
 	{
-		// /code, /plan, /ask are silent no-ops after mode removal (back-compat).
-		return;
+		ConversationManager->SetChatMode(EOliveChatMode::Code);
+	}
+	else if (Cmd == TEXT("/plan"))
+	{
+		ConversationManager->SetChatMode(EOliveChatMode::Plan);
+	}
+	else if (Cmd == TEXT("/ask"))
+	{
+		ConversationManager->SetChatMode(EOliveChatMode::Ask);
+	}
+	else if (Cmd == TEXT("/mode"))
+	{
+		AddSystemMessage(FString::Printf(TEXT("Current mode: %s"), LexToString(ConversationManager->GetChatMode())));
 	}
 	else if (Cmd == TEXT("/status"))
 	{
-		const int32 ToolCount = FOliveToolRegistry::Get().GetAllTools().Num();
+		const int32 ToolCount = FOliveToolRegistry::Get().GetToolsForMode(ConversationManager->GetChatMode()).Num();
 		const bool bProcessing = ConversationManager->IsProcessing();
-		AddSystemMessage(FString::Printf(TEXT("Processing: %s | Tools: %d"),
+		AddSystemMessage(FString::Printf(TEXT("Mode: %s | Processing: %s | Tools: %d"),
+			LexToString(ConversationManager->GetChatMode()),
 			bProcessing ? TEXT("Yes") : TEXT("No"),
 			ToolCount));
 	}
+}
+
+// ==========================================
+// Mode Change Handlers
+// ==========================================
+
+void SOliveAIChatPanel::HandleModeChanged(EOliveChatMode NewMode)
+{
+	// Insert a system message describing the new mode
+	switch (NewMode)
+	{
+	case EOliveChatMode::Code:
+		AddSystemMessage(TEXT("Switched to Code mode. All tools active. Executing autonomously."));
+		break;
+	case EOliveChatMode::Plan:
+		AddSystemMessage(TEXT("Switched to Plan mode. Read tools active. Write tools blocked until you approve."));
+		break;
+	case EOliveChatMode::Ask:
+		AddSystemMessage(TEXT("Switched to Ask mode. Read-only. No changes will be made."));
+		break;
+	}
+
+	// Badge auto-updates via polling lambdas -- no explicit invalidation needed
+}
+
+void SOliveAIChatPanel::HandleModeSwitchDeferred(EOliveChatMode PendingMode)
+{
+	AddSystemMessage(FString::Printf(TEXT("Mode will switch to %s after the current operation finishes."),
+		LexToString(PendingMode)));
 }
 
 void SOliveAIChatPanel::AddSystemMessage(const FString& Message)

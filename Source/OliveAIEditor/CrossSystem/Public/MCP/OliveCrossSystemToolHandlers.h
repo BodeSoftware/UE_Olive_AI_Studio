@@ -15,12 +15,9 @@ class FSQLiteDatabase;
  * Registers and handles all cross-system MCP tools.
  * Bridges bulk operations, snapshots, and composite creation.
  *
- * Tool Categories (post-P5 consolidation):
- * - Read: project.read (include-array dispatch), project.refactor_rename
- * - Snapshot: project.snapshot (action-dispatch, subsumes list), project.rollback, project.diff
- * - Index: project.index (action-dispatch, subsumes build/status)
- * - Search: project.search (alias for get_relevant_context)
- * - Community: olive.search_community_blueprints
+ * Tool Categories:
+ * - Bulk: project.bulk_read, implement_interface, refactor_rename, create_ai_character, move_to_cpp
+ * - Snapshot: project.snapshot, list_snapshots, rollback, diff
  */
 class OLIVEAIEDITOR_API FOliveCrossSystemToolHandlers
 {
@@ -41,23 +38,20 @@ private:
 	FOliveCrossSystemToolHandlers& operator=(const FOliveCrossSystemToolHandlers&) = delete;
 
 	// Registration helpers
-	void RegisterReadTools();
+	void RegisterBulkTools();
+	void RegisterBatchTools();
 	void RegisterSnapshotTools();
 	void RegisterIndexTools();
 
-	// Consolidated P5 read dispatcher — dispatches on `include` array; merges
-	// results from multiple read-family handlers into a single response.
-	FOliveToolResult HandleProjectRead(const TSharedPtr<FJsonObject>& Params);
-
-	// Consolidated P5 index dispatcher — dispatches on `action` ("build" | "status").
-	FOliveToolResult HandleProjectIndex(const TSharedPtr<FJsonObject>& Params);
-
-	// Sub-handlers used by HandleProjectRead (kept private to this module)
+	// Bulk operation handlers
 	FOliveToolResult HandleBulkRead(const TSharedPtr<FJsonObject>& Params);
-	FOliveToolResult HandleGetRelevantContext(const TSharedPtr<FJsonObject>& Params);
-
-	// Refactor handler (survives)
+	FOliveToolResult HandleImplementInterface(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleRefactorRename(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandleCreateAICharacter(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandleMoveToCpp(const TSharedPtr<FJsonObject>& Params);
+
+	// Batch write handler
+	FOliveToolResult HandleBatchWrite(const TSharedPtr<FJsonObject>& Params);
 
 	// Snapshot handlers
 	FOliveToolResult HandleSnapshot(const TSharedPtr<FJsonObject>& Params);
@@ -65,9 +59,27 @@ private:
 	FOliveToolResult HandleRollback(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleDiff(const TSharedPtr<FJsonObject>& Params);
 
-	// Index sub-handlers used by HandleProjectIndex
+	// Index / context handlers
 	FOliveToolResult HandleIndexBuild(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleIndexStatus(const TSharedPtr<FJsonObject>& Params);
+	FOliveToolResult HandleGetRelevantContext(const TSharedPtr<FJsonObject>& Params);
+
+	// Recipe system
+	void RegisterRecipeTools();
+	void LoadRecipeLibrary();
+	FOliveToolResult HandleGetRecipe(const TSharedPtr<FJsonObject>& Params);
+
+	/** Loaded recipes: Key = "category/name", Value = file content */
+	TMap<FString, FString> RecipeLibrary;
+
+	/** Manifest data: Key = "category/name", Value = description */
+	TMap<FString, FString> RecipeDescriptions;
+
+	/** Categories discovered from manifest */
+	TArray<FString> RecipeCategories;
+
+	/** Tags per recipe entry for keyword search. Key = "category/name" */
+	TMap<FString, TArray<FString>> RecipeTags;
 
 	// Community Blueprint search
 	void RegisterCommunityTools();

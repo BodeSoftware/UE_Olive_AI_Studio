@@ -157,29 +157,11 @@ namespace OliveBlueprintSchemas
 	TSharedPtr<FJsonObject> BlueprintCompile();
 
 	/**
-	 * Schema for blueprint.delete (consolidated)
-	 * Delete an entity from a Blueprint. When 'entity' is omitted (or is 'blueprint'),
-	 * deletes the whole Blueprint asset. Otherwise dispatches to a specialized remover.
-	 * Params: {path: string, entity?: "blueprint"|"node"|"component"|"variable"|"function"|"interface",
-	 *          node_id?, component_name?, variable_name?, function_name?, interface_path?}
+	 * Schema for blueprint.delete
+	 * Delete Blueprint
+	 * Params: {path: string}
 	 */
 	TSharedPtr<FJsonObject> BlueprintDelete();
-
-	/**
-	 * Schema for blueprint.modify (consolidated)
-	 * Modify an entity on a Blueprint. Dispatches on 'entity' + 'action'.
-	 * Params: {path: string, entity: "component"|"function"|"variable"|"node"|"pin_default"|"blueprint",
-	 *          action: string, ...entity-specific fields}
-	 */
-	TSharedPtr<FJsonObject> BlueprintModify();
-
-	/**
-	 * Schema for blueprint.add (consolidated)
-	 * Add an entity to a Blueprint. Dispatches on 'entity'.
-	 * Params: {path: string, entity: "node"|"variable"|"function"|"component"|"custom_event"|
-	 *          "event_dispatcher"|"interface"|"timeline", ...entity-specific fields}
-	 */
-	TSharedPtr<FJsonObject> BlueprintAdd();
 
 	// ============================================================================
 	// Variable Writer Tool Schemas
@@ -336,6 +318,13 @@ namespace OliveBlueprintSchemas
 	// ============================================================================
 	// Template Tool Schemas
 	// ============================================================================
+
+	/**
+	 * Schema for blueprint.create_from_template
+	 * Create a complete Blueprint from a factory template.
+	 * Params: {template_id: string, path: string, preset?: string, parameters?: object}
+	 */
+	TSharedPtr<FJsonObject> BlueprintCreateFromTemplate();
 
 	/**
 	 * Schema for blueprint.get_template

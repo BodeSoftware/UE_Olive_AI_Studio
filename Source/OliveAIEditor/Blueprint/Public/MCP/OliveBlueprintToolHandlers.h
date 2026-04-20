@@ -116,12 +116,6 @@ private:
 	FOliveToolResult HandleBlueprintCompile(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlueprintDelete(const TSharedPtr<FJsonObject>& Params);
 
-	/** Unified blueprint.modify dispatcher -- routes on entity + action */
-	FOliveToolResult HandleBlueprintModify(const TSharedPtr<FJsonObject>& Params);
-
-	/** Unified blueprint.add dispatcher -- routes on entity */
-	FOliveToolResult HandleBlueprintAdd(const TSharedPtr<FJsonObject>& Params);
-
 	/** Create a new Blueprint Interface (BPI) asset with function signatures */
 	FOliveToolResult HandleBlueprintCreateInterface(const TSharedPtr<FJsonObject>& Params);
 
@@ -171,6 +165,21 @@ private:
 	void RegisterTemplateTools();
 	FOliveToolResult HandleBlueprintGetTemplate(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlueprintListTemplates(const TSharedPtr<FJsonObject>& Params);
+
+	/**
+	 * Create a Blueprint from a factory template.
+	 * Delegates to FOliveTemplateSystem::ApplyTemplate() which handles parameter
+	 * substitution, component/variable/dispatcher creation, and plan execution.
+	 *
+	 * @param TemplateId  Factory template ID (e.g., "gun", "projectile")
+	 * @param AssetPath   Blueprint asset path to create (e.g., "/Game/Blueprints/BP_Pistol")
+	 * @param Params      Full tool parameters (may contain "preset" and "parameters"/"template_params")
+	 * @return Tool result with created asset info or error
+	 */
+	FOliveToolResult HandleBlueprintCreateFromTemplate(
+		const FString& TemplateId,
+		const FString& AssetPath,
+		const TSharedPtr<FJsonObject>& Params);
 
 	// ============================================================================
 	// Graph Writer Tool Handlers

@@ -3,12 +3,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Brain/OliveBrainState.h"
 
 /**
  * Prompt Assembler
  *
  * Assembles system prompts from templates and context.
  * Handles token estimation and context truncation.
+ * Uses EOliveChatMode (Code/Plan/Ask) to append mode-specific behavioral suffixes.
  */
 class OLIVEAIEDITOR_API FOlivePromptAssembler
 {
@@ -25,11 +27,13 @@ public:
 
 	/**
 	 * Assemble the full system prompt
+	 * @param Mode Active chat mode (Code, Plan, or Ask)
 	 * @param ContextAssetPaths Assets in context
 	 * @param MaxTokens Maximum tokens for context
 	 * @return Assembled system prompt
 	 */
 	FString AssembleSystemPrompt(
+		EOliveChatMode Mode,
 		const TArray<FString>& ContextAssetPaths,
 		int32 MaxTokens = 4000
 	);
@@ -37,12 +41,14 @@ public:
 	/**
 	 * Assemble full prompt with a base override.
 	 * @param BasePromptOverride Prompt text to use as the base component
+	 * @param Mode Active chat mode (Code, Plan, or Ask)
 	 * @param ContextAssetPaths Assets in context
 	 * @param MaxTokens Maximum tokens for context
 	 * @return Assembled system prompt
 	 */
 	FString AssembleSystemPromptWithBase(
 		const FString& BasePromptOverride,
+		EOliveChatMode Mode,
 		const TArray<FString>& ContextAssetPaths,
 		int32 MaxTokens = 4000
 	);
@@ -144,12 +150,22 @@ private:
 	/** Shared internal prompt assembly implementation */
 	FString AssembleSystemPromptInternal(
 		const FString& BasePrompt,
+		EOliveChatMode Mode,
 		const TArray<FString>& ContextAssetPaths,
 		int32 MaxTokens
 	);
 
 	/** Load prompt templates from Content folder */
 	void LoadPromptTemplates();
+
+	/**
+	 * Returns the mode-specific behavioral suffix appended as the last paragraph
+	 * of the system prompt. ~50 tokens per mode.
+	 *
+	 * @param Mode Active chat mode
+	 * @return Mode suffix text
+	 */
+	FString GetModeSuffix(EOliveChatMode Mode) const;
 
 	/** Base system prompt template */
 	FString BasePromptTemplate;

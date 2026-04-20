@@ -9,16 +9,15 @@
 DECLARE_LOG_CATEGORY_EXTERN(LogOliveTemplates, Log, All);
 
 /**
- * Metadata for a loaded reference template.
+ * Metadata for a loaded template (both factory and reference).
  * Populated during Initialize() from JSON files on disk.
- * Library templates are tracked separately by FOliveLibraryIndex.
  */
 struct OLIVEAIEDITOR_API FOliveTemplateInfo
 {
     /** Unique template identifier (filename without extension) */
     FString TemplateId;
 
-    /** Template type (currently "reference" is the only supported type). */
+    /** "factory" or "reference" */
     FString TemplateType;
 
     /** Human-readable display name */
@@ -36,7 +35,7 @@ struct OLIVEAIEDITOR_API FOliveTemplateInfo
     /** Absolute path to the JSON file on disk */
     FString FilePath;
 
-    /** Full parsed JSON content (cached for GetTemplateContent) */
+    /** Full parsed JSON content (cached for ApplyTemplate and GetTemplateContent) */
     TSharedPtr<FJsonObject> FullJson;
 };
 
@@ -167,13 +166,9 @@ private:
 /**
  * FOliveTemplateSystem
  *
- * Loads reference template JSON files from Content/Templates/reference/ and builds
- * an auto-generated catalog block for prompt injection. Reference templates are
- * hand-written architecture/pattern documentation — they are read-only and are
- * surfaced via blueprint.get_template / blueprint.list_templates.
- *
- * Library templates (extracted Blueprint data) are tracked separately by
- * FOliveLibraryIndex which is owned by this class.
+ * Loads template JSON files from Content/Templates/, builds an auto-generated
+ * catalog block for prompt injection, and provides ApplyTemplate() for factory
+ * template execution.
  *
  * Singleton. Game thread only.
  *
@@ -212,31 +207,46 @@ public:
     /** Get all loaded template infos. */
     const TMap<FString, FOliveTemplateInfo>& GetAllTemplates() const { return Templates; }
 
-    /** Get templates filtered by type (currently only "reference" is supported). */
+    /** Get templates filtered by type ("factory" or "reference"). */
     TArray<const FOliveTemplateInfo*> GetTemplatesByType(const FString& Type) const;
 
     /** Return true if at least one template is loaded. */
     bool HasTemplates() const { return Templates.Num() > 0; }
 
-    /** Search across all indexed templates (library + reference). */
+    /** Search across all indexed templates (library + factory). */
     TArray<TSharedPtr<FJsonObject>> SearchTemplates(const FString& Query, int32 MaxResults = 20) const;
 
     /** Access the library index directly. */
     const FOliveLibraryIndex& GetLibraryIndex() const { return LibraryIndex; }
 
     // ============================================================
-    // Content Lookup
+    // Execution
     // ============================================================
 
     /**
+     * Apply a factory template: create Blueprint, add variables, add dispatchers,
+     * create functions, execute plan JSON for each function, compile.
+     *
+     * @param TemplateId   Factory template ID
+     * @param UserParams   Parameter overrides from the AI
+     * @param PresetName   Optional preset name (applied before UserParams)
+     * @param AssetPath    Where to create the Blueprint (/Game/...)
+     * @return Tool result with created asset info or error
+     */
+    FOliveToolResult ApplyTemplate(
+        const FString& TemplateId,
+        const TMap<FString, FString>& UserParams,
+        const FString& PresetName,
+        const FString& AssetPath);
+
+    /**
      * Get a template's content as a formatted string for AI reference reading.
+     * For factory templates: parameter schema + presets + function plan outlines.
      * For reference templates: all patterns (or a specific one).
-     * For library templates: delegated to FOliveLibraryIndex.
      *
      * @param TemplateId   Template ID
-     * @param PatternName  For reference templates, optional specific pattern;
-     *                     for library templates, optional function name
-     * @return Formatted content string, or empty string if not found
+     * @param PatternName  For reference templates, optional specific pattern
+     * @return Formatted content string, or empty + error via out param
      */
     FString GetTemplateContent(
         const FString& TemplateId,
@@ -268,6 +278,37 @@ private:
 
     /** Rebuild CachedCatalog from all loaded Templates. */
     void RebuildCatalog();
+
+    // ============================================================
+    // Parameter Substitution
+    // ============================================================
+
+    /**
+     * Merge default parameters from the template schema with user overrides.
+     * If PresetName is non-empty, preset values are applied between defaults
+     * and user overrides.
+     */
+    TMap<FString, FString> MergeParameters(
+        const FOliveTemplateInfo& Info,
+        const TMap<FString, FString>& UserParams,
+        const FString& PresetName) const;
+
+    /**
+     * Replace ${param} tokens in a JSON string with values from MergedParams.
+     * Logs warnings for any unsubstituted tokens.
+     */
+    FString SubstituteParameters(
+        const FString& Input,
+        const TMap<FString, FString>& MergedParams) const;
+
+    /**
+     * Evaluate simple conditional expressions like "${start_full} ? ${max_value} : 0".
+     * Only supports bool ternary for defaults. Returns the substituted string
+     * with conditionals resolved.
+     */
+    FString EvaluateConditionals(
+        const FString& Input,
+        const TMap<FString, FString>& MergedParams) const;
 
     // ============================================================
     // State

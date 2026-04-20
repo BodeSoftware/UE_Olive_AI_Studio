@@ -418,12 +418,13 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 
 	AgentContext += TEXT("## Research\n\n");
 	AgentContext += TEXT("Research tools help you verify assumptions before writing graph logic:\n");
-	AgentContext += TEXT("- `blueprint.list_templates(query=\"...\")` -- search library/reference templates for patterns\n");
+	AgentContext += TEXT("- `blueprint.list_templates(query=\"...\")` -- search library/factory templates for patterns\n");
 	AgentContext += TEXT("- `blueprint.get_template(id, pattern=\"FuncName\")` -- read specific function implementations\n");
 	AgentContext += TEXT("- `blueprint.describe_function(function_name, target_class)` -- verify function exists and get pin signatures\n");
 	AgentContext += TEXT("- `blueprint.describe_node_type(type)` -- check K2Node properties and pins\n");
-	AgentContext += TEXT("- `project.search(query)` -- find existing assets by name\n\n");
-	AgentContext += TEXT("For complex or unfamiliar patterns, list_templates can provide reference. Skip research for straightforward tasks.\n");
+	AgentContext += TEXT("- `project.search(query)` -- find existing assets by name\n");
+	AgentContext += TEXT("- `olive.get_recipe(query)` -- tested wiring patterns for common tasks\n\n");
+	AgentContext += TEXT("For complex or unfamiliar patterns, get_recipe or list_templates can provide reference. Skip research for straightforward tasks.\n");
 	AgentContext += TEXT("For inventory/pickup systems: search pickup, inventory, widget. For combat: search damage, health, weapon.\n");
 	AgentContext += TEXT("Research is mandatory, not optional — it takes 10 seconds and prevents 10 minutes of failures.\n");
 	AgentContext += TEXT("Exception: if search returns no relevant results (0-1 weak matches), proceed without.\n\n");
@@ -920,6 +921,7 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 	// Subscribe to MCP tool call events for activity-based timeout tracking.
 	LastToolCallTimestamp.store(FPlatformTime::Seconds());
 	ScaffoldingOpCount.store(0);
+	RecipeCallCount.store(0);
 	if (ToolCallDelegateHandle.IsValid())
 	{
 		FOliveMCPServer::Get().OnToolCalled.Remove(ToolCallDelegateHandle);
@@ -934,6 +936,7 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 
 				// Track complexity signals for adaptive idle timeout
 				if (IsScaffoldingOperation(ToolName)) { ScaffoldingOpCount.fetch_add(1); }
+				if (ToolName == TEXT("olive.get_recipe")) { RecipeCallCount.fetch_add(1); }
 			}
 		});
 
@@ -1697,6 +1700,58 @@ FString FOliveCLIProviderBase::BuildCLISystemPrompt(const FString& UserTask, con
 	}
 
 	// ==========================================
+	// Recipe manifest summary (so the AI can make targeted get_recipe calls)
+	// ==========================================
+	{
+		const FString ManifestPath = FPaths::Combine(
+			FPaths::ProjectPluginsDir(), TEXT("UE_Olive_AI_Studio"),
+			TEXT("Content/SystemPrompts/Knowledge/recipes/blueprint/_manifest.json"));
+
+		FString ManifestJson;
+		if (FFileHelper::LoadFileToString(ManifestJson, *ManifestPath))
+		{
+			TSharedPtr<FJsonObject> Manifest;
+			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ManifestJson);
+			if (FJsonSerializer::Deserialize(Reader, Manifest) && Manifest.IsValid())
+			{
+				FString Summary = TEXT("## Available Recipes (call olive.get_recipe with the recipe name for full details)\n");
+				const TArray<TSharedPtr<FJsonValue>>* Recipes = nullptr;
+				if (Manifest->TryGetArrayField(TEXT("recipes"), Recipes) && Recipes)
+				{
+					for (const auto& RecipeVal : *Recipes)
+					{
+						const TSharedPtr<FJsonObject>* RecipeObj = nullptr;
+						if (RecipeVal->TryGetObject(RecipeObj) && RecipeObj && (*RecipeObj).IsValid())
+						{
+							FString Name;
+							(*RecipeObj)->TryGetStringField(TEXT("name"), Name);
+
+							FString TagsStr;
+							const TArray<TSharedPtr<FJsonValue>>* Tags = nullptr;
+							if ((*RecipeObj)->TryGetArrayField(TEXT("tags"), Tags) && Tags)
+							{
+								TArray<FString> TagStrs;
+								for (const auto& T : *Tags)
+								{
+									TagStrs.Add(T->AsString());
+								}
+								TagsStr = FString::Join(TagStrs, TEXT(", "));
+							}
+
+							if (!Name.IsEmpty())
+							{
+								Summary += FString::Printf(TEXT("- %s (%s)\n"), *Name, *TagsStr);
+							}
+						}
+					}
+					SystemPrompt += Summary;
+					SystemPrompt += TEXT("\n");
+				}
+			}
+		}
+	}
+
+	// ==========================================
 	// Template catalog (factory + reference templates)
 	// ==========================================
 	if (FOliveTemplateSystem::Get().HasTemplates())
@@ -1723,8 +1778,8 @@ FString FOliveCLIProviderBase::BuildCLISystemPrompt(const FString& UserTask, con
 		if (LibResults.Num() > 0)
 		{
 			FString LibBlock = TEXT("## Reference Patterns (from library templates matching your task)\n");
-			LibBlock += TEXT("These are wiring references from real shipped projects — not boilerplate to copy exactly. ");
-			LibBlock += TEXT("Study the wiring approach (what functions they call, ");
+			LibBlock += TEXT("These are NOT factory templates — they are wiring references from real shipped projects. ");
+			LibBlock += TEXT("You do NOT need to copy them exactly. Study the wiring approach (what functions they call, ");
 			LibBlock += TEXT("how they wire spawn transforms, collision setup, component targets, etc.) and adapt the patterns to your build.\n\n");
 
 			for (const TSharedPtr<FJsonObject>& Result : LibResults)

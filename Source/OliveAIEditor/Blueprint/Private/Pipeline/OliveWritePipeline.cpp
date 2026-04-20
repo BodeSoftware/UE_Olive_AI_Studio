@@ -152,7 +152,22 @@ FOliveWriteResult FOliveWritePipeline::Execute(const FOliveWriteRequest& Request
 		return ValidateResult;
 	}
 
-	// Stage 2: Transact
+	// Stage 2: Mode Gate
+	// Always applied -- ChatMode is the single source of truth for mode gating.
+	// External MCP agents get ChatMode=Code (unrestricted) by default.
+	// In-engine autonomous agents inherit the user's chat mode via MCP server propagation.
+	{
+		TOptional<FOliveWriteResult> ModeGateResult = StageModeGate(Request);
+		if (ModeGateResult.IsSet())
+		{
+			UE_LOG(LogOliveWritePipeline, Log, TEXT("Mode gate blocked tool '%s' (mode: %s, MCP: %d)"),
+				*Request.ToolName, LexToString(Request.ChatMode), Request.bFromMCP);
+			ModeGateResult->ExecutionTimeMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
+			return ModeGateResult.GetValue();
+		}
+	}
+
+	// Stage 3: Transact
 	TUniquePtr<FOliveTransactionManager::FScopedOliveTransaction> Transaction = StageTransact(Request, Request.TargetAsset);
 	if (!Transaction.IsValid())
 	{
@@ -163,7 +178,7 @@ FOliveWriteResult FOliveWritePipeline::Execute(const FOliveWriteRequest& Request
 			TEXT("Ensure the asset is not locked or in use by another editor"));
 	}
 
-	// Stage 3: Execute
+	// Stage 4: Execute
 	UObject* EffectiveTargetAsset = Request.TargetAsset;
 	FOliveWriteResult ExecuteResult = StageExecute(Request, Request.TargetAsset, Executor, EffectiveTargetAsset);
 	if (!ExecuteResult.bSuccess)
@@ -192,7 +207,7 @@ FOliveWriteResult FOliveWritePipeline::Execute(const FOliveWriteRequest& Request
 		return ExecuteResult;
 	}
 
-	// Stage 4: Verify (optional based on request settings)
+	// Stage 5: Verify (optional based on request settings)
 	FOliveWriteResult VerifyResult = ExecuteResult;
 	if (!Request.bSkipVerification)
 	{
@@ -203,7 +218,7 @@ FOliveWriteResult FOliveWritePipeline::Execute(const FOliveWriteRequest& Request
 
 	// Transaction commits automatically when it goes out of scope here
 
-	// Stage 5: Report
+	// Stage 6: Report
 	const double TotalTimeMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
 	FOliveWriteResult FinalResult = StageReport(Request, VerifyResult, TotalTimeMs);
 
@@ -240,11 +255,58 @@ FOliveWriteResult FOliveWritePipeline::StageValidate(const FOliveWriteRequest& R
 	return Result;
 }
 
+TOptional<FOliveWriteResult> FOliveWritePipeline::StageModeGate(const FOliveWriteRequest& Request)
+{
+	UE_LOG(LogOliveWritePipeline, Verbose, TEXT("Stage 2: Mode Gate - tool '%s' (mode: %s)"),
+		*Request.ToolName, LexToString(Request.ChatMode));
+
+	// Ask mode: block all writes except blueprint.preview_plan_json (read-only per spec)
+	if (Request.ChatMode == EOliveChatMode::Ask)
+	{
+		if (Request.ToolName == TEXT("blueprint.preview_plan_json"))
+		{
+			UE_LOG(LogOliveWritePipeline, Verbose, TEXT("Ask mode: allowing preview tool (read-only)"));
+			return TOptional<FOliveWriteResult>(); // Preview is read-only -- pass through
+		}
+
+		FOliveWriteResult BlockResult = FOliveWriteResult::ExecutionError(
+			TEXT("ASK_MODE"),
+			TEXT("Write tools are not available in Ask mode."),
+			TEXT("Switch to Code or Plan mode to make changes."));
+		BlockResult.CompletedStage = EOliveWriteStage::ModeGate;
+		return BlockResult;
+	}
+
+	// Plan mode: block writes except blueprint.preview_plan_json
+	if (Request.ChatMode == EOliveChatMode::Plan)
+	{
+		if (Request.ToolName == TEXT("blueprint.preview_plan_json"))
+		{
+			UE_LOG(LogOliveWritePipeline, Verbose, TEXT("Plan mode: allowing preview tool"));
+			return TOptional<FOliveWriteResult>(); // Pass-through
+		}
+
+		FOliveWriteResult BlockResult = FOliveWriteResult::ExecutionError(
+			TEXT("PLAN_MODE"),
+			TEXT("Write tools are blocked in Plan mode."),
+			TEXT("Present your plan and the user will approve execution."));
+		BlockResult.CompletedStage = EOliveWriteStage::ModeGate;
+		return BlockResult;
+	}
+
+	// Code mode: pass through
+	// NOTE: blueprint.delete and blueprint.set_parent_class are candidates for a
+	// future per-operation prompt (Allow/Deny mid-stream). For Phase 1, these
+	// auto-execute in Code mode; snapshots serve as the safety net.
+	UE_LOG(LogOliveWritePipeline, Verbose, TEXT("Code mode: auto-executing"));
+	return TOptional<FOliveWriteResult>();
+}
+
 TUniquePtr<FOliveTransactionManager::FScopedOliveTransaction> FOliveWritePipeline::StageTransact(
 	const FOliveWriteRequest& Request,
 	UObject* TargetAsset)
 {
-	UE_LOG(LogOliveWritePipeline, Verbose, TEXT("Stage 2: Transact - tool '%s'"), *Request.ToolName);
+	UE_LOG(LogOliveWritePipeline, Verbose, TEXT("Stage 3: Transact - tool '%s'"), *Request.ToolName);
 
 	// Open transaction
 	TUniquePtr<FOliveTransactionManager::FScopedOliveTransaction> Transaction =
@@ -266,7 +328,7 @@ FOliveWriteResult FOliveWritePipeline::StageExecute(
 	FOliveWriteExecutor& Executor,
 	UObject*& OutEffectiveTargetAsset)
 {
-	UE_LOG(LogOliveWritePipeline, Verbose, TEXT("Stage 3: Execute - tool '%s'"), *Request.ToolName);
+	UE_LOG(LogOliveWritePipeline, Verbose, TEXT("Stage 4: Execute - tool '%s'"), *Request.ToolName);
 
 	// Re-resolve before mutation to guard against hot-reload pointer staleness.
 	// After a hot-reload the original TargetAsset pointer may point to a stale
@@ -319,7 +381,7 @@ FOliveWriteResult FOliveWritePipeline::StageVerify(
 	UObject* TargetAsset,
 	const FOliveWriteResult& ExecuteResult)
 {
-	UE_LOG(LogOliveWritePipeline, Verbose, TEXT("Stage 4: Verify - tool '%s'"), *Request.ToolName);
+	UE_LOG(LogOliveWritePipeline, Verbose, TEXT("Stage 5: Verify - tool '%s'"), *Request.ToolName);
 
 	FOliveWriteResult VerifyResult = ExecuteResult;
 	VerifyResult.CompletedStage = EOliveWriteStage::Verify;
@@ -532,7 +594,7 @@ FOliveWriteResult FOliveWritePipeline::StageReport(
 	const FOliveWriteResult& VerifyResult,
 	double TotalTimeMs)
 {
-	UE_LOG(LogOliveWritePipeline, Verbose, TEXT("Stage 5: Report - tool '%s'"), *Request.ToolName);
+	UE_LOG(LogOliveWritePipeline, Verbose, TEXT("Stage 6: Report - tool '%s'"), *Request.ToolName);
 
 	FOliveWriteResult FinalResult = VerifyResult;
 	FinalResult.CompletedStage = EOliveWriteStage::Report;
@@ -559,7 +621,7 @@ FOliveWriteResult FOliveWritePipeline::StageReport(
 		FinalResult.ResultData->SetStringField(TEXT("compile_status"), Status);
 
 		// Propagate compile errors to top-level success.
-		// Transaction already committed in Stage 3 — nodes persist.
+		// Transaction already committed in Stage 4 — nodes persist.
 		// Setting bSuccess=false causes FOliveToolResult.bSuccess=false,
 		// which triggers self-correction via HasToolFailure().
 		if (CR.HasErrors())

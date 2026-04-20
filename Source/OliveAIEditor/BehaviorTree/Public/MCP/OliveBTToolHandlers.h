@@ -18,14 +18,15 @@ DECLARE_LOG_CATEGORY_EXTERN(LogOliveBTTools, Log, All);
  * Acts as a bridge between the MCP tool registry and the BT/BB
  * reader/writer infrastructure.
  *
- * Registered tools (P5 consolidation):
- * - behaviortree.create, read, add, modify, remove, move (6 tools)
- * - blackboard.modify (1 tool)
+ * Tool Categories:
+ * - Blackboard: blackboard.create, read, add_key (upsert), remove_key, set_parent
+ * - BehaviorTree: behaviortree.create, read, set_blackboard, add_node (unified),
+ *                 remove_node, move_node, set_node_property
  *
- * Legacy tool names (add_composite, add_task, add_node, set_blackboard,
- * remove_node, move_node, set_node_property, blackboard.create, add_key,
- * remove_key, set_parent, read, modify_key, etc.) continue to work via the
- * alias map in OliveToolRegistry.cpp::GetToolAliases().
+ * AI Freedom Phase 2 changes:
+ * - behaviortree.add_composite/add_task/add_decorator/add_service consolidated
+ *   into behaviortree.add_node with node_kind parameter
+ * - blackboard.modify_key merged into blackboard.add_key (upsert semantics)
  */
 class OLIVEAIEDITOR_API FOliveBTToolHandlers
 {
@@ -49,18 +50,7 @@ private:
 	void RegisterBlackboardTools();
 	void RegisterBehaviorTreeTools();
 
-	// --- Consolidated dispatchers (P5) ---
-
-	/** blackboard.modify: routes on 'action' to one of the Blackboard sub-handlers. */
-	FOliveToolResult HandleBlackboardModify(const TSharedPtr<FJsonObject>& Params);
-
-	/** behaviortree.add: routes on 'node_type' (or legacy 'node_kind') to composite/task/decorator/service. */
-	FOliveToolResult HandleBehaviorTreeAdd(const TSharedPtr<FJsonObject>& Params);
-
-	/** behaviortree.modify: routes on 'entity' (node|decorator|blackboard_ref). */
-	FOliveToolResult HandleBehaviorTreeModify(const TSharedPtr<FJsonObject>& Params);
-
-	// --- Internal Blackboard handlers ---
+	// Blackboard handlers
 	FOliveToolResult HandleBlackboardCreate(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlackboardRead(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlackboardAddKey(const TSharedPtr<FJsonObject>& Params);
@@ -68,12 +58,12 @@ private:
 	FOliveToolResult HandleBlackboardModifyKey(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBlackboardSetParent(const TSharedPtr<FJsonObject>& Params);
 
-	// --- Internal Behavior Tree handlers ---
+	// Behavior Tree handlers
 	FOliveToolResult HandleBehaviorTreeCreate(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBehaviorTreeRead(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleBehaviorTreeSetBlackboard(const TSharedPtr<FJsonObject>& Params);
 
-	/** Legacy add_node handler — still used by HandleBehaviorTreeAdd after node_type normalization. */
+	/** Unified add_node handler. Routes to the appropriate internal handler based on node_kind. */
 	FOliveToolResult HandleBehaviorTreeAddNode(const TSharedPtr<FJsonObject>& Params);
 
 	// Internal add helpers (used by HandleBehaviorTreeAddNode)

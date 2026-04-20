@@ -63,17 +63,4 @@ namespace OliveCppSchemas
 
 	/** Schema for cpp.compile: {} */
 	TSharedPtr<FJsonObject> CppCompile();
-
-	// ============================================================================
-	// P5 Consolidated Schemas
-	// ============================================================================
-
-	/** Schema for cpp.read: dispatches on entity (class|enum|struct|header|source). */
-	TSharedPtr<FJsonObject> CppRead();
-
-	/** Schema for cpp.list: dispatches on kind (project|blueprint_callable|overridable). */
-	TSharedPtr<FJsonObject> CppList();
-
-	/** Schema for cpp.add: dispatches on entity (function|property). */
-	TSharedPtr<FJsonObject> CppAdd();
 }

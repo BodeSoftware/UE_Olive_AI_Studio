@@ -6,6 +6,7 @@
 #include "Services/OliveValidationEngine.h"
 #include "Services/OliveTransactionManager.h"
 #include "Settings/OliveAISettings.h"
+#include "Brain/OliveBrainState.h"
 #include "IR/OliveCompileIR.h"
 #include "MCP/OliveToolRegistry.h"
 #include "Dom/JsonObject.h"
@@ -18,10 +19,11 @@ DECLARE_LOG_CATEGORY_EXTERN(LogOliveWritePipeline, Log, All);
 enum class EOliveWriteStage : uint8
 {
 	Validate,       // Stage 1: Input validation and precondition checks
-	Transact,       // Stage 2: Open transaction and mark objects dirty
-	Execute,        // Stage 3: Perform the mutation
-	Verify,         // Stage 4: Structural checks and optional compilation
-	Report          // Stage 5: Generate structured result
+	ModeGate,       // Stage 2: Chat mode gate (Ask blocks all, Plan blocks writes, Code passes through)
+	Transact,       // Stage 3: Open transaction and mark objects dirty
+	Execute,        // Stage 4: Perform the mutation
+	Verify,         // Stage 5: Structural checks and optional compilation
+	Report          // Stage 6: Generate structured result
 };
 
 // Forward declarations
@@ -35,7 +37,7 @@ struct FOliveWriteResult;
  */
 struct OLIVEAIEDITOR_API FOliveWriteRequest
 {
-	/** Tool name for logging */
+	/** Tool name for logging and mode gate checks */
 	FString ToolName;
 
 	/** Tool parameters as JSON */
@@ -54,8 +56,9 @@ struct OLIVEAIEDITOR_API FOliveWriteRequest
 	FString OperationCategory;
 
 	/** Whether this request came from MCP or built-in chat.
-	 *  Used by tool handlers to bypass confirmation prompts when the request
-	 *  originates from an external MCP agent (e.g., Claude Code CLI). */
+	 *  NOTE: This no longer bypasses the mode gate. ChatMode is the single source
+	 *  of truth for mode gating. External MCP agents get ChatMode=Code by default;
+	 *  in-engine autonomous agents inherit the user's mode via MCP server propagation. */
 	bool bFromMCP = false;
 
 	/** Whether to auto-compile after write (from settings) */
@@ -63,6 +66,12 @@ struct OLIVEAIEDITOR_API FOliveWriteRequest
 
 	/** Whether to skip verification (for batch operations) */
 	bool bSkipVerification = false;
+
+	/** Current chat mode -- controls Stage 2 (Mode Gate) behavior.
+	 *  For built-in chat: set directly by ConversationManager.
+	 *  For MCP calls: propagated from FOliveToolCallContext by ExecuteWithOptionalConfirmation.
+	 *  External MCP agents default to Code; in-engine autonomous agents inherit the user's mode. */
+	EOliveChatMode ChatMode = EOliveChatMode::Code;
 };
 
 /**
@@ -138,12 +147,16 @@ DECLARE_DELEGATE_RetVal_TwoParams(FOliveWriteResult, FOliveWriteExecutor, const 
 /**
  * Write Pipeline Service
  *
- * Orchestrates the 5-stage write safety pipeline:
- * 1. Validate - Input validation, schema checking, precondition verification
- * 2. Transact - Open FScopedTransaction, call Modify() on target objects
- * 3. Execute  - Run the actual mutation via the provided executor delegate
- * 4. Verify   - Structural checks, optional compilation, consistency validation
- * 5. Report   - Assemble structured result with timing and diagnostics
+ * Orchestrates the 6-stage write safety pipeline:
+ * 1. Validate  - Input validation, schema checking, precondition verification
+ * 2. Mode Gate - Chat mode check (Ask blocks all writes, Plan blocks writes except preview, Code passes through)
+ * 3. Transact  - Open FScopedTransaction, call Modify() on target objects
+ * 4. Execute   - Run the actual mutation via the provided executor delegate
+ * 5. Verify    - Structural checks, optional compilation, consistency validation
+ * 6. Report    - Assemble structured result with timing and diagnostics
+ *
+ * MCP clients (bFromMCP=true) skip Stage 2 entirely -- external agents are always Code mode.
+ * Built-in chat clients have their mode set on FOliveWriteRequest.ChatMode by the ConversationManager.
  *
  * Thread Safety: All methods are game thread only (UE API requirement)
  */
@@ -155,7 +168,7 @@ public:
 
 	/**
 	 * Execute a write operation through the full pipeline
-	 * @param Request The write request with all parameters
+	 * @param Request The write request with all parameters (includes ChatMode for Stage 2)
 	 * @param Executor Delegate that performs the actual mutation
 	 * @return Write result indicating success or failure
 	 */
@@ -214,7 +227,22 @@ private:
 	FOliveWriteResult StageValidate(const FOliveWriteRequest& Request);
 
 	/**
-	 * Stage 2: Open transaction (returns transaction wrapper)
+	 * Stage 2: Mode gate -- checks Request.ChatMode to allow or block the write.
+	 *
+	 * Logic:
+	 *   - Ask mode: blocks all writes with ASK_MODE error
+	 *   - Plan mode: allows blueprint.preview_plan_json, blocks all other writes with PLAN_MODE error
+	 *   - Code mode: passes through (destructive ops like delete/reparent noted for future prompt UX)
+	 *
+	 * Only called for non-MCP requests (bFromMCP=false). MCP always bypasses.
+	 *
+	 * @param Request The write request (carries ChatMode)
+	 * @return Set result if mode blocks the operation; empty optional if pass-through
+	 */
+	TOptional<FOliveWriteResult> StageModeGate(const FOliveWriteRequest& Request);
+
+	/**
+	 * Stage 3: Open transaction (returns transaction wrapper)
 	 * @param Request The write request
 	 * @param TargetAsset Target asset to modify
 	 * @return Scoped transaction wrapper
@@ -224,7 +252,7 @@ private:
 		UObject* TargetAsset);
 
 	/**
-	 * Stage 3: Execute the mutation
+	 * Stage 4: Execute the mutation
 	 * @param Request The write request
 	 * @param TargetAsset Target asset to modify
 	 * @param Executor Delegate to execute the mutation
@@ -237,7 +265,7 @@ private:
 		UObject*& OutEffectiveTargetAsset);
 
 	/**
-	 * Stage 4: Verify result (structural checks + optional compile)
+	 * Stage 5: Verify result (structural checks + optional compile)
 	 * @param Request The write request
 	 * @param TargetAsset Target asset that was modified
 	 * @param ExecuteResult Result from execution stage
@@ -249,7 +277,7 @@ private:
 		const FOliveWriteResult& ExecuteResult);
 
 	/**
-	 * Stage 5: Assemble final report
+	 * Stage 6: Assemble final report
 	 * @param Request The write request
 	 * @param VerifyResult Result from verification stage
 	 * @param TotalTimeMs Total execution time

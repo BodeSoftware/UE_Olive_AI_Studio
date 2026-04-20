@@ -31,16 +31,24 @@ enum class EOliveWorkerPhase : uint8
 
 /**
  * Outcome of a completed run -- stored on the brain layer after transitioning back to Idle.
- *
- * P3 collapsed the enum to 3 values. A partial result that bubbles to
- * completion counts as Completed (the LLM saw what happened and decided
- * to stop). Only a fatal loop-detector trip or provider error is Failed.
  */
 enum class EOliveRunOutcome : uint8
 {
-	Completed,          // All steps done (or LLM decided to stop after partial work)
-	Failed,             // Fatal: loop detector tripped, provider error, etc.
+	Completed,          // All steps done successfully
+	PartialSuccess,     // Some steps completed, some failed
+	Failed,             // All/critical steps failed
 	Cancelled           // User cancelled
+};
+
+/**
+ * Chat interaction mode -- controls tool access and AI behavior.
+ * Modeled after Claude Code CLI's /code, /plan, /ask commands.
+ */
+enum class EOliveChatMode : uint8
+{
+	Code,   // Full autonomous execution -- all tools, no confirmation except destructive ops
+	Plan,   // Read + plan -- write tools return PLAN_MODE error, preview allowed
+	Ask     // Read-only -- write tools return ASK_MODE error
 };
 
 /** Convert state enum to string for logging */
@@ -72,10 +80,38 @@ inline const TCHAR* LexToString(EOliveRunOutcome Outcome)
 {
 	switch (Outcome)
 	{
-	case EOliveRunOutcome::Completed: return TEXT("Completed");
-	case EOliveRunOutcome::Failed:    return TEXT("Failed");
-	case EOliveRunOutcome::Cancelled: return TEXT("Cancelled");
+	case EOliveRunOutcome::Completed:      return TEXT("Completed");
+	case EOliveRunOutcome::PartialSuccess: return TEXT("PartialSuccess");
+	case EOliveRunOutcome::Failed:         return TEXT("Failed");
+	case EOliveRunOutcome::Cancelled:      return TEXT("Cancelled");
 	default: return TEXT("Unknown");
 	}
 }
 
+inline const TCHAR* LexToString(EOliveChatMode Mode)
+{
+	switch (Mode)
+	{
+	case EOliveChatMode::Code: return TEXT("Code");
+	case EOliveChatMode::Plan: return TEXT("Plan");
+	case EOliveChatMode::Ask:  return TEXT("Ask");
+	default: return TEXT("Unknown");
+	}
+}
+
+// Forward declaration -- full UENUM definition lives in OliveAISettings.h (Task 4).
+// The enums are value-identical (Code=0, Plan=1, Ask=2), so static_cast is safe.
+enum class EOliveChatModeConfig : uint8;
+
+/**
+ * Converts the settings-serializable EOliveChatModeConfig to the runtime EOliveChatMode.
+ * Both enums share the same ordinal layout so a static_cast is sufficient.
+ *
+ * NOTE: This function cannot be defined inline here because EOliveChatModeConfig is only
+ * forward-declared. Include OliveAISettings.h before calling this, or use the definition
+ * provided in OliveAISettings.h after EOliveChatModeConfig is fully defined there.
+ */
+inline EOliveChatMode ChatModeFromConfig(EOliveChatModeConfig C)
+{
+	return static_cast<EOliveChatMode>(static_cast<uint8>(C));
+}

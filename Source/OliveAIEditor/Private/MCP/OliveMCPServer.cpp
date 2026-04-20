@@ -228,7 +228,7 @@ void FOliveMCPServer::WriteMcpConfigFile()
 	const FString ConfigContent = FString::Printf(
 		TEXT("{\n")
 		TEXT("  \"mcpServers\": {\n")
-		TEXT("    \"olive_ai_studio\": {\n")
+		TEXT("    \"olive-ai-studio\": {\n")
 		TEXT("      \"command\": \"node\",\n")
 		TEXT("      \"args\": [\"mcp-bridge.js\"]\n")
 		TEXT("    }\n")
@@ -544,13 +544,14 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleInitialize(
 			TEXT("Olive AI Studio — tools for Unreal Engine 5 development inside the editor. "
 				 "Covers Blueprints, Behavior Trees, PCG graphs, and C++ files. "
 				 "Tools range from project search and asset inspection to batch graph editing "
-				 "and granular node manipulation. Use project.search to explore the project. "
+				 "and granular node manipulation. Use project.search to explore the project "
+				 "and olive.get_recipe for workflow guidance on specific tasks. "
 				 "Unreal assets (.uasset, .umap) are binary — when a user references one, "
 				 "extract the asset path and use blueprint.read or project.get_asset_info instead of reading the file. "
 				 "For multi-step builds, use olive.build to batch all operations in a single call — "
 				 "this is much faster than calling tools individually. "
 				 "For common patterns (guns, projectiles, pickups), check blueprint.list_templates first — "
-				 "library templates supply real node graphs you can study with blueprint.get_template."));
+				 "factory templates include complete plan_json that olive.build can execute directly."));
 	}
 
 	return Result;
@@ -767,9 +768,14 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleToolsCall(
 	// Execute tool with MCP origin context.
 	// If an in-engine autonomous agent is active, propagate its chat mode
 	// so the write pipeline's mode gate can enforce Plan/Ask restrictions.
+	// External MCP agents default to Code mode (unrestricted).
 	FOliveToolCallContext ToolContext;
 	ToolContext.Origin = EOliveToolCallOrigin::MCP;
 	ToolContext.SessionId = ClientId;
+	if (bHasInternalAgent)
+	{
+		ToolContext.ChatMode = InternalAgentChatMode;
+	}
 	FOliveToolExecutionContextScope ContextScope(ToolContext);
 
 	FOliveToolResult ToolResult = FOliveToolRegistry::Get().ExecuteTool(ToolName, Arguments);
@@ -920,13 +926,24 @@ void FOliveMCPServer::HandleToolsCallAsync(
 	// Capture start time before dispatching to game thread for accurate wall-clock duration
 	const double ToolStartTime = FPlatformTime::Seconds();
 
+	// Capture internal agent state before dispatching -- these are read on the HTTP
+	// thread but only written on the game thread, so the snapshot is safe.
+	const bool bCapturedHasInternalAgent = bHasInternalAgent;
+	const EOliveChatMode CapturedChatMode = InternalAgentChatMode;
+
 	// Dispatch tool execution to the game thread
-	AsyncTask(ENamedThreads::GameThread, [this, ToolName, Arguments, ClientId, RequestId, OnComplete, ToolStartTime]()
+	AsyncTask(ENamedThreads::GameThread, [this, ToolName, Arguments, ClientId, RequestId, OnComplete, ToolStartTime, bCapturedHasInternalAgent, CapturedChatMode]()
 	{
 		// Set up execution context on the game thread.
+		// Propagate internal agent chat mode so the write pipeline's mode gate
+		// can enforce Plan/Ask restrictions for in-engine autonomous runs.
 		FOliveToolCallContext ToolContext;
 		ToolContext.Origin = EOliveToolCallOrigin::MCP;
 		ToolContext.SessionId = ClientId;
+		if (bCapturedHasInternalAgent)
+		{
+			ToolContext.ChatMode = CapturedChatMode;
+		}
 		FOliveToolExecutionContextScope ContextScope(ToolContext);
 
 		FOliveToolResult ToolResult = FOliveToolRegistry::Get().ExecuteTool(ToolName, Arguments);
@@ -1627,6 +1644,20 @@ void FOliveMCPServer::ClearToolFilter()
 	FScopeLock Lock(&ToolFilterLock);
 	ToolFilterPrefixes.Empty();
 	UE_LOG(LogOliveAI, Log, TEXT("MCP tool filter cleared"));
+}
+
+void FOliveMCPServer::SetChatModeForInternalAgent(EOliveChatMode Mode)
+{
+	InternalAgentChatMode = Mode;
+	bHasInternalAgent = true;
+	UE_LOG(LogOliveAI, Log, TEXT("MCP internal agent chat mode set to %s"), LexToString(Mode));
+}
+
+void FOliveMCPServer::ClearChatModeForInternalAgent()
+{
+	InternalAgentChatMode = EOliveChatMode::Code;
+	bHasInternalAgent = false;
+	UE_LOG(LogOliveAI, Log, TEXT("MCP internal agent chat mode cleared"));
 }
 
 // ==========================================

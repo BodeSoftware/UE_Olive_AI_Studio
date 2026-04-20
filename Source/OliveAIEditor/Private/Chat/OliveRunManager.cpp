@@ -1,6 +1,7 @@
 // Copyright Bode Software. All Rights Reserved.
 
 #include "Chat/OliveRunManager.h"
+#include "Settings/OliveAISettings.h"
 #include "OliveSnapshotManager.h"
 
 DEFINE_LOG_CATEGORY(LogOliveRunManager);
@@ -27,6 +28,7 @@ FGuid FOliveRunManager::StartRun(const FString& Name)
 	NewRun.CurrentStepIndex = -1;
 
 	ActiveRun = NewRun;
+	StepsSinceLastCheckpoint = 0;
 
 	UE_LOG(LogOliveRunManager, Log, TEXT("Started run '%s' (ID: %s)"), *Name, *NewRun.RunId.ToString());
 	OnRunStatusChanged.Broadcast(ActiveRun.GetValue());
@@ -86,6 +88,7 @@ int32 FOliveRunManager::BeginStep(const FString& Description)
 
 	ActiveRun->Steps.Add(NewStep);
 	ActiveRun->CurrentStepIndex = NewStep.StepIndex;
+	StepsSinceLastCheckpoint++;
 
 	UE_LOG(LogOliveRunManager, Log, TEXT("Step %d: %s"), NewStep.StepIndex, *Description);
 	OnRunStepChanged.Broadcast(ActiveRun.GetValue(), NewStep.StepIndex);
@@ -127,6 +130,50 @@ void FOliveRunManager::CompleteStep(bool bSuccess)
 	Step.DurationMs = (Step.EndTime - Step.StartTime).GetTotalMilliseconds();
 
 	OnRunStepChanged.Broadcast(ActiveRun.GetValue(), ActiveRun->CurrentStepIndex);
+}
+
+FString FOliveRunManager::CreateCheckpoint(const TArray<FString>& AssetPaths)
+{
+	if (!ActiveRun.IsSet() || AssetPaths.Num() == 0)
+	{
+		return FString();
+	}
+
+	FString SnapshotName = FString::Printf(TEXT("Run_%s_Step%d"),
+		*ActiveRun->Name, ActiveRun->CurrentStepIndex);
+
+	FOliveToolResult Result = FOliveSnapshotManager::Get().CreateSnapshot(
+		SnapshotName, AssetPaths, TEXT("Automatic run checkpoint"));
+
+	if (Result.bSuccess && Result.Data.IsValid())
+	{
+		FString SnapshotId = Result.Data->GetStringField(TEXT("snapshot_id"));
+		ActiveRun->CheckpointSnapshotIds.Add(SnapshotId);
+
+		if (ActiveRun->CurrentStepIndex >= 0 && ActiveRun->CurrentStepIndex < ActiveRun->Steps.Num())
+		{
+			ActiveRun->Steps[ActiveRun->CurrentStepIndex].SnapshotId = SnapshotId;
+		}
+
+		StepsSinceLastCheckpoint = 0;
+		UE_LOG(LogOliveRunManager, Log, TEXT("Created checkpoint: %s"), *SnapshotId);
+		return SnapshotId;
+	}
+
+	UE_LOG(LogOliveRunManager, Warning, TEXT("Failed to create checkpoint"));
+	return FString();
+}
+
+bool FOliveRunManager::ShouldCheckpoint() const
+{
+	int32 Interval = GetCheckpointInterval();
+	return Interval > 0 && StepsSinceLastCheckpoint >= Interval;
+}
+
+int32 FOliveRunManager::GetCheckpointInterval() const
+{
+	const UOliveAISettings* Settings = UOliveAISettings::Get();
+	return Settings ? Settings->CheckpointIntervalSteps : 5;
 }
 
 void FOliveRunManager::PauseRun()

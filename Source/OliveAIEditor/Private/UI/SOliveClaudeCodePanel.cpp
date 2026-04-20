@@ -275,7 +275,7 @@ TSharedRef<SWidget> SOliveClaudeCodePanel::BuildSetupInstructions()
 	const FString McpJsonContent = FString::Printf(
 		TEXT("{\n")
 		TEXT("  \"mcpServers\": {\n")
-		TEXT("    \"olive_ai_studio\": {\n")
+		TEXT("    \"olive-ai-studio\": {\n")
 		TEXT("      \"command\": \"node\",\n")
 		TEXT("      \"args\": [\"%s\"]\n")
 		TEXT("    }\n")
@@ -286,7 +286,7 @@ TSharedRef<SWidget> SOliveClaudeCodePanel::BuildSetupInstructions()
 
 	// Build the claude mcp add command
 	const FString McpAddCommand = FString::Printf(
-		TEXT("claude mcp add olive_ai_studio -- node \"%s\""),
+		TEXT("claude mcp add olive-ai-studio -- node \"%s\""),
 		*BridgePathDisplay
 	);
 
@@ -708,7 +708,7 @@ FReply SOliveClaudeCodePanel::OnCopyMcpJson()
 	const FString McpJson = FString::Printf(
 		TEXT("{\n")
 		TEXT("  \"mcpServers\": {\n")
-		TEXT("    \"olive_ai_studio\": {\n")
+		TEXT("    \"olive-ai-studio\": {\n")
 		TEXT("      \"command\": \"node\",\n")
 		TEXT("      \"args\": [\"%s\"]\n")
 		TEXT("    }\n")
@@ -729,7 +729,7 @@ FReply SOliveClaudeCodePanel::OnCopyMcpAddCommand()
 	BridgePath.ReplaceInline(TEXT("\\"), TEXT("/"));
 
 	const FString Command = FString::Printf(
-		TEXT("claude mcp add olive_ai_studio -- node \"%s\""),
+		TEXT("claude mcp add olive-ai-studio -- node \"%s\""),
 		*BridgePath
 	);
 

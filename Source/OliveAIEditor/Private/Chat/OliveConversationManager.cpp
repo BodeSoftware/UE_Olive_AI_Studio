@@ -9,6 +9,7 @@
 #include "MCP/OliveMCPServer.h"
 #include "Index/OliveProjectIndex.h"
 #include "Settings/OliveAISettings.h"
+// Focus profile system removed -- replaced by EOliveChatMode (Code/Plan/Ask)
 #include "OliveAIEditorModule.h"
 #include "Brain/OliveToolExecutionContext.h"
 #include "Chat/OliveRunManager.h"
@@ -19,6 +20,135 @@
 
 namespace
 {
+FString NormalizePlanText(const FString& Text)
+{
+	FString Normalized = Text;
+	Normalized.ReplaceInline(TEXT("\r"), TEXT(" "));
+	Normalized.ReplaceInline(TEXT("\n"), TEXT(" "));
+	while (Normalized.ReplaceInline(TEXT("  "), TEXT(" ")) > 0)
+	{
+	}
+	return Normalized.TrimStartAndEnd();
+}
+
+FString SummarizePlanText(const FString& Text, const int32 MaxLen = 240)
+{
+	const FString Normalized = NormalizePlanText(Text);
+	if (Normalized.Len() <= MaxLen)
+	{
+		return Normalized;
+	}
+
+	return Normalized.Left(MaxLen) + TEXT("...");
+}
+
+bool MessageStartsNewPlanTask(const FString& Message)
+{
+	const FString Lower = Message.TrimStartAndEnd().ToLower();
+	if (Lower.Contains(TEXT("switch to code mode"))
+		|| Lower.Contains(TEXT("switch to code"))
+		|| Lower.Contains(TEXT("do it"))
+		|| Lower.Contains(TEXT("build it"))
+		|| Lower.Contains(TEXT("implement it")))
+	{
+		return false;
+	}
+
+	static const TArray<FString> NewTaskPhrases = {
+		TEXT("new task"),
+		TEXT("different task"),
+		TEXT("another task"),
+		TEXT("instead"),
+		TEXT("separate task"),
+		TEXT("for a different"),
+		TEXT("now plan")
+	};
+
+	for (const FString& Phrase : NewTaskPhrases)
+	{
+		if (Lower.StartsWith(Phrase) || Lower.Contains(TEXT(" ") + Phrase))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void AppendUniquePlanItem(TArray<FString>& Items, const FString& Candidate, const int32 MaxItems = 6)
+{
+	FString Cleaned = Candidate.TrimStartAndEnd();
+	if (Cleaned.IsEmpty())
+	{
+		return;
+	}
+
+	Cleaned.RemoveFromStart(TEXT("- "));
+	Cleaned.RemoveFromStart(TEXT("* "));
+	Cleaned.RemoveFromStart(TEXT("1. "));
+	Cleaned.RemoveFromStart(TEXT("2. "));
+	Cleaned.RemoveFromStart(TEXT("3. "));
+	Cleaned.RemoveFromStart(TEXT("4. "));
+
+	for (const FString& Existing : Items)
+	{
+		if (Existing.Equals(Cleaned, ESearchCase::IgnoreCase))
+		{
+			return;
+		}
+	}
+
+	if (Items.Num() < MaxItems)
+	{
+		Items.Add(Cleaned);
+	}
+}
+
+bool IsLikelyPlanQuestion(const FString& Line)
+{
+	const FString Lower = Line.ToLower();
+	return Line.Contains(TEXT("?"))
+		|| Lower.Contains(TEXT("question"))
+		|| Lower.Contains(TEXT("need to decide"))
+		|| Lower.Contains(TEXT("confirm whether"))
+		|| Lower.Contains(TEXT("should we"));
+}
+
+bool IsLikelyPlanAssetLine(const FString& Line)
+{
+	const FString Lower = Line.ToLower();
+	return Line.Contains(TEXT("/Game/"))
+		|| Line.Contains(TEXT(".h"))
+		|| Line.Contains(TEXT(".cpp"))
+		|| Lower.Contains(TEXT("blueprint"))
+		|| Lower.Contains(TEXT("widget"))
+		|| Lower.Contains(TEXT("component"))
+		|| Lower.Contains(TEXT("behavior tree"))
+		|| Lower.Contains(TEXT("blackboard"))
+		|| Lower.Contains(TEXT("pcg"))
+		|| Lower.Contains(TEXT("asset"));
+}
+
+bool IsPlanToCodeHandoffCue(const FString& Message)
+{
+	static const TArray<FString> HandoffKeywords = {
+		TEXT("implement"), TEXT("build it"), TEXT("go ahead"), TEXT("proceed"),
+		TEXT("do it"), TEXT("start building"), TEXT("create it"), TEXT("use the plan"),
+		TEXT("approve"), TEXT("approved"), TEXT("ship it")
+	};
+
+	const FString Lower = Message.ToLower();
+	for (const FString& Keyword : HandoffKeywords)
+	{
+		if (Lower.Contains(Keyword))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
 bool MessageContainsAnyKeyword(const FString& Message, const TArray<FString>& Keywords)
 {
 	FString Normalized = Message.ToLower();
@@ -112,16 +242,52 @@ FOliveRequestOptions BuildRequestOptions()
 }
 } // namespace
 
+void FOliveConversationManager::FOlivePlanSessionState::Reset()
+{
+	bHasActivePlan = false;
+	SessionId.Reset();
+	GoalSummary.Reset();
+	TargetSummary.Reset();
+	ActiveModeContext.Reset();
+	LatestPlanText.Reset();
+	LatestPlanSummary.Reset();
+	UserPlanAdjustments.Reset();
+	KeyDecisions.Reset();
+	OutstandingQuestions.Reset();
+	PlannedAssetsOrArtifacts.Reset();
+	LastUpdatedUtc = FDateTime();
+}
+
+bool FOliveConversationManager::FOlivePlanSessionState::IsEmpty() const
+{
+	return !bHasActivePlan
+		&& SessionId.IsEmpty()
+		&& GoalSummary.IsEmpty()
+		&& TargetSummary.IsEmpty()
+		&& ActiveModeContext.IsEmpty()
+		&& LatestPlanText.IsEmpty()
+		&& LatestPlanSummary.IsEmpty()
+		&& UserPlanAdjustments.Num() == 0
+		&& KeyDecisions.Num() == 0
+		&& OutstandingQuestions.Num() == 0
+		&& PlannedAssetsOrArtifacts.Num() == 0;
+}
+
 FOliveConversationManager::FOliveConversationManager()
 {
 	Brain = MakeShared<FOliveBrainLayer>();
 	StartNewSession();
 
+	// Wire retry policy from settings
+	if (const UOliveAISettings* Settings = UOliveAISettings::Get())
+	{
+		RetryPolicy.MaxCorrectionCyclesPerWorker = Settings->MaxCorrectionCyclesPerRun;
+	}
 }
 
 namespace OliveConversationManagerInternal
 {
-/** Build operation history context for injection into the system prompt */
+/** Build distilled operation history context for injection into the system prompt */
 FString BuildOperationHistoryContext(const FOliveOperationHistoryStore& HistoryStore)
 {
 	if (HistoryStore.GetTotalRecordCount() == 0)
@@ -129,10 +295,9 @@ FString BuildOperationHistoryContext(const FOliveOperationHistoryStore& HistoryS
 		return TEXT("");
 	}
 
-	// Fixed raw-result count: the old setting PromptDistillationRawResults
-	// was removed alongside the PromptDistiller in the P3 makeover.
-	constexpr int32 RawResults = 2;
-	constexpr int32 TokenBudget = 2000;
+	const UOliveAISettings* Settings = UOliveAISettings::Get();
+	const int32 RawResults = Settings ? Settings->PromptDistillationRawResults : 2;
+	const int32 TokenBudget = 2000;
 
 	return HistoryStore.BuildModelContext(TokenBudget, RawResults);
 }
@@ -154,14 +319,34 @@ void FOliveConversationManager::StartNewSession()
 	CurrentToolIteration = 0;
 	TotalTokensUsed = 0;
 
+	// Initialize chat mode from settings
+	if (const UOliveAISettings* Settings = UOliveAISettings::Get())
+	{
+		ActiveChatMode = ChatModeFromConfig(Settings->DefaultChatMode);
+	}
+	else
+	{
+		ActiveChatMode = EOliveChatMode::Code;
+	}
+	DeferredChatMode.Reset();
+	if (!ActivePlanSession.IsValid())
+	{
+		ActivePlanSession = MakeUnique<FOlivePlanSessionState>();
+	}
+	if (!ActivePlanSession->IsEmpty())
+	{
+		UE_LOG(LogOliveAI, Log, TEXT("Reset plan session state for new conversation session"));
+	}
+	ActivePlanSession->Reset();
+
 	// Reset provider session so the next message starts a fresh CLI session
 	if (Provider.IsValid())
 	{
 		Provider->ResetSession();
 	}
 
-	UE_LOG(LogOliveAI, Log, TEXT("Started new conversation session: %s"),
-		*SessionId.ToString());
+	UE_LOG(LogOliveAI, Log, TEXT("Started new conversation session: %s (mode: %s)"),
+		*SessionId.ToString(), LexToString(ActiveChatMode));
 }
 
 void FOliveConversationManager::ClearHistory()
@@ -184,6 +369,15 @@ void FOliveConversationManager::ClearHistory()
 	{
 		Queue->Clear();
 	}
+
+	// Clear any deferred mode switch
+	DeferredChatMode.Reset();
+
+	if (ActivePlanSession.IsValid() && !ActivePlanSession->IsEmpty())
+	{
+		UE_LOG(LogOliveAI, Log, TEXT("Reset plan session state while clearing history"));
+		ActivePlanSession->Reset();
+	}
 }
 
 // ==========================================
@@ -205,7 +399,23 @@ bool FOliveConversationManager::IsAutonomousProvider() const
 
 void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message)
 {
-	const FString ContinuationContext;
+	FString ContinuationContext;
+	if (bRequestExecutingApprovedPlan)
+	{
+		ContinuationContext = BuildPlanExecutionContext();
+		if (!ContinuationContext.IsEmpty())
+		{
+			UE_LOG(LogOliveAI, Log, TEXT("Injected plan execution context into autonomous request"));
+		}
+	}
+	else if (RequestChatMode == EOliveChatMode::Plan)
+	{
+		ContinuationContext = BuildPlanContinuationContext();
+		if (!ContinuationContext.IsEmpty())
+		{
+			UE_LOG(LogOliveAI, Log, TEXT("Injected plan continuation context into autonomous request"));
+		}
+	}
 
 	// 1. Add user message to conversation history for UI display
 	FOliveChatMessage UserMessage;
@@ -249,7 +459,11 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 		UE_LOG(LogOliveAI, Log, TEXT("Skipping auto-snapshot: no active context paths"));
 	}
 
-	// 5. Begin a Brain run
+	// 5. Propagate the current chat mode to the MCP server so that tool calls
+	//    from the internal autonomous agent respect Plan/Ask mode gating.
+	FOliveMCPServer::Get().SetChatModeForInternalAgent(RequestChatMode);
+
+	// 6. Begin a Brain run
 	if (Brain.IsValid())
 	{
 		Brain->BeginRun();
@@ -259,7 +473,7 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 	FOliveWritePipeline::Get().ClearOrphanBaselines();
 	FOliveWritePipeline::Get().bRunActive = true;
 
-	// 6. Set up callbacks with WeakSelf pattern (matches existing orchestrated path)
+	// 7. Set up callbacks with WeakSelf pattern (matches existing orchestrated path)
 	TWeakPtr<FOliveConversationManager> WeakSelf = AsShared();
 
 	FOnOliveStreamChunk OnChunk;
@@ -278,6 +492,9 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 	FOnOliveComplete OnComplete;
 	OnComplete.BindLambda([WeakSelf](const FString& FullResponse, const FOliveProviderUsage& Usage)
 	{
+		// Clear internal agent mode so subsequent external MCP calls default to Code
+		FOliveMCPServer::Get().ClearChatModeForInternalAgent();
+
 		if (TSharedPtr<FOliveConversationManager> This = WeakSelf.Pin())
 		{
 			// Update token usage
@@ -289,6 +506,10 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 			AssistantMessage.Content = !FullResponse.IsEmpty() ? FullResponse : This->CurrentStreamingContent;
 			AssistantMessage.Timestamp = FDateTime::UtcNow();
 			This->AddMessage(AssistantMessage);
+			if (This->RequestChatMode == EOliveChatMode::Plan)
+			{
+				This->UpdatePlanSessionFromAssistantMessage(AssistantMessage);
+			}
 
 			// Brain: complete run (CompleteRun already transitions to Idle)
 			if (This->Brain.IsValid() && This->Brain->GetState() != EOliveBrainState::Idle)
@@ -301,6 +522,15 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 			This->CurrentStreamingContent.Empty();
 			This->OnProcessingComplete.Broadcast();
 
+			// Apply deferred mode switch if pending
+			if (This->DeferredChatMode.IsSet())
+			{
+				This->ActiveChatMode = This->DeferredChatMode.GetValue();
+				This->DeferredChatMode.Reset();
+				This->OnModeChanged.Broadcast(This->ActiveChatMode);
+				UE_LOG(LogOliveAI, Log, TEXT("Applied deferred mode switch to %s"), LexToString(This->ActiveChatMode));
+			}
+
 			// Drain the next queued message if any are waiting
 			This->DrainNextQueuedMessage();
 		}
@@ -309,6 +539,9 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 	FOnOliveError OnErr;
 	OnErr.BindLambda([WeakSelf](const FString& ErrorMessage)
 	{
+		// Clear internal agent mode so subsequent external MCP calls default to Code
+		FOliveMCPServer::Get().ClearChatModeForInternalAgent();
+
 		if (TSharedPtr<FOliveConversationManager> This = WeakSelf.Pin())
 		{
 			UE_LOG(LogOliveAI, Error, TEXT("Autonomous run error: %s"), *ErrorMessage);
@@ -326,12 +559,21 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 			This->OnError.Broadcast(ErrorMessage);
 			This->OnProcessingComplete.Broadcast();
 
+			// Apply deferred mode switch if pending
+			if (This->DeferredChatMode.IsSet())
+			{
+				This->ActiveChatMode = This->DeferredChatMode.GetValue();
+				This->DeferredChatMode.Reset();
+				This->OnModeChanged.Broadcast(This->ActiveChatMode);
+				UE_LOG(LogOliveAI, Log, TEXT("Applied deferred mode switch to %s"), LexToString(This->ActiveChatMode));
+			}
+
 			// Drain the next queued message if any are waiting
 			This->DrainNextQueuedMessage();
 		}
 	});
 
-	// 7. Pass @-mentioned asset context to the CLI provider for initial prompt enrichment.
+	// 8. Pass @-mentioned asset context to the CLI provider for initial prompt enrichment.
 	//    This injects a pre-read asset state summary so the AI doesn't waste turns
 	//    re-reading assets the user has already pointed at via @-mentions.
 	if (ActiveContextPaths.Num() > 0)
@@ -342,7 +584,7 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 		CLIProvider->SetInitialContextAssets(ActiveContextPaths);
 	}
 
-	// 8. Launch autonomous provider -- tools are discovered via MCP, no orchestration
+	// 9. Launch autonomous provider -- tools are discovered via MCP, no orchestration
 	const FString ProviderName = Provider->GetProviderName();
 	UE_LOG(LogOliveAI, Log, TEXT("Launching autonomous run (%s) for message: %.80s%s"),
 		*ProviderName, *Message.Left(80), Message.Len() > 80 ? TEXT("...") : TEXT(""));
@@ -389,6 +631,11 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 		return;
 	}
 
+	if (ActiveChatMode == EOliveChatMode::Plan)
+	{
+		UpdatePlanSessionFromUserMessage(Message);
+	}
+
 	BeginRequestContext(Message);
 
 	// Route to autonomous path for Claude Code CLI when autonomous MCP mode is enabled.
@@ -398,6 +645,13 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 	// and manages its own agentic loop.
 	if (IsAutonomousProvider())
 	{
+		// Ask mode blocks autonomous execution entirely
+		if (ActiveChatMode == EOliveChatMode::Ask)
+		{
+			OnError.Broadcast(TEXT("Ask mode is read-only. Switch to Code or Plan mode to run autonomous operations."));
+			return;
+		}
+
 		SendUserMessageAutonomous(Message);
 		return;
 	}
@@ -412,6 +666,7 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 	// Reset tool iteration counter and Brain components
 	CurrentToolIteration = 0;
 	LoopDetector.Reset();
+	SelfCorrectionPolicy.Reset();
 	bTurnHasExplicitWriteIntent = DetectWriteIntent(Message);
 
 	// Dynamic iteration budget for multi-asset tasks
@@ -454,6 +709,9 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 
 void FOliveConversationManager::CancelCurrentRequest()
 {
+	// Clear internal agent mode so MCP calls revert to Code default
+	FOliveMCPServer::Get().ClearChatModeForInternalAgent();
+
 	// Cancel any pending retry before cancelling the provider request
 	if (RetryManager)
 	{
@@ -485,6 +743,15 @@ void FOliveConversationManager::CancelCurrentRequest()
 	CurrentBatchCorrectionSummary.Empty();
 	bHasPendingCorrections = false;
 	CorrectionRepromptCount = 0;
+
+	// Apply deferred mode switch if pending
+	if (DeferredChatMode.IsSet())
+	{
+		ActiveChatMode = DeferredChatMode.GetValue();
+		DeferredChatMode.Reset();
+		OnModeChanged.Broadcast(ActiveChatMode);
+		UE_LOG(LogOliveAI, Log, TEXT("Applied deferred mode switch to %s"), LexToString(ActiveChatMode));
+	}
 }
 
 // ==========================================
@@ -494,6 +761,25 @@ void FOliveConversationManager::CancelCurrentRequest()
 void FOliveConversationManager::SetActiveContext(const TArray<FString>& AssetPaths)
 {
 	ActiveContextPaths = AssetPaths;
+}
+
+void FOliveConversationManager::SetChatMode(EOliveChatMode NewMode)
+{
+	if (bIsProcessing)
+	{
+		DeferredChatMode = NewMode;
+		UE_LOG(LogOliveAI, Log, TEXT("Mode switch to %s deferred until processing completes"),
+			LexToString(NewMode));
+		// Fire delegate so UI can show "Mode will switch after current operation"
+		OnModeSwitchDeferred.Broadcast(NewMode);
+		return;
+	}
+
+	const EOliveChatMode OldMode = ActiveChatMode;
+	ActiveChatMode = NewMode;
+	DeferredChatMode.Reset();
+	UE_LOG(LogOliveAI, Log, TEXT("Chat mode: %s -> %s"), LexToString(OldMode), LexToString(NewMode));
+	OnModeChanged.Broadcast(NewMode);
 }
 
 // ==========================================
@@ -537,6 +823,7 @@ FOliveChatMessage FOliveConversationManager::BuildSystemMessage()
 	FOliveChatMessage SystemMessage;
 	SystemMessage.Role = EOliveChatRole::System;
 	SystemMessage.Timestamp = FDateTime::UtcNow();
+	const EOliveChatMode EffectiveChatMode = bIsProcessing ? RequestChatMode : ActiveChatMode;
 
 	const UOliveAISettings* Settings = UOliveAISettings::Get();
 	const int32 MaxPromptTokens = Settings ? FMath::Max(512, Settings->MaxTokens) : 4000;
@@ -545,6 +832,7 @@ FOliveChatMessage FOliveConversationManager::BuildSystemMessage()
 	if (SystemPrompt.IsEmpty())
 	{
 		SystemMessage.Content = PromptAssembler.AssembleSystemPrompt(
+			EffectiveChatMode,
 			ActiveContextPaths,
 			MaxPromptTokens);
 	}
@@ -552,6 +840,7 @@ FOliveChatMessage FOliveConversationManager::BuildSystemMessage()
 	{
 		SystemMessage.Content = PromptAssembler.AssembleSystemPromptWithBase(
 			SystemPrompt,
+			EffectiveChatMode,
 			ActiveContextPaths,
 			MaxPromptTokens);
 	}
@@ -568,7 +857,7 @@ FOliveChatMessage FOliveConversationManager::BuildSystemMessage()
 
 TArray<FOliveToolDefinition> FOliveConversationManager::GetAvailableTools()
 {
-	return FOliveToolRegistry::Get().GetAllTools();
+	return FOliveToolRegistry::Get().GetToolsForMode(bIsProcessing ? RequestChatMode : ActiveChatMode);
 }
 
 void FOliveConversationManager::SendToProvider()
@@ -589,6 +878,48 @@ void FOliveConversationManager::SendToProvider()
 	TArray<FOliveChatMessage> MessagesToSend;
 	MessagesToSend.Add(BuildSystemMessage());
 	MessagesToSend.Append(MessageHistory);
+
+	// Distill conversation history to save tokens
+	FOliveDistillationConfig DistillConfig;
+	if (const UOliveAISettings* Settings = UOliveAISettings::Get())
+	{
+		DistillConfig.RecentPairsToKeep = Settings->PromptDistillationRawResults;
+	}
+	DistillConfig.MaxTotalResultChars = 80000; // ~20K tokens // TODO: make configurable via UOliveAISettings
+	DistillConfig.MaxAssistantChars = 4000;
+	const FOliveDistillationResult DistillResult = PromptDistiller.Distill(MessagesToSend, DistillConfig);
+
+	// Inject a context truncation note so the model knows earlier messages were summarized.
+	// Insert just before the final user message to maximize visibility in the context window.
+	if (DistillResult.DidTruncate())
+	{
+		FString TruncationNote = FString::Printf(
+			TEXT("[CONTEXT NOTE: %d older messages were summarized to save tokens. "
+				 "%d tool results were truncated. If you need details from earlier "
+				 "in the conversation, ask the user to re-provide the relevant context.]"),
+			DistillResult.MessagesSummarized,
+			DistillResult.ToolResultsTruncated);
+
+		FOliveChatMessage TruncationMessage;
+		TruncationMessage.Role = EOliveChatRole::System;
+		TruncationMessage.Content = TruncationNote;
+		TruncationMessage.Timestamp = FDateTime::UtcNow();
+
+		// Find the last user message and insert the note just before it
+		int32 InsertIndex = MessagesToSend.Num(); // fallback: append at end
+		for (int32 i = MessagesToSend.Num() - 1; i >= 0; --i)
+		{
+			if (MessagesToSend[i].Role == EOliveChatRole::User)
+			{
+				InsertIndex = i;
+				break;
+			}
+		}
+		MessagesToSend.Insert(TruncationMessage, InsertIndex);
+
+		UE_LOG(LogOliveAI, Log, TEXT("Injected context truncation note (%d summarized, %d truncated, ~%d tokens saved)"),
+			DistillResult.MessagesSummarized, DistillResult.ToolResultsTruncated, DistillResult.TokensSaved);
+	}
 
 	// Inject iteration budget awareness
 	if (CurrentToolIteration > 0)
@@ -630,6 +961,50 @@ void FOliveConversationManager::SendToProvider()
 				}
 			}
 			MessagesToSend.Insert(BudgetMessage, InsertIndex);
+		}
+	}
+
+	const FOliveChatMessage* LastUserMessage = nullptr;
+	for (int32 i = MessagesToSend.Num() - 1; i >= 0; --i)
+	{
+		if (MessagesToSend[i].Role == EOliveChatRole::User)
+		{
+			LastUserMessage = &MessagesToSend[i];
+			break;
+		}
+	}
+
+	if (LastUserMessage)
+	{
+		FString PlanContext;
+		if (bRequestExecutingApprovedPlan)
+		{
+			PlanContext = BuildPlanExecutionContext();
+		}
+		else if (RequestChatMode == EOliveChatMode::Plan)
+		{
+			PlanContext = BuildPlanContinuationContext();
+		}
+
+		if (!PlanContext.IsEmpty())
+		{
+			FOliveChatMessage PlanContextMessage;
+			PlanContextMessage.Role = EOliveChatRole::System;
+			PlanContextMessage.Content = PlanContext;
+			PlanContextMessage.Timestamp = FDateTime::UtcNow();
+
+			int32 InsertIndex = MessagesToSend.Num();
+			for (int32 i = MessagesToSend.Num() - 1; i >= 0; --i)
+			{
+				if (MessagesToSend[i].Role == EOliveChatRole::User)
+				{
+					InsertIndex = i;
+					break;
+				}
+			}
+
+			MessagesToSend.Insert(PlanContextMessage, InsertIndex);
+			UE_LOG(LogOliveAI, Log, TEXT("Injected plan context into provider request"));
 		}
 	}
 
@@ -739,6 +1114,10 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 	AssistantMessage.Timestamp = FDateTime::UtcNow();
 	AssistantMessage.ToolCalls = PendingToolCalls;
 	AddMessage(AssistantMessage);
+	if (RequestChatMode == EOliveChatMode::Plan)
+	{
+		UpdatePlanSessionFromAssistantMessage(AssistantMessage);
+	}
 
 	// Check if we have tool calls to process
 	if (PendingToolCalls.Num() > 0)
@@ -816,16 +1195,15 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 			return;
 		}
 
-		// P3: All non-Failed/non-Cancelled outcomes map to Completed.
-		// A partial result that bubbles to completion counts as Completed
-		// -- the LLM saw what happened and decided to stop.
-		const EOliveRunOutcome FinalOutcome = EOliveRunOutcome::Completed;
+		// Determine final outcome based on whether corrections were resolved
+		EOliveRunOutcome FinalOutcome = bHasPendingCorrections
+			? EOliveRunOutcome::PartialSuccess
+			: EOliveRunOutcome::Completed;
 
 		if (bHasPendingCorrections)
 		{
-			UE_LOG(LogOliveAI, Log,
-				TEXT("Completing with unresolved corrections after %d re-prompts "
-					 "(treated as Completed -- LLM decided to stop)"),
+			UE_LOG(LogOliveAI, Warning,
+				TEXT("Completing with PartialSuccess: unresolved corrections remain after %d re-prompts"),
 				CorrectionRepromptCount);
 		}
 
@@ -835,7 +1213,7 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 			FOliveRunManager::Get().CompleteRun();
 			bRunModeActive = false;
 		}
-		// Brain: transition to Completed -> Idle (CompleteRun already transitions)
+		// Brain: transition to Completed/PartialSuccess -> Idle (CompleteRun already transitions)
 		if (Brain.IsValid() && Brain->GetState() != EOliveBrainState::Idle)
 		{
 			Brain->CompleteRun(FinalOutcome);
@@ -850,17 +1228,294 @@ void FOliveConversationManager::HandleComplete(const FString& FullResponse, cons
 		ResetRequestContext();
 		OnProcessingComplete.Broadcast();
 
+		// Apply deferred mode switch if pending
+		if (DeferredChatMode.IsSet())
+		{
+			ActiveChatMode = DeferredChatMode.GetValue();
+			DeferredChatMode.Reset();
+			OnModeChanged.Broadcast(ActiveChatMode);
+			UE_LOG(LogOliveAI, Log, TEXT("Applied deferred mode switch to %s"), LexToString(ActiveChatMode));
+		}
+
 		// Drain the next queued message if any are waiting
 		DrainNextQueuedMessage();
 	}
 }
 
-void FOliveConversationManager::BeginRequestContext(const FString& /*Message*/)
+void FOliveConversationManager::UpdatePlanSessionFromUserMessage(const FString& Message)
 {
+	if (ActiveChatMode != EOliveChatMode::Plan || Message.TrimStartAndEnd().IsEmpty())
+	{
+		return;
+	}
+
+	if (!ActivePlanSession.IsValid())
+	{
+		ActivePlanSession = MakeUnique<FOlivePlanSessionState>();
+	}
+
+	const FString PlanMessage = NormalizePlanText(Message);
+	const bool bContinuePlan = ShouldContinueActivePlan(PlanMessage);
+	if (!ActivePlanSession->bHasActivePlan || !bContinuePlan)
+	{
+		if (!ActivePlanSession->IsEmpty())
+		{
+			UE_LOG(LogOliveAI, Log, TEXT("Reset active plan session before starting new plan thread"));
+		}
+		ActivePlanSession->Reset();
+		ActivePlanSession->bHasActivePlan = true;
+		ActivePlanSession->SessionId = FGuid::NewGuid().ToString(EGuidFormats::Digits);
+		ActivePlanSession->GoalSummary = SummarizePlanText(PlanMessage, 160);
+		ActivePlanSession->TargetSummary = ActivePlanSession->GoalSummary;
+		ActivePlanSession->LatestPlanSummary = ActivePlanSession->GoalSummary;
+		UE_LOG(LogOliveAI, Log, TEXT("Started plan session %s: %.120s"),
+			*ActivePlanSession->SessionId, *ActivePlanSession->GoalSummary);
+	}
+	else
+	{
+		AppendUniquePlanItem(ActivePlanSession->UserPlanAdjustments, SummarizePlanText(PlanMessage, 160), 8);
+		UE_LOG(LogOliveAI, Log, TEXT("Updated plan session %s from user follow-up"),
+			*ActivePlanSession->SessionId);
+	}
+
+	ActivePlanSession->ActiveModeContext = LexToString(ActiveChatMode);
+	ActivePlanSession->LastUpdatedUtc = FDateTime::UtcNow();
+}
+
+void FOliveConversationManager::UpdatePlanSessionFromAssistantMessage(const FOliveChatMessage& AssistantMessage)
+{
+	if (ActiveChatMode != EOliveChatMode::Plan
+		|| AssistantMessage.Role != EOliveChatRole::Assistant
+		|| AssistantMessage.Content.TrimStartAndEnd().IsEmpty())
+	{
+		return;
+	}
+
+	if (!ActivePlanSession.IsValid())
+	{
+		ActivePlanSession = MakeUnique<FOlivePlanSessionState>();
+	}
+
+	if (!ActivePlanSession->bHasActivePlan)
+	{
+		ActivePlanSession->bHasActivePlan = true;
+		ActivePlanSession->SessionId = FGuid::NewGuid().ToString(EGuidFormats::Digits);
+	}
+
+	ActivePlanSession->ActiveModeContext = LexToString(ActiveChatMode);
+	ActivePlanSession->LatestPlanText = AssistantMessage.Content.TrimStartAndEnd();
+	ActivePlanSession->LatestPlanSummary = SummarizePlanText(AssistantMessage.Content, 320);
+	if (ActivePlanSession->GoalSummary.IsEmpty())
+	{
+		ActivePlanSession->GoalSummary = ActivePlanSession->LatestPlanSummary;
+	}
+	if (ActivePlanSession->TargetSummary.IsEmpty())
+	{
+		ActivePlanSession->TargetSummary = ActivePlanSession->LatestPlanSummary;
+	}
+
+	TArray<FString> Lines;
+	AssistantMessage.Content.ParseIntoArrayLines(Lines, true);
+	for (const FString& RawLine : Lines)
+	{
+		const FString Line = RawLine.TrimStartAndEnd();
+		if (Line.IsEmpty())
+		{
+			continue;
+		}
+
+		if (IsLikelyPlanQuestion(Line))
+		{
+			AppendUniquePlanItem(ActivePlanSession->OutstandingQuestions, Line, 6);
+			continue;
+		}
+
+		if (IsLikelyPlanAssetLine(Line))
+		{
+			AppendUniquePlanItem(ActivePlanSession->PlannedAssetsOrArtifacts, Line, 8);
+		}
+
+		if (Line.StartsWith(TEXT("-")) || Line.StartsWith(TEXT("*")) || Line.StartsWith(TEXT("1."))
+			|| Line.StartsWith(TEXT("2.")) || Line.StartsWith(TEXT("3.")) || Line.StartsWith(TEXT("4.")))
+		{
+			AppendUniquePlanItem(ActivePlanSession->KeyDecisions, Line, 8);
+		}
+	}
+	ActivePlanSession->LastUpdatedUtc = FDateTime::UtcNow();
+	UE_LOG(LogOliveAI, Log, TEXT("Updated plan session %s from assistant response"),
+		*ActivePlanSession->SessionId);
+}
+
+FString FOliveConversationManager::BuildPlanContinuationContext() const
+{
+	if (!ActivePlanSession.IsValid()
+		|| !ActivePlanSession->bHasActivePlan
+		|| ActivePlanSession->LatestPlanSummary.IsEmpty()
+		|| ActivePlanSession->LatestPlanText.IsEmpty())
+	{
+		return TEXT("");
+	}
+
+	TArray<FString> Lines;
+	Lines.Add(TEXT("## Active Plan Context"));
+	if (!ActivePlanSession->GoalSummary.IsEmpty())
+	{
+		Lines.Add(FString::Printf(TEXT("Goal: %s"), *ActivePlanSession->GoalSummary));
+	}
+	if (!ActivePlanSession->LatestPlanSummary.IsEmpty())
+	{
+		Lines.Add(FString::Printf(TEXT("Latest plan: %s"), *ActivePlanSession->LatestPlanSummary));
+	}
+	if (ActivePlanSession->UserPlanAdjustments.Num() > 0)
+	{
+		const FString Adjustments = FString::Join(ActivePlanSession->UserPlanAdjustments, TEXT("; "));
+		Lines.Add(FString::Printf(TEXT("Recent user adjustments: %s"), *Adjustments));
+	}
+	if (ActivePlanSession->OutstandingQuestions.Num() > 0)
+	{
+		const FString Questions = FString::Join(ActivePlanSession->OutstandingQuestions, TEXT("; "));
+		Lines.Add(FString::Printf(TEXT("Open questions: %s"), *Questions));
+	}
+	Lines.Add(TEXT("Revise the active plan instead of starting a new task."));
+
+	return FString::Join(Lines, TEXT("\n"));
+}
+
+FString FOliveConversationManager::BuildPlanExecutionContext() const
+{
+	if (!ActivePlanSession.IsValid() || !ActivePlanSession->bHasActivePlan)
+	{
+		return TEXT("");
+	}
+
+	TArray<FString> Lines;
+	Lines.Add(TEXT("## Approved Plan To Execute"));
+	if (!ActivePlanSession->GoalSummary.IsEmpty())
+	{
+		Lines.Add(FString::Printf(TEXT("Goal: %s"), *ActivePlanSession->GoalSummary));
+	}
+	if (!ActivePlanSession->LatestPlanSummary.IsEmpty())
+	{
+		Lines.Add(FString::Printf(TEXT("Plan summary: %s"), *ActivePlanSession->LatestPlanSummary));
+	}
+	if (ActivePlanSession->UserPlanAdjustments.Num() > 0)
+	{
+		const FString Adjustments = FString::Join(ActivePlanSession->UserPlanAdjustments, TEXT("; "));
+		Lines.Add(FString::Printf(TEXT("Approved adjustments: %s"), *Adjustments));
+	}
+	if (ActivePlanSession->PlannedAssetsOrArtifacts.Num() > 0)
+	{
+		const FString Assets = FString::Join(ActivePlanSession->PlannedAssetsOrArtifacts, TEXT("; "));
+		Lines.Add(FString::Printf(TEXT("Planned assets/artifacts: %s"), *Assets));
+	}
+	if (ActivePlanSession->KeyDecisions.Num() > 0)
+	{
+		const FString Decisions = FString::Join(ActivePlanSession->KeyDecisions, TEXT("; "));
+		Lines.Add(FString::Printf(TEXT("Key decisions: %s"), *Decisions));
+	}
+	Lines.Add(TEXT("Implement this active approved plan without restarting discovery."));
+
+	return FString::Join(Lines, TEXT("\n"));
+}
+
+bool FOliveConversationManager::ShouldExecuteApprovedPlan(const FString& Message) const
+{
+	return ActivePlanSession.IsValid()
+		&& ActivePlanSession->bHasActivePlan
+		&& IsPlanToCodeHandoffCue(Message);
+}
+
+void FOliveConversationManager::BeginRequestContext(const FString& Message)
+{
+	bRequestExecutingApprovedPlan = ShouldExecuteApprovedPlan(Message);
+	RequestChatMode = bRequestExecutingApprovedPlan ? EOliveChatMode::Code : ActiveChatMode;
+
+	if (bRequestExecutingApprovedPlan && ActivePlanSession.IsValid())
+	{
+		ActivePlanSession->ActiveModeContext = TEXT("Code (executing approved plan)");
+		ActivePlanSession->LastUpdatedUtc = FDateTime::UtcNow();
+	}
 }
 
 void FOliveConversationManager::ResetRequestContext()
 {
+	RequestChatMode = ActiveChatMode;
+	bRequestExecutingApprovedPlan = false;
+}
+
+bool FOliveConversationManager::ShouldContinueActivePlan(const FString& Message) const
+{
+	if (!ActivePlanSession.IsValid() || !ActivePlanSession->bHasActivePlan)
+	{
+		return false;
+	}
+
+	const FString Trimmed = Message.TrimStartAndEnd();
+	if (Trimmed.IsEmpty())
+	{
+		return false;
+	}
+
+	if (MessageStartsNewPlanTask(Trimmed))
+	{
+		return false;
+	}
+
+	if (ShouldExecuteApprovedPlan(Trimmed))
+	{
+		return true;
+	}
+
+	const FString Lower = Trimmed.ToLower();
+	if (Lower.StartsWith(TEXT("it "))
+		|| Lower.StartsWith(TEXT("it'"))
+		|| Lower.StartsWith(TEXT("also "))
+		|| Lower.StartsWith(TEXT("and also"))
+		|| Lower.StartsWith(TEXT("continue"))
+		|| Lower.StartsWith(TEXT("keep "))
+		|| Lower.StartsWith(TEXT("for it"))
+		|| Lower.StartsWith(TEXT("switch to code"))
+		|| Lower.StartsWith(TEXT("switch to code mode"))
+		|| Lower.StartsWith(TEXT("do it"))
+		|| Lower.StartsWith(TEXT("build it"))
+		|| Lower.StartsWith(TEXT("implement it"))
+		|| Lower.Contains(TEXT(" also "))
+		|| Lower.Contains(TEXT(" it "))
+		|| Lower.Contains(TEXT(" approved plan"))
+		|| Lower.Contains(TEXT(" use the plan")))
+	{
+		return true;
+	}
+
+	static const TArray<FString> ContinuationKeywords = {
+		TEXT("also"), TEXT("update"), TEXT("change"), TEXT("revise"), TEXT("tweak"),
+		TEXT("follow-up"), TEXT("same plan"), TEXT("that plan"), TEXT("this plan")
+	};
+	if (MessageContainsAnyKeyword(Lower, ContinuationKeywords))
+	{
+		return true;
+	}
+
+	if (!ActivePlanSession->GoalSummary.IsEmpty())
+	{
+		TArray<FString> GoalTokens;
+		ActivePlanSession->GoalSummary.ToLower().ParseIntoArrayWS(GoalTokens);
+		int32 MatchingGoalTokens = 0;
+		for (const FString& Token : GoalTokens)
+		{
+			if (Token.Len() >= 5 && Lower.Contains(Token))
+			{
+				MatchingGoalTokens++;
+			}
+		}
+
+		if (MatchingGoalTokens >= 2)
+		{
+			return true;
+		}
+	}
+
+	return false;
 }
 
 void FOliveConversationManager::HandleError(const FString& ErrorMessage)
@@ -883,6 +1538,15 @@ void FOliveConversationManager::HandleError(const FString& ErrorMessage)
 	OnError.Broadcast(ErrorMessage);
 	OnProcessingComplete.Broadcast();
 
+	// Apply deferred mode switch if pending
+	if (DeferredChatMode.IsSet())
+	{
+		ActiveChatMode = DeferredChatMode.GetValue();
+		DeferredChatMode.Reset();
+		OnModeChanged.Broadcast(ActiveChatMode);
+		UE_LOG(LogOliveAI, Log, TEXT("Applied deferred mode switch to %s"), LexToString(ActiveChatMode));
+	}
+
 	// Drain the next queued message if any are waiting
 	DrainNextQueuedMessage();
 }
@@ -902,9 +1566,7 @@ void FOliveConversationManager::ProcessPendingToolCalls()
 		return;
 	}
 
-	// Run mode: check pause, begin step. Auto-checkpointing was removed in
-	// the P3 makeover -- rollback is now driven entirely by the UI's
-	// operation-card snapshots, not multi-step run checkpoints.
+	// Run mode: check pause, begin step, auto-checkpoint
 	if (bRunModeActive && FOliveRunManager::Get().HasActiveRun())
 	{
 		const FOliveRun* Run = FOliveRunManager::Get().GetActiveRun();
@@ -914,6 +1576,10 @@ void FOliveConversationManager::ProcessPendingToolCalls()
 		}
 		FOliveRunManager::Get().BeginStep(
 			FString::Printf(TEXT("Tool iteration %d"), CurrentToolIteration));
+		if (FOliveRunManager::Get().ShouldCheckpoint() && ActiveContextPaths.Num() > 0)
+		{
+			FOliveRunManager::Get().CreateCheckpoint(ActiveContextPaths);
+		}
 	}
 
 	// Clear previous results
@@ -1063,22 +1729,11 @@ void FOliveConversationManager::ExecuteToolCall(const FOliveStreamChunk& ToolCal
 	ToolContext.Origin = EOliveToolCallOrigin::EditorChat;
 	ToolContext.SessionId = SessionId.ToString();
 	ToolContext.RunId = Brain.IsValid() ? Brain->GetCurrentRunId() : TEXT("");
+	ToolContext.ChatMode = RequestChatMode;
 	ToolContext.bRunModeActive = bRunModeActive;
 	FOliveToolExecutionContextScope ContextScope(ToolContext);
 
 	FOliveToolResult Result = FOliveToolRegistry::Get().ExecuteTool(ToolCall.ToolName, ToolCall.ToolArguments);
-
-	// Retry-once-on-transient: if the tool failed with a transient error
-	// (TIMEOUT, RATE_LIMIT, HTTP_5xx, TRANSIENT), re-run the same call with
-	// the same args. The LLM is not re-prompted for transient failures --
-	// this is a transport-level retry only. Non-transient errors pass
-	// through to the LLM, which decides what to do based on the 3-part
-	// error (code + message + suggestion) that tools already return.
-	if (SelfCorrectionPolicy.ShouldRetry(Result, 1))
-	{
-		UE_LOG(LogOliveAI, Log, TEXT("Transient error from '%s' -- retrying once"), *ToolCall.ToolName);
-		Result = FOliveToolRegistry::Get().ExecuteTool(ToolCall.ToolName, ToolCall.ToolArguments);
-	}
 
 	// Log full arguments on failure for debugging
 	if (!Result.bSuccess)
@@ -1131,35 +1786,79 @@ void FOliveConversationManager::HandleToolResult(
 			0.0, Result.Data);
 	}
 
-	// P3: Deliver the 3-part error (code + message + suggestion) to the LLM
-	// verbatim. No progressive disclosure, no A/B/C classification, no plan
-	// dedup. The LLM decides what to do based on the structured error that
-	// tools already return. Transport-level retry for transient errors is
-	// handled inline in ExecuteToolCall.
+	// Use SelfCorrectionPolicy to evaluate the result
 	FString ResultContent = Result.ToJsonString();
-
-	// Loop-detector safety backstop: record every failure so ongoing
-	// oscillation/budget-exhaustion checks still work. Signature is kept
-	// coarse (tool + error-code) since fine-grained disambiguation is no
-	// longer needed -- the detector is a hard backstop, not a routing
-	// decision input.
-	if (!Result.bSuccess)
 	{
-		FString ErrorCodeForLoop = TEXT("UNKNOWN");
-		if (Result.Messages.Num() > 0)
+		// Extract asset context from original tool args for per-asset signature tracking
+		FString AssetContext;
+		if (const TSharedPtr<FJsonObject>* FoundArgs = ActiveToolCallArgs.Find(ToolCallId))
 		{
-			ErrorCodeForLoop = Result.Messages[0].Code;
-		}
-		const FString Signature = FOliveLoopDetector::BuildToolErrorSignature(
-			ToolName, ErrorCodeForLoop, TEXT(""));
-		LoopDetector.RecordAttempt(Signature, TEXT("tool_failure"));
+			if (!(*FoundArgs)->TryGetStringField(TEXT("path"), AssetContext))
+			{
+				(*FoundArgs)->TryGetStringField(TEXT("asset_path"), AssetContext);
+			}
 
-		// If the loop-detector budget is exhausted, stop the worker.
-		if (LoopDetector.IsBudgetExhausted(RetryPolicy) || LoopDetector.IsOscillating())
+			// Add finer-grained context for variable operations so batched writes
+			// on different variable names do not collapse into one retry signature.
+			if (ToolName == TEXT("blueprint.add_variable")
+				|| ToolName == TEXT("blueprint.modify_variable")
+				|| ToolName == TEXT("blueprint.remove_variable"))
+			{
+				FString VariableName;
+				const TSharedPtr<FJsonObject>* VariableObj = nullptr;
+				if ((*FoundArgs)->TryGetObjectField(TEXT("variable"), VariableObj) && VariableObj && (*VariableObj).IsValid())
+				{
+					(*VariableObj)->TryGetStringField(TEXT("name"), VariableName);
+				}
+				if (VariableName.IsEmpty())
+				{
+					(*FoundArgs)->TryGetStringField(TEXT("name"), VariableName);
+				}
+				if (VariableName.IsEmpty())
+				{
+					(*FoundArgs)->TryGetStringField(TEXT("variable_name"), VariableName);
+				}
+				if (!VariableName.IsEmpty())
+				{
+					AssetContext = AssetContext.IsEmpty()
+						? FString::Printf(TEXT("var=%s"), *VariableName)
+						: FString::Printf(TEXT("%s|var=%s"), *AssetContext, *VariableName);
+				}
+			}
+		}
+
+		// Look up tool call arguments for plan dedup
+		TSharedPtr<FJsonObject> ToolCallArgsForEval;
+		if (const TSharedPtr<FJsonObject>* FoundArgs = ActiveToolCallArgs.Find(ToolCallId))
 		{
-			UE_LOG(LogOliveAI, Warning,
-				TEXT("Loop detector tripped on tool '%s'. Stopping."), *ToolName);
+			ToolCallArgsForEval = *FoundArgs;
+		}
+
+		FOliveCorrectionDecision Decision = SelfCorrectionPolicy.Evaluate(
+			ToolName, ResultContent, LoopDetector, RetryPolicy, AssetContext, ToolCallArgsForEval);
+
+		switch (Decision.Action)
+		{
+		case EOliveCorrectionAction::FeedBackErrors:
+			// Enrich the result content with retry instructions
+			ResultContent = ResultContent + TEXT("\n\n") + Decision.EnrichedMessage;
+			if (Brain.IsValid())
+			{
+				Brain->SetWorkerPhase(EOliveWorkerPhase::SelfCorrecting);
+			}
+			break;
+
+		case EOliveCorrectionAction::StopWorker:
+			// Loop detected — stop and report
+			ResultContent = ResultContent + TEXT("\n\n") + Decision.LoopReport;
+			UE_LOG(LogOliveAI, Warning, TEXT("Self-correction loop detected for tool '%s'. Stopping."), *ToolName);
 			bStopAfterToolResults = true;
+			// CompleteRun(Failed) is called once in ContinueAfterToolResults after all results are collected
+			break;
+
+		case EOliveCorrectionAction::Continue:
+		default:
+			break;
 		}
 	}
 
@@ -1303,6 +2002,15 @@ void FOliveConversationManager::ContinueAfterToolResults()
 			Brain->CompleteRun(EOliveRunOutcome::Failed); // Already transitions to Idle
 		}
 		OnProcessingComplete.Broadcast();
+
+		// Apply deferred mode switch if pending
+		if (DeferredChatMode.IsSet())
+		{
+			ActiveChatMode = DeferredChatMode.GetValue();
+			DeferredChatMode.Reset();
+			OnModeChanged.Broadcast(ActiveChatMode);
+			UE_LOG(LogOliveAI, Log, TEXT("Applied deferred mode switch to %s"), LexToString(ActiveChatMode));
+		}
 
 		// Drain the next queued message if any are waiting
 		DrainNextQueuedMessage();

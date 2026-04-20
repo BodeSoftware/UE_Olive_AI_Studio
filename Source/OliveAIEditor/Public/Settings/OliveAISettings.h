@@ -24,6 +24,18 @@ enum class EOliveAIProvider : uint8
 };
 
 /**
+ * Default chat mode for the built-in chat panel.
+ * Mirrors EOliveChatMode (runtime enum in OliveBrainState.h) for Config serialization.
+ */
+UENUM(BlueprintType)
+enum class EOliveChatModeConfig : uint8
+{
+	Code UMETA(DisplayName = "Code (Autonomous)"),
+	Plan UMETA(DisplayName = "Plan (Review First)"),
+	Ask  UMETA(DisplayName = "Ask (Read-Only)")
+};
+
+/**
  * Olive AI Studio Settings
  *
  * Configuration settings for the AI-powered development assistant.
@@ -231,6 +243,12 @@ public:
 		meta=(DisplayName="Auto-Scroll Chat"))
 	bool bAutoScrollChat = true;
 
+	/** Default chat mode when opening the chat panel.
+	 *  Code: full autonomous execution. Plan: read + plan, writes require confirmation. Ask: read-only. */
+	UPROPERTY(Config, EditAnywhere, Category="Chat",
+		meta=(DisplayName="Default Chat Mode"))
+	EOliveChatModeConfig DefaultChatMode = EOliveChatModeConfig::Code;
+
 	// ==========================================
 	// Policy Settings
 	// ==========================================
@@ -260,6 +278,11 @@ public:
 		meta=(DisplayName="Max Write Ops Per Minute", ClampMin=0, ClampMax=120))
 	int32 MaxWriteOpsPerMinute = 120;
 
+	/** Steps between automatic checkpoints in Run Mode (0 = manual only) */
+	UPROPERTY(Config, EditAnywhere, Category="Policy",
+		meta=(DisplayName="Checkpoint Interval (Steps)", ClampMin=0, ClampMax=50))
+	int32 CheckpointIntervalSteps = 5;
+
 	// ==========================================
 	// Brain Layer Settings
 	// ==========================================
@@ -271,6 +294,14 @@ public:
 	/** Maximum number of assets returned by project.get_relevant_context */
 	UPROPERTY(Config, EditAnywhere, Category = "Brain Layer", meta = (ClampMin = 1, ClampMax = 50))
 	int32 RelevantContextMaxAssets = 10;
+
+	/** Number of recent tool result pairs to keep at full detail in distilled prompts */
+	UPROPERTY(Config, EditAnywhere, Category = "Brain Layer", meta = (ClampMin = 1, ClampMax = 5))
+	int32 PromptDistillationRawResults = 2;
+
+	/** Maximum correction cycles before the brain layer stops retrying a failed operation */
+	UPROPERTY(Config, EditAnywhere, Category = "Brain Layer", meta = (ClampMin = 1, ClampMax = 20))
+	int32 MaxCorrectionCyclesPerRun = 5;
 
 	// ==========================================
 	// Blueprint Plan JSON

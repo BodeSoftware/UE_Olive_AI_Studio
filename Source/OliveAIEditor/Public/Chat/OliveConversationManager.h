@@ -8,6 +8,7 @@
 #include "Chat/OliveRunManager.h"
 #include "Brain/OliveBrainLayer.h"
 #include "Brain/OliveOperationHistory.h"
+#include "Brain/OlivePromptDistiller.h"
 #include "Brain/OliveRetryPolicy.h"
 #include "Brain/OliveSelfCorrectionPolicy.h"
 
@@ -25,18 +26,55 @@ DECLARE_MULTICAST_DELEGATE(FOnOliveChatProcessingStarted);
 DECLARE_MULTICAST_DELEGATE(FOnOliveChatProcessingComplete);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnOliveChatError, const FString&);
 
+/** Fired when the active chat mode changes (Code/Plan/Ask) */
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnOliveChatModeChanged, EOliveChatMode /* NewMode */);
+
+/** Fired when a mode switch is deferred because processing is active */
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnOliveChatModeSwitchDeferred, EOliveChatMode /* PendingMode */);
+
 /**
  * Conversation Manager
  *
  * Manages the conversation state, message history, and coordinates
  * between the provider and tool execution. Handles the agentic loop
- * for tool calling.
+ * for tool calling. Owns the active chat mode (Code/Plan/Ask).
+ * Mode switches during processing are deferred until the current
+ * operation completes.
  */
 class OLIVEAIEDITOR_API FOliveConversationManager : public TSharedFromThis<FOliveConversationManager>
 {
 public:
 	FOliveConversationManager();
 	~FOliveConversationManager();
+
+	// ==========================================
+	// Plan Session State (for Plan mode continuity)
+	// ==========================================
+
+	/**
+	 * Plan Session State
+	 * Stores compact structured state for ongoing planning conversations.
+	 * Enables Plan mode to behave like a persistent planning session
+	 * where follow-ups revise the active plan.
+	 */
+	struct FOlivePlanSessionState
+	{
+		bool bHasActivePlan = false;
+		FString SessionId;
+		FString GoalSummary;
+		FString TargetSummary;
+		FString ActiveModeContext;
+		FString LatestPlanText;
+		FString LatestPlanSummary;
+		TArray<FString> UserPlanAdjustments;
+		TArray<FString> KeyDecisions;
+		TArray<FString> OutstandingQuestions;
+		TArray<FString> PlannedAssetsOrArtifacts;
+		FDateTime LastUpdatedUtc;
+
+		void Reset();
+		bool IsEmpty() const;
+	};
 
 	// ==========================================
 	// Session Management
@@ -97,6 +135,23 @@ public:
 	const TArray<FString>& GetActiveContext() const { return ActiveContextPaths; }
 
 	// ==========================================
+	// Chat Mode
+	// ==========================================
+
+	/**
+	 * Set the active chat mode. If the manager is currently processing,
+	 * the switch is deferred until the current operation completes.
+	 * @param NewMode The mode to switch to
+	 */
+	void SetChatMode(EOliveChatMode NewMode);
+
+	/**
+	 * Get the current active chat mode
+	 * @return Active chat mode (Code, Plan, or Ask)
+	 */
+	EOliveChatMode GetChatMode() const { return ActiveChatMode; }
+
+	// ==========================================
 	// Provider Management
 	// ==========================================
 
@@ -136,6 +191,12 @@ public:
 	/** Fired on error */
 	FOnOliveChatError OnError;
 
+	/** Fired when the active chat mode changes */
+	FOnOliveChatModeChanged OnModeChanged;
+
+	/** Fired when a mode switch is deferred because processing is active */
+	FOnOliveChatModeSwitchDeferred OnModeSwitchDeferred;
+
 	// ==========================================
 	// Run Mode
 	// ==========================================
@@ -148,6 +209,40 @@ public:
 
 	/** Check if run mode is active */
 	bool IsRunModeActive() const { return bRunModeActive; }
+
+	// ==========================================
+	// Plan Session Management
+	// ==========================================
+
+	/**
+	 * Update plan session from a user message
+	 * Classifies the message as continuation or new task and updates session state
+	 */
+	void UpdatePlanSessionFromUserMessage(const FString& Message);
+
+	/**
+	 * Update plan session from an assistant message
+	 * Extracts and stores plan artifact from AI responses in Plan mode
+	 */
+	void UpdatePlanSessionFromAssistantMessage(const FOliveChatMessage& AssistantMessage);
+
+	/**
+	 * Build continuation context for stateless providers
+	 * Returns compact planning context to prepend to follow-up messages
+	 */
+	FString BuildPlanContinuationContext() const;
+
+	/**
+	 * Build execution context for Plan->Code handoff
+	 * Returns approved plan summary to frame Code mode execution
+	 */
+	FString BuildPlanExecutionContext() const;
+
+	/**
+	 * Check if message should continue the active plan
+	 * Returns true if message appears to continue current planning thread
+	 */
+	bool ShouldContinueActivePlan(const FString& Message) const;
 
 	// ==========================================
 	// Configuration
@@ -204,6 +299,7 @@ private:
 	 * @param Message User's message text
 	 */
 	void SendUserMessageAutonomous(const FString& Message);
+	bool ShouldExecuteApprovedPlan(const FString& Message) const;
 	void BeginRequestContext(const FString& Message);
 	void ResetRequestContext();
 
@@ -283,6 +379,18 @@ private:
 	TSharedPtr<FOliveBrainLayer> Brain;
 
 	// ==========================================
+	// Chat Mode State
+	// ==========================================
+
+	/** Current chat mode (Code/Plan/Ask). Initialized from DefaultChatMode setting. */
+	EOliveChatMode ActiveChatMode = EOliveChatMode::Code;
+	EOliveChatMode RequestChatMode = EOliveChatMode::Code;
+	bool bRequestExecutingApprovedPlan = false;
+
+	/** Deferred mode switch -- applied when processing completes */
+	TOptional<EOliveChatMode> DeferredChatMode;
+
+	// ==========================================
 	// Streaming State
 	// ==========================================
 
@@ -317,6 +425,9 @@ private:
 	/** Whether there are unresolved failures that require the AI to retry */
 	bool bHasPendingCorrections = false;
 
+	/** Plan session state (owned by ConversationManager for Plan mode continuity) */
+	TUniquePtr<FOlivePlanSessionState> ActivePlanSession;
+
 	/** Number of times we have re-prompted the AI to address corrections in the current turn */
 	int32 CorrectionRepromptCount = 0;
 
@@ -350,6 +461,9 @@ private:
 
 	/** Operation history for this session */
 	FOliveOperationHistoryStore HistoryStore;
+
+	/** Prompt distiller for token efficiency */
+	FOlivePromptDistiller PromptDistiller;
 
 	/** Loop detector for current run */
 	FOliveLoopDetector LoopDetector;

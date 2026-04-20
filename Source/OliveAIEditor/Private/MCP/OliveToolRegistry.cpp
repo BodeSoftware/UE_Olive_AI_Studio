@@ -218,53 +218,6 @@ namespace
 		{
 			TryApplyAlias(Effective, TEXT("struct_name"), TEXT("name"), OutNormalizedFields);
 		}
-		// P5 consolidated dispatchers: normalize 'name' based on entity/kind.
-		else if (ToolName == TEXT("cpp.read"))
-		{
-			FString Entity;
-			Effective->TryGetStringField(TEXT("entity"), Entity);
-			Entity = Entity.ToLower();
-			if (Entity == TEXT("class"))
-			{
-				TryApplyAlias(Effective, TEXT("class_name"), TEXT("name"), OutNormalizedFields)
-					|| TryApplyAlias(Effective, TEXT("class_name"), TEXT("class"), OutNormalizedFields);
-			}
-			else if (Entity == TEXT("enum"))
-			{
-				TryApplyAlias(Effective, TEXT("enum_name"), TEXT("name"), OutNormalizedFields);
-			}
-			else if (Entity == TEXT("struct"))
-			{
-				TryApplyAlias(Effective, TEXT("struct_name"), TEXT("name"), OutNormalizedFields);
-			}
-		}
-		else if (ToolName == TEXT("cpp.list"))
-		{
-			FString Kind;
-			Effective->TryGetStringField(TEXT("kind"), Kind);
-			Kind = Kind.ToLower();
-			if (Kind == TEXT("blueprint_callable") || Kind == TEXT("overridable"))
-			{
-				TryApplyAlias(Effective, TEXT("class_name"), TEXT("name"), OutNormalizedFields)
-					|| TryApplyAlias(Effective, TEXT("class_name"), TEXT("class"), OutNormalizedFields);
-			}
-		}
-		else if (ToolName == TEXT("cpp.add"))
-		{
-			FString Entity;
-			Effective->TryGetStringField(TEXT("entity"), Entity);
-			Entity = Entity.ToLower();
-			if (Entity == TEXT("property"))
-			{
-				TryApplyAlias(Effective, TEXT("property_name"), TEXT("name"), OutNormalizedFields);
-				TryApplyAlias(Effective, TEXT("property_type"), TEXT("type"), OutNormalizedFields);
-			}
-			else if (Entity == TEXT("function"))
-			{
-				TryApplyAlias(Effective, TEXT("function_name"), TEXT("name"), OutNormalizedFields)
-					|| TryApplyAlias(Effective, TEXT("function_name"), TEXT("function"), OutNormalizedFields);
-			}
-		}
 	}
 
 	/** Normalize parameters for project.* tools. */
@@ -404,721 +357,121 @@ namespace
 				}
 			});
 
-			// get_node_pins -> blueprint.read(section='pins')
-			Map.Add(TEXT("blueprint.get_node_pins"), {
-				TEXT("blueprint.read"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("section"), TEXT("pins"));
-				}
-			});
-
-			// describe_function -> blueprint.read(section='function_detail')
-			Map.Add(TEXT("blueprint.describe_function"), {
-				TEXT("blueprint.read"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("section"), TEXT("function_detail"));
-				}
-			});
-
-			// verify_completion -> blueprint.compile(verify=true)
-			Map.Add(TEXT("blueprint.verify_completion"), {
-				TEXT("blueprint.compile"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetBoolField(TEXT("verify"), true);
-					// Legacy tool used 'asset_path'; normalize to 'path' so blueprint.compile accepts it.
-					FString AssetPath;
-					if (P->TryGetStringField(TEXT("asset_path"), AssetPath) && !AssetPath.IsEmpty())
-					{
-						FString Path;
-						if (!P->TryGetStringField(TEXT("path"), Path) || Path.IsEmpty())
-						{
-							P->SetStringField(TEXT("path"), AssetPath);
-						}
-					}
-				}
-			});
-
 			// ------------------------------------------------------------------
-			// P5: blueprint.delete entity aliases (consolidated dispatch)
+			// Blueprint variable tools -> blueprint.add_variable (upsert)
 			// ------------------------------------------------------------------
 
-			Map.Add(TEXT("blueprint.remove_node"), {
-				TEXT("blueprint.delete"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("node"));
-				}
-			});
-			Map.Add(TEXT("blueprint.remove_component"), {
-				TEXT("blueprint.delete"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("component"));
-					// Legacy tool used 'name'; copy to component_name for the dispatcher.
-					FString Name;
-					if (P->TryGetStringField(TEXT("name"), Name) && !Name.IsEmpty())
-					{
-						P->SetStringField(TEXT("component_name"), Name);
-					}
-				}
-			});
-			Map.Add(TEXT("blueprint.remove_variable"), {
-				TEXT("blueprint.delete"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("variable"));
-					FString Name;
-					if (P->TryGetStringField(TEXT("name"), Name) && !Name.IsEmpty())
-					{
-						P->SetStringField(TEXT("variable_name"), Name);
-					}
-				}
-			});
-			Map.Add(TEXT("blueprint.remove_function"), {
-				TEXT("blueprint.delete"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("function"));
-					FString Name;
-					if (P->TryGetStringField(TEXT("name"), Name) && !Name.IsEmpty())
-					{
-						P->SetStringField(TEXT("function_name"), Name);
-					}
-				}
-			});
-			Map.Add(TEXT("blueprint.remove_interface"), {
-				TEXT("blueprint.delete"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("interface"));
-					FString Iface;
-					if (P->TryGetStringField(TEXT("interface"), Iface) && !Iface.IsEmpty())
-					{
-						P->SetStringField(TEXT("interface_path"), Iface);
-					}
-				}
-			});
-
-			// ------------------------------------------------------------------
-			// P5: blueprint.modify entity+action aliases
-			// ------------------------------------------------------------------
-
-			Map.Add(TEXT("blueprint.modify_component"), {
-				TEXT("blueprint.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("component"));
-					P->SetStringField(TEXT("action"), TEXT("set_properties"));
-				}
-			});
-			Map.Add(TEXT("blueprint.reparent_component"), {
-				TEXT("blueprint.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("component"));
-					P->SetStringField(TEXT("action"), TEXT("reparent"));
-				}
-			});
-			Map.Add(TEXT("blueprint.modify_function_signature"), {
-				TEXT("blueprint.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("function"));
-					P->SetStringField(TEXT("action"), TEXT("set_signature"));
-				}
-			});
-			Map.Add(TEXT("blueprint.set_parent_class"), {
-				TEXT("blueprint.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("blueprint"));
-					P->SetStringField(TEXT("action"), TEXT("set_parent_class"));
-				}
-			});
-			Map.Add(TEXT("blueprint.set_defaults"), {
-				TEXT("blueprint.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("blueprint"));
-					P->SetStringField(TEXT("action"), TEXT("set_defaults"));
-				}
-			});
-			Map.Add(TEXT("blueprint.set_pin_default"), {
-				TEXT("blueprint.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("pin_default"));
-				}
-			});
-			Map.Add(TEXT("blueprint.set_node_property"), {
-				TEXT("blueprint.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("node"));
-					P->SetStringField(TEXT("action"), TEXT("set_property"));
-				}
-			});
-			Map.Add(TEXT("blueprint.move_node"), {
-				TEXT("blueprint.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("node"));
-					P->SetStringField(TEXT("action"), TEXT("move"));
-				}
-			});
-
-			// ------------------------------------------------------------------
-			// P5: blueprint.add entity aliases (and legacy variable/function
-			// aliases repoint to the new consolidated dispatch).
-			// ------------------------------------------------------------------
-
-			Map.Add(TEXT("blueprint.add_node"), {
-				TEXT("blueprint.add"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("node"));
-				}
-			});
-			Map.Add(TEXT("blueprint.add_variable"), {
-				TEXT("blueprint.add"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("variable"));
-				}
-			});
-			Map.Add(TEXT("blueprint.add_function"), {
-				TEXT("blueprint.add"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("function"));
-				}
-			});
-			Map.Add(TEXT("blueprint.add_component"), {
-				TEXT("blueprint.add"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("component"));
-				}
-			});
-			Map.Add(TEXT("blueprint.add_interface"), {
-				TEXT("blueprint.add"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("interface"));
-				}
-			});
-			Map.Add(TEXT("blueprint.create_timeline"), {
-				TEXT("blueprint.add"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("timeline"));
-				}
-			});
-
-			// modify_variable now routes through blueprint.modify(entity=variable)
 			Map.Add(TEXT("blueprint.modify_variable"), {
-				TEXT("blueprint.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("variable"));
-					P->SetStringField(TEXT("action"), TEXT("set_properties"));
-				}
+				TEXT("blueprint.add_variable"),
+				nullptr // all params pass through (add_variable becomes upsert)
 			});
+
+			// ------------------------------------------------------------------
+			// Blueprint function tools -> blueprint.add_function with function_type
+			// ------------------------------------------------------------------
 
 			Map.Add(TEXT("blueprint.override_function"), {
-				TEXT("blueprint.modify"),
+				TEXT("blueprint.add_function"),
 				[](TSharedPtr<FJsonObject>& P)
 				{
-					P->SetStringField(TEXT("entity"), TEXT("function"));
-					P->SetStringField(TEXT("action"), TEXT("override_virtual"));
+					P->SetStringField(TEXT("function_type"), TEXT("override"));
 				}
 			});
 
 			Map.Add(TEXT("blueprint.add_custom_event"), {
-				TEXT("blueprint.add"),
+				TEXT("blueprint.add_function"),
 				[](TSharedPtr<FJsonObject>& P)
 				{
-					P->SetStringField(TEXT("entity"), TEXT("custom_event"));
+					P->SetStringField(TEXT("function_type"), TEXT("custom_event"));
 				}
 			});
 
 			Map.Add(TEXT("blueprint.add_event_dispatcher"), {
-				TEXT("blueprint.add"),
+				TEXT("blueprint.add_function"),
 				[](TSharedPtr<FJsonObject>& P)
 				{
-					P->SetStringField(TEXT("entity"), TEXT("event_dispatcher"));
+					P->SetStringField(TEXT("function_type"), TEXT("event_dispatcher"));
 				}
 			});
-
-			// create_interface -> blueprint.create with type="Interface"
-			Map.Add(TEXT("blueprint.create_interface"), {
-				TEXT("blueprint.create"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					FString ExistingType;
-					if (!P->TryGetStringField(TEXT("type"), ExistingType) || ExistingType.IsEmpty())
-					{
-						P->SetStringField(TEXT("type"), TEXT("Interface"));
-					}
-				}
-			});
-
-			// NOTE: blueprint.scaffold is deleted per contract §2.6 (no alias).
-			// The composite workflow is now blueprint.create followed by N
-			// blueprint.add calls.
 
 			// ------------------------------------------------------------------
-			// Behavior Tree tools -> behaviortree.add / .modify / .remove / .move
+			// Behavior Tree tools -> behaviortree.add_node with node_kind
 			// ------------------------------------------------------------------
 
 			Map.Add(TEXT("behaviortree.add_composite"), {
-				TEXT("behaviortree.add"),
+				TEXT("behaviortree.add_node"),
 				[](TSharedPtr<FJsonObject>& P)
 				{
-					P->SetStringField(TEXT("node_type"), TEXT("composite"));
+					P->SetStringField(TEXT("node_kind"), TEXT("composite"));
 				}
 			});
 
 			Map.Add(TEXT("behaviortree.add_task"), {
-				TEXT("behaviortree.add"),
+				TEXT("behaviortree.add_node"),
 				[](TSharedPtr<FJsonObject>& P)
 				{
-					P->SetStringField(TEXT("node_type"), TEXT("task"));
+					P->SetStringField(TEXT("node_kind"), TEXT("task"));
 				}
 			});
 
 			Map.Add(TEXT("behaviortree.add_decorator"), {
-				TEXT("behaviortree.add"),
+				TEXT("behaviortree.add_node"),
 				[](TSharedPtr<FJsonObject>& P)
 				{
-					P->SetStringField(TEXT("node_type"), TEXT("decorator"));
+					P->SetStringField(TEXT("node_kind"), TEXT("decorator"));
 				}
 			});
 
 			Map.Add(TEXT("behaviortree.add_service"), {
-				TEXT("behaviortree.add"),
+				TEXT("behaviortree.add_node"),
 				[](TSharedPtr<FJsonObject>& P)
 				{
-					P->SetStringField(TEXT("node_type"), TEXT("service"));
+					P->SetStringField(TEXT("node_kind"), TEXT("service"));
 				}
-			});
-
-			// Pass-through: legacy add_node forwards to behaviortree.add. The
-			// dispatcher honors an existing 'node_type' / 'node_kind' on params so
-			// no field injection is needed — if node_kind=... is already set
-			// (e.g. from templates) the dispatcher reuses it.
-			Map.Add(TEXT("behaviortree.add_node"), {
-				TEXT("behaviortree.add"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					// If the caller supplied node_kind but not node_type, mirror it
-					// to node_type so HandleBehaviorTreeAdd's canonical field is populated.
-					FString NodeType;
-					if (!P->TryGetStringField(TEXT("node_type"), NodeType) || NodeType.IsEmpty())
-					{
-						FString NodeKind;
-						if (P->TryGetStringField(TEXT("node_kind"), NodeKind) && !NodeKind.IsEmpty())
-						{
-							P->SetStringField(TEXT("node_type"), NodeKind);
-						}
-						else
-						{
-							// No hint — the dispatcher will return a helpful error.
-							P->SetStringField(TEXT("node_type"), TEXT("node"));
-						}
-					}
-				}
-			});
-
-			// Modify aliases
-			Map.Add(TEXT("behaviortree.modify_node"), {
-				TEXT("behaviortree.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("node"));
-				}
-			});
-
-			Map.Add(TEXT("behaviortree.set_node_property"), {
-				TEXT("behaviortree.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("node"));
-				}
-			});
-
-			Map.Add(TEXT("behaviortree.set_decorator"), {
-				TEXT("behaviortree.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("decorator"));
-				}
-			});
-
-			Map.Add(TEXT("behaviortree.set_blackboard"), {
-				TEXT("behaviortree.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("blackboard_ref"));
-				}
-			});
-
-			// Remove/move renames (pass-through)
-			Map.Add(TEXT("behaviortree.remove_node"), {
-				TEXT("behaviortree.remove"),
-				nullptr
-			});
-
-			Map.Add(TEXT("behaviortree.move_node"), {
-				TEXT("behaviortree.move"),
-				nullptr
 			});
 
 			// ------------------------------------------------------------------
-			// Blackboard tools -> blackboard.modify (action dispatch)
+			// Blackboard tools -> blackboard.add_key (upsert)
 			// ------------------------------------------------------------------
-
-			Map.Add(TEXT("blackboard.create"), {
-				TEXT("blackboard.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("action"), TEXT("create"));
-				}
-			});
-
-			Map.Add(TEXT("blackboard.read"), {
-				TEXT("blackboard.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("action"), TEXT("read"));
-				}
-			});
-
-			Map.Add(TEXT("blackboard.add_key"), {
-				TEXT("blackboard.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("action"), TEXT("add_key"));
-				}
-			});
 
 			Map.Add(TEXT("blackboard.modify_key"), {
-				TEXT("blackboard.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("action"), TEXT("modify_key"));
-				}
-			});
-
-			Map.Add(TEXT("blackboard.remove_key"), {
-				TEXT("blackboard.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("action"), TEXT("remove_key"));
-				}
-			});
-
-			Map.Add(TEXT("blackboard.set_parent"), {
-				TEXT("blackboard.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("action"), TEXT("set_parent"));
-				}
+				TEXT("blackboard.add_key"),
+				nullptr // all params pass through
 			});
 
 			// ------------------------------------------------------------------
-			// PCG tools -> pcg.{create,add,modify,remove,connect} (P5 consolidation)
+			// C++ tools -> cpp.read_class with include param
 			// ------------------------------------------------------------------
 
-			// pcg.create_graph -> pcg.create (pass-through rename)
-			Map.Add(TEXT("pcg.create_graph"), {
-				TEXT("pcg.create"),
-				nullptr
-			});
-
-			// pcg.add_node -> pcg.add(node_kind='node')
-			Map.Add(TEXT("pcg.add_node"), {
-				TEXT("pcg.add"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("node_kind"), TEXT("node"));
-				}
-			});
-
-			// pcg.add_subgraph -> pcg.add(node_kind='subgraph')
-			Map.Add(TEXT("pcg.add_subgraph"), {
-				TEXT("pcg.add"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("node_kind"), TEXT("subgraph"));
-				}
-			});
-
-			// pcg.modify_node -> pcg.modify(entity='node')
-			Map.Add(TEXT("pcg.modify_node"), {
-				TEXT("pcg.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("node"));
-				}
-			});
-
-			// pcg.set_settings -> pcg.modify(entity='settings')
-			Map.Add(TEXT("pcg.set_settings"), {
-				TEXT("pcg.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("settings"));
-				}
-			});
-
-			// pcg.remove_node -> pcg.remove (pass-through rename)
-			Map.Add(TEXT("pcg.remove_node"), {
-				TEXT("pcg.remove"),
-				nullptr
-			});
-
-			// pcg.connect_pins -> pcg.connect (pass-through alias for contract-only
-			// name; the canonical has always been pcg.connect).
-			Map.Add(TEXT("pcg.connect_pins"), {
-				TEXT("pcg.connect"),
-				nullptr
-			});
-
-			// pcg.disconnect -> pcg.connect with break=true
-			Map.Add(TEXT("pcg.disconnect"), {
-				TEXT("pcg.connect"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetBoolField(TEXT("break"), true);
-				}
-			});
-
-			// ------------------------------------------------------------------
-			// Niagara tools -> niagara.{read,add,modify,remove} (P5 consolidation)
-			// ------------------------------------------------------------------
-
-			// niagara.read_system -> niagara.read (pass-through rename)
-			Map.Add(TEXT("niagara.read_system"), {
-				TEXT("niagara.read"),
-				nullptr
-			});
-
-			// niagara.add_emitter -> niagara.add(kind='emitter')
-			Map.Add(TEXT("niagara.add_emitter"), {
-				TEXT("niagara.add"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("kind"), TEXT("emitter"));
-				}
-			});
-
-			// niagara.add_module -> niagara.add(kind='module')
-			Map.Add(TEXT("niagara.add_module"), {
-				TEXT("niagara.add"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("kind"), TEXT("module"));
-				}
-			});
-
-			// niagara.set_emitter_property -> niagara.modify(entity='emitter')
-			Map.Add(TEXT("niagara.set_emitter_property"), {
-				TEXT("niagara.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("emitter"));
-				}
-			});
-
-			// niagara.set_parameter -> niagara.modify(entity='parameter')
-			Map.Add(TEXT("niagara.set_parameter"), {
-				TEXT("niagara.modify"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("parameter"));
-				}
-			});
-
-			// niagara.remove_module -> niagara.remove (pass-through rename)
-			Map.Add(TEXT("niagara.remove_module"), {
-				TEXT("niagara.remove"),
-				nullptr
-			});
-
-			// ------------------------------------------------------------------
-			// C++ tools -> cpp.{read,list,add} (P5 consolidation)
-			// ------------------------------------------------------------------
-
-			// cpp.read_class -> cpp.read(entity='class')
-			Map.Add(TEXT("cpp.read_class"), {
-				TEXT("cpp.read"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("class"));
-				}
-			});
-
-			// cpp.read_enum -> cpp.read(entity='enum')
-			Map.Add(TEXT("cpp.read_enum"), {
-				TEXT("cpp.read"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("enum"));
-				}
-			});
-
-			// cpp.read_struct -> cpp.read(entity='struct')
-			Map.Add(TEXT("cpp.read_struct"), {
-				TEXT("cpp.read"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("struct"));
-				}
-			});
-
-			// cpp.read_header -> cpp.read(entity='header')
-			Map.Add(TEXT("cpp.read_header"), {
-				TEXT("cpp.read"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("header"));
-				}
-			});
-
-			// cpp.read_source -> cpp.read(entity='source')
-			Map.Add(TEXT("cpp.read_source"), {
-				TEXT("cpp.read"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("source"));
-				}
-			});
-
-			// cpp.list_project_classes -> cpp.list(kind='project')
-			Map.Add(TEXT("cpp.list_project_classes"), {
-				TEXT("cpp.list"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("kind"), TEXT("project"));
-				}
-			});
-
-			// cpp.list_blueprint_callable -> cpp.list(kind='blueprint_callable')
 			Map.Add(TEXT("cpp.list_blueprint_callable"), {
-				TEXT("cpp.list"),
+				TEXT("cpp.read_class"),
 				[](TSharedPtr<FJsonObject>& P)
 				{
-					P->SetStringField(TEXT("kind"), TEXT("blueprint_callable"));
+					P->SetStringField(TEXT("include"), TEXT("callable"));
 				}
 			});
 
-			// cpp.list_overridable -> cpp.list(kind='overridable')
 			Map.Add(TEXT("cpp.list_overridable"), {
-				TEXT("cpp.list"),
+				TEXT("cpp.read_class"),
 				[](TSharedPtr<FJsonObject>& P)
 				{
-					P->SetStringField(TEXT("kind"), TEXT("overridable"));
-				}
-			});
-
-			// cpp.add_function -> cpp.add(entity='function')
-			Map.Add(TEXT("cpp.add_function"), {
-				TEXT("cpp.add"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("function"));
-				}
-			});
-
-			// cpp.add_property -> cpp.add(entity='property')
-			Map.Add(TEXT("cpp.add_property"), {
-				TEXT("cpp.add"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					P->SetStringField(TEXT("entity"), TEXT("property"));
+					P->SetStringField(TEXT("include"), TEXT("overridable"));
 				}
 			});
 
 			// ------------------------------------------------------------------
-			// Project family (P5 consolidation — 19 legacy → 7 real survivors)
-			// Survivors: project.search, project.read, project.snapshot,
-			//            project.rollback, project.diff, project.refactor_rename,
-			//            project.index
+			// Project tools -> project.get_asset_info
 			// ------------------------------------------------------------------
 
-			// -- project.read (include-array dispatch) --------------------------
-
-			auto MakeProjectReadAlias = [](const TCHAR* IncludeKey)
-			{
-				const FString Key(IncludeKey);
-				return FOliveToolAlias{
-					TEXT("project.read"),
-					[Key](TSharedPtr<FJsonObject>& P)
-					{
-						// Only fill include if caller didn't already.
-						if (!P->HasField(TEXT("include")))
-						{
-							TArray<TSharedPtr<FJsonValue>> Arr;
-							Arr.Add(MakeShared<FJsonValueString>(Key));
-							P->SetArrayField(TEXT("include"), Arr);
-						}
-					}
-				};
-			};
-
-			Map.Add(TEXT("project.get_asset_info"),      MakeProjectReadAlias(TEXT("asset_info")));
-			Map.Add(TEXT("project.get_class_hierarchy"), MakeProjectReadAlias(TEXT("class_hierarchy")));
-			Map.Add(TEXT("project.get_config"),          MakeProjectReadAlias(TEXT("config")));
-			Map.Add(TEXT("project.get_dependencies"),    MakeProjectReadAlias(TEXT("dependencies")));
-			Map.Add(TEXT("project.get_info"),            MakeProjectReadAlias(TEXT("info")));
-			Map.Add(TEXT("project.get_referencers"),     MakeProjectReadAlias(TEXT("referencers")));
-			Map.Add(TEXT("project.get_relevant_context"),MakeProjectReadAlias(TEXT("relevant_context")));
-			Map.Add(TEXT("project.bulk_read"),           MakeProjectReadAlias(TEXT("bulk")));
-
-			// -- project.snapshot (action=list subsumes project.list_snapshots) --
-
-			Map.Add(TEXT("project.list_snapshots"), {
-				TEXT("project.snapshot"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					if (!P->HasField(TEXT("action")))
-					{
-						P->SetStringField(TEXT("action"), TEXT("list"));
-					}
-				}
+			Map.Add(TEXT("project.get_dependencies"), {
+				TEXT("project.get_asset_info"),
+				nullptr // all params pass through
 			});
 
-			// -- project.index (action=build/status subsumes index_build/index_status) --
-
-			Map.Add(TEXT("project.index_build"), {
-				TEXT("project.index"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					if (!P->HasField(TEXT("action")))
-					{
-						P->SetStringField(TEXT("action"), TEXT("build"));
-					}
-				}
+			Map.Add(TEXT("project.get_referencers"), {
+				TEXT("project.get_asset_info"),
+				nullptr // all params pass through
 			});
-
-			Map.Add(TEXT("project.index_status"), {
-				TEXT("project.index"),
-				[](TSharedPtr<FJsonObject>& P)
-				{
-					if (!P->HasField(TEXT("action")))
-					{
-						P->SetStringField(TEXT("action"), TEXT("status"));
-					}
-				}
-			});
-
-			// NOTE: project.create_ai_character, project.implement_interface,
-			// project.move_to_cpp, and project.batch_write are deleted with NO
-			// alias — calling them returns TOOL_NOT_FOUND per contract §7.4.
 
 			return Map;
 		}();
@@ -1407,6 +760,50 @@ TOptional<FOliveToolDefinition> FOliveToolRegistry::GetTool(const FString& Name)
 	return TOptional<FOliveToolDefinition>();
 }
 
+TArray<FOliveToolDefinition> FOliveToolRegistry::GetToolsForMode(EOliveChatMode Mode) const
+{
+	// Code and Plan modes return all tools.
+	// Plan mode blocks writes at the pipeline level (Stage 2 mode gate), not here.
+	// This lets the AI see write tool schemas for planning purposes.
+	if (Mode != EOliveChatMode::Ask)
+	{
+		return GetAllTools();
+	}
+
+	// Ask mode: return only read/discovery tools.
+	// Exclude tools with any write-family tag. Include everything else (safe default).
+	// Write-family tags that cause exclusion:
+	static const TSet<FString> ExcludeTags = {
+		TEXT("write"), TEXT("danger"), TEXT("refactor"),
+		TEXT("create"), TEXT("delete")
+	};
+
+	TArray<FOliveToolDefinition> Result;
+
+	FRWScopeLock ReadLock(ToolsLock, SLT_ReadOnly);
+	for (const auto& Pair : Tools)
+	{
+		const FOliveToolDefinition& Definition = Pair.Value.Definition;
+
+		bool bHasExcludeTag = false;
+		for (const FString& Tag : Definition.Tags)
+		{
+			if (ExcludeTags.Contains(Tag))
+			{
+				bHasExcludeTag = true;
+				break;
+			}
+		}
+
+		if (!bHasExcludeTag)
+		{
+			Result.Add(Definition);
+		}
+	}
+
+	return Result;
+}
+
 TArray<FOliveToolDefinition> FOliveToolRegistry::GetToolsByCategory(const FString& Category) const
 {
 	TArray<FOliveToolDefinition> Result;
@@ -1647,12 +1044,57 @@ void FOliveToolRegistry::RegisterProjectTools()
 		);
 	}
 
-	// Removed in P5 consolidation:
-	//   project.get_asset_info       → alias to project.read (include=["asset_info"])
-	//   project.get_class_hierarchy  → alias to project.read (include=["class_hierarchy"])
-	// Legacy handlers HandleProjectGetAssetInfo / HandleProjectGetClassHierarchy
-	// remain as private methods in case anything links against them directly;
-	// the tool names are no longer registered. See GetToolAliases() for routing.
+	// project.get_asset_info
+	{
+		TSharedPtr<FJsonObject> Schema = MakeShared<FJsonObject>();
+		Schema->SetStringField(TEXT("type"), TEXT("object"));
+
+		TSharedPtr<FJsonObject> Properties = MakeShared<FJsonObject>();
+
+		TSharedPtr<FJsonObject> PathProp = MakeShared<FJsonObject>();
+		PathProp->SetStringField(TEXT("type"), TEXT("string"));
+		PathProp->SetStringField(TEXT("description"), TEXT("Asset path (e.g., /Game/Blueprints/BP_Player)"));
+		Properties->SetObjectField(TEXT("path"), PathProp);
+
+		Schema->SetObjectField(TEXT("properties"), Properties);
+
+		TArray<TSharedPtr<FJsonValue>> Required;
+		Required.Add(MakeShared<FJsonValueString>(TEXT("path")));
+		Schema->SetArrayField(TEXT("required"), Required);
+
+		RegisterTool(
+			TEXT("project.get_asset_info"),
+			TEXT("Get detailed information about an asset including dependencies, referencers, and metadata."),
+			Schema,
+			FOliveToolHandler::CreateRaw(this, &FOliveToolRegistry::HandleProjectGetAssetInfo),
+			{ TEXT("project"), TEXT("info") },
+			TEXT("project")
+		);
+	}
+
+	// project.get_class_hierarchy
+	{
+		TSharedPtr<FJsonObject> Schema = MakeShared<FJsonObject>();
+		Schema->SetStringField(TEXT("type"), TEXT("object"));
+
+		TSharedPtr<FJsonObject> Properties = MakeShared<FJsonObject>();
+
+		TSharedPtr<FJsonObject> RootClassProp = MakeShared<FJsonObject>();
+		RootClassProp->SetStringField(TEXT("type"), TEXT("string"));
+		RootClassProp->SetStringField(TEXT("description"), TEXT("Root class name (optional, defaults to Actor)"));
+		Properties->SetObjectField(TEXT("root_class"), RootClassProp);
+
+		Schema->SetObjectField(TEXT("properties"), Properties);
+
+		RegisterTool(
+			TEXT("project.get_class_hierarchy"),
+			TEXT("Get the class inheritance hierarchy starting from a root class."),
+			Schema,
+			FOliveToolHandler::CreateRaw(this, &FOliveToolRegistry::HandleProjectGetClassHierarchy),
+			{ TEXT("project"), TEXT("hierarchy") },
+			TEXT("project")
+		);
+	}
 
 	// Removed in AI Freedom Phase 2 — already returned by project.get_asset_info
 	// project.get_dependencies

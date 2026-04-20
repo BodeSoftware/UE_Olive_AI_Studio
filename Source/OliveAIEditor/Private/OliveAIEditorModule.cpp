@@ -25,8 +25,6 @@
 #include "MCP/OliveCppToolHandlers.h"
 #include "MCP/OliveCrossSystemToolHandlers.h"
 #include "MCP/OlivePythonToolHandlers.h"
-#include "MCP/OliveLevelToolHandlers.h"
-#include "MCP/OliveMaterialToolHandlers.h"
 #include "MCP/OliveBuildTool.h"
 #include "Template/OliveTemplateSystem.h"
 #include "OliveMCPPromptTemplates.h"
@@ -148,12 +146,6 @@ void FOliveAIEditorModule::ShutdownModule()
 
 	// Unregister Python tools
 	FOlivePythonToolHandlers::Get().UnregisterAllTools();
-
-	// Unregister Material tools
-	FOliveMaterialToolHandlers::Get().UnregisterAllTools();
-
-	// Unregister Level tools
-	FOliveLevelToolHandlers::Get().UnregisterAllTools();
 
 	// Unregister Cross-System tools
 	FOliveCrossSystemToolHandlers::Get().UnregisterAllTools();
@@ -382,14 +374,6 @@ void FOliveAIEditorModule::OnPostEngineInit()
 	// Register Cross-System tools
 	FOliveCrossSystemToolHandlers::Get().RegisterAllTools();
 	UE_LOG(LogOliveAI, Log, TEXT("Cross-System tools registered"));
-
-	// Register Level tools
-	FOliveLevelToolHandlers::Get().RegisterAllTools();
-	UE_LOG(LogOliveAI, Log, TEXT("Level tools registered"));
-
-	// Register Material tools
-	FOliveMaterialToolHandlers::Get().RegisterAllTools();
-	UE_LOG(LogOliveAI, Log, TEXT("Material tools registered"));
 
 	// Register Python tools
 	FOlivePythonToolHandlers::Get().RegisterAllTools();

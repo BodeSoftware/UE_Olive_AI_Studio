@@ -325,21 +325,9 @@ namespace OliveBlueprintSchemas
 				"'variables' returns variables only. "
 				"'components' returns component hierarchy. "
 				"'hierarchy' returns class inheritance chain. "
-				"'overridable_functions' lists parent functions that can be overridden. "
-				"'pins' returns the pin manifest for a single node (requires graph_name + node_id). "
-				"'function_detail' returns the detailed signature of one function (requires function_name)."),
+				"'overridable_functions' lists parent functions that can be overridden."),
 			{TEXT("all"), TEXT("summary"), TEXT("graph"), TEXT("variables"),
-			 TEXT("components"), TEXT("hierarchy"), TEXT("overridable_functions"),
-			 TEXT("pins"), TEXT("function_detail")}));
-
-		Properties->SetObjectField(TEXT("node_id"),
-			StringProp(TEXT("Node ID (required when section='pins')")));
-
-		Properties->SetObjectField(TEXT("function_name"),
-			StringProp(TEXT("Function name (required when section='function_detail'; also accepted for section='graph' as an alias of graph_name).")));
-
-		Properties->SetObjectField(TEXT("target_class"),
-			StringProp(TEXT("Optional class to scope the function lookup (section='function_detail')")));
+			 TEXT("components"), TEXT("hierarchy"), TEXT("overridable_functions")}));
 
 		Properties->SetObjectField(TEXT("graph_name"),
 			StringProp(TEXT("Graph name (required when section='graph'). Use a function name or 'EventGraph'.")));
@@ -647,26 +635,8 @@ namespace OliveBlueprintSchemas
 		Properties->SetObjectField(TEXT("path"),
 			StringProp(TEXT("Blueprint asset path")));
 
-		Properties->SetObjectField(TEXT("asset_path"),
-			StringProp(TEXT("Alias of 'path' used by the verify path.")));
-
-		Properties->SetObjectField(TEXT("verify"),
-			BoolProp(TEXT("When true, run the verify-completion checks instead of a plain compile. "
-				"Allows optional expected_functions/expected_variables params to assert structure."), false));
-
-		Properties->SetObjectField(TEXT("expected_functions"),
-			ArrayProp(TEXT("Function names that must exist (only used when verify=true)"),
-				MakeSchema(TEXT("string"))));
-
-		Properties->SetObjectField(TEXT("expected_variables"),
-			ArrayProp(TEXT("Variable names that must exist (only used when verify=true)"),
-				MakeSchema(TEXT("string"))));
-
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"),
-			TEXT("Force compile a Blueprint and return compilation results. When verify=true, runs the full "
-				"verification suite (compile + expected structure checks + orphaned exec flow detection) — "
-				"the former blueprint.verify_completion tool is folded in."));
+		Schema->SetStringField(TEXT("description"), TEXT("Force compile a Blueprint and return compilation results"));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path")});
 
@@ -678,182 +648,12 @@ namespace OliveBlueprintSchemas
 		TSharedPtr<FJsonObject> Properties = MakeProperties();
 
 		Properties->SetObjectField(TEXT("path"),
-			StringProp(TEXT("Blueprint asset path")));
-
-		Properties->SetObjectField(TEXT("entity"),
-			EnumProp(TEXT("What to delete. 'blueprint' (default) deletes the whole asset. "
-				"Other values target an entity inside the Blueprint."),
-				{TEXT("blueprint"), TEXT("node"), TEXT("component"), TEXT("variable"),
-				 TEXT("function"), TEXT("interface")}));
-
-		// Optional entity-specific fields. Validation happens in the handler
-		// because required fields vary with 'entity'.
-		Properties->SetObjectField(TEXT("node_id"),
-			StringProp(TEXT("Node ID (required when entity='node')")));
-		Properties->SetObjectField(TEXT("graph_name"),
-			StringProp(TEXT("Graph name for node deletion (optional, aliased to 'graph')")));
-		Properties->SetObjectField(TEXT("component_name"),
-			StringProp(TEXT("Component name (required when entity='component')")));
-		Properties->SetObjectField(TEXT("variable_name"),
-			StringProp(TEXT("Variable name (required when entity='variable')")));
-		Properties->SetObjectField(TEXT("function_name"),
-			StringProp(TEXT("Function name (required when entity='function')")));
-		Properties->SetObjectField(TEXT("interface_path"),
-			StringProp(TEXT("Interface name or path (required when entity='interface')")));
+			StringProp(TEXT("Blueprint asset path to delete")));
 
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"),
-			TEXT("Delete an entity from a Blueprint. When entity='blueprint' (or omitted), deletes the whole asset. "
-				"Other entity values dispatch to a specialized remover. Legacy tool names "
-				"(blueprint.remove_node, remove_component, remove_variable, remove_function, remove_interface) "
-				"are aliases that pre-fill the entity field."));
+		Schema->SetStringField(TEXT("description"), TEXT("Delete a Blueprint asset (requires Tier 3 confirmation)"));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path")});
-
-		return Schema;
-	}
-
-	TSharedPtr<FJsonObject> BlueprintModify()
-	{
-		TSharedPtr<FJsonObject> Properties = MakeProperties();
-
-		Properties->SetObjectField(TEXT("path"),
-			StringProp(TEXT("Blueprint asset path")));
-
-		Properties->SetObjectField(TEXT("entity"),
-			EnumProp(TEXT("Entity class to modify."),
-				{TEXT("component"), TEXT("function"), TEXT("variable"),
-				 TEXT("node"), TEXT("pin_default"), TEXT("blueprint")}));
-
-		Properties->SetObjectField(TEXT("action"),
-			StringProp(TEXT("Entity-specific action. component: set_properties|reparent. "
-				"function: set_signature|override_virtual. variable: set_properties. "
-				"node: move|set_property. blueprint: set_parent_class|set_defaults. "
-				"pin_default: (omit action).")));
-
-		// Passthrough fields consumed by the dispatched handlers. We declare them as
-		// optional; the downstream handler validates presence based on entity+action.
-		Properties->SetObjectField(TEXT("name"),
-			StringProp(TEXT("Entity name (variable, function, or component) — passed through to the underlying handler.")));
-		Properties->SetObjectField(TEXT("variable_name"),
-			StringProp(TEXT("Variable name (alias for 'name' when entity='variable')")));
-		Properties->SetObjectField(TEXT("component_name"),
-			StringProp(TEXT("Component name (alias for 'name' when entity='component')")));
-		Properties->SetObjectField(TEXT("function_name"),
-			StringProp(TEXT("Function name (alias for 'name' when entity='function')")));
-		Properties->SetObjectField(TEXT("new_parent"),
-			StringProp(TEXT("New parent class (blueprint.set_parent_class) or new parent component (component.reparent).")));
-		Properties->SetObjectField(TEXT("graph"),
-			StringProp(TEXT("Graph name (node actions)")));
-		Properties->SetObjectField(TEXT("node_id"),
-			StringProp(TEXT("Node ID (node actions)")));
-		Properties->SetObjectField(TEXT("pin"),
-			StringProp(TEXT("Pin reference (entity='pin_default')")));
-		Properties->SetObjectField(TEXT("pin_name"),
-			StringProp(TEXT("Pin name (alias for 'pin' when entity='pin_default')")));
-		Properties->SetObjectField(TEXT("value"),
-			StringProp(TEXT("Value for pin_default or set_property.")));
-		Properties->SetObjectField(TEXT("property"),
-			StringProp(TEXT("Property name (node.set_property)")));
-
-		// Flexible object passthroughs
-		TSharedPtr<FJsonObject> PropertiesSchema = MakeSchema(TEXT("object"));
-		PropertiesSchema->SetStringField(TEXT("description"),
-			TEXT("Generic property map. For component.set_properties: UE property name -> value. "
-				"For variable.set_properties: accepts up to 21 fields including tooltip, category, "
-				"is_public, is_read_only, is_editable, is_instance_editable, expose_on_spawn, is_private, "
-				"is_replicated, replication_condition, is_save_game, is_advanced_display, is_multiline, "
-				"ui_min, ui_max, clamp_min, clamp_max, bitmask, bitmask_enum, units, delta_value."));
-		Properties->SetObjectField(TEXT("properties"), PropertiesSchema);
-
-		TSharedPtr<FJsonObject> ChangesSchema = MakeSchema(TEXT("object"));
-		ChangesSchema->SetStringField(TEXT("description"),
-			TEXT("Change set for function.set_signature (inputs, outputs, is_pure, category, description)."));
-		Properties->SetObjectField(TEXT("changes"), ChangesSchema);
-
-		Properties->SetObjectField(TEXT("pos_x"),
-			IntProp(TEXT("X position (node.move)"), -10000, 10000));
-		Properties->SetObjectField(TEXT("pos_y"),
-			IntProp(TEXT("Y position (node.move)"), -10000, 10000));
-
-		TSharedPtr<FJsonObject> DefaultsSchema = MakeSchema(TEXT("object"));
-		DefaultsSchema->SetStringField(TEXT("description"),
-			TEXT("Class-default values to set when entity='blueprint' and action='set_defaults'."));
-		Properties->SetObjectField(TEXT("defaults"), DefaultsSchema);
-
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"),
-			TEXT("Modify an entity inside a Blueprint. Dispatches on entity+action to the "
-				"appropriate underlying handler. Legacy tool names (blueprint.modify_component, "
-				"modify_function_signature, reparent_component, set_parent_class, set_pin_default, "
-				"set_node_property, set_defaults) are aliases that pre-fill entity+action."));
-		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("path"), TEXT("entity")});
-
-		return Schema;
-	}
-
-	TSharedPtr<FJsonObject> BlueprintAdd()
-	{
-		TSharedPtr<FJsonObject> Properties = MakeProperties();
-
-		Properties->SetObjectField(TEXT("path"),
-			StringProp(TEXT("Blueprint asset path")));
-
-		Properties->SetObjectField(TEXT("entity"),
-			EnumProp(TEXT("Kind of entity to add."),
-				{TEXT("node"), TEXT("variable"), TEXT("function"), TEXT("component"),
-				 TEXT("custom_event"), TEXT("event_dispatcher"), TEXT("interface"),
-				 TEXT("timeline")}));
-
-		// Passthrough fields consumed by the dispatched handlers.
-		Properties->SetObjectField(TEXT("graph"),
-			StringProp(TEXT("Graph name (entity='node')")));
-		Properties->SetObjectField(TEXT("type"),
-			StringProp(TEXT("Node type (entity='node')")));
-		Properties->SetObjectField(TEXT("node_type"),
-			StringProp(TEXT("Alias for 'type' when entity='node'")));
-
-		Properties->SetObjectField(TEXT("name"),
-			StringProp(TEXT("Entity name (variable, event, dispatcher, function, component, or timeline).")));
-
-		Properties->SetObjectField(TEXT("variable"),
-			VariableSchema());
-
-		Properties->SetObjectField(TEXT("signature"),
-			FunctionSignatureSchema());
-
-		Properties->SetObjectField(TEXT("params"),
-			ArrayProp(TEXT("Parameters for custom_event or event_dispatcher"), FunctionParamSchema()));
-
-		Properties->SetObjectField(TEXT("class"),
-			StringProp(TEXT("Component class (entity='component')")));
-		Properties->SetObjectField(TEXT("parent"),
-			StringProp(TEXT("Parent component (entity='component')")));
-		Properties->SetObjectField(TEXT("interface"),
-			StringProp(TEXT("Interface name or path (entity='interface')")));
-		Properties->SetObjectField(TEXT("timeline_name"),
-			StringProp(TEXT("Timeline name (entity='timeline')")));
-		Properties->SetObjectField(TEXT("tracks"),
-			ArrayProp(TEXT("Timeline tracks array (entity='timeline')"), MakeSchema(TEXT("object"))));
-		Properties->SetObjectField(TEXT("pos_x"),
-			IntProp(TEXT("X position (entity='node')"), -10000, 10000));
-		Properties->SetObjectField(TEXT("pos_y"),
-			IntProp(TEXT("Y position (entity='node')"), -10000, 10000));
-
-		TSharedPtr<FJsonObject> PropsSchema = MakeSchema(TEXT("object"));
-		PropsSchema->SetStringField(TEXT("description"),
-			TEXT("Entity-specific properties (e.g., function_name for call nodes)."));
-		Properties->SetObjectField(TEXT("properties"), PropsSchema);
-
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"),
-			TEXT("Add an entity to a Blueprint. Dispatches on entity to the matching specialized handler. "
-				"Legacy tool names (blueprint.add_node, add_variable, add_function, add_component, "
-				"add_interface, create_timeline, add_custom_event, add_event_dispatcher) are aliases "
-				"that pre-fill the entity field."));
-		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("path"), TEXT("entity")});
 
 		return Schema;
 	}
@@ -1427,21 +1227,53 @@ namespace OliveBlueprintSchemas
 
 	// Templates are reference-only. No create/clone tools -- only get_template and list_templates.
 
+	TSharedPtr<FJsonObject> BlueprintCreateFromTemplate()
+	{
+		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
+		TSharedPtr<FJsonObject> Props = MakeProperties();
+
+		Props->SetObjectField(TEXT("template_id"),
+			StringProp(TEXT("Factory template ID (e.g., 'gun', 'projectile'). Use blueprint.list_templates to see available templates."), true));
+
+		Props->SetObjectField(TEXT("path"),
+			StringProp(TEXT("Blueprint asset path to create (e.g., '/Game/Blueprints/BP_Pistol')"), true));
+
+		Props->SetObjectField(TEXT("preset"),
+			StringProp(TEXT("Optional preset name (e.g., 'Pistol', 'Rocket'). Applies preset parameter values from the template."), false));
+
+		// parameters is an object with string values
+		{
+			TSharedPtr<FJsonObject> ParamsProp = MakeSchema(TEXT("object"));
+			ParamsProp->SetStringField(TEXT("description"),
+				TEXT("Optional parameter overrides. Keys are parameter names from the template, values are strings."));
+			TSharedPtr<FJsonObject> AddlProps = MakeSchema(TEXT("string"));
+			ParamsProp->SetObjectField(TEXT("additionalProperties"), AddlProps);
+			Props->SetObjectField(TEXT("parameters"), ParamsProp);
+		}
+
+		Schema->SetObjectField(TEXT("properties"), Props);
+		AddRequired(Schema, {TEXT("template_id"), TEXT("path")});
+
+		return Schema;
+	}
+
 	TSharedPtr<FJsonObject> BlueprintGetTemplate()
 	{
 		TSharedPtr<FJsonObject> Properties = MakeProperties();
 
 		Properties->SetObjectField(TEXT("template_id"),
-			StringProp(TEXT("ID of the template to view (reference or library)")));
+			StringProp(TEXT("ID of the template to view (factory, reference, or library)")));
 
 		Properties->SetObjectField(TEXT("pattern"),
 			StringProp(TEXT("For reference templates: pattern name to filter. "
+				"For factory templates: function name to extract full plan JSON (e.g., pattern=\"Fire\" returns Fire's complete plan). "
 				"For library templates: specify a function name to retrieve its full node graph.")));
 
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
 		Schema->SetStringField(TEXT("description"),
-			TEXT("View a template's content. Without pattern: shows structure / patterns overview. "
-				"With pattern: for reference templates returns a specific pattern; "
+			TEXT("View a template's content. Without pattern: shows parameters, presets, function outlines. "
+				"With pattern: for factory templates returns a function's full plan_json (ready for apply_plan_json); "
+				"for reference templates returns a specific pattern; "
 				"for library templates returns a function's full node graph."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("template_id")});
@@ -1454,7 +1286,7 @@ namespace OliveBlueprintSchemas
 		TSharedPtr<FJsonObject> Properties = MakeProperties();
 
 		Properties->SetObjectField(TEXT("type"),
-			EnumProp(TEXT("Filter by template type"), {TEXT("reference"), TEXT("library")}));
+			EnumProp(TEXT("Filter by template type"), {TEXT("factory"), TEXT("reference"), TEXT("library")}));
 
 		Properties->SetObjectField(TEXT("query"),
 			StringProp(TEXT("Search query to find templates by name, tag, function name, or keyword. "

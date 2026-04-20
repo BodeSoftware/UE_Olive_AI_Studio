@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Services/OliveValidationEngine.h"
+#include "Brain/OliveBrainState.h"
 #include "OliveToolRegistry.generated.h"
 
 /**
@@ -183,6 +184,15 @@ public:
 	 * Get tool definition by name
 	 */
 	TOptional<FOliveToolDefinition> GetTool(const FString& Name) const;
+
+	/**
+	 * Get tools filtered by chat mode.
+	 * Code/Plan: returns all tools (Plan blocks writes at the pipeline, not here).
+	 * Ask: returns only read/discovery tools (excludes write/danger tags).
+	 * @param Mode The active chat mode
+	 * @return Tools available for that mode
+	 */
+	TArray<FOliveToolDefinition> GetToolsForMode(EOliveChatMode Mode) const;
 
 	/**
 	 * Get tools by category
