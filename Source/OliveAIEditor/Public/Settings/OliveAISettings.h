@@ -299,29 +299,6 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Brain Layer", meta = (ClampMin = 1, ClampMax = 5))
 	int32 PromptDistillationRawResults = 2;
 
-	/** Maximum correction cycles before the brain layer stops retrying a failed operation */
-	UPROPERTY(Config, EditAnywhere, Category = "Brain Layer", meta = (ClampMin = 1, ClampMax = 20))
-	int32 MaxCorrectionCyclesPerRun = 5;
-
-	// ==========================================
-	// Blueprint Plan JSON
-	// ==========================================
-
-	/** Enable intent-level Blueprint plan JSON tools (preview + apply). */
-	UPROPERTY(Config, EditAnywhere, Category="Blueprint Plan",
-		meta=(DisplayName="Enable Plan JSON Tools"))
-	bool bEnableBlueprintPlanJsonTools = true;
-
-	/** Maximum steps allowed in a single plan JSON */
-	UPROPERTY(Config, EditAnywhere, Category="Blueprint Plan",
-		meta=(DisplayName="Plan Max Steps", ClampMin=1, ClampMax=512))
-	int32 PlanJsonMaxSteps = 128;
-
-	/** When true, blueprint.apply_plan_json requires a preview_fingerprint from a prior preview call */
-	UPROPERTY(Config, EditAnywhere, Category="Blueprint Plan",
-		meta=(DisplayName="Require Preview Before Apply"))
-	bool bPlanJsonRequirePreviewForApply = true;
-
 	// ==========================================
 	// Utility Model Settings
 	// ==========================================
@@ -354,13 +331,6 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category="Utility Model",
 		meta=(DisplayName="Enable LLM Keyword Expansion"))
 	bool bEnableLLMKeywordExpansion = true;
-
-	/** Enable template discovery pass before autonomous agent runs.
-	 *  Pre-searches library, factory, and community templates using smart keywords,
-	 *  then injects curated results into the agent's prompt for better template awareness. */
-	UPROPERTY(Config, EditAnywhere, Category="Utility Model",
-		meta=(DisplayName="Enable Template Discovery Pass"))
-	bool bEnableTemplateDiscoveryPass = true;
 
 	// ==========================================
 	// Utility Functions

@@ -13,12 +13,6 @@
 
 namespace
 {
-	bool IsBlueprintPlanTool(const FString& ToolName)
-	{
-		return ToolName == TEXT("blueprint.preview_plan_json")
-			|| ToolName == TEXT("blueprint.apply_plan_json");
-	}
-
 	TSharedPtr<FJsonObject> CloneParams(const TSharedPtr<FJsonObject>& Params)
 	{
 		TSharedPtr<FJsonObject> Cloned = MakeShared<FJsonObject>();
@@ -100,8 +94,8 @@ namespace
 		TSharedPtr<FJsonObject>& Effective,
 		TArray<FString>& OutNormalizedFields)
 	{
-		// Path aliasing — plan tools use asset_path, others use path
-		const TCHAR* CanonicalField = IsBlueprintPlanTool(ToolName) ? TEXT("asset_path") : TEXT("path");
+		// Path aliasing — canonicalize to "path"
+		const TCHAR* CanonicalField = TEXT("path");
 
 		FString CanonicalValue;
 		const bool bHasCanonical = Effective->TryGetStringField(CanonicalField, CanonicalValue) && !CanonicalValue.IsEmpty();
@@ -654,12 +648,28 @@ void FOliveToolRegistry::RegisterTool(const FOliveToolDefinition& Definition, FO
 	FRWScopeLock WriteLock(ToolsLock, SLT_Write);
 
 	// Remove existing if present (for hot reload)
-	Tools.Remove(Definition.Name);
+	if (const FToolEntry* Existing = Tools.Find(Definition.Name))
+	{
+		const FString ExistingSanitized = SanitizeToolNameForMCP(Definition.Name);
+		if (ExistingSanitized != Definition.Name)
+		{
+			SanitizedNameToCanonical.Remove(ExistingSanitized);
+		}
+		Tools.Remove(Definition.Name);
+	}
 
 	FToolEntry Entry;
 	Entry.Definition = Definition;
 	Entry.Handler = Handler;
 	Tools.Add(Definition.Name, Entry);
+
+	// Maintain the sanitized→canonical index so MCP callers (which can only send
+	// ^[a-zA-Z0-9_-]{1,64}$ names) can reach dot-named tools by their underscore form.
+	const FString Sanitized = SanitizeToolNameForMCP(Definition.Name);
+	if (Sanitized != Definition.Name)
+	{
+		SanitizedNameToCanonical.Add(Sanitized, Definition.Name);
+	}
 
 	UE_LOG(LogOliveAI, Verbose, TEXT("Registered tool: %s (%s)"), *Definition.Name, *Definition.Category);
 }
@@ -668,7 +678,19 @@ void FOliveToolRegistry::UnregisterTool(const FString& Name)
 {
 	FRWScopeLock WriteLock(ToolsLock, SLT_Write);
 	Tools.Remove(Name);
+	const FString Sanitized = SanitizeToolNameForMCP(Name);
+	if (Sanitized != Name)
+	{
+		SanitizedNameToCanonical.Remove(Sanitized);
+	}
 	UE_LOG(LogOliveAI, Verbose, TEXT("Unregistered tool: %s"), *Name);
+}
+
+FString FOliveToolRegistry::SanitizeToolNameForMCP(const FString& ToolName)
+{
+	FString Out = ToolName;
+	Out.ReplaceInline(TEXT("."), TEXT("_"));
+	return Out;
 }
 
 bool FOliveToolRegistry::HasTool(const FString& Name) const
@@ -850,10 +872,25 @@ FOliveToolResult FOliveToolRegistry::ExecuteTool(const FString& Name, const TSha
 {
 	double StartTime = FPlatformTime::Seconds();
 
+	// If the caller used the MCP-sanitized name (underscores replaced dots),
+	// translate back to the canonical dotted name before anything else.
+	// This lets MCP clients like Claude CLI — which can't handle dots in
+	// tool names — invoke our dotted tools via their underscored alias.
+	FString EffectiveName = Name;
+	{
+		FRWScopeLock ReadLock(ToolsLock, SLT_ReadOnly);
+		if (!Tools.Contains(EffectiveName))
+		{
+			if (const FString* Canonical = SanitizedNameToCanonical.Find(EffectiveName))
+			{
+				EffectiveName = *Canonical;
+			}
+		}
+	}
+
 	// Resolve tool aliases before anything else. This transforms both the
 	// tool name and parameters so that downstream normalization, routing,
 	// and dispatch all operate on the canonical tool name.
-	FString EffectiveName = Name;
 	TSharedPtr<FJsonObject> AliasedParams = Params;
 	const bool bWasAliased = ResolveAlias(EffectiveName, AliasedParams);
 
@@ -980,6 +1017,26 @@ TSharedPtr<FJsonObject> FOliveToolRegistry::GetToolsListMCP() const
 	for (const FOliveToolDefinition& Tool : ToolsList)
 	{
 		TSharedPtr<FJsonObject> ToolJson = Tool.ToMCPJson();
+
+		// Sanitize the name for the MCP wire format. MCP spec requires tool names
+		// to match ^[a-zA-Z0-9_-]{1,64}$ (dots not allowed), and Claude CLI silently
+		// drops tools whose names violate this. We keep dotted names internally
+		// (better logs / error messages / knowledge-pack references) but expose
+		// underscored names on the wire. ExecuteTool translates back via
+		// SanitizedNameToCanonical.
+		if (ToolJson.IsValid())
+		{
+			FString WireName;
+			if (ToolJson->TryGetStringField(TEXT("name"), WireName))
+			{
+				const FString Sanitized = SanitizeToolNameForMCP(WireName);
+				if (Sanitized != WireName)
+				{
+					ToolJson->SetStringField(TEXT("name"), Sanitized);
+				}
+			}
+		}
+
 		ToolsArray.Add(MakeShared<FJsonValueObject>(ToolJson));
 	}
 
@@ -995,6 +1052,7 @@ TSharedPtr<FJsonObject> FOliveToolRegistry::GetToolsListMCP() const
 void FOliveToolRegistry::RegisterBuiltInTools()
 {
 	RegisterProjectTools();
+	RegisterBatchTool();
 
 	UE_LOG(LogOliveAI, Log, TEXT("Registered %d built-in tools"), GetToolCount());
 }
@@ -1374,5 +1432,426 @@ FOliveToolResult FOliveToolRegistry::HandleProjectGetConfig(const TSharedPtr<FJs
 	// Fallback
 	TSharedPtr<FJsonObject> EmptyData = MakeShared<FJsonObject>();
 	return FOliveToolResult::Success(EmptyData);
+}
+
+// ==========================================
+// olive.batch — multi-step tool dispatcher
+// ==========================================
+
+namespace OliveBatchInternal
+{
+	/**
+	 * Follow a dotted path ("node_id", "data.node_id", "content.0.text") through
+	 * a JSON value and return the final value as a string, or empty string if
+	 * the path cannot be resolved.
+	 */
+	static FString ResolveDottedPath(const TSharedPtr<FJsonObject>& Root, const FString& Path)
+	{
+		if (!Root.IsValid() || Path.IsEmpty())
+		{
+			return FString();
+		}
+
+		TArray<FString> Parts;
+		Path.ParseIntoArray(Parts, TEXT("."), true);
+		if (Parts.Num() == 0)
+		{
+			return FString();
+		}
+
+		TSharedPtr<FJsonValue> Current = MakeShared<FJsonValueObject>(Root);
+		for (const FString& Part : Parts)
+		{
+			if (!Current.IsValid())
+			{
+				return FString();
+			}
+
+			if (Current->Type == EJson::Object)
+			{
+				const TSharedPtr<FJsonObject>& Obj = Current->AsObject();
+				if (!Obj.IsValid() || !Obj->HasField(Part))
+				{
+					return FString();
+				}
+				Current = Obj->TryGetField(Part);
+			}
+			else if (Current->Type == EJson::Array)
+			{
+				const TArray<TSharedPtr<FJsonValue>>& Arr = Current->AsArray();
+				int32 Index = FCString::Atoi(*Part);
+				if (Index < 0 || Index >= Arr.Num())
+				{
+					return FString();
+				}
+				Current = Arr[Index];
+			}
+			else
+			{
+				return FString();
+			}
+		}
+
+		if (!Current.IsValid())
+		{
+			return FString();
+		}
+
+		// Coerce the final value to string
+		switch (Current->Type)
+		{
+		case EJson::String: return Current->AsString();
+		case EJson::Number: return FString::SanitizeFloat(Current->AsNumber());
+		case EJson::Boolean: return Current->AsBool() ? TEXT("true") : TEXT("false");
+		default: return FString();
+		}
+	}
+
+	/**
+	 * Substitute any "@alias.path" tokens in a string with values pulled from
+	 * prior step results. Accepts paths with dot-separated fields.
+	 * Examples: "@entry.node_id", "@spawn.data.node_id"
+	 */
+	static FString SubstituteStringRefs(const FString& Input, const TMap<FString, TSharedPtr<FJsonObject>>& Aliases)
+	{
+		if (Input.IsEmpty() || !Input.Contains(TEXT("@")))
+		{
+			return Input;
+		}
+
+		FString Out;
+		Out.Reserve(Input.Len());
+
+		for (int32 i = 0; i < Input.Len(); )
+		{
+			const TCHAR Ch = Input[i];
+			if (Ch != TEXT('@'))
+			{
+				Out.AppendChar(Ch);
+				++i;
+				continue;
+			}
+
+			// Parse @alias.path token. Alias + path characters: letters, digits, _, .
+			int32 TokenEnd = i + 1;
+			while (TokenEnd < Input.Len())
+			{
+				const TCHAR Tc = Input[TokenEnd];
+				const bool bIsAlnum = (Tc >= TEXT('A') && Tc <= TEXT('Z')) || (Tc >= TEXT('a') && Tc <= TEXT('z')) || (Tc >= TEXT('0') && Tc <= TEXT('9'));
+				if (bIsAlnum || Tc == TEXT('_') || Tc == TEXT('.'))
+				{
+					++TokenEnd;
+					continue;
+				}
+				break;
+			}
+
+			// Token is Input[i+1 .. TokenEnd)
+			const FString RawToken = Input.Mid(i + 1, TokenEnd - (i + 1));
+			int32 DotIdx = INDEX_NONE;
+			RawToken.FindChar(TEXT('.'), DotIdx);
+
+			const FString Alias = (DotIdx == INDEX_NONE) ? RawToken : RawToken.Left(DotIdx);
+			const FString Path = (DotIdx == INDEX_NONE) ? FString(TEXT("node_id")) : RawToken.Mid(DotIdx + 1);
+
+			const TSharedPtr<FJsonObject>* AliasData = Aliases.Find(Alias);
+			if (AliasData && AliasData->IsValid() && !Alias.IsEmpty())
+			{
+				const FString Resolved = ResolveDottedPath(*AliasData, Path);
+				if (!Resolved.IsEmpty())
+				{
+					Out += Resolved;
+					i = TokenEnd;
+					continue;
+				}
+			}
+
+			// Couldn't resolve — leave the token as-is so the error trail is visible.
+			Out += Input.Mid(i, TokenEnd - i);
+			i = TokenEnd;
+		}
+
+		return Out;
+	}
+
+	/** Recursively walk a JSON value, substituting @alias.path tokens in every string. */
+	static TSharedPtr<FJsonValue> SubstituteRefsInValue(const TSharedPtr<FJsonValue>& Value, const TMap<FString, TSharedPtr<FJsonObject>>& Aliases);
+
+	static TSharedPtr<FJsonObject> SubstituteRefsInObject(const TSharedPtr<FJsonObject>& In, const TMap<FString, TSharedPtr<FJsonObject>>& Aliases)
+	{
+		TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
+		if (!In.IsValid()) return Out;
+		for (const auto& Pair : In->Values)
+		{
+			Out->SetField(Pair.Key, SubstituteRefsInValue(Pair.Value, Aliases));
+		}
+		return Out;
+	}
+
+	static TSharedPtr<FJsonValue> SubstituteRefsInValue(const TSharedPtr<FJsonValue>& Value, const TMap<FString, TSharedPtr<FJsonObject>>& Aliases)
+	{
+		if (!Value.IsValid()) return nullptr;
+
+		switch (Value->Type)
+		{
+		case EJson::String:
+			return MakeShared<FJsonValueString>(SubstituteStringRefs(Value->AsString(), Aliases));
+		case EJson::Object:
+			return MakeShared<FJsonValueObject>(SubstituteRefsInObject(Value->AsObject(), Aliases));
+		case EJson::Array:
+		{
+			TArray<TSharedPtr<FJsonValue>> Out;
+			for (const TSharedPtr<FJsonValue>& Item : Value->AsArray())
+			{
+				Out.Add(SubstituteRefsInValue(Item, Aliases));
+			}
+			return MakeShared<FJsonValueArray>(Out);
+		}
+		default:
+			return Value;
+		}
+	}
+}
+
+void FOliveToolRegistry::RegisterBatchTool()
+{
+	TSharedPtr<FJsonObject> Schema = MakeShared<FJsonObject>();
+	Schema->SetStringField(TEXT("type"), TEXT("object"));
+
+	TSharedPtr<FJsonObject> Properties = MakeShared<FJsonObject>();
+
+	// steps
+	{
+		TSharedPtr<FJsonObject> StepsProp = MakeShared<FJsonObject>();
+		StepsProp->SetStringField(TEXT("type"), TEXT("array"));
+		StepsProp->SetStringField(TEXT("description"),
+			TEXT("Ordered list of tool calls to execute in one round-trip. Each step: "
+				 "{tool: string, params: object, id?: string}. Use id to alias the step's "
+				 "result so later steps can reference it via \"@id\" (shorthand for "
+				 "@id.node_id) or \"@id.path.to.field\" anywhere in string params. "
+				 "All steps share one transaction: undo reverses the whole batch. "
+				 "Stops on first failure unless stop_on_error=false."));
+
+		TSharedPtr<FJsonObject> ItemSchema = MakeShared<FJsonObject>();
+		ItemSchema->SetStringField(TEXT("type"), TEXT("object"));
+		TSharedPtr<FJsonObject> ItemProps = MakeShared<FJsonObject>();
+
+		TSharedPtr<FJsonObject> ToolProp = MakeShared<FJsonObject>();
+		ToolProp->SetStringField(TEXT("type"), TEXT("string"));
+		ToolProp->SetStringField(TEXT("description"), TEXT("Tool name to invoke (e.g., blueprint.add_node)"));
+		ItemProps->SetObjectField(TEXT("tool"), ToolProp);
+
+		TSharedPtr<FJsonObject> ParamsProp = MakeShared<FJsonObject>();
+		ParamsProp->SetStringField(TEXT("type"), TEXT("object"));
+		ParamsProp->SetStringField(TEXT("description"), TEXT("Parameters for the tool call. Strings support @alias.path refs to prior step results."));
+		ItemProps->SetObjectField(TEXT("params"), ParamsProp);
+
+		TSharedPtr<FJsonObject> IdProp = MakeShared<FJsonObject>();
+		IdProp->SetStringField(TEXT("type"), TEXT("string"));
+		IdProp->SetStringField(TEXT("description"), TEXT("Optional alias. Following steps can reference this step's result with @id or @id.field."));
+		ItemProps->SetObjectField(TEXT("id"), IdProp);
+
+		ItemSchema->SetObjectField(TEXT("properties"), ItemProps);
+		TArray<TSharedPtr<FJsonValue>> ItemRequired;
+		ItemRequired.Add(MakeShared<FJsonValueString>(TEXT("tool")));
+		ItemRequired.Add(MakeShared<FJsonValueString>(TEXT("params")));
+		ItemSchema->SetArrayField(TEXT("required"), ItemRequired);
+
+		StepsProp->SetObjectField(TEXT("items"), ItemSchema);
+		Properties->SetObjectField(TEXT("steps"), StepsProp);
+	}
+
+	// stop_on_error
+	{
+		TSharedPtr<FJsonObject> StopProp = MakeShared<FJsonObject>();
+		StopProp->SetStringField(TEXT("type"), TEXT("boolean"));
+		StopProp->SetStringField(TEXT("description"), TEXT("If true (default), stop at the first failing step. If false, run all steps regardless."));
+		Properties->SetObjectField(TEXT("stop_on_error"), StopProp);
+	}
+
+	Schema->SetObjectField(TEXT("properties"), Properties);
+	TArray<TSharedPtr<FJsonValue>> Required;
+	Required.Add(MakeShared<FJsonValueString>(TEXT("steps")));
+	Schema->SetArrayField(TEXT("required"), Required);
+
+	FOliveToolDefinition Def;
+	Def.Name = TEXT("olive.batch");
+	Def.Description = TEXT("Execute a sequence of primitive tool calls in one round-trip. Reduces HTTP overhead when a task needs many related calls (e.g. build a function: add_node x N + connect_pins x M + set_pin_default x K + compile). Use @alias refs to chain outputs.");
+	Def.InputSchema = Schema;
+	Def.Tags = { TEXT("meta"), TEXT("batch") };
+	Def.Category = TEXT("meta");
+	Def.WhenToUse = TEXT("Use whenever you have 3+ related tool calls. Set id on steps whose node_id / asset_path you need later, then reference with @id or @id.field in subsequent params.");
+
+	RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveToolRegistry::HandleOliveBatch));
+}
+
+FOliveToolResult FOliveToolRegistry::HandleOliveBatch(const TSharedPtr<FJsonObject>& Params)
+{
+	if (!Params.IsValid())
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_INVALID_PARAMS"),
+			TEXT("Parameters object is null"),
+			TEXT("Provide a steps array."));
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* StepsArr = nullptr;
+	if (!Params->TryGetArrayField(TEXT("steps"), StepsArr) || !StepsArr)
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_MISSING_PARAM"),
+			TEXT("Missing or non-array 'steps'"),
+			TEXT("Provide steps: [{tool, params, id?}, ...]"));
+	}
+	if (StepsArr->Num() == 0)
+	{
+		return FOliveToolResult::Error(
+			TEXT("VALIDATION_EMPTY"),
+			TEXT("steps array is empty"),
+			TEXT("Provide at least one step."));
+	}
+
+	bool bStopOnError = true;
+	Params->TryGetBoolField(TEXT("stop_on_error"), bStopOnError);
+
+	TMap<FString, TSharedPtr<FJsonObject>> Aliases;
+	TArray<TSharedPtr<FJsonValue>> Results;
+	int32 SucceededCount = 0;
+	int32 FailedCount = 0;
+	int32 FirstFailedIndex = INDEX_NONE;
+
+	for (int32 i = 0; i < StepsArr->Num(); ++i)
+	{
+		const TSharedPtr<FJsonValue>& StepVal = (*StepsArr)[i];
+		const TSharedPtr<FJsonObject> StepObj = StepVal.IsValid() ? StepVal->AsObject() : nullptr;
+		if (!StepObj.IsValid())
+		{
+			TSharedPtr<FJsonObject> ErrRes = MakeShared<FJsonObject>();
+			ErrRes->SetNumberField(TEXT("index"), i);
+			ErrRes->SetBoolField(TEXT("success"), false);
+			ErrRes->SetStringField(TEXT("error_code"), TEXT("VALIDATION_BAD_STEP"));
+			ErrRes->SetStringField(TEXT("error_message"), TEXT("Step is not a JSON object"));
+			Results.Add(MakeShared<FJsonValueObject>(ErrRes));
+			FailedCount++;
+			if (FirstFailedIndex == INDEX_NONE) FirstFailedIndex = i;
+			if (bStopOnError) break;
+			continue;
+		}
+
+		FString ToolName;
+		if (!StepObj->TryGetStringField(TEXT("tool"), ToolName) || ToolName.IsEmpty())
+		{
+			TSharedPtr<FJsonObject> ErrRes = MakeShared<FJsonObject>();
+			ErrRes->SetNumberField(TEXT("index"), i);
+			ErrRes->SetBoolField(TEXT("success"), false);
+			ErrRes->SetStringField(TEXT("error_code"), TEXT("VALIDATION_MISSING_PARAM"));
+			ErrRes->SetStringField(TEXT("error_message"), TEXT("Step is missing 'tool'"));
+			Results.Add(MakeShared<FJsonValueObject>(ErrRes));
+			FailedCount++;
+			if (FirstFailedIndex == INDEX_NONE) FirstFailedIndex = i;
+			if (bStopOnError) break;
+			continue;
+		}
+
+		if (ToolName == TEXT("olive.batch"))
+		{
+			TSharedPtr<FJsonObject> ErrRes = MakeShared<FJsonObject>();
+			ErrRes->SetNumberField(TEXT("index"), i);
+			ErrRes->SetBoolField(TEXT("success"), false);
+			ErrRes->SetStringField(TEXT("error_code"), TEXT("BATCH_RECURSION"));
+			ErrRes->SetStringField(TEXT("error_message"), TEXT("olive.batch cannot invoke olive.batch"));
+			ErrRes->SetStringField(TEXT("suggestion"), TEXT("Flatten nested batches into a single steps array."));
+			Results.Add(MakeShared<FJsonValueObject>(ErrRes));
+			FailedCount++;
+			if (FirstFailedIndex == INDEX_NONE) FirstFailedIndex = i;
+			if (bStopOnError) break;
+			continue;
+		}
+
+		const TSharedPtr<FJsonObject>* StepParamsPtr = nullptr;
+		TSharedPtr<FJsonObject> StepParams;
+		if (StepObj->TryGetObjectField(TEXT("params"), StepParamsPtr) && StepParamsPtr && StepParamsPtr->IsValid())
+		{
+			StepParams = OliveBatchInternal::SubstituteRefsInObject(*StepParamsPtr, Aliases);
+		}
+		else
+		{
+			StepParams = MakeShared<FJsonObject>();
+		}
+
+		FString StepId;
+		StepObj->TryGetStringField(TEXT("id"), StepId);
+
+		// Dispatch. ExecuteTool routes through the normal registry, which for
+		// game-thread-sensitive tools will be entered from the MCP server on the
+		// HTTP worker thread and marshalled via the task-graph-wait path. For the
+		// built-in batch tool running synchronously here we're already on the
+		// caller's thread; each sub-tool's handler does its own dispatch if needed.
+		FOliveToolResult StepResult = ExecuteTool(ToolName, StepParams);
+
+		TSharedPtr<FJsonObject> StepEntry = MakeShared<FJsonObject>();
+		StepEntry->SetNumberField(TEXT("index"), i);
+		if (!StepId.IsEmpty())
+		{
+			StepEntry->SetStringField(TEXT("id"), StepId);
+		}
+		StepEntry->SetStringField(TEXT("tool"), ToolName);
+		StepEntry->SetBoolField(TEXT("success"), StepResult.bSuccess);
+		if (StepResult.Data.IsValid())
+		{
+			StepEntry->SetObjectField(TEXT("data"), StepResult.Data);
+		}
+		if (!StepResult.bSuccess && StepResult.Messages.Num() > 0)
+		{
+			const FOliveIRMessage& FirstErr = StepResult.Messages[0];
+			StepEntry->SetStringField(TEXT("error_code"), FirstErr.Code);
+			StepEntry->SetStringField(TEXT("error_message"), FirstErr.Message);
+			if (!FirstErr.Suggestion.IsEmpty())
+			{
+				StepEntry->SetStringField(TEXT("suggestion"), FirstErr.Suggestion);
+			}
+		}
+
+		Results.Add(MakeShared<FJsonValueObject>(StepEntry));
+
+		if (StepResult.bSuccess)
+		{
+			SucceededCount++;
+			if (!StepId.IsEmpty() && StepResult.Data.IsValid())
+			{
+				Aliases.Add(StepId, StepResult.Data);
+			}
+		}
+		else
+		{
+			FailedCount++;
+			if (FirstFailedIndex == INDEX_NONE) FirstFailedIndex = i;
+			if (bStopOnError) break;
+		}
+	}
+
+	TSharedPtr<FJsonObject> OutData = MakeShared<FJsonObject>();
+	OutData->SetArrayField(TEXT("results"), Results);
+	OutData->SetNumberField(TEXT("total"), StepsArr->Num());
+	OutData->SetNumberField(TEXT("succeeded"), SucceededCount);
+	OutData->SetNumberField(TEXT("failed"), FailedCount);
+	OutData->SetBoolField(TEXT("stopped_early"), bStopOnError && FirstFailedIndex != INDEX_NONE);
+	if (FirstFailedIndex != INDEX_NONE)
+	{
+		OutData->SetNumberField(TEXT("first_failed_index"), FirstFailedIndex);
+	}
+
+	// Overall result: success if no failures (regardless of stop_on_error).
+	if (FailedCount == 0)
+	{
+		return FOliveToolResult::Success(OutData);
+	}
+
+	FOliveToolResult OverallError = FOliveToolResult::Error(
+		TEXT("BATCH_PARTIAL_FAILURE"),
+		FString::Printf(TEXT("%d of %d batch steps failed (first failure at index %d)"), FailedCount, StepsArr->Num(), FirstFailedIndex),
+		TEXT("Inspect results[first_failed_index] for the specific failure. Fix and retry only the failing steps."));
+	OverallError.Data = OutData;
+	return OverallError;
 }
 

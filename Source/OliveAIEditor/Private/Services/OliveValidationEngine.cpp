@@ -16,7 +16,6 @@
 #include "Reader/OliveCppReflectionReader.h"
 #include "UObject/UObjectIterator.h"
 #include "UObject/UObjectHash.h"
-#include "OliveSnapshotManager.h"
 #include "Internationalization/Regex.h"
 #include "Settings/OliveAISettings.h"
 #include "Engine/Blueprint.h"
@@ -1297,7 +1296,6 @@ FOliveValidationResult FOliveCppCompileGuardRule::Validate(
 void FOliveValidationEngine::RegisterCrossSystemRules()
 {
 	RegisterRule(MakeShared<FOliveBulkReadLimitRule>());
-	RegisterRule(MakeShared<FOliveSnapshotExistsRule>());
 	RegisterRule(MakeShared<FOliveRefactorSafetyRule>());
 	// Removed in AI Freedom update — dead code, preferred_layer is never set
 	// RegisterRule(MakeShared<FOliveCppOnlyModeRule>());
@@ -1337,51 +1335,6 @@ FOliveValidationResult FOliveBulkReadLimitRule::Validate(
 			Result.AddError(TEXT("EMPTY_PATHS"),
 				TEXT("paths array cannot be empty"),
 				TEXT("Provide at least one asset path"));
-		}
-	}
-
-	return Result;
-}
-
-// FOliveSnapshotExistsRule - validates that referenced snapshot IDs exist
-
-FOliveValidationResult FOliveSnapshotExistsRule::Validate(
-	const FString& ToolName,
-	const TSharedPtr<FJsonObject>& Params,
-	UObject* TargetAsset)
-{
-	FOliveValidationResult Result;
-
-	FString SnapshotId;
-	if (!Params.IsValid() || !Params->TryGetStringField(TEXT("snapshot_id"), SnapshotId) || SnapshotId.IsEmpty())
-	{
-		Result.AddError(TEXT("MISSING_SNAPSHOT_ID"),
-			TEXT("snapshot_id parameter is required"),
-			TEXT("Provide a valid snapshot ID. Use project.list_snapshots to see available snapshots."));
-		return Result;
-	}
-
-	TOptional<FOliveSnapshotInfo> Info = FOliveSnapshotManager::Get().GetSnapshotInfo(SnapshotId);
-	if (!Info.IsSet())
-	{
-		Result.AddError(TEXT("SNAPSHOT_NOT_FOUND"),
-			FString::Printf(TEXT("Snapshot '%s' not found"), *SnapshotId),
-			TEXT("Use project.list_snapshots to see available snapshots"));
-	}
-
-	if (ToolName == TEXT("project.rollback"))
-	{
-		bool bPreviewOnly = true;
-		Params->TryGetBoolField(TEXT("preview_only"), bPreviewOnly);
-		if (!bPreviewOnly)
-		{
-			FString ConfirmationToken;
-			if (!Params->TryGetStringField(TEXT("confirmation_token"), ConfirmationToken) || ConfirmationToken.IsEmpty())
-			{
-				Result.AddError(TEXT("MISSING_CONFIRMATION_TOKEN"),
-					TEXT("confirmation_token is required when preview_only is false"),
-					TEXT("Run project.rollback with preview_only=true first to get a token"));
-			}
 		}
 	}
 

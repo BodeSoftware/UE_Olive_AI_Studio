@@ -228,7 +228,7 @@ void FOliveMCPServer::WriteMcpConfigFile()
 	const FString ConfigContent = FString::Printf(
 		TEXT("{\n")
 		TEXT("  \"mcpServers\": {\n")
-		TEXT("    \"olive-ai-studio\": {\n")
+		TEXT("    \"olive_ai_studio\": {\n")
 		TEXT("      \"command\": \"node\",\n")
 		TEXT("      \"args\": [\"mcp-bridge.js\"]\n")
 		TEXT("    }\n")
@@ -536,23 +536,14 @@ TSharedPtr<FJsonObject> FOliveMCPServer::HandleInitialize(
 	ServerInfo->SetStringField(TEXT("version"), OLIVE_MCP_SERVER_VERSION);
 	Result->SetObjectField(TEXT("serverInfo"), ServerInfo);
 
-	// Add instructions for Claude Code clients (enables Tool Search lazy-loading,
-	// reducing context from ~60k to ~5k tokens)
-	if (ClientState.ClientName.Contains(TEXT("claude"), ESearchCase::IgnoreCase))
-	{
-		Result->SetStringField(TEXT("instructions"),
-			TEXT("Olive AI Studio — tools for Unreal Engine 5 development inside the editor. "
-				 "Covers Blueprints, Behavior Trees, PCG graphs, and C++ files. "
-				 "Tools range from project search and asset inspection to batch graph editing "
-				 "and granular node manipulation. Use project.search to explore the project "
-				 "and olive.get_recipe for workflow guidance on specific tasks. "
-				 "Unreal assets (.uasset, .umap) are binary — when a user references one, "
-				 "extract the asset path and use blueprint.read or project.get_asset_info instead of reading the file. "
-				 "For multi-step builds, use olive.build to batch all operations in a single call — "
-				 "this is much faster than calling tools individually. "
-				 "For common patterns (guns, projectiles, pickups), check blueprint.list_templates first — "
-				 "factory templates include complete plan_json that olive.build can execute directly."));
-	}
+	// NOTE: We deliberately do NOT send an `instructions` field in the initialize
+	// response. When present, Claude Code 2.1.113 treats the server as supporting
+	// deferred/lazy tool loading and skips the automatic tools/list call — which
+	// means all 89 olive tools end up invisible to the LLM even though the server
+	// advertises them correctly. Without instructions, Claude Code calls tools/list
+	// at session start and registers every tool as mcp__olive_ai_studio__<name>.
+	// Yes this costs more context (the tool schemas) but actually-usable tools beats
+	// saving tokens on a server the client ignores.
 
 	return Result;
 }
@@ -931,61 +922,76 @@ void FOliveMCPServer::HandleToolsCallAsync(
 	const bool bCapturedHasInternalAgent = bHasInternalAgent;
 	const EOliveChatMode CapturedChatMode = InternalAgentChatMode;
 
-	// Dispatch tool execution to the game thread
-	AsyncTask(ENamedThreads::GameThread, [this, ToolName, Arguments, ClientId, RequestId, OnComplete, ToolStartTime, bCapturedHasInternalAgent, CapturedChatMode]()
-	{
-		// Set up execution context on the game thread.
-		// Propagate internal agent chat mode so the write pipeline's mode gate
-		// can enforce Plan/Ask restrictions for in-engine autonomous runs.
-		FOliveToolCallContext ToolContext;
-		ToolContext.Origin = EOliveToolCallOrigin::MCP;
-		ToolContext.SessionId = ClientId;
-		if (bCapturedHasInternalAgent)
+	// Dispatch tool execution to the game thread and BLOCK the HTTP worker thread
+	// until it finishes, then call OnComplete from the HTTP thread.
+	//
+	// Why block? UE 5.5's FHttpServerModule closes the underlying socket shortly
+	// after HandleRequest returns if OnComplete has not yet been invoked. When we
+	// fire-and-forget AsyncTask(GameThread, ...) and let the game thread call
+	// OnComplete later, the socket is already gone — the response write returns
+	// "socket_send_failure" with -1/N bytes sent. Blocking briefly is safe here:
+	// tools run in milliseconds (<5ms typical) so the HTTP worker pause is trivial.
+	TSharedPtr<FJsonObject, ESPMode::ThreadSafe> SharedResult = MakeShared<FJsonObject, ESPMode::ThreadSafe>();
+	FGraphEventRef GameThreadTask = FFunctionGraphTask::CreateAndDispatchWhenReady(
+		[this, ToolName, Arguments, ClientId, ToolStartTime, bCapturedHasInternalAgent, CapturedChatMode, SharedResult]()
 		{
-			ToolContext.ChatMode = CapturedChatMode;
-		}
-		FOliveToolExecutionContextScope ContextScope(ToolContext);
+			// Set up execution context on the game thread.
+			// Propagate internal agent chat mode so the write pipeline's mode gate
+			// can enforce Plan/Ask restrictions for in-engine autonomous runs.
+			FOliveToolCallContext ToolContext;
+			ToolContext.Origin = EOliveToolCallOrigin::MCP;
+			ToolContext.SessionId = ClientId;
+			if (bCapturedHasInternalAgent)
+			{
+				ToolContext.ChatMode = CapturedChatMode;
+			}
+			FOliveToolExecutionContextScope ContextScope(ToolContext);
 
-		FOliveToolResult ToolResult = FOliveToolRegistry::Get().ExecuteTool(ToolName, Arguments);
+			FOliveToolResult ToolResult = FOliveToolRegistry::Get().ExecuteTool(ToolName, Arguments);
 
-		UE_LOG(LogOliveAI, Log, TEXT("MCP tools/call result: %s -> %s"), *ToolName, ToolResult.bSuccess ? TEXT("SUCCESS") : TEXT("FAILED"));
+			UE_LOG(LogOliveAI, Log, TEXT("MCP tools/call result: %s -> %s"), *ToolName, ToolResult.bSuccess ? TEXT("SUCCESS") : TEXT("FAILED"));
 
-		// Build MCP response
-		TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+			const FString ToolResultText = ToolResult.ToJsonString();
 
-		const FString ToolResultText = ToolResult.ToJsonString();
+			TArray<TSharedPtr<FJsonValue>> Content;
+			TSharedPtr<FJsonObject> TextContent = MakeShared<FJsonObject>();
+			TextContent->SetStringField(TEXT("type"), TEXT("text"));
+			TextContent->SetStringField(TEXT("text"), ToolResultText);
+			Content.Add(MakeShared<FJsonValueObject>(TextContent));
 
-		TArray<TSharedPtr<FJsonValue>> Content;
-		TSharedPtr<FJsonObject> TextContent = MakeShared<FJsonObject>();
-		TextContent->SetStringField(TEXT("type"), TEXT("text"));
-		TextContent->SetStringField(TEXT("text"), ToolResultText);
-		Content.Add(MakeShared<FJsonValueObject>(TextContent));
+			SharedResult->SetArrayField(TEXT("content"), Content);
 
-		Result->SetArrayField(TEXT("content"), Content);
+			if (!ToolResult.bSuccess)
+			{
+				SharedResult->SetBoolField(TEXT("isError"), true);
+			}
 
-		if (!ToolResult.bSuccess)
-		{
-			Result->SetBoolField(TEXT("isError"), true);
-		}
+			// Emit completion notification with timing and summary
+			const double DurationMs = (FPlatformTime::Seconds() - ToolStartTime) * 1000.0;
+			{
+				const FString Summary = ToolResultText.Left(200);
 
-		// Emit completion notification with timing and summary
-		const double DurationMs = (FPlatformTime::Seconds() - ToolStartTime) * 1000.0;
-		{
-			const FString Summary = ToolResultText.Left(200);
+				TSharedPtr<FJsonObject> CompleteParams = MakeShared<FJsonObject>();
+				CompleteParams->SetStringField(TEXT("tool"), ToolName);
+				CompleteParams->SetStringField(TEXT("status"), ToolResult.bSuccess ? TEXT("completed") : TEXT("failed"));
+				CompleteParams->SetNumberField(TEXT("duration_ms"), static_cast<int32>(DurationMs));
+				CompleteParams->SetStringField(TEXT("summary"), Summary);
+				SendNotification(TEXT("tools/progress"), CompleteParams, ClientId);
+			}
 
-			TSharedPtr<FJsonObject> CompleteParams = MakeShared<FJsonObject>();
-			CompleteParams->SetStringField(TEXT("tool"), ToolName);
-			CompleteParams->SetStringField(TEXT("status"), ToolResult.bSuccess ? TEXT("completed") : TEXT("failed"));
-			CompleteParams->SetNumberField(TEXT("duration_ms"), static_cast<int32>(DurationMs));
-			CompleteParams->SetStringField(TEXT("summary"), Summary);
-			SendNotification(TEXT("tools/progress"), CompleteParams, ClientId);
-		}
+			// Record in activity ring buffer and fire OnToolCompleted delegate
+			RecordToolCompletion(ToolName, ClientId, ToolResult.bSuccess, DurationMs);
+		},
+		TStatId(),
+		nullptr,
+		ENamedThreads::GameThread
+	);
 
-		// Record in activity ring buffer and fire OnToolCompleted delegate
-		RecordToolCompletion(ToolName, ClientId, ToolResult.bSuccess, DurationMs);
+	// Block the HTTP worker thread until the game thread finishes executing the tool.
+	FTaskGraphInterface::Get().WaitUntilTaskCompletes(GameThreadTask);
 
-		SendJsonResponse(OliveJsonRpc::CreateResponse(RequestId, Result), OnComplete);
-	});
+	// Now send the response from the HTTP worker thread where the socket is still valid.
+	SendJsonResponse(OliveJsonRpc::CreateResponse(RequestId, SharedResult), OnComplete);
 }
 
 TSharedPtr<FJsonObject> FOliveMCPServer::HandleResourcesList(const TSharedPtr<FJsonObject>& Params)

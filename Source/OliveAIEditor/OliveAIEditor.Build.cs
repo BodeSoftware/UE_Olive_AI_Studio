@@ -127,10 +127,7 @@ public class OliveAIEditor : ModuleRules
 			"InputBlueprintNodes",
 
 			// Python scripting (editor.run_python tool)
-			"PythonScriptPlugin",
-
-			// Community blueprint search (SQLite FTS5)
-			"SQLiteCore"
+			"PythonScriptPlugin"
 		});
 
 		// Niagara dependencies (conditional — only when Niagara sub-module directory exists)

@@ -11,7 +11,6 @@
 #include "Engine/Blueprint.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
-#include "Template/OliveTemplateSystem.h"
 
 FOlivePromptAssembler& FOlivePromptAssembler::Get()
 {
@@ -278,17 +277,6 @@ FString FOlivePromptAssembler::GetCapabilityKnowledge() const
 		Combined += Pair.Value;
 	}
 
-	// Append template catalog if available
-	if (FOliveTemplateSystem::Get().HasTemplates())
-	{
-		const FString& Catalog = FOliveTemplateSystem::Get().GetCatalogBlock();
-		if (!Catalog.IsEmpty())
-		{
-			if (!Combined.IsEmpty()) { Combined += TEXT("\n\n"); }
-			Combined += Catalog;
-		}
-	}
-
 	return Combined;
 }
 
@@ -477,9 +465,6 @@ void FOlivePromptAssembler::LoadPromptTemplates()
 2. **Search first.** Use project.search to find assets before attempting to read them.
 3. **One operation at a time.** Chain operations logically but don't skip steps.
 4. **Self-correct on errors.** If an operation fails, analyze the error and attempt fixes.
-
-## Templates
-Templates are available for common patterns -- use `list_templates` to search if you want reference material.
 
 ## Response Guidelines
 - Be concise. Focus on the task at hand.

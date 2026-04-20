@@ -2,7 +2,6 @@
 
 #include "Chat/OliveRunManager.h"
 #include "Settings/OliveAISettings.h"
-#include "OliveSnapshotManager.h"
 
 DEFINE_LOG_CATEGORY(LogOliveRunManager);
 
@@ -132,35 +131,9 @@ void FOliveRunManager::CompleteStep(bool bSuccess)
 	OnRunStepChanged.Broadcast(ActiveRun.GetValue(), ActiveRun->CurrentStepIndex);
 }
 
-FString FOliveRunManager::CreateCheckpoint(const TArray<FString>& AssetPaths)
+FString FOliveRunManager::CreateCheckpoint(const TArray<FString>& /*AssetPaths*/)
 {
-	if (!ActiveRun.IsSet() || AssetPaths.Num() == 0)
-	{
-		return FString();
-	}
-
-	FString SnapshotName = FString::Printf(TEXT("Run_%s_Step%d"),
-		*ActiveRun->Name, ActiveRun->CurrentStepIndex);
-
-	FOliveToolResult Result = FOliveSnapshotManager::Get().CreateSnapshot(
-		SnapshotName, AssetPaths, TEXT("Automatic run checkpoint"));
-
-	if (Result.bSuccess && Result.Data.IsValid())
-	{
-		FString SnapshotId = Result.Data->GetStringField(TEXT("snapshot_id"));
-		ActiveRun->CheckpointSnapshotIds.Add(SnapshotId);
-
-		if (ActiveRun->CurrentStepIndex >= 0 && ActiveRun->CurrentStepIndex < ActiveRun->Steps.Num())
-		{
-			ActiveRun->Steps[ActiveRun->CurrentStepIndex].SnapshotId = SnapshotId;
-		}
-
-		StepsSinceLastCheckpoint = 0;
-		UE_LOG(LogOliveRunManager, Log, TEXT("Created checkpoint: %s"), *SnapshotId);
-		return SnapshotId;
-	}
-
-	UE_LOG(LogOliveRunManager, Warning, TEXT("Failed to create checkpoint"));
+	// Snapshot manager removed. Checkpointing is a no-op; UE undo + source control cover it.
 	return FString();
 }
 
@@ -220,16 +193,7 @@ void FOliveRunManager::SkipStep(int32 StepIndex)
 	OnRunStepChanged.Broadcast(ActiveRun.GetValue(), StepIndex);
 }
 
-void FOliveRunManager::RollbackToCheckpoint(const FString& SnapshotId)
+void FOliveRunManager::RollbackToCheckpoint(const FString& /*SnapshotId*/)
 {
-	if (SnapshotId.IsEmpty()) return;
-	UE_LOG(LogOliveRunManager, Log, TEXT("Rolling back to checkpoint: %s"), *SnapshotId);
-	FOliveSnapshotManager::Get().RollbackSnapshot(SnapshotId, {}, false, TEXT(""));
-	if (ActiveRun.IsSet())
-	{
-		ActiveRun->Status = EOliveRunStatus::RolledBack;
-		ActiveRun->EndTime = FDateTime::UtcNow();
-		OnRunStatusChanged.Broadcast(ActiveRun.GetValue());
-		ActiveRun.Reset();
-	}
+	// Snapshot manager removed. Rollback relies on UE undo + source control now.
 }

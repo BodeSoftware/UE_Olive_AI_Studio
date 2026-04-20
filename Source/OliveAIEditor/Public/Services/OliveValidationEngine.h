@@ -556,21 +556,6 @@ public:
 };
 
 /**
- * Rule that validates referenced snapshot IDs exist
- */
-class OLIVEAIEDITOR_API FOliveSnapshotExistsRule : public IOliveValidationRule
-{
-public:
-	virtual FName GetRuleName() const override { return FName(TEXT("SnapshotExists")); }
-	virtual FString GetDescription() const override { return TEXT("Validates referenced snapshot IDs exist"); }
-	virtual TArray<FString> GetApplicableTools() const override
-	{
-		return { TEXT("project.rollback"), TEXT("project.diff") };
-	}
-	virtual FOliveValidationResult Validate(const FString& ToolName, const TSharedPtr<FJsonObject>& Params, UObject* TargetAsset) override;
-};
-
-/**
  * Rule that performs safety checks for refactoring operations
  */
 class OLIVEAIEDITOR_API FOliveRefactorSafetyRule : public IOliveValidationRule

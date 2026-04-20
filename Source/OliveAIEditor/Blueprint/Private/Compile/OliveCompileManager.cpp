@@ -103,7 +103,7 @@ FOliveIRCompileResult FOliveCompileManager::Compile(UBlueprint* Blueprint)
 				 "interface conflicts, or circular dependencies."),
 			TEXT("Use blueprint.read to examine the Blueprint structure. "
 				 "Check for duplicate function/graph names and interface conflicts. "
-				 "Consider using mode:'replace' in plan_json to rebuild the graph.")));
+				 "If the graph is unrecoverable, remove the bad function and rebuild it with blueprint.add_node / connect_pins.")));
 
 		UE_LOG(LogOliveCompile, Warning,
 			TEXT("Blueprint '%s' has BS_Error status but no errors were found from nodes or compiler log. "

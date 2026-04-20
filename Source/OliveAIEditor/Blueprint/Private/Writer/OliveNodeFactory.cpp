@@ -356,11 +356,10 @@ UK2Node* FOliveNodeFactory::CreateCallFunctionNode(
 		LastError = FString::Printf(
 			TEXT("Function '%s' not found. Searched: %s. "
 			     "Try: (1) blueprint.compile first if the function was just created, "
-			     "(2) use type='K2Node_CallFunction' instead, or "
-			     "(3) use blueprint.apply_plan_json with {\"op\":\"call\",\"target\":\"%s\"}."),
+			     "(2) pass an explicit target_class so the resolver knows where to look, or "
+			     "(3) use blueprint.describe_function to confirm the function exists and get the exact name."),
 			**FunctionNamePtr,
-			*FailedResult.BuildSearchedLocationsString(),
-			**FunctionNamePtr);
+			*FailedResult.BuildSearchedLocationsString());
 		return nullptr;
 	}
 
@@ -2317,7 +2316,7 @@ UEdGraphNode* FOliveNodeFactory::CreateNodeByClass(
 	// never set correctly. This produces a "ghost node" that compiles with
 	// "Could not find a function named 'None'" and wastes the AI's entire
 	// budget trying to wire a pinless node. Remove it immediately and fail
-	// with actionable guidance toward blueprint.apply_plan_json.
+	// with actionable guidance.
 	if (NewNode->IsA<UK2Node_CallFunction>() && NewNode->Pins.Num() == 0)
 	{
 		const FString* FuncNamePtr = Properties.Find(TEXT("function_name"));
@@ -2330,10 +2329,9 @@ UEdGraphNode* FOliveNodeFactory::CreateNodeByClass(
 
 		LastError = FString::Printf(
 			TEXT("[GHOST_NODE_PREVENTED] K2Node_CallFunction created with 0 pins — "
-				 "function reference not resolved. "
-				 "Do NOT use blueprint.add_node for function calls. "
-				 "Use blueprint.apply_plan_json with a 'call' op instead. "
-				 "Example: {\"op\": \"call\", \"target\": \"%s\"}"),
+				 "function reference not resolved for '%s'. "
+				 "Pass function_name and target_class on the add_node call, "
+				 "or confirm the function exists with blueprint.describe_function first."),
 			*FuncHint);
 
 		UE_LOG(LogOliveNodeFactory, Error,

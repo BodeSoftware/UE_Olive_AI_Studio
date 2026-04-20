@@ -30,7 +30,6 @@
 #include "ISettingsModule.h"
 #include "UI/OliveResultCards.h"
 #include "OliveBlueprintNavigator.h"
-#include "OliveSnapshotManager.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "EdGraph/EdGraphNode.h"
 #include "Editor.h"
@@ -1629,10 +1628,6 @@ void SOliveAIChatPanel::HandleNavigationAction(const FOliveNavigationAction& Act
 	else if (!Action.AssetPath.IsEmpty())
 	{
 		FOliveBlueprintNavigator::OpenAsset(Action.AssetPath);
-	}
-	else if (!Action.SnapshotId.IsEmpty())
-	{
-		FOliveSnapshotManager::Get().RollbackSnapshot(Action.SnapshotId, {}, true, TEXT(""));
 	}
 }
 

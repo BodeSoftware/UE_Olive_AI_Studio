@@ -418,36 +418,9 @@ namespace OliveBlueprintSchemas
 			TEXT("Look up a UFunction by name and return its exact signature: parameter names, types, "
 				 "by-ref flags, return type, pure/latent markers, and owning class. "
 				 "On failure, returns fuzzy suggestions and UPROPERTY detection. "
-				 "Use this BEFORE writing plan_json to verify function names and pin names."));
+				 "Use this BEFORE blueprint.add_node for a CallFunction to verify the function exists and get the exact pin names."));
 		Schema->SetObjectField(TEXT("properties"), Props);
 		AddRequired(Schema, {TEXT("function_name")});
-		return Schema;
-	}
-
-	TSharedPtr<FJsonObject> BlueprintVerifyCompletion()
-	{
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		TSharedPtr<FJsonObject> Props = MakeProperties();
-
-		Props->SetObjectField(TEXT("asset_path"), StringProp(
-			TEXT("Blueprint asset path to verify (e.g., '/Game/Blueprints/BP_MyActor')")));
-
-		Props->SetObjectField(TEXT("expected_functions"),
-			ArrayProp(
-				TEXT("Function names that should exist in the Blueprint (optional)"),
-				MakeSchema(TEXT("string"))));
-
-		Props->SetObjectField(TEXT("expected_variables"),
-			ArrayProp(
-				TEXT("Variable names that should exist in the Blueprint (optional)"),
-				MakeSchema(TEXT("string"))));
-
-		Schema->SetStringField(TEXT("description"),
-			TEXT("Verify a Blueprint is complete: compiles without errors, expected functions and variables "
-				 "exist, no orphaned exec flows, no unwired required data pins. Returns a structured report "
-				 "with all issues found. Use after applying plan_json or making multiple edits."));
-		Schema->SetObjectField(TEXT("properties"), Props);
-		AddRequired(Schema, {TEXT("asset_path")});
 		return Schema;
 	}
 
@@ -935,7 +908,7 @@ namespace OliveBlueprintSchemas
 			IntProp(TEXT("Y position in graph"), -10000, 10000));
 
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Add a node to a Blueprint graph. For 3+ node operations, prefer blueprint.apply_plan_json (schema_version 2.0) which provides automatic pin resolution and atomic execution."));
+		Schema->SetStringField(TEXT("description"), TEXT("Add one node to a Blueprint graph. Subtype is dispatched by the 'type' field (e.g. \"Branch\", \"CallFunction\", \"VariableGet\", \"Event\"). Wire with connect_pins afterwards."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path"), TEXT("graph"), TEXT("type")});
 
@@ -992,7 +965,7 @@ namespace OliveBlueprintSchemas
 
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
 		Schema->SetStringField(TEXT("description"),
-			TEXT("Connect two pins in a Blueprint graph. Use source/target exact pin refs or source_ref/target_ref semantic endpoint objects. For multi-step graph construction, prefer blueprint.apply_plan_json which handles pin wiring automatically via @step.auto syntax."));
+			TEXT("Connect two pins in a Blueprint graph. Pin refs use 'node_id.PinName' format (e.g. \"node_0.then\" -> \"node_1.execute\"). Use blueprint.read mode:'full' to see available pins if unsure."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path"), TEXT("graph")});
 
@@ -1040,7 +1013,7 @@ namespace OliveBlueprintSchemas
 			StringProp(TEXT("Default value to set")));
 
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"), TEXT("Set the default value of an input pin. For bulk defaults, prefer blueprint.apply_plan_json which sets defaults via the inputs map."));
+		Schema->SetStringField(TEXT("description"), TEXT("Set the default literal value on an input pin that has no incoming connection. Pin ref uses 'node_id.PinName' format."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path"), TEXT("graph"), TEXT("pin"), TEXT("value")});
 
@@ -1133,170 +1106,10 @@ namespace OliveBlueprintSchemas
 		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
 		Schema->SetStringField(TEXT("description"),
 			TEXT("Create a Timeline node with tracks and curve data in a Blueprint event graph. "
-				"Returns the node ID and complete pin manifest for wiring with connect_pins or plan_json. "
+				"Returns the node ID and complete pin manifest for wiring with connect_pins. "
 				"Timelines only work in Actor-based Blueprints (not Widget BPs, Component BPs, etc.)."));
 		Schema->SetObjectField(TEXT("properties"), Properties);
 		AddRequired(Schema, {TEXT("path"), TEXT("tracks")});
-
-		return Schema;
-	}
-
-	// ============================================================================
-	// Plan JSON Tool Schemas
-	// ============================================================================
-
-	TSharedPtr<FJsonObject> BlueprintPreviewPlanJson()
-	{
-		TSharedPtr<FJsonObject> Properties = MakeProperties();
-
-		Properties->SetObjectField(TEXT("asset_path"),
-			StringProp(TEXT("Content path of the target Blueprint asset (e.g., '/Game/Blueprints/BP_Player')")));
-
-		// graph_target — optional, defaults to EventGraph
-		TSharedPtr<FJsonObject> GraphTargetProp = StringProp(TEXT("Name of the graph to target"));
-		GraphTargetProp->SetStringField(TEXT("default"), TEXT("EventGraph"));
-		Properties->SetObjectField(TEXT("graph_target"), GraphTargetProp);
-
-		// mode — optional, defaults to "merge", enum restricted
-		TSharedPtr<FJsonObject> ModeProp = EnumProp(
-			TEXT("'merge' (default): preserves existing nodes, adds new ones alongside. "
-				 "'replace': clears all non-entry/non-result nodes from the target graph before applying — "
-				 "use to rewrite a function atomically instead of manually deleting nodes."),
-			{TEXT("merge"), TEXT("replace")});
-		ModeProp->SetStringField(TEXT("default"), TEXT("merge"));
-		Properties->SetObjectField(TEXT("mode"), ModeProp);
-
-		// plan_json — required object containing the intent-level plan
-		TSharedPtr<FJsonObject> PlanJsonProp = MakeSchema(TEXT("object"));
-		PlanJsonProp->SetStringField(TEXT("description"),
-			TEXT("Intent-level plan. Use schema_version \"2.0\" (recommended): the executor creates nodes first, introspects actual pin names, then wires using ground-truth names — you do not need to know exact pin names. v2.0 inputs support @step.auto (type-based auto-match), @step.~hint (fuzzy prefix match), and @step.pinName (standard). v1.0 (legacy) uses a lowerer that maps ops to concrete nodes. Fields: schema_version (string), steps array. Each step: step_id, op (call, get_var, set_var, branch, sequence, cast, event, custom_event, for_loop, for_each_loop, delay, is_valid, print_string, spawn_actor, make_struct, break_struct, return, comment), target, and optional inputs/exec_after/exec_outputs."));
-		Properties->SetObjectField(TEXT("plan_json"), PlanJsonProp);
-
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"),
-			TEXT("Preview an intent-level Blueprint plan without mutating the asset. v2.0 plans (schema_version \"2.0\") return resolved_steps with ground-truth pin names (no lowering needed). v1.0 plans return lowered_ops_count and plan_summary. Both paths validate the plan, compute a diff against the current graph, and return a fingerprint for drift detection. Use before blueprint.apply_plan_json to verify correctness."));
-		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("asset_path"), TEXT("plan_json")});
-
-		return Schema;
-	}
-
-	TSharedPtr<FJsonObject> BlueprintApplyPlanJson()
-	{
-		TSharedPtr<FJsonObject> Properties = MakeProperties();
-
-		Properties->SetObjectField(TEXT("asset_path"),
-			StringProp(TEXT("Content path of the target Blueprint asset (e.g., '/Game/Blueprints/BP_Player')")));
-
-		// graph_target — optional, defaults to EventGraph
-		TSharedPtr<FJsonObject> GraphTargetProp = StringProp(TEXT("Name of the graph to target"));
-		GraphTargetProp->SetStringField(TEXT("default"), TEXT("EventGraph"));
-		Properties->SetObjectField(TEXT("graph_target"), GraphTargetProp);
-
-		// mode — optional, defaults to "merge", enum restricted
-		TSharedPtr<FJsonObject> ModeProp = EnumProp(
-			TEXT("'merge' (default): preserves existing nodes, adds new ones alongside. "
-				 "'replace': clears all non-entry/non-result nodes from the target graph before applying — "
-				 "use to rewrite a function atomically instead of manually deleting nodes."),
-			{TEXT("merge"), TEXT("replace")});
-		ModeProp->SetStringField(TEXT("default"), TEXT("merge"));
-		Properties->SetObjectField(TEXT("mode"), ModeProp);
-
-		// plan_json — required object containing the intent-level plan
-		TSharedPtr<FJsonObject> PlanJsonProp = MakeSchema(TEXT("object"));
-		PlanJsonProp->SetStringField(TEXT("description"),
-			TEXT("Intent-level plan. Use schema_version \"2.0\" (recommended): the executor creates nodes first, introspects actual pin names, then wires using ground-truth names — you do not need to know exact pin names. v2.0 inputs support @step.auto (type-based auto-match), @step.~hint (fuzzy prefix match), and @step.pinName (standard). v1.0 (legacy) uses a lowerer that maps ops to concrete nodes. Fields: schema_version (string), steps array. Each step: step_id, op (call, get_var, set_var, branch, sequence, cast, event, custom_event, for_loop, for_each_loop, delay, is_valid, print_string, spawn_actor, make_struct, break_struct, return, comment), target, and optional inputs/exec_after/exec_outputs."));
-		Properties->SetObjectField(TEXT("plan_json"), PlanJsonProp);
-
-		// preview_fingerprint — optional string for drift detection (never required)
-		Properties->SetObjectField(TEXT("preview_fingerprint"),
-			StringProp(TEXT("Optional 8-char hex fingerprint from a prior blueprint.preview_plan_json call. Used for drift detection — if omitted or mismatched, apply proceeds with inline validation via the resolve+execute pipeline.")));
-
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"),
-			TEXT("Apply an intent-level Blueprint plan atomically. Supports schema_version \"1.0\" (lowerer path: maps ops to concrete nodes) and \"2.0\" (plan executor: creates nodes first, introspects real pin names via pin manifests, then wires using ground-truth names). v2.0 supports @step.auto (type-based auto-match) and @step.~hint (fuzzy prefix) data wire syntax so you never need to guess pin names. preview_fingerprint is optional — if omitted, apply proceeds with inline validation. Result includes wiring_errors and pin_manifests for self-correction. Compiles once at the end."));
-		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("asset_path"), TEXT("plan_json")});
-
-		return Schema;
-	}
-
-	// ============================================================================
-	// Template Tool Schemas
-	// ============================================================================
-
-	// Templates are reference-only. No create/clone tools -- only get_template and list_templates.
-
-	TSharedPtr<FJsonObject> BlueprintCreateFromTemplate()
-	{
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		TSharedPtr<FJsonObject> Props = MakeProperties();
-
-		Props->SetObjectField(TEXT("template_id"),
-			StringProp(TEXT("Factory template ID (e.g., 'gun', 'projectile'). Use blueprint.list_templates to see available templates."), true));
-
-		Props->SetObjectField(TEXT("path"),
-			StringProp(TEXT("Blueprint asset path to create (e.g., '/Game/Blueprints/BP_Pistol')"), true));
-
-		Props->SetObjectField(TEXT("preset"),
-			StringProp(TEXT("Optional preset name (e.g., 'Pistol', 'Rocket'). Applies preset parameter values from the template."), false));
-
-		// parameters is an object with string values
-		{
-			TSharedPtr<FJsonObject> ParamsProp = MakeSchema(TEXT("object"));
-			ParamsProp->SetStringField(TEXT("description"),
-				TEXT("Optional parameter overrides. Keys are parameter names from the template, values are strings."));
-			TSharedPtr<FJsonObject> AddlProps = MakeSchema(TEXT("string"));
-			ParamsProp->SetObjectField(TEXT("additionalProperties"), AddlProps);
-			Props->SetObjectField(TEXT("parameters"), ParamsProp);
-		}
-
-		Schema->SetObjectField(TEXT("properties"), Props);
-		AddRequired(Schema, {TEXT("template_id"), TEXT("path")});
-
-		return Schema;
-	}
-
-	TSharedPtr<FJsonObject> BlueprintGetTemplate()
-	{
-		TSharedPtr<FJsonObject> Properties = MakeProperties();
-
-		Properties->SetObjectField(TEXT("template_id"),
-			StringProp(TEXT("ID of the template to view (factory, reference, or library)")));
-
-		Properties->SetObjectField(TEXT("pattern"),
-			StringProp(TEXT("For reference templates: pattern name to filter. "
-				"For factory templates: function name to extract full plan JSON (e.g., pattern=\"Fire\" returns Fire's complete plan). "
-				"For library templates: specify a function name to retrieve its full node graph.")));
-
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"),
-			TEXT("View a template's content. Without pattern: shows parameters, presets, function outlines. "
-				"With pattern: for factory templates returns a function's full plan_json (ready for apply_plan_json); "
-				"for reference templates returns a specific pattern; "
-				"for library templates returns a function's full node graph."));
-		Schema->SetObjectField(TEXT("properties"), Properties);
-		AddRequired(Schema, {TEXT("template_id")});
-
-		return Schema;
-	}
-
-	TSharedPtr<FJsonObject> BlueprintListTemplates()
-	{
-		TSharedPtr<FJsonObject> Properties = MakeProperties();
-
-		Properties->SetObjectField(TEXT("type"),
-			EnumProp(TEXT("Filter by template type"), {TEXT("factory"), TEXT("reference"), TEXT("library")}));
-
-		Properties->SetObjectField(TEXT("query"),
-			StringProp(TEXT("Search query to find templates by name, tag, function name, or keyword. "
-				"Searches across all templates including library templates from extracted projects.")));
-
-		TSharedPtr<FJsonObject> Schema = MakeSchema(TEXT("object"));
-		Schema->SetStringField(TEXT("description"),
-			TEXT("List available templates. Use query parameter to search by name, tag, function name, "
-				"or keyword across all templates including library templates from extracted projects."));
-		Schema->SetObjectField(TEXT("properties"), Properties);
 
 		return Schema;
 	}

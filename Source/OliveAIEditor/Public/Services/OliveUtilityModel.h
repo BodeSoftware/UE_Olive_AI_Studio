@@ -6,28 +6,6 @@
 
 enum class EOliveAIProvider : uint8;
 
-/** Single discovery result entry with internal scoring. */
-struct OLIVEAIEDITOR_API FOliveDiscoveryEntry
-{
-	FString TemplateId;
-	FString DisplayName;
-	FString SourceType;      // "library", "factory", "reference", "community"
-	FString ParentClass;
-	FString Description;
-	TArray<FString> MatchedFunctions;
-	int32 TotalFunctions = 0;
-	int32 InternalScore = 0; // Never exposed to agent
-};
-
-/** Result of the full discovery pass. */
-struct OLIVEAIEDITOR_API FOliveDiscoveryResult
-{
-	TArray<FOliveDiscoveryEntry> Entries;
-	TArray<FString> SearchQueries;  // For logging
-	bool bUsedLLM = false;
-	double ElapsedSeconds = 0.0;
-};
-
 /**
  * Utility Model — Lightweight Static Helper for Quick LLM Completions
  *
@@ -74,27 +52,6 @@ public:
 	 * @return Array of lowercase keyword strings
 	 */
 	static TArray<FString> ExtractSearchKeywords(const FString& UserMessage, int32 MaxKeywords = 12);
-
-	/**
-	 * Run the template discovery pass: generate search queries from the user message,
-	 * search library/factory/community templates, rank internally, return curated results.
-	 * Uses the utility model LLM for smart keyword generation with basic fallback.
-	 *
-	 * @param UserMessage  The user's original task description
-	 * @param MaxResults   Maximum entries to return (default 8)
-	 * @return Discovery result with internally-ranked entries
-	 */
-	static FOliveDiscoveryResult RunDiscoveryPass(const FString& UserMessage, int32 MaxResults = 8);
-
-	/**
-	 * Format discovery results as a markdown prompt section for injection.
-	 * Groups by source type (library, factory, community). Returns empty string
-	 * if fewer than 2 meaningful results were found.
-	 *
-	 * @param Result  The discovery result from RunDiscoveryPass
-	 * @return Formatted markdown section, or empty if insufficient results
-	 */
-	static FString FormatDiscoveryForPrompt(const FOliveDiscoveryResult& Result);
 
 private:
 	/**
@@ -152,15 +109,6 @@ private:
 
 	/** Build the system prompt used for LLM keyword expansion. */
 	static FString BuildKeywordExpansionPrompt();
-
-	/** Build the system prompt for discovery-specific search query generation. */
-	static FString BuildDiscoverySearchPrompt();
-
-	/** Generate 3-5 multi-word search queries from user message using LLM with basic fallback. */
-	static TArray<FString> GenerateSearchQueries(const FString& UserMessage);
-
-	/** Apply internal scoring to a discovery entry. QueryHitCount = how many queries matched it. */
-	static void ScoreEntry(FOliveDiscoveryEntry& Entry, int32 QueryHitCount);
 
 	/** Get the set of action-verb stop words filtered from basic tokenizer output. */
 	static const TSet<FString>& GetActionVerbStopWords();

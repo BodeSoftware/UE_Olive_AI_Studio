@@ -31,16 +31,7 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
-#include "Plan/OliveBlueprintPlanResolver.h"
-#include "Plan/OliveBlueprintPlanLowerer.h"
-#include "Plan/OlivePlanExecutor.h"
-#include "Plan/OlivePlanValidator.h"
-#include "Plan/OlivePinManifest.h"
-#include "Services/OliveGraphBatchExecutor.h"
-#include "Services/OliveBatchExecutionScope.h"
 #include "IR/OliveIRSchema.h"
-#include "IR/BlueprintPlanIR.h"
-#include "Template/OliveTemplateSystem.h"
 #include "K2Node_Timeline.h"
 #include "Engine/TimelineTemplate.h"
 #include "Curves/CurveFloat.h"
@@ -272,15 +263,6 @@ FOliveWriteResult ExecuteWithOptionalConfirmation(
 	FOliveWriteRequest& Request,
 	FOliveWriteExecutor Executor)
 {
-	// Propagate ChatMode from the tool execution context so the mode gate
-	// works correctly for both MCP and built-in chat paths.
-	// External MCP agents default to Code; in-engine autonomous agents inherit
-	// the user's mode via MCP server -> FOliveToolCallContext propagation.
-	if (const FOliveToolCallContext* Ctx = FOliveToolExecutionContext::Get())
-	{
-		Request.ChatMode = Ctx->ChatMode;
-	}
-
 	return Pipeline.Execute(Request, Executor);
 }
 
@@ -292,6 +274,102 @@ FString NormalizeSemanticToken(const FString& InValue)
 	Out.ReplaceInline(TEXT("-"), TEXT(""));
 	Out = Out.ToLower();
 	return Out;
+}
+
+/**
+ * Resolve a node reference to a UEdGraphNode* within a specific graph.
+ *
+ * Priority order:
+ *   1. GraphWriter cached id (e.g., "node_0") — exact match against per-session cache.
+ *   2. Semantic aliases scoped to the graph:
+ *        "entry", "function_entry", "functionentry"  -> UK2Node_FunctionEntry
+ *        "return", "result", "function_result"       -> UK2Node_FunctionResult
+ *        "event:BeginPlay", "event:Tick"              -> UK2Node_Event with that event name
+ *   3. Exact GUID string match against Node->NodeGuid.
+ *   4. Case-insensitive class-name match (e.g., "K2Node_IfThenElse" in a graph with one branch).
+ *
+ * Returns nullptr if no resolution path finds a node. The caller should return
+ * a NODE_NOT_FOUND error with this function's error string appended.
+ */
+UEdGraphNode* ResolveNodeRef(const FString& AssetPath, UEdGraph* Graph, const FString& NodeRef)
+{
+	if (!Graph || NodeRef.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	// 1. Normal cached lookup (node_N) via GraphWriter.
+	if (UEdGraphNode* Cached = FOliveGraphWriter::Get().GetCachedNode(AssetPath, NodeRef))
+	{
+		return Cached;
+	}
+
+	const FString Normalized = NormalizeSemanticToken(NodeRef);
+
+	// 2. Semantic aliases scoped to this graph.
+	if (Normalized == TEXT("entry") || Normalized == TEXT("functionentry") || Normalized == TEXT("entrypoint"))
+	{
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (Node && Node->IsA<UK2Node_FunctionEntry>())
+			{
+				return Node;
+			}
+		}
+	}
+	if (Normalized == TEXT("return") || Normalized == TEXT("result") || Normalized == TEXT("functionresult"))
+	{
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (Node && Node->IsA<UK2Node_FunctionResult>())
+			{
+				return Node;
+			}
+		}
+	}
+	if (NodeRef.StartsWith(TEXT("event:")))
+	{
+		const FString EventName = NodeRef.RightChop(6);
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
+			{
+				if (EventNode->EventReference.GetMemberName().ToString().Equals(EventName, ESearchCase::IgnoreCase))
+				{
+					return EventNode;
+				}
+			}
+		}
+	}
+
+	// 3. GUID match.
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		if (Node && Node->NodeGuid.ToString().Equals(NodeRef, ESearchCase::IgnoreCase))
+		{
+			return Node;
+		}
+	}
+
+	// 4. Class-name match if unique in this graph.
+	{
+		UEdGraphNode* UniqueMatch = nullptr;
+		int32 MatchCount = 0;
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (Node && Node->GetClass()->GetName().Equals(NodeRef, ESearchCase::IgnoreCase))
+			{
+				UniqueMatch = Node;
+				MatchCount++;
+			}
+		}
+		if (MatchCount == 1)
+		{
+			return UniqueMatch;
+		}
+	}
+
+	return nullptr;
 }
 
 TSharedPtr<FJsonObject> BuildPinDescriptor(const UEdGraphPin* Pin)
@@ -561,18 +639,6 @@ void FOliveBlueprintToolHandlers::RegisterAllTools()
 	RegisterAnimBPWriterTools();
 	RegisterWidgetWriterTools();
 
-	// Plan JSON tools (gated by settings)
-	if (const UOliveAISettings* Settings = UOliveAISettings::Get())
-	{
-		if (Settings->bEnableBlueprintPlanJsonTools)
-		{
-			RegisterPlanTools();
-		}
-	}
-
-	// Template tools (always registered; handlers check template availability)
-	RegisterTemplateTools();
-
 	UE_LOG(LogOliveBPTools, Log, TEXT("Registered %d Blueprint MCP tools"), RegisteredToolNames.Num());
 }
 
@@ -632,7 +698,7 @@ void FOliveBlueprintToolHandlers::RegisterReaderTools()
 		Def.InputSchema = OliveBlueprintSchemas::BlueprintDescribeNodeType();
 		Def.Tags = {TEXT("blueprint"), TEXT("read"), TEXT("discovery")};
 		Def.Category = TEXT("blueprint");
-		Def.WhenToUse = TEXT("NOT needed for plan_json workflows — plan_json auto-resolves function names. Only use when you need to discover pins on an unfamiliar K2Node subclass before using add_node. Do NOT call this before apply_plan_json.");
+		Def.WhenToUse = TEXT("Use to discover pins on an unfamiliar K2Node subclass before calling add_node, so you can wire the right pins in connect_pins afterwards.");
 		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleDescribeNodeType));
 	}
 	RegisteredToolNames.Add(TEXT("blueprint.describe_node_type"));
@@ -648,18 +714,7 @@ void FOliveBlueprintToolHandlers::RegisterReaderTools()
 	);
 	RegisteredToolNames.Add(TEXT("blueprint.describe_function"));
 
-	// blueprint.verify_completion
-	Registry.RegisterTool(
-		TEXT("blueprint.verify_completion"),
-		TEXT("Verify a Blueprint is complete: compiles, expected functions/variables exist, no orphaned exec flows, no unwired required data pins"),
-		OliveBlueprintSchemas::BlueprintVerifyCompletion(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleVerifyCompletion),
-		{TEXT("blueprint"), TEXT("read")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.verify_completion"));
-
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered %d reader tools"), 5);
+	UE_LOG(LogOliveBPTools, Log, TEXT("Registered %d reader tools"), 4);
 }
 
 // ============================================================================
@@ -673,9 +728,7 @@ void FOliveBlueprintToolHandlers::RegisterAssetWriterTools()
 	// blueprint.create (also handles template creation when template_id is set)
 	Registry.RegisterTool(
 		TEXT("blueprint.create"),
-		TEXT("Create a new Blueprint asset. When template_id is provided, creates from a factory template "
-			"with parameterized, pre-wired logic. Without template_id, creates an empty Blueprint. "
-			"Use blueprint.list_templates to discover available factory templates."),
+		TEXT("Create a new empty Blueprint asset at the given path."),
 		OliveBlueprintSchemas::BlueprintCreate(),
 		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintCreate),
 		{TEXT("blueprint"), TEXT("write"), TEXT("create"), TEXT("template")},
@@ -909,7 +962,7 @@ void FOliveBlueprintToolHandlers::RegisterGraphWriterTools()
 		Def.InputSchema = OliveBlueprintSchemas::BlueprintAddNode();
 		Def.Tags = {TEXT("blueprint"), TEXT("write"), TEXT("graph")};
 		Def.Category = TEXT("blueprint");
-		Def.WhenToUse = TEXT("Do NOT use for function calls or standard logic — use blueprint.apply_plan_json instead. Only use add_node for specialized node types outside plan_json vocabulary (K2Node_Timeline, MakeArray, MakeMap, etc.) or for wiring to existing nodes created by a previous plan_json call.");
+		Def.WhenToUse = TEXT("Primary tool for building graph logic. Add one node at a time (event, CallFunction, Branch, VariableGet/Set, Cast, MakeArray, Timeline, etc.), then wire with connect_pins and set literals with set_pin_default.");
 		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintAddNode));
 	}
 	RegisteredToolNames.Add(TEXT("blueprint.add_node"));
@@ -922,7 +975,7 @@ void FOliveBlueprintToolHandlers::RegisterGraphWriterTools()
 		Def.InputSchema = OliveBlueprintSchemas::BlueprintRemoveNode();
 		Def.Tags = {TEXT("blueprint"), TEXT("write"), TEXT("graph")};
 		Def.Category = TEXT("blueprint");
-		Def.WhenToUse = TEXT("For removing 1-2 specific nodes surgically. To rewrite a function, use blueprint.apply_plan_json with mode:\"replace\" instead — never loop remove_node to clear an entire graph.");
+		Def.WhenToUse = TEXT("Remove a node by ID. For large rewrites, it is usually faster to recreate the function's graph than to delete nodes one-by-one.");
 		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintRemoveNode));
 	}
 	RegisteredToolNames.Add(TEXT("blueprint.remove_node"));
@@ -974,7 +1027,7 @@ void FOliveBlueprintToolHandlers::RegisterGraphWriterTools()
 	// blueprint.create_timeline
 	Registry.RegisterTool(
 		TEXT("blueprint.create_timeline"),
-		TEXT("Create a Timeline node with tracks and curve data in a Blueprint event graph. Returns node_id and all pin names. Wire outputs with connect_pins (e.g., source: 'node_id.Play', target: 'other.execute') or reference track outputs in plan_json (e.g., inputs: {Alpha: '@node_id.TrackName'}). Exec inputs: Play, PlayFromStart, Stop, Reverse, ReverseFromEnd. Track outputs use the track name as pin name."),
+		TEXT("Create a Timeline node with tracks and curve data in a Blueprint event graph. Returns node_id and all pin names. Wire outputs with connect_pins (e.g., source: 'node_id.Play', target: 'other.execute'). Exec inputs: Play, PlayFromStart, Stop, Reverse, ReverseFromEnd. Track outputs use the track name as pin name."),
 		OliveBlueprintSchemas::BlueprintCreateTimeline(),
 		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintCreateTimeline),
 		{TEXT("blueprint"), TEXT("write"), TEXT("graph"), TEXT("timeline")},
@@ -1286,7 +1339,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleReadSectionAll(const TShared
 	{
 		bCommunitySearchHintShown = true;
 		ResultData->SetStringField(TEXT("tip"),
-			TEXT("olive.search_community_blueprints('relevant query') can show how other developers built similar patterns."));
+			TEXT("Try olive.get_recipe('relevant query') for tested wiring patterns."));
 	}
 
 	return FOliveToolResult::Success(ResultData);
@@ -1686,17 +1739,39 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintGetNodePins(const T
 		);
 	}
 
-	// Find the node via GraphWriter cache
-	FOliveGraphWriter& GraphWriter = FOliveGraphWriter::Get();
-	UEdGraphNode* Node = GraphWriter.GetCachedNode(ResolvedPath, NodeId);
+	// Find the graph first so we can also resolve semantic node refs.
+	UEdGraph* TargetGraph = nullptr;
+	for (UEdGraph* UG : Blueprint->UbergraphPages)
+	{
+		if (UG && UG->GetName().Equals(GraphName, ESearchCase::IgnoreCase))
+		{
+			TargetGraph = UG;
+			break;
+		}
+	}
+	if (!TargetGraph)
+	{
+		for (UEdGraph* FG : Blueprint->FunctionGraphs)
+		{
+			if (FG && FG->GetName().Equals(GraphName, ESearchCase::IgnoreCase))
+			{
+				TargetGraph = FG;
+				break;
+			}
+		}
+	}
+
+	// Resolve node_id via cache first, then semantic aliases (entry/return/event:Name/GUID/class).
+	UEdGraphNode* Node = ResolveNodeRef(ResolvedPath, TargetGraph, NodeId);
 	if (!Node)
 	{
 		return FOliveToolResult::Error(
 			TEXT("NODE_NOT_FOUND"),
 			FString::Printf(TEXT("Node '%s' not found in graph '%s'. "
-				"Node IDs are assigned when nodes are created via add_node or apply_plan_json "
-				"and are scoped to the graph."), *NodeId, *GraphName),
-			TEXT("Use blueprint.read with mode:'full' to see all nodes in the graph")
+				"Accepted node references: cached 'node_N' ID, 'entry' / 'return' for function entry/result nodes, "
+				"'event:EventName' (e.g. 'event:BeginPlay'), a raw NodeGuid, or a unique class name."),
+				*NodeId, *GraphName),
+			TEXT("Call blueprint.read with section:'graph' to list all nodes with their node_id and class.")
 		);
 	}
 
@@ -2281,7 +2356,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleDescribeFunction(const TShar
 		if (SearchResult.MatchMethod == EOliveFunctionMatchMethod::InterfaceSearch)
 		{
 			ResultData->SetStringField(TEXT("note"),
-				TEXT("This is an interface function. In plan_json, use target_class with the interface name to create a UK2Node_Message."));
+				TEXT("This is an interface function. Call blueprint.add_node with type='CallFunction' and target_class=<interface name> to get a UK2Node_Message."));
 		}
 
 		UE_LOG(LogOliveBPTools, Verbose, TEXT("HandleDescribeFunction: Found '%s' -> '%s' on %s via %s"),
@@ -2366,276 +2441,6 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleDescribeFunction(const TShar
 	return Result;
 }
 
-// ============================================================================
-// Verify Completion Handler
-// ============================================================================
-
-FOliveToolResult FOliveBlueprintToolHandlers::HandleVerifyCompletion(const TSharedPtr<FJsonObject>& Params)
-{
-	if (!Params.IsValid())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_INVALID_PARAMS"),
-			TEXT("Parameters object is null"),
-			TEXT("Provide at least 'asset_path'."));
-	}
-
-	FString AssetPath;
-	if (!Params->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'asset_path' is missing or empty"),
-			TEXT("Provide the Blueprint asset path to verify."));
-	}
-
-	// Load Blueprint
-	FOliveBlueprintReader& BPReader = FOliveBlueprintReader::Get();
-	UBlueprint* Blueprint = BPReader.LoadBlueprint(AssetPath);
-	if (!Blueprint)
-	{
-		return FOliveToolResult::Error(
-			TEXT("ASSET_NOT_FOUND"),
-			FString::Printf(TEXT("Failed to load Blueprint at path '%s'"), *AssetPath),
-			TEXT("Use project.search to find the correct asset path."));
-	}
-
-	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
-	TArray<TSharedPtr<FJsonValue>> IssuesArray;
-	bool bComplete = true;
-
-	// ------------------------------------------------------------------
-	// 1. Compile the Blueprint
-	// ------------------------------------------------------------------
-	FOliveIRCompileResult CompileResult = FOliveCompileManager::Get().Compile(Blueprint);
-
-	int32 CompileErrorCount = CompileResult.Errors.Num();
-	for (const FOliveIRCompileError& Err : CompileResult.Errors)
-	{
-		TSharedPtr<FJsonObject> Issue = MakeShared<FJsonObject>();
-		Issue->SetStringField(TEXT("type"), TEXT("compile_error"));
-		Issue->SetStringField(TEXT("message"), Err.Message);
-		if (!Err.GraphName.IsEmpty())
-		{
-			Issue->SetStringField(TEXT("graph"), Err.GraphName);
-		}
-		if (!Err.Suggestion.IsEmpty())
-		{
-			Issue->SetStringField(TEXT("suggestion"), Err.Suggestion);
-		}
-		IssuesArray.Add(MakeShared<FJsonValueObject>(Issue));
-	}
-	if (CompileErrorCount > 0)
-	{
-		bComplete = false;
-	}
-	ResultData->SetNumberField(TEXT("compile_errors"), CompileErrorCount);
-
-	// ------------------------------------------------------------------
-	// 2. Check orphaned exec flows across all graphs
-	// ------------------------------------------------------------------
-	int32 TotalOrphanedExec = 0;
-	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-
-	auto CheckOrphanedExec = [&](UEdGraph* Graph)
-	{
-		if (!Graph) return;
-		TArray<FOliveIRMessage> OrphanMessages;
-		int32 Count = Pipeline.DetectOrphanedExecFlows(Graph, OrphanMessages);
-		TotalOrphanedExec += Count;
-		for (const FOliveIRMessage& Msg : OrphanMessages)
-		{
-			TSharedPtr<FJsonObject> Issue = MakeShared<FJsonObject>();
-			Issue->SetStringField(TEXT("type"), TEXT("orphaned_exec"));
-			Issue->SetStringField(TEXT("message"), Msg.Message);
-			Issue->SetStringField(TEXT("graph"), Graph->GetName());
-			IssuesArray.Add(MakeShared<FJsonValueObject>(Issue));
-		}
-	};
-
-	for (UEdGraph* Graph : Blueprint->UbergraphPages)
-	{
-		CheckOrphanedExec(Graph);
-	}
-	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
-	{
-		CheckOrphanedExec(Graph);
-	}
-	if (TotalOrphanedExec > 0)
-	{
-		bComplete = false;
-	}
-	ResultData->SetNumberField(TEXT("orphaned_exec_flows"), TotalOrphanedExec);
-
-	// ------------------------------------------------------------------
-	// 3. Check unwired required data pins across all graphs
-	// ------------------------------------------------------------------
-	int32 TotalUnwiredPins = 0;
-
-	auto CheckUnwiredPins = [&](UEdGraph* Graph)
-	{
-		if (!Graph) return;
-		TSet<UEdGraphNode*> EmptySet; // Check all nodes
-		TArray<FString> UnwiredMessages;
-		int32 Count = FOliveWritePipeline::DetectUnwiredRequiredDataPins(Graph, EmptySet, UnwiredMessages);
-		TotalUnwiredPins += Count;
-		for (const FString& Msg : UnwiredMessages)
-		{
-			TSharedPtr<FJsonObject> Issue = MakeShared<FJsonObject>();
-			Issue->SetStringField(TEXT("type"), TEXT("unwired_pin"));
-			Issue->SetStringField(TEXT("message"), Msg);
-			Issue->SetStringField(TEXT("graph"), Graph->GetName());
-			IssuesArray.Add(MakeShared<FJsonValueObject>(Issue));
-		}
-	};
-
-	for (UEdGraph* Graph : Blueprint->UbergraphPages)
-	{
-		CheckUnwiredPins(Graph);
-	}
-	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
-	{
-		CheckUnwiredPins(Graph);
-	}
-	if (TotalUnwiredPins > 0)
-	{
-		// Unwired pins are warnings, not errors -- don't set bComplete to false
-		// They may be intentional in some patterns (e.g., optional pins)
-	}
-	ResultData->SetNumberField(TEXT("unwired_required_pins"), TotalUnwiredPins);
-
-	// ------------------------------------------------------------------
-	// 4. Check expected functions
-	// ------------------------------------------------------------------
-	const TArray<TSharedPtr<FJsonValue>>* ExpectedFunctions = nullptr;
-	if (Params->TryGetArrayField(TEXT("expected_functions"), ExpectedFunctions) && ExpectedFunctions)
-	{
-		TArray<TSharedPtr<FJsonValue>> MissingFunctionsArr;
-		for (const TSharedPtr<FJsonValue>& Val : *ExpectedFunctions)
-		{
-			if (!Val.IsValid()) continue;
-			FString ExpectedName = Val->AsString();
-			if (ExpectedName.IsEmpty()) continue;
-
-			bool bFound = false;
-
-			// Check FunctionGraphs
-			for (const UEdGraph* Graph : Blueprint->FunctionGraphs)
-			{
-				if (Graph && Graph->GetFName() == FName(*ExpectedName))
-				{
-					bFound = true;
-					break;
-				}
-			}
-
-			// Also check ubergraph pages for custom events
-			if (!bFound)
-			{
-				for (const UEdGraph* Graph : Blueprint->UbergraphPages)
-				{
-					if (!Graph) continue;
-					for (const UEdGraphNode* Node : Graph->Nodes)
-					{
-						if (const UK2Node_CustomEvent* CE = Cast<UK2Node_CustomEvent>(Node))
-						{
-							if (CE->CustomFunctionName == FName(*ExpectedName))
-							{
-								bFound = true;
-								break;
-							}
-						}
-					}
-					if (bFound) break;
-				}
-			}
-
-			if (!bFound)
-			{
-				bComplete = false;
-				TSharedPtr<FJsonObject> Issue = MakeShared<FJsonObject>();
-				Issue->SetStringField(TEXT("type"), TEXT("missing_function"));
-				Issue->SetStringField(TEXT("message"),
-					FString::Printf(TEXT("Expected function '%s' not found"), *ExpectedName));
-				IssuesArray.Add(MakeShared<FJsonValueObject>(Issue));
-				MissingFunctionsArr.Add(MakeShared<FJsonValueString>(ExpectedName));
-			}
-		}
-		if (MissingFunctionsArr.Num() > 0)
-		{
-			ResultData->SetArrayField(TEXT("missing_functions"), MissingFunctionsArr);
-		}
-	}
-
-	// ------------------------------------------------------------------
-	// 5. Check expected variables
-	// ------------------------------------------------------------------
-	const TArray<TSharedPtr<FJsonValue>>* ExpectedVariables = nullptr;
-	if (Params->TryGetArrayField(TEXT("expected_variables"), ExpectedVariables) && ExpectedVariables)
-	{
-		TArray<TSharedPtr<FJsonValue>> MissingVariablesArr;
-		for (const TSharedPtr<FJsonValue>& Val : *ExpectedVariables)
-		{
-			if (!Val.IsValid()) continue;
-			FString ExpectedName = Val->AsString();
-			if (ExpectedName.IsEmpty()) continue;
-
-			bool bFound = false;
-			for (const FBPVariableDescription& Var : Blueprint->NewVariables)
-			{
-				if (Var.VarName == FName(*ExpectedName))
-				{
-					bFound = true;
-					break;
-				}
-			}
-
-			if (!bFound)
-			{
-				bComplete = false;
-				TSharedPtr<FJsonObject> Issue = MakeShared<FJsonObject>();
-				Issue->SetStringField(TEXT("type"), TEXT("missing_variable"));
-				Issue->SetStringField(TEXT("message"),
-					FString::Printf(TEXT("Expected variable '%s' not found"), *ExpectedName));
-				IssuesArray.Add(MakeShared<FJsonValueObject>(Issue));
-				MissingVariablesArr.Add(MakeShared<FJsonValueString>(ExpectedName));
-			}
-		}
-		if (MissingVariablesArr.Num() > 0)
-		{
-			ResultData->SetArrayField(TEXT("missing_variables"), MissingVariablesArr);
-		}
-	}
-
-	// ------------------------------------------------------------------
-	// 6. Build result
-	// ------------------------------------------------------------------
-	ResultData->SetBoolField(TEXT("complete"), bComplete);
-	ResultData->SetArrayField(TEXT("issues"), IssuesArray);
-	ResultData->SetNumberField(TEXT("issue_count"), IssuesArray.Num());
-
-	FString Summary;
-	if (bComplete && IssuesArray.Num() == 0)
-	{
-		Summary = TEXT("Blueprint verification passed with no issues.");
-	}
-	else if (bComplete)
-	{
-		Summary = FString::Printf(TEXT("Blueprint verification passed with %d warning(s)."), IssuesArray.Num());
-	}
-	else
-	{
-		Summary = FString::Printf(TEXT("Blueprint verification FAILED with %d issue(s)."), IssuesArray.Num());
-	}
-	ResultData->SetStringField(TEXT("summary"), Summary);
-
-	FOliveToolResult Result = FOliveToolResult::Success(ResultData);
-	if (!bComplete)
-	{
-		Result.NextStepGuidance = TEXT("Fix the reported issues, then re-run blueprint.verify_completion to confirm.");
-	}
-	return Result;
-}
 
 // ============================================================================
 // Asset Writer Tool Handlers
@@ -2700,14 +2505,6 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 			}
 			return Result;
 		}
-	}
-
-	// Check for template_id -- if set, delegate to template creation
-	FString TemplateId;
-	if (Params->TryGetStringField(TEXT("template_id"), TemplateId) && !TemplateId.IsEmpty())
-	{
-		UE_LOG(LogOliveBPTools, Log, TEXT("blueprint.create: template_id='%s' detected, delegating to template system"), *TemplateId);
-		return HandleBlueprintCreateFromTemplate(TemplateId, AssetPath, Params);
 	}
 
 	// Extract type first (needed for parent_class defaults)
@@ -2935,7 +2732,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 	{
 		bCommunitySearchHintShownCreate = true;
 		ToolResult.Data->SetStringField(TEXT("tip"),
-			TEXT("olive.search_community_blueprints('relevant query') can show how other developers built similar patterns."));
+			TEXT("Try olive.get_recipe('relevant query') for tested wiring patterns."));
 	}
 
 	return ToolResult;
@@ -4063,9 +3860,8 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreateInterface(
 					 "1) blueprint.add_interface on target BPs with interface='%s'. "
 					 "2) Functions without outputs become events the BP must implement. "
 					 "3) Functions with outputs become functions the BP must override. "
-					 "4) Call through the interface with plan_json: "
-					 "{\"op\": \"call\", \"target\": \"FunctionName\", "
-					 "\"target_class\": \"%s\"} (creates UK2Node_Message)."),
+					 "4) Call through the interface with blueprint.add_node type='CallFunction', "
+					 "function_name='FunctionName', target_class='%s' — this produces a UK2Node_Message."),
 				*WriteResult.AssetPath,
 				*FPackageName::GetShortName(WriteResult.AssetPath)));
 
@@ -4415,8 +4211,8 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintAddVariable(const T
 				TEXT("INHERITED_VARIABLE"),
 				FString::Printf(TEXT("Variable '%s' is inherited from a parent Blueprint. "
 					"Inherited variable defaults cannot be changed in child Blueprints. "
-					"To set this variable's value at runtime, use plan_json with set_var "
-					"in the child's BeginPlay event."), *Variable.Name));
+					"To set this variable's value at runtime, add a SetVariable node on BeginPlay in the child."),
+					*Variable.Name));
 		}
 
 		// modify_only=true requires the variable to already exist
@@ -5273,9 +5069,8 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAddFunctionType_Function(
 		ResultData->SetStringField(TEXT("function_name"), WriteResult.CreatedItemName);
 		ResultData->SetStringField(TEXT("message"), FString::Printf(
 			TEXT("Successfully added function '%s'. "
-				 "NEXT STEP: Call olive.get_recipe for this function, then "
-				 "blueprint.preview_plan_json + blueprint.apply_plan_json to implement it. "
-				 "Do NOT add another function until this one has graph logic."),
+				 "NEXT STEP: Build its graph with blueprint.add_node + connect_pins + set_pin_default, "
+				 "then blueprint.compile. Do NOT add another function until this one has graph logic."),
 			*WriteResult.CreatedItemName));
 
 		// Scan for other empty function graphs on this Blueprint
@@ -5300,7 +5095,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleAddFunctionType_Function(
 				ResultData->TryGetStringField(TEXT("message"), CurrentMsg);
 				ResultData->SetStringField(TEXT("message"),
 					CurrentMsg + FString::Printf(
-						TEXT(" Note: %s has no graph logic yet (%d empty function(s) total). Write graph logic with apply_plan_json before adding more functions."),
+						TEXT(" Note: %s has no graph logic yet (%d empty function(s) total). Wire its graph with blueprint.add_node + connect_pins before adding more functions."),
 						*FirstEmpty, EmptyCount));
 			}
 		}
@@ -5649,12 +5444,10 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintRemoveFunction(cons
 							TEXT("GUARD_FUNCTION_HAS_LOGIC"),
 							FString::Printf(
 								TEXT("Function '%s' has %d nodes of working graph logic. "
-									"Removing it will destroy existing work. To modify an existing function, "
-									"use blueprint.preview_plan_json + blueprint.apply_plan_json on the existing "
-									"function graph instead of removing and recreating it."),
+									"Removing it will destroy existing work. Edit the function's existing graph "
+									"with blueprint.add_node / remove_node / connect_pins instead of removing and recreating it."),
 								*FunctionName, NodeCount),
-							TEXT("Use blueprint.preview_plan_json to modify the existing function, "
-								"or pass 'force': true to override this safety check")
+							TEXT("Edit the function's graph in-place, or pass 'force': true to override this safety check")
 						);
 					}
 					break;
@@ -7235,7 +7028,7 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreateTimeline(cons
 		TimelineNode->NodePosX = 0;
 		TimelineNode->NodePosY = 0;
 
-		// Cache node in GraphWriter for subsequent connect_pins/plan_json calls
+		// Cache node in GraphWriter for subsequent connect_pins calls
 		FOliveGraphWriter& GW = FOliveGraphWriter::Get();
 		FString NodeId = GW.CacheExternalNode(AssetPath, TimelineNode);
 
@@ -8615,2260 +8408,3 @@ FOliveIRVariable FOliveBlueprintToolHandlers::ParseVariableFromParams(const TSha
 	return Variable;
 }
 
-// ============================================================================
-// Plan JSON Tool Registration
-// ============================================================================
-
-void FOliveBlueprintToolHandlers::RegisterPlanTools()
-{
-	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
-
-	// blueprint.preview_plan_json
-	Registry.RegisterTool(
-		TEXT("blueprint.preview_plan_json"),
-		TEXT("Preview an intent-level Blueprint plan without mutating anything. Returns a diff, fingerprint, and lowered op count."),
-		OliveBlueprintSchemas::BlueprintPreviewPlanJson(),
-		FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson),
-		{TEXT("blueprint"), TEXT("read"), TEXT("plan")},
-		TEXT("blueprint")
-	);
-	RegisteredToolNames.Add(TEXT("blueprint.preview_plan_json"));
-
-	// blueprint.apply_plan_json
-	{
-		FOliveToolDefinition Def;
-		Def.Name = TEXT("blueprint.apply_plan_json");
-		Def.Description = TEXT("Apply an intent-level Blueprint plan atomically. Resolves intents to nodes, executes in a single transaction, compiles once.");
-		Def.InputSchema = OliveBlueprintSchemas::BlueprintApplyPlanJson();
-		Def.Tags = {TEXT("blueprint"), TEXT("write"), TEXT("graph"), TEXT("plan")};
-		Def.Category = TEXT("blueprint");
-		Def.WhenToUse = TEXT("Primary tool for Blueprint graph logic. Handles 3+ node patterns in one call. Auto-resolves function names — no need for describe_node_type or describe_function first. Preview with blueprint.preview_plan_json before applying. Do NOT batch preview and apply in the same response.");
-		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson));
-	}
-	RegisteredToolNames.Add(TEXT("blueprint.apply_plan_json"));
-
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered Plan JSON tools (preview + apply)"));
-}
-
-// ============================================================================
-// Plan JSON Tool Handlers
-// ============================================================================
-
-namespace
-{
-
-/**
- * Find a graph on the Blueprint by name, searching both UbergraphPages and FunctionGraphs.
- * Falls back to first UbergraphPage if GraphName is "EventGraph" and no exact match is found.
- *
- * @param Blueprint The Blueprint to search
- * @param GraphName The name of the graph to find
- * @return The found graph, or nullptr if not found
- */
-UEdGraph* FindGraphByName(UBlueprint* Blueprint, const FString& GraphName)
-{
-	// Search UbergraphPages (event graphs)
-	for (UEdGraph* Graph : Blueprint->UbergraphPages)
-	{
-		if (Graph && Graph->GetName() == GraphName)
-		{
-			return Graph;
-		}
-	}
-
-	// Search FunctionGraphs
-	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
-	{
-		if (Graph && Graph->GetName() == GraphName)
-		{
-			return Graph;
-		}
-	}
-
-	// Search interface implementation graphs (ImplementedInterfaces[i].Graphs).
-	// These are NOT in FunctionGraphs — UE stores them separately.
-	for (FBPInterfaceDescription& InterfaceDesc : Blueprint->ImplementedInterfaces)
-	{
-		for (UEdGraph* Graph : InterfaceDesc.Graphs)
-		{
-			if (Graph && Graph->GetName() == GraphName)
-			{
-				return Graph;
-			}
-		}
-	}
-
-	// Fallback: if "EventGraph" was requested, use first UbergraphPage
-	if (GraphName == TEXT("EventGraph") && Blueprint->UbergraphPages.Num() > 0)
-	{
-		return Blueprint->UbergraphPages[0];
-	}
-
-	return nullptr;
-}
-
-/**
- * Find a graph by name, or create a new function graph if it doesn't exist.
- * Only creates for non-EventGraph targets (EventGraph must already exist).
- *
- * @param Blueprint The owning Blueprint
- * @param GraphName The graph name to find or create
- * @param bOutCreated Set to true if a new graph was created
- * @return The found or created graph, or nullptr if creation failed
- */
-UEdGraph* FindOrCreateFunctionGraph(UBlueprint* Blueprint, const FString& GraphName, bool& bOutCreated)
-{
-	bOutCreated = false;
-
-	// Try to find existing graph first
-	UEdGraph* Existing = FindGraphByName(Blueprint, GraphName);
-	if (Existing)
-	{
-		return Existing;
-	}
-
-	// Interface function graph race condition guard:
-	// When add_interface is called, ImplementNewInterface creates stub graphs in
-	// ImplementedInterfaces[i].Graphs, but they may not be materialized yet.
-	// If this graph name matches an interface function, force conformance and retry.
-	{
-		bool bIsInterfaceFunction = false;
-		for (const FBPInterfaceDescription& InterfaceDesc : Blueprint->ImplementedInterfaces)
-		{
-			if (InterfaceDesc.Interface)
-			{
-				for (TFieldIterator<UFunction> FuncIt(InterfaceDesc.Interface); FuncIt; ++FuncIt)
-				{
-					if ((*FuncIt)->GetFName() == FName(*GraphName))
-					{
-						bIsInterfaceFunction = true;
-						break;
-					}
-				}
-			}
-			if (bIsInterfaceFunction) break;
-		}
-
-		if (bIsInterfaceFunction)
-		{
-			UE_LOG(LogOliveBPTools, Log,
-				TEXT("'%s' matches interface function — forcing ConformImplementedInterfaces on '%s'"),
-				*GraphName, *Blueprint->GetName());
-			FBlueprintEditorUtils::ConformImplementedInterfaces(Blueprint);
-
-			UEdGraph* ConformedGraph = FindGraphByName(Blueprint, GraphName);
-			if (ConformedGraph)
-			{
-				UE_LOG(LogOliveBPTools, Log,
-					TEXT("ConformImplementedInterfaces materialized graph '%s' successfully"),
-					*GraphName);
-				return ConformedGraph;
-			}
-			UE_LOG(LogOliveBPTools, Warning,
-				TEXT("ConformImplementedInterfaces did not materialize graph '%s' — falling through to creation"),
-				*GraphName);
-		}
-	}
-
-	// EventGraph must already exist — we don't create new ubergraph pages
-	if (GraphName == TEXT("EventGraph"))
-	{
-		return nullptr;
-	}
-
-	// Create a new function graph
-	UEdGraph* NewGraph = FBlueprintEditorUtils::CreateNewGraph(
-		Blueprint,
-		FName(*GraphName),
-		UEdGraph::StaticClass(),
-		UEdGraphSchema_K2::StaticClass()
-	);
-
-	if (!NewGraph)
-	{
-		return nullptr;
-	}
-
-	FBlueprintEditorUtils::AddFunctionGraph(Blueprint, NewGraph, /*bIsUserCreated=*/true, /*SignatureFromObject=*/static_cast<UClass*>(nullptr));
-	bOutCreated = true;
-
-	UE_LOG(LogOliveBPTools, Log, TEXT("Created new function graph '%s' on Blueprint '%s'"),
-		*GraphName, *Blueprint->GetPathName());
-
-	return NewGraph;
-}
-
-/**
- * Build a plan summary JSON object from a resolved and lowered plan.
- * Summarizes step count and operation type breakdown.
- *
- * @param Plan The original plan
- * @param LowerResult The lowered operations result
- * @return JSON object with plan_summary data
- */
-TSharedPtr<FJsonObject> BuildPlanSummary(
-	const FOliveIRBlueprintPlan& Plan,
-	const FOlivePlanLowerResult& LowerResult)
-{
-	TSharedPtr<FJsonObject> Summary = MakeShared<FJsonObject>();
-	Summary->SetNumberField(TEXT("step_count"), Plan.Steps.Num());
-	Summary->SetNumberField(TEXT("lowered_ops_count"), LowerResult.Ops.Num());
-
-	// Count ops by type
-	TMap<FString, int32> OpCounts;
-	for (const FOliveIRBlueprintPlanStep& Step : Plan.Steps)
-	{
-		OpCounts.FindOrAdd(Step.Op, 0)++;
-	}
-
-	TSharedPtr<FJsonObject> OpBreakdown = MakeShared<FJsonObject>();
-	for (const auto& Pair : OpCounts)
-	{
-		OpBreakdown->SetNumberField(Pair.Key, Pair.Value);
-	}
-	Summary->SetObjectField(TEXT("op_count_by_type"), OpBreakdown);
-
-	return Summary;
-}
-
-/**
- * Collect all warnings from resolve and lower results into a JSON array.
- *
- * @param ResolveResult The resolve result containing warnings
- * @param LowerResult The lower result containing error warnings
- * @return JSON array of warning strings
- */
-TArray<TSharedPtr<FJsonValue>> CollectWarnings(
-	const FOlivePlanResolveResult& ResolveResult,
-	const FOlivePlanLowerResult& LowerResult)
-{
-	TArray<TSharedPtr<FJsonValue>> Warnings;
-	for (const FString& W : ResolveResult.Warnings)
-	{
-		Warnings.Add(MakeShared<FJsonValueString>(W));
-	}
-	// Lower errors that are non-fatal get surfaced as warnings in preview
-	for (const FOliveIRBlueprintPlanError& E : LowerResult.Errors)
-	{
-		if (!E.Message.IsEmpty())
-		{
-			Warnings.Add(MakeShared<FJsonValueString>(
-				FString::Printf(TEXT("[%s] %s"), *E.ErrorCode, *E.Message)));
-		}
-	}
-	return Warnings;
-}
-
-/**
- * Serialize an array of FOliveIRBlueprintPlanError to a JSON array.
- *
- * @param Errors The errors to serialize
- * @return JSON array of error objects
- */
-TArray<TSharedPtr<FJsonValue>> SerializePlanErrors(const TArray<FOliveIRBlueprintPlanError>& Errors)
-{
-	TArray<TSharedPtr<FJsonValue>> Result;
-	for (const FOliveIRBlueprintPlanError& Err : Errors)
-	{
-		Result.Add(MakeShared<FJsonValueObject>(Err.ToJson()));
-	}
-	return Result;
-}
-
-/**
- * Serialize step-level plan errors into a compact shape optimized for AI repair loops.
- *
- * @param Errors Structured plan errors
- * @return JSON array with step_id/error_code/message/suggestion/location
- */
-TArray<TSharedPtr<FJsonValue>> SerializePlanStepErrors(const TArray<FOliveIRBlueprintPlanError>& Errors)
-{
-	TArray<TSharedPtr<FJsonValue>> Result;
-	for (const FOliveIRBlueprintPlanError& Err : Errors)
-	{
-		TSharedPtr<FJsonObject> StepErr = MakeShared<FJsonObject>();
-		if (!Err.StepId.IsEmpty())
-		{
-			StepErr->SetStringField(TEXT("step_id"), Err.StepId);
-		}
-		if (!Err.ErrorCode.IsEmpty())
-		{
-			StepErr->SetStringField(TEXT("error_code"), Err.ErrorCode);
-		}
-		StepErr->SetStringField(TEXT("message"), Err.Message);
-		if (!Err.Suggestion.IsEmpty())
-		{
-			StepErr->SetStringField(TEXT("suggestion"), Err.Suggestion);
-		}
-		if (!Err.LocationPointer.IsEmpty())
-		{
-			StepErr->SetStringField(TEXT("location"), Err.LocationPointer);
-		}
-		Result.Add(MakeShared<FJsonValueObject>(StepErr));
-	}
-	return Result;
-}
-
-/**
- * Build a human-readable summary that includes the first failing step.
- *
- * @param Prefix Failure prefix (e.g. "Plan resolution failed")
- * @param Errors Structured errors
- * @return Summary string
- */
-FString BuildPlanFailureMessage(const FString& Prefix, const TArray<FOliveIRBlueprintPlanError>& Errors)
-{
-	if (Errors.Num() <= 0)
-	{
-		return Prefix;
-	}
-
-	const FOliveIRBlueprintPlanError& First = Errors[0];
-	const FString StepLabel = First.StepId.IsEmpty()
-		? TEXT("plan")
-		: FString::Printf(TEXT("step '%s'"), *First.StepId);
-
-	return FString::Printf(
-		TEXT("%s with %d error(s). First failure (%s): [%s] %s"),
-		*Prefix, Errors.Num(), *StepLabel, *First.ErrorCode, *First.Message);
-}
-
-/**
- * Remove nodes created by a failed plan execution, restoring the graph to
- * its pre-plan state. Reused event nodes (identified by ReusedStepIds) are
- * NOT removed. This runs as a separate FScopedTransaction so it appears as
- * "Olive AI: Rollback failed plan" in the undo history.
- *
- * @param Blueprint      The Blueprint containing the graph
- * @param Graph          The graph from which nodes are removed
- * @param StepToNodeMap  JSON object mapping StepId -> NodeId
- * @param ReusedStepIds  Step IDs that reused pre-existing event nodes (skip these)
- * @param AssetPath      Asset path for GraphWriter cache operations
- * @return Number of nodes removed
- */
-int32 RollbackPlanNodes(
-	UBlueprint* Blueprint,
-	UEdGraph* Graph,
-	const FJsonObject& StepToNodeMap,
-	const TSet<FString>& ReusedStepIds,
-	const FString& AssetPath)
-{
-	if (!Blueprint || !Graph)
-	{
-		return 0;
-	}
-
-	FScopedTransaction Transaction(
-		NSLOCTEXT("OliveBPTools", "RollbackPlan", "Olive AI: Rollback failed plan"));
-	Blueprint->Modify();
-
-	FOliveGraphWriter& Writer = FOliveGraphWriter::Get();
-	int32 RemovedCount = 0;
-
-	for (const auto& Pair : StepToNodeMap.Values)
-	{
-		const FString& StepId = Pair.Key;
-		if (ReusedStepIds.Contains(StepId))
-		{
-			continue; // Do not remove pre-existing event nodes
-		}
-
-		const FString NodeId = Pair.Value->AsString();
-		UEdGraphNode* Node = Writer.GetCachedNode(AssetPath, NodeId);
-		if (Node && Graph->Nodes.Contains(Node))
-		{
-			Node->BreakAllNodeLinks();
-			Graph->RemoveNode(Node);
-			RemovedCount++;
-		}
-	}
-
-	// Clear GraphWriter cache for this Blueprint (node IDs are now invalid)
-	if (RemovedCount > 0)
-	{
-		Writer.ClearNodeCache(AssetPath);
-		FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
-		UE_LOG(LogOliveBPTools, Log,
-			TEXT("Rolled back %d nodes from failed plan on '%s'"),
-			RemovedCount, *Blueprint->GetName());
-	}
-
-	return RemovedCount;
-}
-
-} // namespace
-
-FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintPreviewPlanJson(const TSharedPtr<FJsonObject>& Params)
-{
-	// ------------------------------------------------------------------
-	// 1. Validate parameters
-	// ------------------------------------------------------------------
-	if (!Params.IsValid())
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintPreviewPlanJson: Params object is null"));
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_INVALID_PARAMS"),
-			TEXT("Parameters object is null"),
-			TEXT("Provide a valid parameters object with 'asset_path' and 'plan_json' fields"));
-	}
-
-	FString AssetPath;
-	if (!Params->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintPreviewPlanJson: Missing required param 'asset_path'"));
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'asset_path' is missing or empty"),
-			TEXT("Provide the Blueprint asset path"));
-	}
-
-	const TSharedPtr<FJsonObject>* PlanJsonPtr = nullptr;
-	if (!Params->TryGetObjectField(TEXT("plan_json"), PlanJsonPtr) || !PlanJsonPtr || !(*PlanJsonPtr).IsValid())
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintPreviewPlanJson: Missing required param 'plan_json' for path='%s'"), *AssetPath);
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'plan_json' is missing or not an object"),
-			TEXT("Provide a valid plan_json object with 'steps' array"));
-	}
-	TSharedPtr<FJsonObject> PlanJson = *PlanJsonPtr;
-
-	FString GraphTarget = TEXT("EventGraph");
-	Params->TryGetStringField(TEXT("graph_target"), GraphTarget);
-
-	FString Mode = TEXT("merge");
-	Params->TryGetStringField(TEXT("mode"), Mode);
-
-	// ------------------------------------------------------------------
-	// 2. Validate plan schema
-	// ------------------------------------------------------------------
-	const UOliveAISettings* Settings = UOliveAISettings::Get();
-	const int32 MaxSteps = Settings ? Settings->PlanJsonMaxSteps : 128;
-
-	FOliveIRResult ValidationResult = FOliveIRValidator::ValidateBlueprintPlanJson(PlanJson, MaxSteps);
-	if (!ValidationResult.bSuccess)
-	{
-		TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
-		ErrorData->SetStringField(TEXT("phase"), TEXT("validation"));
-		ErrorData->SetStringField(TEXT("error_code"), ValidationResult.ErrorCode);
-		ErrorData->SetStringField(TEXT("error_message"), ValidationResult.ErrorMessage);
-		if (ValidationResult.Data.IsValid())
-		{
-			const TArray<TSharedPtr<FJsonValue>>* Errors = nullptr;
-			if (ValidationResult.Data->TryGetArrayField(TEXT("errors"), Errors))
-			{
-				ErrorData->SetArrayField(TEXT("errors"), *Errors);
-			}
-		}
-		FOliveToolResult Result = FOliveToolResult::Error(
-			ValidationResult.ErrorCode,
-			ValidationResult.ErrorMessage,
-			ValidationResult.Suggestion);
-		Result.Data = ErrorData;
-		return Result;
-	}
-
-	// ------------------------------------------------------------------
-	// 3. Parse plan
-	// ------------------------------------------------------------------
-	FOliveIRBlueprintPlan Plan = FOliveIRBlueprintPlan::FromJson(PlanJson);
-
-	// ------------------------------------------------------------------
-	// 4. Load Blueprint
-	// ------------------------------------------------------------------
-	FOliveBlueprintReader& BPReader = FOliveBlueprintReader::Get();
-	UBlueprint* Blueprint = BPReader.LoadBlueprint(AssetPath);
-	if (!Blueprint)
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintPreviewPlanJson: Failed to load Blueprint at path='%s'"), *AssetPath);
-		return FOliveToolResult::Error(
-			TEXT("ASSET_NOT_FOUND"),
-			FString::Printf(TEXT("Failed to load Blueprint at path '%s'"), *AssetPath),
-			TEXT("Verify the asset path is correct and the asset exists"));
-	}
-
-	// ------------------------------------------------------------------
-	// 5. Find target graph (preview is non-mutating — report new graph in diff)
-	// ------------------------------------------------------------------
-	bool bGraphWillBeCreated = false;
-	UEdGraph* TargetGraph = FindGraphByName(Blueprint, GraphTarget);
-	if (!TargetGraph)
-	{
-		// EventGraph must exist; for other targets (function graphs), preview
-		// still succeeds but notes the graph will be created on apply.
-		if (GraphTarget == TEXT("EventGraph"))
-		{
-			return FOliveToolResult::Error(
-				TEXT("GRAPH_NOT_FOUND"),
-				FString::Printf(TEXT("EventGraph not found in Blueprint '%s'"), *AssetPath),
-				TEXT("EventGraph should always exist on a Blueprint"));
-		}
-		bGraphWillBeCreated = true;
-	}
-
-	// ------------------------------------------------------------------
-	// 6. Read current graph IR (for fingerprint + diff)
-	// ------------------------------------------------------------------
-	FOliveGraphReader GraphReader;
-	FOliveIRGraph CurrentGraphIR;
-	if (TargetGraph)
-	{
-		CurrentGraphIR = GraphReader.ReadGraph(TargetGraph, Blueprint);
-	}
-	// else: empty IR for a graph that will be created
-
-	// ------------------------------------------------------------------
-	// 7. Resolve plan
-	// ------------------------------------------------------------------
-	FOliveGraphContext GraphContext = FOliveGraphContext::BuildFromBlueprint(Blueprint, GraphTarget);
-	FOlivePlanResolveResult ResolveResult = FOliveBlueprintPlanResolver::Resolve(Plan, Blueprint, GraphContext);
-	if (!ResolveResult.bSuccess)
-	{
-		TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
-		ErrorData->SetStringField(TEXT("phase"), TEXT("resolve"));
-		ErrorData->SetArrayField(TEXT("errors"), SerializePlanErrors(ResolveResult.Errors));
-		ErrorData->SetArrayField(TEXT("step_errors"), SerializePlanStepErrors(ResolveResult.Errors));
-		if (ResolveResult.Errors.Num() > 0)
-		{
-			const FOliveIRBlueprintPlanError& First = ResolveResult.Errors[0];
-			if (!First.StepId.IsEmpty())
-			{
-				ErrorData->SetStringField(TEXT("first_error_step_id"), First.StepId);
-			}
-			if (!First.ErrorCode.IsEmpty())
-			{
-				ErrorData->SetStringField(TEXT("first_error_code"), First.ErrorCode);
-			}
-			ErrorData->SetStringField(TEXT("first_error_message"), First.Message);
-		}
-		FOliveToolResult Result = FOliveToolResult::Error(
-			TEXT("PLAN_RESOLVE_FAILED"),
-			BuildPlanFailureMessage(TEXT("Plan resolution failed"), ResolveResult.Errors),
-			ResolveResult.Errors.Num() > 0 ? ResolveResult.Errors[0].Suggestion : TEXT(""));
-		Result.Data = ErrorData;
-
-		// Build contextual next-step guidance based on the first error
-		if (ResolveResult.Errors.Num() > 0)
-		{
-			const FOliveIRBlueprintPlanError& FirstErr = ResolveResult.Errors[0];
-			if (FirstErr.ErrorCode == TEXT("FUNCTION_NOT_FOUND"))
-			{
-				Result.NextStepGuidance = FString::Printf(
-					TEXT("Function not found for step '%s'. Use blueprint.describe_function to check "
-						 "available functions on the target class, or check spelling."),
-					*FirstErr.StepId);
-			}
-			else if (FirstErr.ErrorCode == TEXT("VARIABLE_NOT_FOUND"))
-			{
-				Result.NextStepGuidance = FString::Printf(
-					TEXT("Variable not found for step '%s'. Use blueprint.read with section='variables' "
-						 "to see available variables, or add the variable first with blueprint.add_variable."),
-					*FirstErr.StepId);
-			}
-			else
-			{
-				Result.NextStepGuidance = TEXT("Check the errors array for details. Use blueprint.describe_function "
-					"or blueprint.read to verify names and types before retrying.");
-			}
-		}
-
-		return Result;
-	}
-
-	// Use the expanded plan (with all resolver expansions applied) for all
-	// post-resolve processing. The original Plan must NOT be used after this
-	// point because it lacks synthetic steps from ExpandComponentRefs/etc.
-	FOliveIRBlueprintPlan& ExpandedPlan = ResolveResult.ExpandedPlan;
-
-	// Infer missing exec_after from step order (fixes layout for plans without explicit exec flow)
-	FOliveBlueprintPlanResolver::InferMissingExecChain(
-		ExpandedPlan, ResolveResult.ResolvedSteps, ResolveResult.GlobalNotes);
-
-	// Auto-inject SetCollisionEnabled(NoCollision) after attach calls when mesh collision is unhandled
-	FOliveBlueprintPlanResolver::ExpandMissingCollisionDisable(
-		ExpandedPlan, ResolveResult.ResolvedSteps, Blueprint, ResolveResult.GlobalNotes);
-
-	// Collapse exec chains through pure steps (pure nodes have no exec pins)
-	FOliveBlueprintPlanResolver::CollapseExecThroughPureSteps(
-		ExpandedPlan, ResolveResult.ResolvedSteps, ResolveResult.GlobalNotes);
-
-	// Auto-fix exec_after/exec_outputs conflicts before validation (RC5)
-	FOlivePlanValidator::AutoFixExecConflicts(ExpandedPlan, ResolveResult.GlobalNotes);
-
-	// ------------------------------------------------------------------
-	// 7b. Phase 0: Structural plan validation
-	// ------------------------------------------------------------------
-	{
-		FOlivePlanValidationResult Phase0Result = FOlivePlanValidator::Validate(
-			ExpandedPlan, ResolveResult.ResolvedSteps, Blueprint, GraphContext);
-
-		if (!Phase0Result.bSuccess)
-		{
-			TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
-			ErrorData->SetStringField(TEXT("phase"), TEXT("phase0_validation"));
-			ErrorData->SetArrayField(TEXT("errors"), SerializePlanErrors(Phase0Result.Errors));
-			FOliveToolResult Result = FOliveToolResult::Error(
-				TEXT("PLAN_VALIDATION_FAILED"),
-				FString::Printf(TEXT("Plan validation failed with %d error(s)"), Phase0Result.Errors.Num()),
-				Phase0Result.Errors.Num() > 0 ? Phase0Result.Errors[0].Suggestion : TEXT(""));
-			Result.Data = ErrorData;
-			return Result;
-		}
-
-		// Surface Phase 0 warnings (e.g. COLLISION_ON_TRIGGER_COMPONENT) so the AI can self-correct
-		for (const FString& W : Phase0Result.Warnings)
-		{
-			ResolveResult.Warnings.Add(W);
-		}
-	}
-
-	// ------------------------------------------------------------------
-	// 8. Lower (v1.0 only) or skip (v2.0)
-	// ------------------------------------------------------------------
-	const bool bIsV2Plan = (ExpandedPlan.SchemaVersion == TEXT("2.0"));
-
-	FOlivePlanLowerResult LowerResult;
-	if (!bIsV2Plan)
-	{
-		LowerResult = FOliveBlueprintPlanLowerer::Lower(
-			ResolveResult.ResolvedSteps, ExpandedPlan, GraphTarget, AssetPath);
-		if (!LowerResult.bSuccess)
-		{
-			TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
-			ErrorData->SetStringField(TEXT("phase"), TEXT("lower"));
-			ErrorData->SetArrayField(TEXT("errors"), SerializePlanErrors(LowerResult.Errors));
-			FOliveToolResult Result = FOliveToolResult::Error(
-				TEXT("PLAN_LOWER_FAILED"),
-				FString::Printf(TEXT("Plan lowering failed with %d error(s)"), LowerResult.Errors.Num()),
-				LowerResult.Errors.Num() > 0 ? LowerResult.Errors[0].Suggestion : TEXT(""));
-			Result.Data = ErrorData;
-			return Result;
-		}
-	}
-
-	// ------------------------------------------------------------------
-	// 9. Compute fingerprint and diff
-	// ------------------------------------------------------------------
-	FString Fingerprint = FOliveBlueprintPlanResolver::ComputePlanFingerprint(CurrentGraphIR, ExpandedPlan);
-	TSharedPtr<FJsonObject> Diff = FOliveBlueprintPlanResolver::ComputePlanDiff(
-		CurrentGraphIR, ResolveResult.ResolvedSteps, ExpandedPlan);
-
-	// ------------------------------------------------------------------
-	// 10. Build result
-	// ------------------------------------------------------------------
-	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
-	ResultData->SetStringField(TEXT("preview_fingerprint"), Fingerprint);
-	ResultData->SetStringField(TEXT("schema_version"), ExpandedPlan.SchemaVersion);
-	ResultData->SetObjectField(TEXT("diff"), Diff);
-
-	if (bIsV2Plan)
-	{
-		// v2.0: No lowered ops. Report step count and resolved function names.
-		ResultData->SetNumberField(TEXT("resolved_steps_count"), ResolveResult.ResolvedSteps.Num());
-
-		// Include per-step resolution summary so AI can verify resolved function names
-		TArray<TSharedPtr<FJsonValue>> StepSummaries;
-		StepSummaries.Reserve(ResolveResult.ResolvedSteps.Num());
-		for (const FOliveResolvedStep& Resolved : ResolveResult.ResolvedSteps)
-		{
-			TSharedPtr<FJsonObject> StepObj = MakeShared<FJsonObject>();
-			StepObj->SetStringField(TEXT("step_id"), Resolved.StepId);
-			StepObj->SetStringField(TEXT("node_type"), Resolved.NodeType);
-
-			// Include resolved function_name and target_class if present
-			const FString* FnName = Resolved.Properties.Find(TEXT("function_name"));
-			if (FnName && !FnName->IsEmpty())
-			{
-				StepObj->SetStringField(TEXT("resolved_function"), *FnName);
-			}
-			const FString* TargetCls = Resolved.Properties.Find(TEXT("target_class"));
-			if (TargetCls && !TargetCls->IsEmpty())
-			{
-				StepObj->SetStringField(TEXT("resolved_class"), *TargetCls);
-			}
-
-			StepSummaries.Add(MakeShared<FJsonValueObject>(StepObj));
-		}
-		ResultData->SetArrayField(TEXT("resolved_steps"), StepSummaries);
-		ResultData->SetStringField(TEXT("execution_mode"), TEXT("plan_executor_v2"));
-	}
-	else
-	{
-		// v1.0: Include lowered ops summary
-		ResultData->SetObjectField(TEXT("plan_summary"), BuildPlanSummary(ExpandedPlan, LowerResult));
-		ResultData->SetNumberField(TEXT("lowered_ops_count"), LowerResult.Ops.Num());
-		ResultData->SetStringField(TEXT("execution_mode"), TEXT("lowerer_v1"));
-	}
-
-	if (bGraphWillBeCreated)
-	{
-		ResultData->SetBoolField(TEXT("will_create_graph"), true);
-		ResultData->SetStringField(TEXT("new_graph_name"), GraphTarget);
-	}
-
-	// Collect warnings from resolution (and lowering for v1.0)
-	TArray<TSharedPtr<FJsonValue>> Warnings;
-	if (!bIsV2Plan)
-	{
-		Warnings = CollectWarnings(ResolveResult, LowerResult);
-	}
-	else
-	{
-		// v2.0: warnings come from resolution only
-		for (const FString& Warn : ResolveResult.Warnings)
-		{
-			Warnings.Add(MakeShared<FJsonValueString>(Warn));
-		}
-	}
-
-	if (bGraphWillBeCreated)
-	{
-		Warnings.Add(MakeShared<FJsonValueString>(
-			FString::Printf(TEXT("Function graph '%s' does not exist and will be created on apply"), *GraphTarget)));
-	}
-	if (Warnings.Num() > 0)
-	{
-		ResultData->SetArrayField(TEXT("warnings"), Warnings);
-	}
-
-	// Serialize resolver notes for transparency (e.g., synthetic MakeTransform steps)
-	if (ResolveResult.GlobalNotes.Num() > 0)
-	{
-		TArray<TSharedPtr<FJsonValue>> NotesArray;
-		NotesArray.Reserve(ResolveResult.GlobalNotes.Num());
-		for (const FOliveResolverNote& Note : ResolveResult.GlobalNotes)
-		{
-			NotesArray.Add(MakeShared<FJsonValueObject>(Note.ToJson()));
-		}
-		ResultData->SetArrayField(TEXT("resolver_notes"), NotesArray);
-	}
-
-	UE_LOG(LogOliveBPTools, Log,
-		TEXT("Plan preview for '%s' graph '%s': %d steps, schema=%s, fingerprint=%s, new_graph=%s"),
-		*AssetPath, *GraphTarget, ExpandedPlan.Steps.Num(), *ExpandedPlan.SchemaVersion, *Fingerprint,
-		bGraphWillBeCreated ? TEXT("true") : TEXT("false"));
-
-	return FOliveToolResult::Success(ResultData);
-}
-
-FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintApplyPlanJson(const TSharedPtr<FJsonObject>& Params)
-{
-	// ------------------------------------------------------------------
-	// 1. Validate parameters
-	// ------------------------------------------------------------------
-	if (!Params.IsValid())
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintApplyPlanJson: Params object is null"));
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_INVALID_PARAMS"),
-			TEXT("Parameters object is null"),
-			TEXT("Provide a valid parameters object with 'asset_path' and 'plan_json' fields"));
-	}
-
-	FString AssetPath;
-	if (!Params->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintApplyPlanJson: Missing required param 'asset_path'"));
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'asset_path' is missing or empty"),
-			TEXT("Provide the Blueprint asset path"));
-	}
-
-	const TSharedPtr<FJsonObject>* PlanJsonPtr = nullptr;
-	if (!Params->TryGetObjectField(TEXT("plan_json"), PlanJsonPtr) || !PlanJsonPtr || !(*PlanJsonPtr).IsValid())
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintApplyPlanJson: Missing required param 'plan_json' for path='%s'"), *AssetPath);
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'plan_json' is missing or not an object"),
-			TEXT("Provide a valid plan_json object with 'steps' array"));
-	}
-	TSharedPtr<FJsonObject> PlanJson = *PlanJsonPtr;
-
-	FString GraphTarget = TEXT("EventGraph");
-	Params->TryGetStringField(TEXT("graph_target"), GraphTarget);
-
-	FString Mode = TEXT("merge");
-	Params->TryGetStringField(TEXT("mode"), Mode);
-
-	FString ProvidedFingerprint;
-	Params->TryGetStringField(TEXT("preview_fingerprint"), ProvidedFingerprint);
-
-	// ------------------------------------------------------------------
-	// 2. Validate plan schema
-	// ------------------------------------------------------------------
-	const UOliveAISettings* Settings = UOliveAISettings::Get();
-	const int32 MaxSteps = Settings ? Settings->PlanJsonMaxSteps : 128;
-
-	FOliveIRResult ValidationResult = FOliveIRValidator::ValidateBlueprintPlanJson(PlanJson, MaxSteps);
-	if (!ValidationResult.bSuccess)
-	{
-		TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
-		ErrorData->SetStringField(TEXT("phase"), TEXT("validation"));
-		ErrorData->SetStringField(TEXT("error_code"), ValidationResult.ErrorCode);
-		ErrorData->SetStringField(TEXT("error_message"), ValidationResult.ErrorMessage);
-		if (ValidationResult.Data.IsValid())
-		{
-			const TArray<TSharedPtr<FJsonValue>>* Errors = nullptr;
-			if (ValidationResult.Data->TryGetArrayField(TEXT("errors"), Errors))
-			{
-				ErrorData->SetArrayField(TEXT("errors"), *Errors);
-			}
-		}
-		FOliveToolResult Result = FOliveToolResult::Error(
-			ValidationResult.ErrorCode,
-			ValidationResult.ErrorMessage,
-			ValidationResult.Suggestion);
-		Result.Data = ErrorData;
-		return Result;
-	}
-
-	// ------------------------------------------------------------------
-	// 3. Parse plan
-	// ------------------------------------------------------------------
-	FOliveIRBlueprintPlan Plan = FOliveIRBlueprintPlan::FromJson(PlanJson);
-
-	// ------------------------------------------------------------------
-	// 4. Load Blueprint
-	// ------------------------------------------------------------------
-	FOliveBlueprintReader& BPReader = FOliveBlueprintReader::Get();
-	UBlueprint* Blueprint = BPReader.LoadBlueprint(AssetPath);
-	if (!Blueprint)
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintApplyPlanJson: Failed to load Blueprint at path='%s'"), *AssetPath);
-		return FOliveToolResult::Error(
-			TEXT("ASSET_NOT_FOUND"),
-			FString::Printf(TEXT("Failed to load Blueprint at path '%s'"), *AssetPath),
-			TEXT("Verify the asset path is correct and the asset exists"));
-	}
-
-	// ------------------------------------------------------------------
-	// 5. Check preview requirement / auto-preview
-	// ------------------------------------------------------------------
-	// When no fingerprint is provided and bPlanJsonRequirePreviewForApply is
-	// true, we run an implicit "auto-preview" — the same resolve + validate
-	// pipeline that preview_plan_json uses. This saves the AI a round-trip
-	// (no need to call preview_plan_json first). The result is tagged with
-	// "auto_preview": true so the caller knows preview was inlined.
-	const bool bRequirePreview = Settings && Settings->bPlanJsonRequirePreviewForApply;
-	const bool bAutoPreview = ProvidedFingerprint.IsEmpty() && bRequirePreview;
-
-	if (ProvidedFingerprint.IsEmpty())
-	{
-		if (bAutoPreview)
-		{
-			UE_LOG(LogOliveBPTools, Log,
-				TEXT("apply_plan_json: no preview_fingerprint provided — running automatic preview "
-					 "(bPlanJsonRequirePreviewForApply=true). Resolve+validate will run inline."));
-		}
-		else
-		{
-			UE_LOG(LogOliveBPTools, Log,
-				TEXT("apply_plan_json: no preview_fingerprint provided — skipping drift check, "
-					 "proceeding with resolve+execute (bPlanJsonRequirePreviewForApply=false)."));
-		}
-	}
-
-	// ------------------------------------------------------------------
-	// 6. Find target graph (create later inside pipeline transaction if needed)
-	// ------------------------------------------------------------------
-	UEdGraph* TargetGraph = FindGraphByName(Blueprint, GraphTarget);
-	const bool bGraphMissing = (TargetGraph == nullptr);
-	if (bGraphMissing && GraphTarget == TEXT("EventGraph"))
-	{
-		UE_LOG(LogOliveBPTools, Warning, TEXT("HandleBlueprintApplyPlanJson: EventGraph not found in Blueprint '%s'"), *AssetPath);
-		return FOliveToolResult::Error(
-			TEXT("GRAPH_NOT_FOUND"),
-			FString::Printf(TEXT("EventGraph not found in Blueprint '%s'"), *AssetPath),
-			TEXT("EventGraph should always exist on a Blueprint"));
-	}
-
-	// ------------------------------------------------------------------
-	// 7. Resolve plan (always -- needed before drift detection and everything else)
-	// ------------------------------------------------------------------
-	FOliveGraphContext GraphContext = FOliveGraphContext::BuildFromBlueprint(Blueprint, GraphTarget);
-	FOlivePlanResolveResult ResolveResult = FOliveBlueprintPlanResolver::Resolve(Plan, Blueprint, GraphContext);
-	if (!ResolveResult.bSuccess)
-	{
-		TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
-		ErrorData->SetStringField(TEXT("phase"), TEXT("resolve"));
-		ErrorData->SetArrayField(TEXT("errors"), SerializePlanErrors(ResolveResult.Errors));
-		ErrorData->SetArrayField(TEXT("step_errors"), SerializePlanStepErrors(ResolveResult.Errors));
-		if (ResolveResult.Errors.Num() > 0)
-		{
-			const FOliveIRBlueprintPlanError& First = ResolveResult.Errors[0];
-			if (!First.StepId.IsEmpty())
-			{
-				ErrorData->SetStringField(TEXT("first_error_step_id"), First.StepId);
-			}
-			if (!First.ErrorCode.IsEmpty())
-			{
-				ErrorData->SetStringField(TEXT("first_error_code"), First.ErrorCode);
-			}
-			ErrorData->SetStringField(TEXT("first_error_message"), First.Message);
-		}
-		FOliveToolResult Result = FOliveToolResult::Error(
-			TEXT("PLAN_RESOLVE_FAILED"),
-			BuildPlanFailureMessage(TEXT("Plan resolution failed"), ResolveResult.Errors),
-			ResolveResult.Errors.Num() > 0 ? ResolveResult.Errors[0].Suggestion : TEXT(""));
-		Result.Data = ErrorData;
-
-		// Build contextual next-step guidance based on the first error
-		if (ResolveResult.Errors.Num() > 0)
-		{
-			const FOliveIRBlueprintPlanError& FirstErr = ResolveResult.Errors[0];
-			if (FirstErr.ErrorCode == TEXT("FUNCTION_NOT_FOUND"))
-			{
-				Result.NextStepGuidance = FString::Printf(
-					TEXT("Function not found for step '%s'. Use blueprint.describe_function to check "
-						 "available functions on the target class, or check spelling."),
-					*FirstErr.StepId);
-			}
-			else if (FirstErr.ErrorCode == TEXT("VARIABLE_NOT_FOUND"))
-			{
-				Result.NextStepGuidance = FString::Printf(
-					TEXT("Variable not found for step '%s'. Use blueprint.read with section='variables' "
-						 "to see available variables, or add the variable first with blueprint.add_variable."),
-					*FirstErr.StepId);
-			}
-			else
-			{
-				Result.NextStepGuidance = TEXT("Check the errors array for details. Use blueprint.describe_function "
-					"or blueprint.read to verify names and types before retrying.");
-			}
-		}
-
-		return Result;
-	}
-
-	// Use the expanded plan (with all resolver expansions applied) for all
-	// post-resolve processing. The original Plan must NOT be used after this
-	// point because it lacks synthetic steps from ExpandComponentRefs/etc.
-	FOliveIRBlueprintPlan& ExpandedPlan = ResolveResult.ExpandedPlan;
-
-	// ------------------------------------------------------------------
-	// 7b. Drift detection (if fingerprint provided and graph already existed)
-	// Uses ExpandedPlan so fingerprint matches what preview_plan_json computed.
-	// ------------------------------------------------------------------
-	if (!ProvidedFingerprint.IsEmpty() && !bGraphMissing)
-	{
-		FOliveGraphReader DriftReader;
-		FOliveIRGraph CurrentGraphIR = DriftReader.ReadGraph(TargetGraph, Blueprint);
-		FString CurrentFingerprint = FOliveBlueprintPlanResolver::ComputePlanFingerprint(CurrentGraphIR, ExpandedPlan);
-
-		// Tolerant comparison: case-insensitive + prefix match (LLMs truncate/lowercase hex)
-		const bool bExactMatch = CurrentFingerprint.Equals(ProvidedFingerprint, ESearchCase::IgnoreCase);
-		const bool bPrefixMatch = !bExactMatch
-			&& ProvidedFingerprint.Len() >= 6
-			&& CurrentFingerprint.StartsWith(ProvidedFingerprint, ESearchCase::IgnoreCase);
-
-		if (!bExactMatch && !bPrefixMatch)
-		{
-			UE_LOG(LogOliveBPTools, Warning,
-				TEXT("apply_plan_json: fingerprint mismatch (provided='%s', current='%s'). "
-					 "Proceeding anyway — resolve+execute pipeline will validate."),
-				*ProvidedFingerprint, *CurrentFingerprint);
-		}
-		else if (bPrefixMatch)
-		{
-			UE_LOG(LogOliveBPTools, Log,
-				TEXT("apply_plan_json: fingerprint prefix match accepted (provided='%s' -> current='%s')"),
-				*ProvidedFingerprint, *CurrentFingerprint);
-		}
-	}
-
-	// ------------------------------------------------------------------
-	// 8. Post-resolve passes + Lower (v1.0 only)
-	// ------------------------------------------------------------------
-	const bool bIsV2Plan = (ExpandedPlan.SchemaVersion == TEXT("2.0"));
-
-	// Infer missing exec_after from step order (fixes layout for plans without explicit exec flow)
-	FOliveBlueprintPlanResolver::InferMissingExecChain(
-		ExpandedPlan, ResolveResult.ResolvedSteps, ResolveResult.GlobalNotes);
-
-	// Auto-inject SetCollisionEnabled(NoCollision) after attach calls when mesh collision is unhandled
-	FOliveBlueprintPlanResolver::ExpandMissingCollisionDisable(
-		ExpandedPlan, ResolveResult.ResolvedSteps, Blueprint, ResolveResult.GlobalNotes);
-
-	// Collapse exec chains through pure steps (pure nodes have no exec pins)
-	FOliveBlueprintPlanResolver::CollapseExecThroughPureSteps(
-		ExpandedPlan, ResolveResult.ResolvedSteps, ResolveResult.GlobalNotes);
-
-	// Auto-fix exec_after/exec_outputs conflicts before validation (RC5)
-	FOlivePlanValidator::AutoFixExecConflicts(ExpandedPlan, ResolveResult.GlobalNotes);
-
-	// ------------------------------------------------------------------
-	// 8b. Phase 0: Structural plan validation (before execution)
-	// ------------------------------------------------------------------
-	{
-		FOlivePlanValidationResult Phase0Result = FOlivePlanValidator::Validate(
-			ExpandedPlan, ResolveResult.ResolvedSteps, Blueprint, GraphContext);
-
-		if (!Phase0Result.bSuccess)
-		{
-			TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
-			ErrorData->SetStringField(TEXT("phase"), TEXT("phase0_validation"));
-			ErrorData->SetArrayField(TEXT("errors"), SerializePlanErrors(Phase0Result.Errors));
-			FOliveToolResult Result = FOliveToolResult::Error(
-				TEXT("PLAN_VALIDATION_FAILED"),
-				FString::Printf(TEXT("Plan validation failed with %d error(s)"), Phase0Result.Errors.Num()),
-				Phase0Result.Errors.Num() > 0 ? Phase0Result.Errors[0].Suggestion : TEXT(""));
-			Result.Data = ErrorData;
-			return Result;
-		}
-
-		// Surface Phase 0 warnings (e.g. COLLISION_ON_TRIGGER_COMPONENT) so the AI can self-correct
-		for (const FString& W : Phase0Result.Warnings)
-		{
-			ResolveResult.Warnings.Add(W);
-		}
-	}
-
-	// v1.0 path: lower to batch ops (v2.0 skips this entirely)
-	FOlivePlanLowerResult LowerResult;
-	if (!bIsV2Plan)
-	{
-		LowerResult = FOliveBlueprintPlanLowerer::Lower(
-			ResolveResult.ResolvedSteps, ExpandedPlan, GraphTarget, AssetPath);
-		if (!LowerResult.bSuccess)
-		{
-			TSharedPtr<FJsonObject> ErrorData = MakeShared<FJsonObject>();
-			ErrorData->SetStringField(TEXT("phase"), TEXT("lower"));
-			ErrorData->SetArrayField(TEXT("errors"), SerializePlanErrors(LowerResult.Errors));
-			FOliveToolResult Result = FOliveToolResult::Error(
-				TEXT("PLAN_LOWER_FAILED"),
-				FString::Printf(TEXT("Plan lowering failed with %d error(s)"), LowerResult.Errors.Num()),
-				LowerResult.Errors.Num() > 0 ? LowerResult.Errors[0].Suggestion : TEXT(""));
-			Result.Data = ErrorData;
-			return Result;
-		}
-	}
-
-	// ------------------------------------------------------------------
-	// 9. Build write request
-	// ------------------------------------------------------------------
-	FOliveWriteRequest Request;
-	Request.ToolName = TEXT("blueprint.apply_plan_json");
-	Request.Params = Params;
-	Request.AssetPath = AssetPath;
-	Request.TargetAsset = Blueprint;
-	Request.OperationDescription = FText::Format(
-		NSLOCTEXT("OliveBPTools", "ApplyPlanJson", "AI Agent: Apply Plan JSON ({0} steps, v{1})"),
-		FText::AsNumber(ExpandedPlan.Steps.Num()),
-		FText::FromString(ExpandedPlan.SchemaVersion));
-	Request.OperationCategory = TEXT("plan_apply");
-	Request.bFromMCP = FOliveToolExecutionContext::IsFromMCP();
-	Request.bAutoCompile = true;
-	Request.bSkipVerification = false;
-
-	// ------------------------------------------------------------------
-	// 10. Build executor delegate (version-gated)
-	// ------------------------------------------------------------------
-	FOliveWriteExecutor Executor;
-
-	if (bIsV2Plan)
-	{
-		// ============================================================
-		// v2.0 PATH: FOlivePlanExecutor with pin introspection
-		// ============================================================
-
-		// Capture resolved steps, expanded plan, and resolver notes by value for the lambda.
-		// ResolvedSteps is small (one struct per step). ExpandedPlan is also small.
-		// GlobalNotes carry transparency data from ExpandPlanInputs/ExpandComponentRefs.
-		TArray<FOliveResolvedStep> CapturedResolvedSteps = ResolveResult.ResolvedSteps;
-		FOliveIRBlueprintPlan CapturedPlan = ExpandedPlan;
-		TArray<FOliveResolverNote> CapturedResolverNotes = ResolveResult.GlobalNotes;
-
-		Executor.BindLambda(
-			[CapturedResolvedSteps = MoveTemp(CapturedResolvedSteps),
-			 CapturedPlan = MoveTemp(CapturedPlan),
-			 CapturedResolverNotes = MoveTemp(CapturedResolverNotes),
-			 CapturedMode = Mode,
-			 AssetPath, GraphTarget]
-			(const FOliveWriteRequest& InRequest, UObject* TargetAsset) -> FOliveWriteResult
-			{
-				UBlueprint* BP = Cast<UBlueprint>(TargetAsset);
-				if (!BP)
-				{
-					return FOliveWriteResult::ExecutionError(
-						TEXT("INVALID_TARGET"),
-						TEXT("Target asset is not a valid Blueprint"),
-						TEXT("Ensure the asset_path points to a Blueprint"));
-				}
-
-				// Suppress inner transactions -- the pipeline owns the outer transaction
-				FOliveBatchExecutionScope BatchScope;
-
-				BP->Modify();
-
-				// Ensure target graph exists inside the pipeline transaction
-				bool bGraphCreatedInTxn = false;
-				UEdGraph* ExecutionGraph = FindOrCreateFunctionGraph(BP, GraphTarget, bGraphCreatedInTxn);
-				if (!ExecutionGraph)
-				{
-					// Check if target is an interface function to provide better guidance
-					bool bIsIfaceFunc = false;
-					for (const FBPInterfaceDescription& Desc : BP->ImplementedInterfaces)
-					{
-						if (Desc.Interface)
-						{
-							for (TFieldIterator<UFunction> It(Desc.Interface); It; ++It)
-							{
-								if ((*It)->GetFName() == FName(*GraphTarget))
-								{
-									bIsIfaceFunc = true;
-									break;
-								}
-							}
-						}
-						if (bIsIfaceFunc) break;
-					}
-
-					if (bIsIfaceFunc)
-					{
-						return FOliveWriteResult::ExecutionError(
-							TEXT("INTERFACE_GRAPH_NOT_READY"),
-							FString::Printf(TEXT("Interface function graph '%s' exists as an interface function but the graph has not materialized after conformance."), *GraphTarget),
-							FString::Printf(TEXT("Try calling blueprint.compile on this Blueprint first, then retry apply_plan_json targeting graph '%s'."), *GraphTarget));
-					}
-
-					return FOliveWriteResult::ExecutionError(
-						TEXT("GRAPH_NOT_FOUND"),
-						FString::Printf(TEXT("Graph '%s' not found and could not be created"), *GraphTarget),
-						TEXT("EventGraph must already exist; other names are created as function graphs."));
-				}
-
-				// Replace mode: clear graph of non-entry nodes before plan execution
-				if (CapturedMode == TEXT("replace") && ExecutionGraph)
-				{
-					TArray<UEdGraphNode*> NodesToRemove;
-					for (UEdGraphNode* Node : ExecutionGraph->Nodes)
-					{
-						if (!Node) continue;
-						// Keep event nodes and function entry/result nodes
-						if (Node->IsA<UK2Node_Event>()) continue;
-						if (Node->IsA<UK2Node_CustomEvent>()) continue;
-						if (Node->IsA<UK2Node_FunctionEntry>()) continue;
-						if (Node->IsA<UK2Node_FunctionResult>()) continue;
-						NodesToRemove.Add(Node);
-					}
-
-					for (UEdGraphNode* Node : NodesToRemove)
-					{
-						Node->BreakAllNodeLinks();
-						ExecutionGraph->RemoveNode(Node);
-					}
-
-					// Clear cache since we removed nodes
-					FOliveGraphWriter::Get().ClearNodeCache(AssetPath);
-
-					UE_LOG(LogOliveBPTools, Log,
-						TEXT("Replace mode: cleared %d non-entry nodes from graph '%s'"),
-						NodesToRemove.Num(), *GraphTarget);
-				}
-
-				// Execute the multi-phase plan
-				FOlivePlanExecutor PlanExecutor;
-				FOliveIRBlueprintPlanResult PlanResult = PlanExecutor.Execute(
-					CapturedPlan, CapturedResolvedSteps,
-					BP, ExecutionGraph, AssetPath, GraphTarget);
-
-				// Build the result data JSON
-				TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
-
-				// step_to_node_map
-				TSharedPtr<FJsonObject> MapObj = MakeShared<FJsonObject>();
-				for (const auto& Pair : PlanResult.StepToNodeMap)
-				{
-					MapObj->SetStringField(Pair.Key, Pair.Value);
-				}
-				ResultData->SetObjectField(TEXT("step_to_node_map"), MapObj);
-				ResultData->SetNumberField(TEXT("applied_ops_count"), PlanResult.AppliedOpsCount);
-				ResultData->SetStringField(TEXT("schema_version"), TEXT("2.0"));
-
-				// Serialize reused step IDs (for rollback: these event nodes survive cleanup)
-				if (PlanResult.ReusedStepIds.Num() > 0)
-				{
-					TArray<TSharedPtr<FJsonValue>> ReusedArr;
-					ReusedArr.Reserve(PlanResult.ReusedStepIds.Num());
-					for (const FString& Id : PlanResult.ReusedStepIds)
-					{
-						ReusedArr.Add(MakeShared<FJsonValueString>(Id));
-					}
-					ResultData->SetArrayField(TEXT("reused_step_ids"), ReusedArr);
-				}
-
-				// Serialize plan ownership metadata (for stale error detection)
-				if (PlanResult.PlanClassNames.Num() > 0)
-				{
-					TArray<TSharedPtr<FJsonValue>> ClassArr;
-					ClassArr.Reserve(PlanResult.PlanClassNames.Num());
-					for (const FString& CN : PlanResult.PlanClassNames)
-					{
-						ClassArr.Add(MakeShared<FJsonValueString>(CN));
-					}
-					ResultData->SetArrayField(TEXT("plan_class_names"), ClassArr);
-				}
-				if (PlanResult.PlanFunctionNames.Num() > 0)
-				{
-					TArray<TSharedPtr<FJsonValue>> FuncArr;
-					FuncArr.Reserve(PlanResult.PlanFunctionNames.Num());
-					for (const FString& FN : PlanResult.PlanFunctionNames)
-					{
-						FuncArr.Add(MakeShared<FJsonValueString>(FN));
-					}
-					ResultData->SetArrayField(TEXT("plan_function_names"), FuncArr);
-				}
-
-				// Serialize wiring errors (for AI self-correction)
-				if (PlanResult.Errors.Num() > 0)
-				{
-					TArray<TSharedPtr<FJsonValue>> ErrorsArr;
-					ErrorsArr.Reserve(PlanResult.Errors.Num());
-					for (const FOliveIRBlueprintPlanError& Err : PlanResult.Errors)
-					{
-						ErrorsArr.Add(MakeShared<FJsonValueObject>(Err.ToJson()));
-					}
-					ResultData->SetArrayField(TEXT("wiring_errors"), ErrorsArr);
-
-					// Enrich with first failed step context for AI self-correction
-					const FOliveIRBlueprintPlanError& FirstErr = PlanResult.Errors[0];
-					if (!FirstErr.StepId.IsEmpty())
-					{
-						ResultData->SetStringField(TEXT("failed_step_id"), FirstErr.StepId);
-						// Find the step's op type from the plan
-						for (const FOliveIRBlueprintPlanStep& PStep : CapturedPlan.Steps)
-						{
-							if (PStep.StepId == FirstErr.StepId)
-							{
-								ResultData->SetStringField(TEXT("failed_step_op"), PStep.Op);
-								break;
-							}
-						}
-					}
-				}
-
-				// Split warnings into regular warnings and design warnings
-				TArray<TSharedPtr<FJsonValue>> WarningsArr;
-				TArray<TSharedPtr<FJsonValue>> DesignWarningsArr;
-
-				for (const FString& Warn : PlanResult.Warnings)
-				{
-					if (Warn.StartsWith(TEXT("INTERFACE_FUNCTION_HINT:")))
-					{
-						DesignWarningsArr.Add(MakeShared<FJsonValueString>(Warn));
-					}
-					else
-					{
-						WarningsArr.Add(MakeShared<FJsonValueString>(Warn));
-					}
-				}
-
-				if (WarningsArr.Num() > 0)
-				{
-					ResultData->SetArrayField(TEXT("warnings"), WarningsArr);
-				}
-				if (DesignWarningsArr.Num() > 0)
-				{
-					ResultData->SetArrayField(TEXT("design_warnings"), DesignWarningsArr);
-					ResultData->SetBoolField(TEXT("has_design_warnings"), true);
-				}
-
-				// Forward pin manifests for AI self-correction
-				if (PlanResult.PinManifestJsons.Num() > 0)
-				{
-					TSharedPtr<FJsonObject> ManifestsObj = MakeShared<FJsonObject>();
-					for (const auto& Pair : PlanResult.PinManifestJsons)
-					{
-						ManifestsObj->SetObjectField(Pair.Key, Pair.Value);
-					}
-					ResultData->SetObjectField(TEXT("pin_manifests"), ManifestsObj);
-				}
-
-				// Serialize resolver notes for transparency (e.g., synthetic MakeTransform steps).
-				// These tell the AI what the resolver did silently so it can adjust its mental model.
-				if (CapturedResolverNotes.Num() > 0)
-				{
-					TArray<TSharedPtr<FJsonValue>> NotesArray;
-					NotesArray.Reserve(CapturedResolverNotes.Num());
-					for (const FOliveResolverNote& Note : CapturedResolverNotes)
-					{
-						NotesArray.Add(MakeShared<FJsonValueObject>(Note.ToJson()));
-					}
-					ResultData->SetArrayField(TEXT("resolver_notes"), NotesArray);
-				}
-
-				// Serialize conversion notes for transparency (e.g., Vector->Transform auto-conversion).
-				// These tell the AI what type coercions the wiring phase inserted silently.
-				if (PlanResult.ConversionNotesJson.Num() > 0)
-				{
-					TArray<TSharedPtr<FJsonValue>> ConvNotesArray;
-					ConvNotesArray.Reserve(PlanResult.ConversionNotesJson.Num());
-					for (const TSharedPtr<FJsonObject>& NoteJson : PlanResult.ConversionNotesJson)
-					{
-						if (NoteJson.IsValid())
-						{
-							ConvNotesArray.Add(MakeShared<FJsonValueObject>(NoteJson));
-						}
-					}
-					ResultData->SetArrayField(TEXT("conversion_notes"), ConvNotesArray);
-				}
-
-				// Self-correction hint when any wiring errors occurred (partial success OR full rollback).
-				// Including the hint on rollback is critical — without it the AI enters a debugging
-				// spiral of blueprint.read + get_node_pins calls when the alternatives are already
-				// in the wiring_errors array.
-				const bool bHasWiringErrors = (PlanResult.Errors.Num() > 0);
-				if (bHasWiringErrors)
-				{
-					ResultData->SetStringField(TEXT("self_correction_hint"),
-						TEXT("Some data connections failed. Check the 'wiring_errors' array — each entry "
-							 "includes 'alternatives' listing the correct pin names. Fix the pin names in "
-							 "your plan_json and retry. Do NOT use blueprint.read or blueprint.get_node_pins "
-							 "to debug — the alternatives are already provided."));
-				}
-
-				if (!PlanResult.bSuccess)
-				{
-					// Remove stale step_to_node_map -- these IDs are invalid after rollback
-					ResultData->RemoveField(TEXT("step_to_node_map"));
-					ResultData->SetStringField(TEXT("rollback_warning"),
-						TEXT("All nodes were rolled back. Node IDs are INVALID. Call blueprint.read to get current IDs."));
-
-					// Derive a specific, actionable top-level error code/message from the first
-					// structured plan error when available. The generic rollback notification is
-					// kept as a suffix so the AI still knows state was rolled back, but the prefix
-					// tells it exactly what went wrong so the self-correction loop can act without
-					// guessing. Falling back to PLAN_EXECUTION_FAILED only if there are no
-					// structured errors preserves the legacy behavior for edge cases.
-					FString TopErrorCode = TEXT("PLAN_EXECUTION_FAILED");
-					FString TopErrorMessage;
-					FString TopSuggestion;
-					if (PlanResult.Errors.Num() > 0)
-					{
-						const FOliveIRBlueprintPlanError& FirstErrForTop = PlanResult.Errors[0];
-						if (!FirstErrForTop.ErrorCode.IsEmpty())
-						{
-							TopErrorCode = FirstErrForTop.ErrorCode;
-						}
-						TopErrorMessage = FirstErrForTop.Message;
-						TopSuggestion = FirstErrForTop.Suggestion;
-					}
-
-					const FString RollbackSuffix = FString::Printf(
-						TEXT(" (Plan rolled back: %d of %d nodes created. Node IDs from step_to_node_map are INVALID. "
-							 "Call blueprint.read for current IDs before referencing any nodes.)"),
-						static_cast<int32>(PlanResult.StepToNodeMap.Num()),
-						CapturedPlan.Steps.Num());
-
-					FString ErrorMsg;
-					if (!TopErrorMessage.IsEmpty())
-					{
-						ErrorMsg = TopErrorMessage + RollbackSuffix;
-					}
-					else
-					{
-						ErrorMsg = FString::Printf(
-							TEXT("Plan execution failed: %d of %d nodes created. "
-								 "IMPORTANT: All nodes from this plan_json call have been ROLLED BACK and removed from the graph. "
-								 "Node IDs from step_to_node_map are NO LONGER VALID. "
-								 "Call blueprint.read on the target function/graph to get current node IDs before "
-								 "referencing any nodes."),
-							static_cast<int32>(PlanResult.StepToNodeMap.Num()),
-							CapturedPlan.Steps.Num());
-					}
-
-					// Mirror the top-level error fields onto the handler's rich ResultData
-					// BEFORE we assign it to ErrorResult, so StageExecute's extraction at
-					// OliveWritePipeline.cpp:190 picks them up. Without this mirror, the
-					// assignment at the end of this block overwrites the fresh ResultData
-					// that ExecutionError() created and loses the top-level error fields.
-					ResultData->SetStringField(TEXT("error_code"), TopErrorCode);
-					ResultData->SetStringField(TEXT("error_message"), ErrorMsg);
-					if (!TopSuggestion.IsEmpty())
-					{
-						ResultData->SetStringField(TEXT("suggestion"), TopSuggestion);
-					}
-
-					FOliveWriteResult ErrorResult = FOliveWriteResult::ExecutionError(
-						TopErrorCode,
-						ErrorMsg,
-						TopSuggestion);
-					ErrorResult.ResultData = ResultData;
-
-					// Build contextual next-step guidance from the first error
-					if (PlanResult.Errors.Num() > 0)
-					{
-						const FOliveIRBlueprintPlanError& FirstErr = PlanResult.Errors[0];
-						if (FirstErr.ErrorCode == TEXT("NODE_CREATION_FAILED"))
-						{
-							ErrorResult.NextStepGuidance = FString::Printf(
-								TEXT("Node creation failed for step '%s'. Use blueprint.describe_node_type or "
-									 "blueprint.describe_function to verify the node type/function exists, then retry with corrected plan_json."),
-								*FirstErr.StepId);
-						}
-						else if (FirstErr.ErrorCode.Contains(TEXT("PIN_NOT_FOUND")))
-						{
-							ErrorResult.NextStepGuidance = FString::Printf(
-								TEXT("Pin not found on step '%s' (see: %s). Use blueprint.describe_function to see available pins, "
-									 "or use blueprint.read on the graph to see actual node pins after creation."),
-								*FirstErr.StepId, *FirstErr.LocationPointer);
-						}
-						else
-						{
-							ErrorResult.NextStepGuidance = TEXT("Check wiring_errors for details. Use blueprint.read on the target graph "
-								"to see current state, then retry with corrected plan_json.");
-						}
-					}
-
-					return ErrorResult;
-				}
-
-				// Partial success: some wiring failed but all nodes were created.
-				// Return Success so the write pipeline commits the transaction
-				// (nodes persist in the graph). The AI uses wiring_errors +
-				// step_to_node_map to fix failed connections with connect_pins.
-				if (PlanResult.bPartial)
-				{
-					const int32 TotalFailures = PlanResult.ConnectionsFailed + PlanResult.DefaultsFailed;
-					FString PartialMessage = FString::Printf(
-						TEXT("%d nodes created, %d connections succeeded, %d connections FAILED. "
-							 "Nodes are committed. Use wiring_errors and step_to_node_map to fix "
-							 "failed connections with connect_pins/set_pin_default."),
-						PlanResult.StepToNodeMap.Num(),
-						PlanResult.ConnectionsSucceeded,
-						TotalFailures);
-
-					ResultData->SetStringField(TEXT("message"), PartialMessage);
-					ResultData->SetStringField(TEXT("status"), TEXT("partial_success"));
-					ResultData->SetBoolField(TEXT("success"), true);
-					// Deliberately NOT setting error_code -- partial success is not an error
-
-					if (TSharedPtr<FJsonObject> StateJson = BuildCompactStateJson(BP))
-					{
-						ResultData->SetObjectField(TEXT("blueprint_state"), StateJson);
-					}
-
-					FOliveWriteResult PartialResult = FOliveWriteResult::Success(ResultData);
-
-					// Provide created node IDs for the pipeline's verification stage
-					TArray<FString> CreatedNodeIds;
-					CreatedNodeIds.Reserve(PlanResult.StepToNodeMap.Num());
-					for (const auto& Pair : PlanResult.StepToNodeMap)
-					{
-						CreatedNodeIds.Add(Pair.Value);
-					}
-					PartialResult.CreatedNodeIds = MoveTemp(CreatedNodeIds);
-
-					// Build contextual next-step guidance for partial success
-					PartialResult.NextStepGuidance = FString::Printf(
-						TEXT("%d connection(s) failed. Read wiring_errors for details, then use "
-							 "blueprint.connect_pins or blueprint.set_pin_default to fix. "
-							 "Nodes are committed with valid IDs in step_to_node_map."),
-						TotalFailures);
-
-					return PartialResult;
-				}
-
-				// Full success path (no partial failures)
-				ResultData->SetStringField(TEXT("message"),
-					FString::Printf(TEXT("Plan applied successfully: %d nodes created, %d connections wired"),
-						PlanResult.StepToNodeMap.Num(),
-						PlanResult.ConnectionsSucceeded));
-
-				if (TSharedPtr<FJsonObject> StateJson = BuildCompactStateJson(BP))
-				{
-					ResultData->SetObjectField(TEXT("blueprint_state"), StateJson);
-				}
-
-				FOliveWriteResult SuccessResult = FOliveWriteResult::Success(ResultData);
-
-				// Collect created node IDs for the pipeline's verification stage
-				TArray<FString> CreatedNodeIds;
-				CreatedNodeIds.Reserve(PlanResult.StepToNodeMap.Num());
-				for (const auto& Pair : PlanResult.StepToNodeMap)
-				{
-					CreatedNodeIds.Add(Pair.Value);
-				}
-				SuccessResult.CreatedNodeIds = MoveTemp(CreatedNodeIds);
-
-				return SuccessResult;
-			});
-	}
-	else
-	{
-		// ============================================================
-		// v1.0 PATH: Existing lowerer + batch dispatch (unchanged)
-		// ============================================================
-		TArray<FOliveLoweredOp> CapturedOps = LowerResult.Ops;
-		TMap<FString, int32> CapturedStepMap = LowerResult.StepToFirstOpIndex;
-
-		Executor.BindLambda(
-			[CapturedOps = MoveTemp(CapturedOps), CapturedStepMap = MoveTemp(CapturedStepMap), AssetPath, GraphTarget]
-			(const FOliveWriteRequest& InRequest, UObject* TargetAsset) -> FOliveWriteResult
-			{
-				UBlueprint* BP = Cast<UBlueprint>(TargetAsset);
-				if (!BP)
-				{
-					return FOliveWriteResult::ExecutionError(
-						TEXT("INVALID_TARGET"),
-						TEXT("Target asset is not a valid Blueprint"),
-						TEXT("Ensure the asset_path points to a Blueprint"));
-				}
-
-				// Suppress inner transactions -- the pipeline owns the outer transaction
-				FOliveBatchExecutionScope BatchScope;
-
-				BP->Modify();
-
-				// Ensure target graph exists inside the pipeline transaction so creation
-				// participates in rollback if later ops fail.
-				bool bGraphCreatedInTxn = false;
-				UEdGraph* ExecutionGraph = FindOrCreateFunctionGraph(BP, GraphTarget, bGraphCreatedInTxn);
-				if (!ExecutionGraph)
-				{
-					// Check if target is an interface function to provide better guidance
-					bool bIsIfaceFunc = false;
-					for (const FBPInterfaceDescription& Desc : BP->ImplementedInterfaces)
-					{
-						if (Desc.Interface)
-						{
-							for (TFieldIterator<UFunction> It(Desc.Interface); It; ++It)
-							{
-								if ((*It)->GetFName() == FName(*GraphTarget))
-								{
-									bIsIfaceFunc = true;
-									break;
-								}
-							}
-						}
-						if (bIsIfaceFunc) break;
-					}
-
-					if (bIsIfaceFunc)
-					{
-						return FOliveWriteResult::ExecutionError(
-							TEXT("INTERFACE_GRAPH_NOT_READY"),
-							FString::Printf(TEXT("Interface function graph '%s' exists as an interface function but the graph has not materialized after conformance."), *GraphTarget),
-							FString::Printf(TEXT("Try calling blueprint.compile on this Blueprint first, then retry apply_plan_json targeting graph '%s'."), *GraphTarget));
-					}
-
-					return FOliveWriteResult::ExecutionError(
-						TEXT("GRAPH_NOT_FOUND"),
-						FString::Printf(TEXT("Graph '%s' not found and could not be created"), *GraphTarget),
-						TEXT("EventGraph must already exist; other names are created as function graphs."));
-				}
-
-				TMap<FString, TSharedPtr<FJsonObject>> OpResultsById;
-				TMap<FString, FString> StepToNodeMap;
-				TArray<FString> CreatedNodeIds;
-				int32 AppliedCount = 0;
-
-				for (int32 i = 0; i < CapturedOps.Num(); ++i)
-				{
-					if (!CapturedOps[i].Params.IsValid())
-					{
-						return FOliveWriteResult::ExecutionError(
-							TEXT("INVALID_OP_PARAMS"),
-							FString::Printf(TEXT("Op %d has invalid null params (id='%s', tool='%s')"),
-								i, *CapturedOps[i].Id, *CapturedOps[i].ToolName),
-							TEXT("Regenerate the plan and retry."));
-					}
-
-					// Copy params so template resolution can mutate them
-					TSharedPtr<FJsonObject> OpParams = MakeShared<FJsonObject>();
-					for (const auto& Field : CapturedOps[i].Params->Values)
-					{
-						OpParams->Values.Add(Field.Key, Field.Value);
-					}
-
-					// Resolve ${opId.field} template references
-					FString TemplateError;
-					if (!FOliveGraphBatchExecutor::ResolveTemplateReferences(OpParams, OpResultsById, TemplateError))
-					{
-						return FOliveWriteResult::ExecutionError(
-							TEXT("TEMPLATE_RESOLVE_FAILED"),
-							FString::Printf(TEXT("Template resolution failed at op %d (id='%s'): %s"),
-								i, *CapturedOps[i].Id, *TemplateError),
-							TEXT("Check that referenced step IDs exist and produced node_id results"));
-					}
-
-					// Dispatch to writer
-					FOliveBlueprintWriteResult WriteResult = FOliveGraphBatchExecutor::DispatchWriterOp(
-						CapturedOps[i].ToolName, AssetPath, OpParams);
-
-					if (!WriteResult.bSuccess)
-					{
-						FString ErrorMsg = WriteResult.GetFirstError();
-						return FOliveWriteResult::ExecutionError(
-							TEXT("OP_FAILED"),
-							FString::Printf(TEXT("Op %d failed (id='%s', tool='%s'): %s"),
-								i, *CapturedOps[i].Id, *CapturedOps[i].ToolName, *ErrorMsg),
-							TEXT("Check the plan step definition for this operation"));
-					}
-
-					AppliedCount++;
-
-					// Build result data for template resolution by later ops
-					TSharedPtr<FJsonObject> OpData = MakeShared<FJsonObject>();
-					if (!WriteResult.CreatedNodeId.IsEmpty())
-					{
-						OpData->SetStringField(TEXT("node_id"), WriteResult.CreatedNodeId);
-						CreatedNodeIds.Add(WriteResult.CreatedNodeId);
-					}
-					if (!WriteResult.CreatedItemName.IsEmpty())
-					{
-						OpData->SetStringField(TEXT("item_name"), WriteResult.CreatedItemName);
-					}
-
-					// Store result for template resolution
-					if (!CapturedOps[i].Id.IsEmpty())
-					{
-						OpResultsById.Add(CapturedOps[i].Id, OpData);
-
-						// If this is an add_node op (has a step mapping), record in StepToNodeMap
-						if (CapturedStepMap.Contains(CapturedOps[i].Id) && !WriteResult.CreatedNodeId.IsEmpty())
-						{
-							StepToNodeMap.Add(CapturedOps[i].Id, WriteResult.CreatedNodeId);
-						}
-					}
-				}
-
-				// Build success result
-				TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
-
-				// Serialize step_to_node_map
-				TSharedPtr<FJsonObject> MapObj = MakeShared<FJsonObject>();
-				for (const auto& Pair : StepToNodeMap)
-				{
-					MapObj->SetStringField(Pair.Key, Pair.Value);
-				}
-				ResultData->SetObjectField(TEXT("step_to_node_map"), MapObj);
-				ResultData->SetNumberField(TEXT("applied_ops_count"), AppliedCount);
-
-				FOliveWriteResult SuccessResult = FOliveWriteResult::Success(ResultData);
-				SuccessResult.CreatedNodeIds = MoveTemp(CreatedNodeIds);
-				return SuccessResult;
-			});
-	}
-
-	// ------------------------------------------------------------------
-	// 11. Execute through write pipeline
-	// ------------------------------------------------------------------
-	// Propagate ChatMode from execution context (same as ExecuteWithOptionalConfirmation)
-	if (const FOliveToolCallContext* Ctx = FOliveToolExecutionContext::Get())
-	{
-		Request.ChatMode = Ctx->ChatMode;
-	}
-
-	FOliveWritePipeline& Pipeline = FOliveWritePipeline::Get();
-	FOliveWriteResult PipelineResult = Pipeline.Execute(Request, Executor);
-
-	// ------------------------------------------------------------------
-	// 11b. Post-transaction orphaned pin cleanup on failure (secondary defense)
-	// ------------------------------------------------------------------
-	// The PRIMARY fix for orphaned pins is EnsurePinNotOrphaned() in
-	// OlivePlanExecutor.cpp, which clears bOrphanedPin at the point of use
-	// (WireExecConnection, WireDataConnection, auto-chain paths).
-	//
-	// This block is a SECONDARY defense: after the pipeline cancels the
-	// transaction (rollback), reused event nodes may still have stale
-	// bOrphanedPin flags.  We clear them here so subsequent plan_json
-	// calls start with clean pins.
-	if (!PipelineResult.bSuccess && bIsV2Plan)
-	{
-		UEdGraph* CleanupGraph = FindGraphByName(Blueprint, GraphTarget);
-		if (CleanupGraph)
-		{
-			for (UEdGraphNode* Node : CleanupGraph->Nodes)
-			{
-				if (!Node) continue;
-				// Only clean event-like nodes (the ones that get reused across plan retries)
-				if (!Node->IsA<UK2Node_Event>()
-					&& !Node->IsA<UK2Node_FunctionEntry>()
-					&& !Node->IsA<UK2Node_FunctionResult>())
-				{
-					continue;
-				}
-				for (UEdGraphPin* Pin : Node->Pins)
-				{
-					if (Pin && Pin->bOrphanedPin)
-					{
-						Pin->bOrphanedPin = false;
-						UE_LOG(LogOliveBPTools, Log,
-							TEXT("Post-rollback cleanup: cleared bOrphanedPin on '%s' pin '%s'"),
-							*Node->GetNodeTitle(ENodeTitleType::ListView).ToString(),
-							*Pin->PinName.ToString());
-					}
-				}
-			}
-		}
-	}
-
-	// Convert to tool result and inject data from executor result
-	FOliveToolResult ToolResult = PipelineResult.ToToolResult();
-
-	if (PipelineResult.bSuccess && PipelineResult.ResultData.IsValid() && ToolResult.Data.IsValid())
-	{
-		// Forward all fields from the executor's ResultData into the tool result
-		const TSharedPtr<FJsonObject>* StepMapObj = nullptr;
-		if (PipelineResult.ResultData->TryGetObjectField(TEXT("step_to_node_map"), StepMapObj))
-		{
-			ToolResult.Data->SetObjectField(TEXT("step_to_node_map"), *StepMapObj);
-		}
-
-		double AppliedOps = 0;
-		if (PipelineResult.ResultData->TryGetNumberField(TEXT("applied_ops_count"), AppliedOps))
-		{
-			ToolResult.Data->SetNumberField(TEXT("applied_ops_count"), AppliedOps);
-		}
-
-		// v2.0-specific result fields
-		if (bIsV2Plan)
-		{
-			FString SchemaVersion;
-			if (PipelineResult.ResultData->TryGetStringField(TEXT("schema_version"), SchemaVersion))
-			{
-				ToolResult.Data->SetStringField(TEXT("schema_version"), SchemaVersion);
-			}
-
-			const TArray<TSharedPtr<FJsonValue>>* WiringErrors = nullptr;
-			if (PipelineResult.ResultData->TryGetArrayField(TEXT("wiring_errors"), WiringErrors))
-			{
-				ToolResult.Data->SetArrayField(TEXT("wiring_errors"), *WiringErrors);
-			}
-
-			const TArray<TSharedPtr<FJsonValue>>* Warnings = nullptr;
-			if (PipelineResult.ResultData->TryGetArrayField(TEXT("warnings"), Warnings))
-			{
-				ToolResult.Data->SetArrayField(TEXT("warnings"), *Warnings);
-			}
-
-			const TArray<TSharedPtr<FJsonValue>>* DesignWarnings = nullptr;
-			if (PipelineResult.ResultData->TryGetArrayField(TEXT("design_warnings"), DesignWarnings))
-			{
-				ToolResult.Data->SetArrayField(TEXT("design_warnings"), *DesignWarnings);
-				ToolResult.Data->SetBoolField(TEXT("has_design_warnings"), true);
-			}
-
-			FString SelfCorrectionHint;
-			if (PipelineResult.ResultData->TryGetStringField(TEXT("self_correction_hint"), SelfCorrectionHint))
-			{
-				ToolResult.Data->SetStringField(TEXT("self_correction_hint"), SelfCorrectionHint);
-			}
-
-			const TSharedPtr<FJsonObject>* PinManifests = nullptr;
-			if (PipelineResult.ResultData->TryGetObjectField(TEXT("pin_manifests"), PinManifests))
-			{
-				ToolResult.Data->SetObjectField(TEXT("pin_manifests"), *PinManifests);
-			}
-
-			// Forward plan ownership metadata (for stale error detection by self-correction)
-			const TArray<TSharedPtr<FJsonValue>>* PlanClassNames = nullptr;
-			if (PipelineResult.ResultData->TryGetArrayField(TEXT("plan_class_names"), PlanClassNames))
-			{
-				ToolResult.Data->SetArrayField(TEXT("plan_class_names"), *PlanClassNames);
-			}
-			const TArray<TSharedPtr<FJsonValue>>* PlanFuncNames = nullptr;
-			if (PipelineResult.ResultData->TryGetArrayField(TEXT("plan_function_names"), PlanFuncNames))
-			{
-				ToolResult.Data->SetArrayField(TEXT("plan_function_names"), *PlanFuncNames);
-			}
-		}
-	}
-	else if (!PipelineResult.bSuccess && PipelineResult.ResultData.IsValid())
-	{
-		// On failure, still forward key fields if present (v2.0)
-		if (bIsV2Plan && ToolResult.Data.IsValid())
-		{
-			// Forward step_to_node_map so rollback can find the nodes
-			const TSharedPtr<FJsonObject>* FailStepMapObj = nullptr;
-			if (PipelineResult.ResultData->TryGetObjectField(TEXT("step_to_node_map"), FailStepMapObj))
-			{
-				ToolResult.Data->SetObjectField(TEXT("step_to_node_map"), *FailStepMapObj);
-			}
-
-			// Forward reused_step_ids so rollback knows which nodes to skip
-			const TArray<TSharedPtr<FJsonValue>>* FailReusedArr = nullptr;
-			if (PipelineResult.ResultData->TryGetArrayField(TEXT("reused_step_ids"), FailReusedArr))
-			{
-				ToolResult.Data->SetArrayField(TEXT("reused_step_ids"), *FailReusedArr);
-			}
-
-			const TArray<TSharedPtr<FJsonValue>>* WiringErrors = nullptr;
-			if (PipelineResult.ResultData->TryGetArrayField(TEXT("wiring_errors"), WiringErrors))
-			{
-				ToolResult.Data->SetArrayField(TEXT("wiring_errors"), *WiringErrors);
-			}
-
-			const TArray<TSharedPtr<FJsonValue>>* Warnings = nullptr;
-			if (PipelineResult.ResultData->TryGetArrayField(TEXT("warnings"), Warnings))
-			{
-				ToolResult.Data->SetArrayField(TEXT("warnings"), *Warnings);
-			}
-
-			const TArray<TSharedPtr<FJsonValue>>* DesignWarnings = nullptr;
-			if (PipelineResult.ResultData->TryGetArrayField(TEXT("design_warnings"), DesignWarnings))
-			{
-				ToolResult.Data->SetArrayField(TEXT("design_warnings"), *DesignWarnings);
-				ToolResult.Data->SetBoolField(TEXT("has_design_warnings"), true);
-			}
-
-			const TSharedPtr<FJsonObject>* PinManifests = nullptr;
-			if (PipelineResult.ResultData->TryGetObjectField(TEXT("pin_manifests"), PinManifests))
-			{
-				ToolResult.Data->SetObjectField(TEXT("pin_manifests"), *PinManifests);
-			}
-
-			// Forward plan ownership metadata (for stale error detection by self-correction)
-			const TArray<TSharedPtr<FJsonValue>>* FailPlanClassNames = nullptr;
-			if (PipelineResult.ResultData->TryGetArrayField(TEXT("plan_class_names"), FailPlanClassNames))
-			{
-				ToolResult.Data->SetArrayField(TEXT("plan_class_names"), *FailPlanClassNames);
-			}
-			const TArray<TSharedPtr<FJsonValue>>* FailPlanFuncNames = nullptr;
-			if (PipelineResult.ResultData->TryGetArrayField(TEXT("plan_function_names"), FailPlanFuncNames))
-			{
-				ToolResult.Data->SetArrayField(TEXT("plan_function_names"), *FailPlanFuncNames);
-			}
-		}
-	}
-
-	// ------------------------------------------------------------------
-	// 12. Post-pipeline rollback on compile failure
-	// ------------------------------------------------------------------
-	// If the pipeline reports compile errors, the nodes created by this plan
-	// are now zombie nodes (transaction already committed in Stage 4).
-	// Remove them so the AI can retry with a clean graph.
-
-	// Check if this was a partial success (all nodes created, some wiring failed).
-	// Partial success should NOT be rolled back -- the nodes and successful wires
-	// persist, and the AI can fix the remaining failures with connect_pins.
-	// Rollback is only for TOTAL failure (Phase 1 node creation aborted).
-	bool bIsPartialSuccess = false;
-	if (PipelineResult.ResultData.IsValid())
-	{
-		FString Status;
-		if (PipelineResult.ResultData->TryGetStringField(TEXT("status"), Status)
-			&& Status == TEXT("partial_success"))
-		{
-			bIsPartialSuccess = true;
-		}
-	}
-
-	if (bIsV2Plan && !PipelineResult.bSuccess && !bIsPartialSuccess && PipelineResult.ResultData.IsValid())
-	{
-		bool bCompileSuccess = true;
-		const TSharedPtr<FJsonObject>* CompileResultObj = nullptr;
-		if (PipelineResult.ResultData->TryGetObjectField(TEXT("compile_result"), CompileResultObj)
-			&& CompileResultObj && (*CompileResultObj).IsValid())
-		{
-			(*CompileResultObj)->TryGetBoolField(TEXT("success"), bCompileSuccess);
-		}
-
-		const TSharedPtr<FJsonObject>* StepMapObj = nullptr;
-		const bool bHasStepMap = PipelineResult.ResultData->TryGetObjectField(
-			TEXT("step_to_node_map"), StepMapObj) && StepMapObj && (*StepMapObj).IsValid();
-
-		if (!bCompileSuccess && bHasStepMap)
-		{
-			// Re-find the graph (may have been created inside the pipeline transaction)
-			UEdGraph* RollbackGraph = FindGraphByName(Blueprint, GraphTarget);
-			if (RollbackGraph)
-			{
-				// Build the set of reused step IDs from result data
-				TSet<FString> ReusedIds;
-				const TArray<TSharedPtr<FJsonValue>>* ReusedArr = nullptr;
-				if (PipelineResult.ResultData->TryGetArrayField(TEXT("reused_step_ids"), ReusedArr)
-					&& ReusedArr)
-				{
-					for (const TSharedPtr<FJsonValue>& Val : *ReusedArr)
-					{
-						if (Val.IsValid())
-						{
-							ReusedIds.Add(Val->AsString());
-						}
-					}
-				}
-
-				const int32 RemovedCount = RollbackPlanNodes(
-					Blueprint, RollbackGraph, **StepMapObj, ReusedIds, AssetPath);
-
-				if (RemovedCount > 0 && ToolResult.Data.IsValid())
-				{
-					ToolResult.Data->SetNumberField(TEXT("rolled_back_nodes"), RemovedCount);
-					ToolResult.Data->SetStringField(TEXT("rollback_message"),
-						FString::Printf(TEXT("Rolled back %d nodes from failed plan. "
-							"The graph has been restored to its pre-plan state. "
-							"Fix the plan and resubmit."), RemovedCount));
-				}
-			}
-		}
-	}
-
-	// ------------------------------------------------------------------
-	// 13. Tag auto-preview in result (so caller knows preview was inlined)
-	// ------------------------------------------------------------------
-	if (bAutoPreview && ToolResult.Data.IsValid())
-	{
-		ToolResult.Data->SetBoolField(TEXT("auto_preview"), true);
-	}
-
-	UE_LOG(LogOliveBPTools, Log,
-		TEXT("Plan apply for '%s' graph '%s': success=%s, schema_version=%s, auto_preview=%s"),
-		*AssetPath, *GraphTarget, PipelineResult.bSuccess ? TEXT("true") : TEXT("false"),
-		*Plan.SchemaVersion, bAutoPreview ? TEXT("true") : TEXT("false"));
-
-	return ToolResult;
-}
-
-// ============================================================
-// Template Tools
-// ============================================================
-
-void FOliveBlueprintToolHandlers::RegisterTemplateTools()
-{
-	FOliveToolRegistry& Registry = FOliveToolRegistry::Get();
-
-	// blueprint.create_from_template
-	{
-		FOliveToolDefinition Def;
-		Def.Name = TEXT("blueprint.create_from_template");
-		Def.Description = TEXT("Create a complete Blueprint from a factory template. "
-			"Handles structure (components, variables, dispatchers) AND graph logic "
-			"(functions with plan_json) in one call (~60ms). This is the fastest way to create "
-			"standard Blueprint types. Check the template catalog for available factories.");
-		Def.InputSchema = OliveBlueprintSchemas::BlueprintCreateFromTemplate();
-		Def.Tags = {TEXT("blueprint"), TEXT("write"), TEXT("template"), TEXT("create")};
-		Def.Category = TEXT("blueprint");
-		Def.WhenToUse = TEXT("Use when a factory template in list_templates results matches your task exactly. "
-			"Creates structure + graph logic in one call. If no factory matches, build manually or use library templates as reference.");
-		Registry.RegisterTool(Def, FOliveToolHandler::CreateLambda([this](const TSharedPtr<FJsonObject>& Params) -> FOliveToolResult
-		{
-			if (!Params.IsValid())
-			{
-				return FOliveToolResult::Error(TEXT("VALIDATION_INVALID_PARAMS"), TEXT("Parameters object is null"), TEXT("Provide template_id and path"));
-			}
-			FString TemplateId;
-			if (!Params->TryGetStringField(TEXT("template_id"), TemplateId) || TemplateId.IsEmpty())
-			{
-				return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"), TEXT("Required parameter 'template_id' is missing"), TEXT("Provide a factory template ID"));
-			}
-			FString AssetPath;
-			if (!Params->TryGetStringField(TEXT("path"), AssetPath) || AssetPath.IsEmpty())
-			{
-				return FOliveToolResult::Error(TEXT("VALIDATION_MISSING_PARAM"), TEXT("Required parameter 'path' is missing"), TEXT("Provide the Blueprint asset path"));
-			}
-			return HandleBlueprintCreateFromTemplate(TemplateId, AssetPath, Params);
-		}));
-	}
-	RegisteredToolNames.Add(TEXT("blueprint.create_from_template"));
-
-	{
-		FOliveToolDefinition Def;
-		Def.Name = TEXT("blueprint.get_template");
-		Def.Description = TEXT("View a template's content. Without pattern: shows structure overview (components, variables, function signatures). "
-			"With pattern=FunctionName: returns the function's full graph or plan as reference for building your own.");
-		Def.InputSchema = OliveBlueprintSchemas::BlueprintGetTemplate();
-		Def.Tags = {TEXT("blueprint"), TEXT("read"), TEXT("template")};
-		Def.Category = TEXT("blueprint");
-		Def.WhenToUse = TEXT("Read a template's content. Use the pattern parameter to read a specific function's node graph as reference for building. Omit pattern for structure overview.");
-		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintGetTemplate));
-	}
-	RegisteredToolNames.Add(TEXT("blueprint.get_template"));
-
-	{
-		FOliveToolDefinition Def;
-		Def.Name = TEXT("blueprint.list_templates");
-		Def.Description = TEXT("List available templates. Use query parameter to search by name, tag, function name, "
-			"or keyword across all templates including library templates from extracted projects.");
-		Def.InputSchema = OliveBlueprintSchemas::BlueprintListTemplates();
-		Def.Tags = {TEXT("blueprint"), TEXT("read"), TEXT("template")};
-		Def.Category = TEXT("blueprint");
-		Def.WhenToUse = TEXT("Returns digests with each result. For library templates with relevant functions, call get_template(id, pattern=\"FuncName\") to read the full node graph as reference before building.");
-		Registry.RegisterTool(Def, FOliveToolHandler::CreateRaw(this, &FOliveBlueprintToolHandlers::HandleBlueprintListTemplates));
-	}
-	RegisteredToolNames.Add(TEXT("blueprint.list_templates"));
-
-	UE_LOG(LogOliveBPTools, Log, TEXT("Registered template tools (create_from_template, get_template, list_templates)"));
-}
-
-FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintListTemplates(const TSharedPtr<FJsonObject>& Params)
-{
-	FString TypeFilter;
-	FString Query;
-	if (Params.IsValid())
-	{
-		Params->TryGetStringField(TEXT("type"), TypeFilter);
-		Params->TryGetStringField(TEXT("query"), Query);
-	}
-
-	// Trim whitespace-only queries so they don't trigger the search path
-	Query.TrimStartAndEndInline();
-
-	// If a search query is provided, delegate to SearchTemplates which covers
-	// both factory/reference templates and library templates from extracted projects.
-	if (!Query.IsEmpty())
-	{
-		TArray<TSharedPtr<FJsonObject>> SearchResults = FOliveTemplateSystem::Get().SearchTemplates(Query);
-
-		// Post-filter by type if a type filter was also provided.
-		// Search results carry a "type" field ("library", "factory", or "reference").
-		if (!TypeFilter.IsEmpty())
-		{
-			SearchResults.RemoveAll([&TypeFilter](const TSharedPtr<FJsonObject>& Entry)
-			{
-				FString EntryType;
-				Entry->TryGetStringField(TEXT("type"), EntryType);
-				return !EntryType.Equals(TypeFilter, ESearchCase::IgnoreCase);
-			});
-		}
-
-		TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
-		TArray<TSharedPtr<FJsonValue>> ResultsArray;
-		for (const TSharedPtr<FJsonObject>& Entry : SearchResults)
-		{
-			ResultsArray.Add(MakeShared<FJsonValueObject>(Entry));
-		}
-
-		ResultData->SetArrayField(TEXT("results"), ResultsArray);
-		ResultData->SetNumberField(TEXT("count"), ResultsArray.Num());
-		ResultData->SetStringField(TEXT("query"), Query);
-		if (!TypeFilter.IsEmpty())
-		{
-			ResultData->SetStringField(TEXT("type_filter"), TypeFilter);
-		}
-		ResultData->SetStringField(TEXT("note"),
-			TEXT("Use blueprint.get_template(template_id) to view structure. "
-				"Use pattern param to read a specific function's graph as reference."));
-
-		return FOliveToolResult::Success(ResultData);
-	}
-
-	// No query — list templates, optionally filtered by type.
-	const bool bWantsLibrary = TypeFilter.Equals(TEXT("library"), ESearchCase::IgnoreCase);
-	const bool bHasNonLibraryFilter = !TypeFilter.IsEmpty() && !bWantsLibrary;
-
-	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
-	TArray<TSharedPtr<FJsonValue>> TemplatesArray;
-
-	// Include factory/reference templates (unless filtering to library only)
-	if (!bWantsLibrary)
-	{
-		const auto& AllTemplates = FOliveTemplateSystem::Get().GetAllTemplates();
-		for (const auto& Pair : AllTemplates)
-		{
-			const FOliveTemplateInfo& Info = Pair.Value;
-
-			if (bHasNonLibraryFilter && !Info.TemplateType.Equals(TypeFilter, ESearchCase::IgnoreCase))
-			{
-				continue;
-			}
-
-			TSharedPtr<FJsonObject> Entry = MakeShared<FJsonObject>();
-			Entry->SetStringField(TEXT("template_id"), Info.TemplateId);
-			Entry->SetStringField(TEXT("type"), Info.TemplateType);
-			Entry->SetStringField(TEXT("display_name"), Info.DisplayName);
-			Entry->SetStringField(TEXT("catalog_description"), Info.CatalogDescription);
-			if (!Info.CatalogExamples.IsEmpty())
-			{
-				Entry->SetStringField(TEXT("examples"), Info.CatalogExamples);
-			}
-			TemplatesArray.Add(MakeShared<FJsonValueObject>(Entry));
-		}
-	}
-
-	// Include library template summary (unless filtering to non-library type)
-	if (!bHasNonLibraryFilter)
-	{
-		const FOliveLibraryIndex& LibIndex = FOliveTemplateSystem::Get().GetLibraryIndex();
-		if (LibIndex.Num() > 0)
-		{
-			// Group by source project for compact summary
-			TMap<FString, int32> ProjectCounts;
-			TMap<FString, int32> ProjectFuncCounts;
-			for (const auto& Pair : LibIndex.GetAllTemplates())
-			{
-				const FString& Proj = Pair.Value.SourceProject.IsEmpty()
-					? TEXT("unknown") : Pair.Value.SourceProject;
-				ProjectCounts.FindOrAdd(Proj)++;
-				ProjectFuncCounts.FindOrAdd(Proj) += Pair.Value.Functions.Num();
-			}
-
-			for (const auto& Pair : ProjectCounts)
-			{
-				TSharedPtr<FJsonObject> Entry = MakeShared<FJsonObject>();
-				Entry->SetStringField(TEXT("type"), TEXT("library"));
-				Entry->SetStringField(TEXT("source_project"), Pair.Key);
-				Entry->SetNumberField(TEXT("template_count"), Pair.Value);
-				Entry->SetNumberField(TEXT("function_count"),
-					ProjectFuncCounts.FindRef(Pair.Key));
-				Entry->SetStringField(TEXT("note"),
-					TEXT("Use query parameter to search library templates by name, tag, or function."));
-				TemplatesArray.Add(MakeShared<FJsonValueObject>(Entry));
-			}
-		}
-	}
-
-	ResultData->SetArrayField(TEXT("templates"), TemplatesArray);
-	ResultData->SetNumberField(TEXT("count"), TemplatesArray.Num());
-	ResultData->SetStringField(TEXT("note"),
-		TEXT("Use query parameter to search across all templates including library. "
-			"Use blueprint.get_template(template_id) to inspect a template."));
-
-	return FOliveToolResult::Success(ResultData);
-}
-
-FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintGetTemplate(const TSharedPtr<FJsonObject>& Params)
-{
-	if (!Params.IsValid())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_INVALID_PARAMS"),
-			TEXT("Parameters object is null"),
-			TEXT("Provide 'template_id'")
-		);
-	}
-
-	FString TemplateId;
-	if (!Params->TryGetStringField(TEXT("template_id"), TemplateId) || TemplateId.IsEmpty())
-	{
-		return FOliveToolResult::Error(
-			TEXT("VALIDATION_MISSING_PARAM"),
-			TEXT("Required parameter 'template_id' is missing"),
-			TEXT("Provide template_id")
-		);
-	}
-
-	FString PatternName;
-	Params->TryGetStringField(TEXT("pattern"), PatternName);
-
-	// Sentinel prefix used by GetFunctionContent to signal "function not found"
-	const FString& FUNC_NOT_FOUND_SENTINEL = FOliveLibraryIndex::GetFuncNotFoundSentinel();
-
-	// Check library index — but skip if the template exists as a factory/reference template
-	// (factory templates need the richer format with parameters/presets from GetTemplateContent)
-	const FOliveLibraryIndex& LibIndex = FOliveTemplateSystem::Get().GetLibraryIndex();
-	const FOliveLibraryTemplateInfo* LibInfo = LibIndex.FindTemplate(TemplateId);
-	const bool bExistsAsFactoryOrReference = (FOliveTemplateSystem::Get().FindTemplate(TemplateId) != nullptr);
-
-	if (LibInfo && !bExistsAsFactoryOrReference)
-	{
-		FString Content;
-		if (PatternName.IsEmpty())
-		{
-			Content = LibIndex.GetTemplateOverview(TemplateId);
-		}
-		else
-		{
-			Content = LibIndex.GetFunctionContent(TemplateId, PatternName);
-		}
-
-		if (Content.IsEmpty())
-		{
-			return FOliveToolResult::Error(
-				TEXT("TEMPLATE_CONTENT_EMPTY"),
-				FString::Printf(TEXT("Library template '%s' found but content retrieval failed%s"),
-					*TemplateId,
-					PatternName.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" for function '%s'"), *PatternName)),
-				PatternName.IsEmpty()
-					? TEXT("The template file may be corrupted. Try blueprint.list_templates with a query to find alternatives.")
-					: TEXT("Check the function name. Use blueprint.get_template without pattern to see available functions.")
-			);
-		}
-
-		// Check for function-not-found sentinel from GetFunctionContent
-		if (Content.StartsWith(FUNC_NOT_FOUND_SENTINEL))
-		{
-			FString ErrorMsg = Content.Mid(FUNC_NOT_FOUND_SENTINEL.Len());
-			return FOliveToolResult::Error(
-				TEXT("FUNCTION_NOT_FOUND"),
-				ErrorMsg,
-				TEXT("Check the function name. Use blueprint.get_template without pattern to see available functions.")
-			);
-		}
-
-		TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
-		ResultData->SetStringField(TEXT("template_id"), TemplateId);
-		ResultData->SetStringField(TEXT("source"), TEXT("library"));
-		ResultData->SetStringField(TEXT("content"), Content);
-
-		return FOliveToolResult::Success(ResultData);
-	}
-
-	// Fall through to factory/reference template lookup.
-	FString Content = FOliveTemplateSystem::Get().GetTemplateContent(TemplateId, PatternName);
-	if (Content.IsEmpty())
-	{
-		return FOliveToolResult::Error(
-			TEXT("TEMPLATE_NOT_FOUND"),
-			FString::Printf(TEXT("Template '%s' not found"), *TemplateId),
-			TEXT("Use blueprint.list_templates to see available templates, or blueprint.list_templates with query to search library templates")
-		);
-	}
-
-	// Check for function-not-found sentinel from GetTemplateContent (factory/reference path)
-	if (Content.StartsWith(FUNC_NOT_FOUND_SENTINEL))
-	{
-		FString ErrorMsg = Content.Mid(FUNC_NOT_FOUND_SENTINEL.Len());
-		return FOliveToolResult::Error(
-			TEXT("FUNCTION_NOT_FOUND"),
-			ErrorMsg,
-			TEXT("Check the function name. Use blueprint.get_template without pattern to see available functions.")
-		);
-	}
-
-	// Add source field for factory/reference templates
-	const FOliveTemplateInfo* FactoryRefInfo = FOliveTemplateSystem::Get().FindTemplate(TemplateId);
-	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
-	ResultData->SetStringField(TEXT("template_id"), TemplateId);
-	if (FactoryRefInfo)
-	{
-		ResultData->SetStringField(TEXT("source"), FactoryRefInfo->TemplateType);
-	}
-	ResultData->SetStringField(TEXT("content"), Content);
-
-	return FOliveToolResult::Success(ResultData);
-}
-
-// ============================================================
-// HandleBlueprintCreateFromTemplate
-// ============================================================
-
-FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreateFromTemplate(
-	const FString& TemplateId,
-	const FString& AssetPath,
-	const TSharedPtr<FJsonObject>& Params)
-{
-	FString PresetName;
-	if (Params.IsValid())
-	{
-		Params->TryGetStringField(TEXT("preset"), PresetName);
-	}
-
-	// Extract template parameters -- accept both "template_params" and "parameters"
-	TMap<FString, FString> UserParams;
-	const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
-	if (Params.IsValid())
-	{
-		if (!(Params->TryGetObjectField(TEXT("template_params"), ParamsObj) && ParamsObj && (*ParamsObj).IsValid()))
-		{
-			// Fallback: accept "parameters" for backward compatibility with old create_from_template format
-			Params->TryGetObjectField(TEXT("parameters"), ParamsObj);
-		}
-	}
-	if (ParamsObj && (*ParamsObj).IsValid())
-	{
-		for (const auto& KV : (*ParamsObj)->Values)
-		{
-			FString Value;
-			if (KV.Value->TryGetString(Value))
-			{
-				UserParams.Add(KV.Key, Value);
-			}
-		}
-	}
-
-	return FOliveTemplateSystem::Get().ApplyTemplate(TemplateId, UserParams, PresetName, AssetPath);
-}

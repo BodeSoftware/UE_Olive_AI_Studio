@@ -290,17 +290,28 @@ private:
 		FOliveToolHandler Handler;
 	};
 
-	/** Registered tools by name */
+	/** Registered tools by canonical name (internally uses dotted names like "blueprint.create") */
 	TMap<FString, FToolEntry> Tools;
+
+	/** Maps MCP-safe (dot-free) names back to canonical names.
+	 *  MCP spec requires tool names to match ^[a-zA-Z0-9_-]{1,64}$ (no dots),
+	 *  so we expose sanitized names over the wire but keep dotted names internally
+	 *  for readable logs, error messages, and knowledge-pack references.
+	 *  Example: "blueprint_create" → "blueprint.create" */
+	TMap<FString, FString> SanitizedNameToCanonical;
 
 	/** Lock for thread-safe access */
 	mutable FRWLock ToolsLock;
+
+	/** Sanitize a tool name for MCP wire format (replaces dots with underscores). */
+	static FString SanitizeToolNameForMCP(const FString& ToolName);
 
 	// ==========================================
 	// Built-in Tool Registration
 	// ==========================================
 
 	void RegisterProjectTools();
+	void RegisterBatchTool();
 
 	// ==========================================
 	// Built-in Tool Handlers
@@ -313,4 +324,9 @@ private:
 	FOliveToolResult HandleProjectGetDependencies(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleProjectGetReferencers(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleProjectGetConfig(const TSharedPtr<FJsonObject>& Params);
+
+	// olive.batch — executes a sequence of primitive tool calls in one round-trip.
+	// Supports aliases: any step can set "id" and later steps can reference its
+	// fields via "@id.field" / "@id.field.subfield" anywhere in string params.
+	FOliveToolResult HandleOliveBatch(const TSharedPtr<FJsonObject>& Params);
 };

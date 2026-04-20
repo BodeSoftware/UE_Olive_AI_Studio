@@ -119,7 +119,16 @@ async function discoverPort(hosts) {
     return null;
 }
 
-// Send HTTP request to MCP server
+// Send HTTP request to MCP server.
+//
+// NOTE: Explicitly disables HTTP keep-alive via `agent: false` + `Connection: close` header.
+//
+// Why? UE 5.5's FHttpServerModule mishandles keep-alive connection re-use: after a
+// successful response, it sometimes fails the socket-close handshake with
+// `WriteBytes sent -1/115 bytes` + `socket_send_failure`. That leaves the socket in a
+// stale state; the NEXT request Claude CLI sends fails with ECONNRESET and the bridge
+// surfaces it as "Connection closed". Forcing a fresh TCP connection per request costs
+// ~1ms but eliminates the phantom-disconnect class of bugs entirely.
 function forwardRequest(host, port, jsonRpcRequest) {
     return new Promise((resolve, reject) => {
         const postData = JSON.stringify(jsonRpcRequest);
@@ -129,14 +138,23 @@ function forwardRequest(host, port, jsonRpcRequest) {
             port: port,
             path: '/mcp',
             method: 'POST',
+            agent: false,
             headers: {
                 'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(postData)
+                'Content-Length': Buffer.byteLength(postData),
+                'Connection': 'close'
             }
         }, (res) => {
             let data = '';
             res.on('data', chunk => data += chunk);
             res.on('end', () => {
+                // Empty body is valid for JSON-RPC notifications (HTTP 202 Accepted).
+                // The server returns no content and the caller (rl.on('line')) filters
+                // these out by checking for the `id` field, so we just resolve(null).
+                if (!data || data.length === 0) {
+                    resolve(null);
+                    return;
+                }
                 try {
                     resolve(JSON.parse(data));
                 } catch (err) {
@@ -253,14 +271,32 @@ async function main() {
         }
 
         const method = request.method || 'unknown';
-        log(`→ ${method}`);
+        // Notifications have no `id` per JSON-RPC 2.0 spec and must NOT receive a response.
+        // The HTTP server correctly returns 202 Accepted with empty body; we must forward the
+        // call so the server processes it, but we must NOT emit anything on stdout for it.
+        // Earlier versions of this bridge tried to JSON.parse("") and replied with an error,
+        // which poisoned the Claude CLI session for notifications/initialized.
+        const isNotification = !Object.prototype.hasOwnProperty.call(request, 'id');
+
+        log(`→ ${method}${isNotification ? ' (notification)' : ''}`);
 
         forwardRequest(activeHost, activePort, request)
             .then(response => {
-                log(`← ${method}: ${response.error ? 'error' : 'ok'}`);
+                if (isNotification) {
+                    log(`← ${method}: (notification, no response)`);
+                    return;
+                }
+                log(`← ${method}: ${response && response.error ? 'error' : 'ok'}`);
                 console.log(JSON.stringify(response));
             })
             .catch(err => {
+                // For notifications, swallow errors silently. A notification error is
+                // purely advisory — we can't ask the client to retry because we have
+                // nothing to reply to.
+                if (isNotification) {
+                    log(`Notification ${method} forwarding error (ignored): ${err.message}`);
+                    return;
+                }
                 log(`Error: ${err.message}`);
                 console.log(JSON.stringify(createErrorResponse(
                     request.id,

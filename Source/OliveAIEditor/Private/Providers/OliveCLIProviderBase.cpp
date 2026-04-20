@@ -13,7 +13,6 @@
 #include "Providers/OliveCLIToolSchemaSerializer.h"
 #include "Settings/OliveAISettings.h"
 #include "Chat/OlivePromptAssembler.h"
-#include "Template/OliveTemplateSystem.h"
 #include "MCP/OliveMCPServer.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/FileManager.h"
@@ -418,29 +417,23 @@ void FOliveCLIProviderBase::SetupAutonomousSandbox()
 
 	AgentContext += TEXT("## Research\n\n");
 	AgentContext += TEXT("Research tools help you verify assumptions before writing graph logic:\n");
-	AgentContext += TEXT("- `blueprint.list_templates(query=\"...\")` -- search library/factory templates for patterns\n");
-	AgentContext += TEXT("- `blueprint.get_template(id, pattern=\"FuncName\")` -- read specific function implementations\n");
 	AgentContext += TEXT("- `blueprint.describe_function(function_name, target_class)` -- verify function exists and get pin signatures\n");
 	AgentContext += TEXT("- `blueprint.describe_node_type(type)` -- check K2Node properties and pins\n");
+	AgentContext += TEXT("- `blueprint.read(path, section:'graph', mode:'full')` -- see nodes + pins in an existing graph\n");
 	AgentContext += TEXT("- `project.search(query)` -- find existing assets by name\n");
 	AgentContext += TEXT("- `olive.get_recipe(query)` -- tested wiring patterns for common tasks\n\n");
-	AgentContext += TEXT("For complex or unfamiliar patterns, get_recipe or list_templates can provide reference. Skip research for straightforward tasks.\n");
-	AgentContext += TEXT("For inventory/pickup systems: search pickup, inventory, widget. For combat: search damage, health, weapon.\n");
-	AgentContext += TEXT("Research is mandatory, not optional — it takes 10 seconds and prevents 10 minutes of failures.\n");
-	AgentContext += TEXT("Exception: if search returns no relevant results (0-1 weak matches), proceed without.\n\n");
+	AgentContext += TEXT("Skip research for straightforward tasks. For unfamiliar node types, describe them first.\n\n");
 
 	AgentContext += TEXT("## Building\n\n");
-	AgentContext += TEXT("Three approaches -- use whichever fits, mix freely:\n");
-	AgentContext += TEXT("1. plan_json -- batch declarative, best for standard logic (3+ nodes)\n");
-	AgentContext += TEXT("2. Granular tools (add_node, connect_pins) -- any UK2Node, best for edge cases\n");
-	AgentContext += TEXT("3. editor.run_python -- full UE editor API, best for anything tools can't express\n\n");
+	AgentContext += TEXT("Two approaches -- use whichever fits, mix freely:\n");
+	AgentContext += TEXT("1. Granular tools (add_node, connect_pins, set_pin_default) -- primary path for graph logic\n");
+	AgentContext += TEXT("2. editor.run_python -- full UE editor API, best for anything the flat tools can't express\n\n");
 	AgentContext += TEXT("Build one asset at a time: structure -> function signatures -> compile structure ->\n");
 	AgentContext += TEXT("graph logic -> compile to 0 errors -> next asset.\n\n");
 
 	AgentContext += TEXT("## Self-Correction\n");
 	AgentContext += TEXT("- Fix the FIRST compile error before moving on\n");
-	AgentContext += TEXT("- After a plan_json failure, all nodes from that plan are rolled back.\n");
-	AgentContext += TEXT("  Do NOT reference node IDs from a failed plan.\n");
+	AgentContext += TEXT("- On a failed write, re-read the graph to see the current state before retrying\n");
 	AgentContext += TEXT("- If one approach fails twice, try a different tool or technique\n");
 	AgentContext += TEXT("- If something genuinely cannot be done, tell the user what and why\n\n");
 
@@ -516,45 +509,15 @@ FString FOliveCLIProviderBase::BuildPrescriptiveGuidance() const
 	G += TEXT("# MANDATORY Tool Usage Rules\n\n");
 	G += TEXT("These rules are NON-NEGOTIABLE. Violating them causes broken Blueprints.\n\n");
 
-	// === Rule 1: plan_json is mandatory for multi-node graphs ===
-	G += TEXT("## Rule 1: Use plan_json for Graph Logic (NOT add_node + connect_pins)\n\n");
-	G += TEXT("For ANY graph logic with 2+ connected nodes, you MUST use `blueprint.preview_plan_json` followed by `blueprint.apply_plan_json`.\n");
-	G += TEXT("plan_json handles ALL pin wiring automatically via `@step.auto` syntax.\n");
-	G += TEXT("Do NOT use `add_node` + `connect_pins` for standard logic — you WILL get pin names wrong.\n\n");
-	G += TEXT("Only use add_node + connect_pins for:\n");
-	G += TEXT("- Wiring a SINGLE connection between existing nodes\n");
-	G += TEXT("- Node types outside plan_json ops vocabulary\n\n");
+	// === Rule 1: Build graphs with one primitive per call ===
+	G += TEXT("## Rule 1: Build Graphs One Node at a Time\n\n");
+	G += TEXT("Use `blueprint.add_node` to create each node, `blueprint.connect_pins` to wire them,\n");
+	G += TEXT("`blueprint.set_pin_default` for literal values, and `editor.compile` once the graph is complete.\n");
+	G += TEXT("Each call is atomic — you see the node id / guid in the response and reference it in the next call.\n\n");
 
-	// === Rule 2: plan_json example ===
-	G += TEXT("## Rule 2: plan_json Format (Follow Exactly)\n\n");
-	G += TEXT("```json\n");
-	G += TEXT("{\n");
-	G += TEXT("  \"schema_version\": \"2.0\",\n");
-	G += TEXT("  \"steps\": [\n");
-	G += TEXT("    {\"step_id\": \"evt\", \"op\": \"event\", \"target\": \"BeginPlay\"},\n");
-	G += TEXT("    {\"step_id\": \"get_hp\", \"op\": \"get_var\", \"target\": \"Health\"},\n");
-	G += TEXT("    {\"step_id\": \"check\", \"op\": \"branch\", \"inputs\": {\"Condition\": \"@get_hp.auto\"}, \"exec_after\": \"evt\"},\n");
-	G += TEXT("    {\"step_id\": \"print\", \"op\": \"print_string\", \"inputs\": {\"InString\": \"Alive!\"}, \"exec_after\": \"check.true\"}\n");
-	G += TEXT("  ]\n");
-	G += TEXT("}\n");
-	G += TEXT("```\n\n");
-	G += TEXT("Key syntax:\n");
-	G += TEXT("- `@step_id.auto` — auto-wire output of that step (plan_json resolves the correct pin)\n");
-	G += TEXT("- `@step_id.PinName` — wire a specific output pin\n");
-	G += TEXT("- `exec_after` — exec wiring: step_id, or step_id.true / step_id.false for branches\n");
-	G += TEXT("- `@entry.ParamName` — wire from function input parameter\n");
-	G += TEXT("- String literals go directly: `\"InString\": \"Hello\"`\n");
-	G += TEXT("- Numeric literals: `\"Amount\": \"100.0\"`\n\n");
-	G += TEXT("Available ops: event, custom_event, call, get_var, set_var, branch, sequence, cast,\n");
-	G += TEXT("for_loop, for_each_loop, while_loop, do_once, flip_flop, gate, delay, is_valid,\n");
-	G += TEXT("print_string, spawn_actor, make_struct, break_struct, return, comment,\n");
-	G += TEXT("call_delegate, call_dispatcher, bind_dispatcher\n\n");
-	G += TEXT("IMPORTANT: Always call `blueprint.preview_plan_json` first, then `blueprint.apply_plan_json`\n");
-	G += TEXT("with the fingerprint from the preview. NEVER call both in the same response.\n\n");
-
-	// === Rule 3: NEVER guess pin names ===
-	G += TEXT("## Rule 3: NEVER Guess Pin Names\n\n");
-	G += TEXT("If you must use `connect_pins`, first call `blueprint.read(section:'graph', mode:'full')` to see all node IDs and pins.\n");
+	// === Rule 2: NEVER guess pin names ===
+	G += TEXT("## Rule 2: NEVER Guess Pin Names\n\n");
+	G += TEXT("Before calling `connect_pins` on an unfamiliar node, call `blueprint.read(section:'graph', mode:'full')` to see all node IDs and pins.\n");
 	G += TEXT("Pin names in Unreal Engine are NOT the same as function parameter names.\n\n");
 	G += TEXT("Common mistakes:\n");
 	G += TEXT("- VariableGet nodes have NO exec pins (no `then`, no `execute`). They only have data output.\n");
@@ -563,8 +526,8 @@ FString FOliveCLIProviderBase::BuildPrescriptiveGuidance() const
 	G += TEXT("- Pin names often have spaces: `Return Value`, `Inventory Items`, `World Context Object`.\n");
 	G += TEXT("- Output pin names do NOT match input parameter names on other nodes.\n\n");
 
-	// === Rule 4: Batching limits ===
-	G += TEXT("## Rule 4: Limit Write Operations Per Turn\n\n");
+	// === Rule 3: Batching limits ===
+	G += TEXT("## Rule 3: Limit Write Operations Per Turn\n\n");
 	G += TEXT("The server enforces a rate limit of 30 write operations per 60 seconds.\n");
 	G += TEXT("If you batch too many writes, they will be rejected with RATE_LIMITED.\n\n");
 	G += TEXT("Rules:\n");
@@ -573,8 +536,8 @@ FString FOliveCLIProviderBase::BuildPrescriptiveGuidance() const
 	G += TEXT("- If you get RATE_LIMITED, wait the suggested seconds, then retry\n");
 	G += TEXT("- Do NOT use shell sleep commands to wait — just make fewer calls per turn\n\n");
 
-	// === Rule 5: Common UE class name pitfalls ===
-	G += TEXT("## Rule 5: Correct UE5 Class Names\n\n");
+	// === Rule 4: Common UE class name pitfalls ===
+	G += TEXT("## Rule 4: Correct UE5 Class Names\n\n");
 	G += TEXT("Common wrong names (these WILL fail):\n");
 	G += TEXT("- `SystemLibrary` is wrong — use `KismetSystemLibrary`\n");
 	G += TEXT("- `MathLibrary` is wrong — use `KismetMathLibrary`\n");
@@ -585,23 +548,22 @@ FString FOliveCLIProviderBase::BuildPrescriptiveGuidance() const
 	G += TEXT("When unsure, call `blueprint.describe_function(function_name)` WITHOUT target_class.\n");
 	G += TEXT("The server searches all known library classes automatically.\n\n");
 
-	// === Rule 6: Workflow order ===
-	G += TEXT("## Rule 6: Build Order (Follow Strictly)\n\n");
+	// === Rule 5: Workflow order ===
+	G += TEXT("## Rule 5: Build Order (Follow Strictly)\n\n");
 	G += TEXT("1. `blueprint.create` — create the Blueprint\n");
 	G += TEXT("2. `blueprint.add_variable` / `blueprint.add_component` — add structure\n");
 	G += TEXT("3. `blueprint.add_function` — create function signatures (with parameters/return types)\n");
 	G += TEXT("4. `blueprint.compile` — compile structure before adding graph logic\n");
-	G += TEXT("5. `blueprint.preview_plan_json` then `blueprint.apply_plan_json` — add graph logic per function\n");
+	G += TEXT("5. `blueprint.add_node` + `blueprint.connect_pins` + `blueprint.set_pin_default` — add graph logic per function\n");
 	G += TEXT("6. `blueprint.compile` — final compile, fix errors\n\n");
-	G += TEXT("NEVER skip step 4. Compiling structure first ensures variables and functions resolve in plan_json.\n\n");
+	G += TEXT("NEVER skip step 4. Compiling structure first ensures variables and functions resolve during wiring.\n\n");
 
-	// === Rule 7: Error recovery ===
-	G += TEXT("## Rule 7: Error Recovery\n\n");
-	G += TEXT("When plan_json fails:\n");
-	G += TEXT("- All nodes from that plan are ROLLED BACK (you cannot reference them)\n");
-	G += TEXT("- Read the error message carefully — it tells you exactly what went wrong\n");
-	G += TEXT("- Fix the issue in your plan and try again\n");
-	G += TEXT("- Do NOT fall back to add_node + connect_pins as a workaround\n\n");
+	// === Rule 6: Error recovery ===
+	G += TEXT("## Rule 6: Error Recovery\n\n");
+	G += TEXT("When a write tool fails:\n");
+	G += TEXT("- Read the error message carefully — it tells you exactly what went wrong and often what to try\n");
+	G += TEXT("- The failing call is atomic: nothing partial was committed for that call\n");
+	G += TEXT("- Fix the issue and retry\n\n");
 	G += TEXT("When connect_pins fails with 'pin not found':\n");
 	G += TEXT("- The error shows available pins — use THOSE exact names\n");
 	G += TEXT("- Call `blueprint.read(section:'graph', mode:'full')` to see all nodes and their pins\n");
@@ -751,29 +713,6 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 			}
 		};
 
-		// Template discovery pass
-		const UOliveAISettings* DiscoverySettings = UOliveAISettings::Get();
-		if (DiscoverySettings && DiscoverySettings->bEnableTemplateDiscoveryPass)
-		{
-			EmitStatus(TEXT("*Searching for relevant templates and assets...*"));
-
-			FOliveDiscoveryResult Discovery = FOliveUtilityModel::RunDiscoveryPass(UserMessage);
-			FString DiscoveryBlock = FOliveUtilityModel::FormatDiscoveryForPrompt(Discovery);
-
-			if (!DiscoveryBlock.IsEmpty())
-			{
-				EffectiveMessage += TEXT("\n\n");
-				EffectiveMessage += DiscoveryBlock;
-
-				UE_LOG(LogOliveCLIProvider, Log,
-					TEXT("Discovery pass: %d results in %.1fs (LLM=%s, queries: %s)"),
-					Discovery.Entries.Num(),
-					Discovery.ElapsedSeconds,
-					Discovery.bUsedLLM ? TEXT("yes") : TEXT("no"),
-					*FString::Join(Discovery.SearchQueries, TEXT("; ")));
-			}
-		}
-
 		// Structured decomposition directive for write-oriented tasks
 		if (MessageImpliesMutation(UserMessage))
 		{
@@ -785,7 +724,7 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 			EffectiveMessage += TEXT("- Component for reusable capabilities\n");
 			EffectiveMessage += TEXT("- Variable for simple values on existing actors\n\n");
 			EffectiveMessage += TEXT("Then build each one fully: structure -> graph logic -> compile to 0 errors -> next.\n");
-			EffectiveMessage += TEXT("If unsure whether a UE function exists (e.g., component-specific functions), verify with blueprint.describe_function before writing plan_json.\n");
+			EffectiveMessage += TEXT("If unsure whether a UE function exists (e.g., component-specific functions), verify with blueprint.describe_function before wiring.\n");
 
 			EffectiveMessage += TEXT("\n\n## Tool Execution Requirement\n");
 			EffectiveMessage += TEXT("Before any final explanation text, execute at least one MCP tool call that makes concrete progress.\n");
@@ -868,19 +807,6 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 			}
 		}
 
-		// Discovery pass
-		const UOliveAISettings* DiscoverySettings = UOliveAISettings::Get();
-		if (DiscoverySettings && DiscoverySettings->bEnableTemplateDiscoveryPass)
-		{
-			FOliveDiscoveryResult Discovery = FOliveUtilityModel::RunDiscoveryPass(UserMessage);
-			FString DiscoveryBlock = FOliveUtilityModel::FormatDiscoveryForPrompt(Discovery);
-			if (!DiscoveryBlock.IsEmpty())
-			{
-				EffectiveMessage += TEXT("\n\n");
-				EffectiveMessage += DiscoveryBlock;
-			}
-		}
-
 		// Decomposition directive
 		if (MessageImpliesMutation(UserMessage))
 		{
@@ -890,7 +816,7 @@ void FOliveCLIProviderBase::SendMessageAutonomous(
 			EffectiveMessage += TEXT("- Component for reusable capabilities\n");
 			EffectiveMessage += TEXT("- Variable for simple values on existing actors\n\n");
 			EffectiveMessage += TEXT("Then build each one fully: structure -> graph logic -> compile to 0 errors -> next.\n");
-			EffectiveMessage += TEXT("If unsure whether a UE function exists (e.g., component-specific functions), verify with blueprint.describe_function before writing plan_json.\n");
+			EffectiveMessage += TEXT("If unsure whether a UE function exists (e.g., component-specific functions), verify with blueprint.describe_function before wiring.\n");
 
 			EffectiveMessage += TEXT("\n\n## Tool Execution Requirement\n");
 			EffectiveMessage += TEXT("Before any final explanation text, execute at least one MCP tool call that makes concrete progress.\n");
@@ -1501,7 +1427,7 @@ FString FOliveCLIProviderBase::BuildAssetStateSummary(const TArray<FString>& Ass
 				Summary += FString::Printf(TEXT("  - %s (%d nodes%s)\n"),
 					*FuncGraph->GetName(),
 					NodeCount,
-					NodeCount <= 1 ? TEXT(" -- EMPTY, needs plan_json") : TEXT(""));
+					NodeCount <= 1 ? TEXT(" -- EMPTY, needs graph logic") : TEXT(""));
 			}
 		}
 
@@ -1608,16 +1534,14 @@ FString FOliveCLIProviderBase::BuildConversationPrompt(const TArray<FOliveChatMe
 		Prompt += TEXT("- If the task is creating NEW Blueprints, library templates in the Reference Patterns section below show real wiring from shipped projects — adapt their patterns (spawn setup, collision config, component wiring) to your build even if the template is more complex than your task.\n");
 		Prompt += TEXT("- If the task is modifying EXISTING assets, start with project.search to find exact paths.\n");
 		Prompt += TEXT("- Batch only independent calls (e.g., create + add_component + add_variable).\n");
-		Prompt += TEXT("- Do NOT batch blueprint.preview_plan_json and blueprint.apply_plan_json in the same response.\n");
-		Prompt += TEXT("- Research budget: at most 3-4 read-only calls (list_templates, get_template, get_recipe) before your first mutation. You know UE5 — start building, research more only if you hit a specific error.\n");
-		Prompt += TEXT("- Minimize round-trips: plan ALL operations upfront, then execute in 2-3 olive.build calls max. Batch 1: scaffold all assets + structure. Batch 2: wire all graph logic + compile. Batch 3: fix errors if any.\n\n");
+		Prompt += TEXT("- Never make write calls before at least one project.search or blueprint.read on unfamiliar targets.\n");
+		Prompt += TEXT("- Research budget: at most 3-4 read-only calls before your first mutation. You know UE5 — start building, research more only if you hit a specific error.\n\n");
 	}
 	else
 	{
 		Prompt += TEXT("- Tool results are above. Continue with <tool_call> blocks for the next required tools.\n");
-		Prompt += TEXT("- Do not repeat read-only calls you already made (project.search, list_templates, get_template, get_recipe, describe_function). Results are static — reuse them.\n");
-		Prompt += TEXT("- The task is NOT complete until all assets have components, variables, and graph logic wired AND compiled. Do NOT stop after only creating assets.\n");
-		Prompt += TEXT("- Keep batching. Do NOT make individual tool calls when olive.build can batch them.\n\n");
+		Prompt += TEXT("- Do not repeat read-only calls you already made (project.search, describe_function, etc.). Results are static — reuse them.\n");
+		Prompt += TEXT("- The task is NOT complete until all assets have components, variables, and graph logic wired AND compiled. Do NOT stop after only creating assets.\n\n");
 	}
 
 	return Prompt;
@@ -1675,7 +1599,7 @@ FString FOliveCLIProviderBase::BuildCLISystemPrompt(const FString& UserTask, con
 			TEXT("cli_blueprint knowledge pack not found. Using minimal fallback."));
 		const FEngineVersion& FallbackVer = FEngineVersion::Current();
 		SystemPrompt += FString::Printf(TEXT("You are an Unreal Engine %u.%u Blueprint specialist.\n"), FallbackVer.GetMajor(), FallbackVer.GetMinor());
-		SystemPrompt += TEXT("Use blueprint.create, add_component, add_variable, apply_plan_json.\n\n");
+		SystemPrompt += TEXT("Use blueprint.create, add_component, add_variable, add_function, add_node, connect_pins, set_pin_default, compile.\n\n");
 	}
 
 	const FString DesignPatterns = Assembler.GetKnowledgePackById(TEXT("blueprint_design_patterns"));
@@ -1748,103 +1672,6 @@ FString FOliveCLIProviderBase::BuildCLISystemPrompt(const FString& UserTask, con
 					SystemPrompt += TEXT("\n");
 				}
 			}
-		}
-	}
-
-	// ==========================================
-	// Template catalog (factory + reference templates)
-	// ==========================================
-	if (FOliveTemplateSystem::Get().HasTemplates())
-	{
-		const FString& Catalog = FOliveTemplateSystem::Get().GetCatalogBlock();
-		if (!Catalog.IsEmpty())
-		{
-			SystemPrompt += Catalog;
-			SystemPrompt += TEXT("\n\n");
-		}
-	}
-
-	// ==========================================
-	// Task-relevant library template references (auto-injected)
-	// Search library templates using the user's task as query.
-	// Inject top matches so the AI has production-quality wiring
-	// patterns as reference without needing to call get_template.
-	// ==========================================
-	if (!UserTask.IsEmpty() && FOliveTemplateSystem::Get().HasTemplates())
-	{
-		const FOliveLibraryIndex& LibIndex = FOliveTemplateSystem::Get().GetLibraryIndex();
-		TArray<TSharedPtr<FJsonObject>> LibResults = LibIndex.Search(UserTask, /*MaxResults=*/3);
-
-		if (LibResults.Num() > 0)
-		{
-			FString LibBlock = TEXT("## Reference Patterns (from library templates matching your task)\n");
-			LibBlock += TEXT("These are NOT factory templates — they are wiring references from real shipped projects. ");
-			LibBlock += TEXT("You do NOT need to copy them exactly. Study the wiring approach (what functions they call, ");
-			LibBlock += TEXT("how they wire spawn transforms, collision setup, component targets, etc.) and adapt the patterns to your build.\n\n");
-
-			for (const TSharedPtr<FJsonObject>& Result : LibResults)
-			{
-				FString TemplateId, DisplayName, ParentClass, Description;
-				Result->TryGetStringField(TEXT("template_id"), TemplateId);
-				Result->TryGetStringField(TEXT("display_name"), DisplayName);
-				Result->TryGetStringField(TEXT("parent_class"), ParentClass);
-				Result->TryGetStringField(TEXT("catalog_description"), Description);
-
-				LibBlock += FString::Printf(TEXT("### %s (parent: %s)\n"), *DisplayName, *ParentClass);
-				if (!Description.IsEmpty())
-				{
-					LibBlock += Description + TEXT("\n");
-				}
-
-				// Include matched functions with their details
-				const TArray<TSharedPtr<FJsonValue>>* MatchedFunctions = nullptr;
-				if (Result->TryGetArrayField(TEXT("matched_functions"), MatchedFunctions) && MatchedFunctions)
-				{
-					LibBlock += TEXT("Functions: ");
-					for (int32 i = 0; i < MatchedFunctions->Num(); i++)
-					{
-						const TSharedPtr<FJsonObject>* FuncObj = nullptr;
-						if ((*MatchedFunctions)[i]->TryGetObject(FuncObj) && FuncObj && (*FuncObj).IsValid())
-						{
-							FString FuncName, FuncTags;
-							int32 NodeCount = 0;
-							(*FuncObj)->TryGetStringField(TEXT("name"), FuncName);
-							(*FuncObj)->TryGetStringField(TEXT("tags"), FuncTags);
-							(*FuncObj)->TryGetNumberField(TEXT("node_count"), NodeCount);
-							if (i > 0) LibBlock += TEXT(", ");
-							LibBlock += FString::Printf(TEXT("%s (%d nodes, %s)"), *FuncName, NodeCount, *FuncTags);
-						}
-					}
-					LibBlock += TEXT("\n");
-				}
-
-				// Include digest if available
-				const TSharedPtr<FJsonObject>* DigestObj = nullptr;
-				if (Result->TryGetObjectField(TEXT("digest"), DigestObj) && DigestObj && (*DigestObj).IsValid())
-				{
-					FString Purpose;
-					if ((*DigestObj)->TryGetStringField(TEXT("purpose"), Purpose) && !Purpose.IsEmpty())
-					{
-						LibBlock += TEXT("Purpose: ") + Purpose + TEXT("\n");
-					}
-
-					const TArray<TSharedPtr<FJsonValue>>* KeyPatterns = nullptr;
-					if ((*DigestObj)->TryGetArrayField(TEXT("key_patterns"), KeyPatterns) && KeyPatterns && KeyPatterns->Num() > 0)
-					{
-						LibBlock += TEXT("Key patterns: ");
-						for (int32 i = 0; i < KeyPatterns->Num(); i++)
-						{
-							if (i > 0) LibBlock += TEXT("; ");
-							LibBlock += (*KeyPatterns)[i]->AsString();
-						}
-						LibBlock += TEXT("\n");
-					}
-				}
-
-				LibBlock += TEXT("Use: blueprint.get_template(\"") + TemplateId + TEXT("\", pattern=\"FuncName\") for full node graph\n\n");
-			}
-
-			SystemPrompt += LibBlock;
 		}
 	}
 

@@ -876,8 +876,8 @@ FOliveWiringDiagnostic FOlivePinConnector::BuildWiringDiagnostic(
 		else
 		{
 			Diag.WhyAutoFixFailed = FString::Printf(
-				TEXT("Pin '%s' already has %d connection(s) — likely wired by a previous apply_plan_json. "
-					 "Use blueprint.read to verify current wiring before manual connect_pins."),
+				TEXT("Pin '%s' already has %d connection(s). "
+					 "Use blueprint.read to verify current wiring, then disconnect_pins to clear it before reconnecting."),
 				(SourcePin->LinkedTo.Num() > 0) ? *SourcePin->PinName.ToString() : *TargetPin->PinName.ToString(),
 				FMath::Max(SourcePin->LinkedTo.Num(), TargetPin->LinkedTo.Num()));
 		}
@@ -941,9 +941,9 @@ TArray<FOliveWiringAlternative> FOlivePinConnector::SuggestAlternatives(
 				: FString::Printf(TEXT("@source_step.~%s_X"), *SourcePin->GetName());
 
 			Alts.Add({
-				TEXT("Use ~PinName suffix"),
-				FString::Printf(TEXT("In plan_json inputs, use %s to target a sub-component. "
-					"The ~ prefix triggers fuzzy match on split sub-pins."), *SuffixExample),
+				TEXT("Use sub-pin name"),
+				FString::Printf(TEXT("Target the split sub-pin directly with a name like '%s', "
+					"or call blueprint.read to inspect the split pin structure."), *SuffixExample),
 				TEXT("high")
 			});
 		}
@@ -1002,10 +1002,9 @@ TArray<FOliveWiringAlternative> FOlivePinConnector::SuggestAlternatives(
 		FString TargetClassName = TgtClass ? TgtClass->GetName() : TEXT("TargetClass");
 
 		Alts.Add({
-			TEXT("Add a cast step"),
-			FString::Printf(TEXT("Add a cast step in plan_json: "
-				"{\"op\":\"cast\",\"target\":\"%s\",\"inputs\":{\"Object\":\"@source_step\"}}. "
-				"Wire the output cast pin to the target input."), *TargetClassName),
+			TEXT("Add a cast node"),
+			FString::Printf(TEXT("Insert a DynamicCast node with target_class=%s via blueprint.add_node, "
+				"wire the source into its Object pin, then connect its cast output to the target input."), *TargetClassName),
 			TEXT("high")
 		});
 

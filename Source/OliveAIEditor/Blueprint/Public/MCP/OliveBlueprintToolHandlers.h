@@ -86,9 +86,6 @@ private:
 	/** Look up a UFunction by name and return its exact pin signature, or fuzzy suggestions on failure */
 	FOliveToolResult HandleDescribeFunction(const TSharedPtr<FJsonObject>& Params);
 
-	/** Verify a Blueprint is complete: compiles, expected structure exists, no orphaned flows */
-	FOliveToolResult HandleVerifyCompletion(const TSharedPtr<FJsonObject>& Params);
-
 	/** Section-specific reader helpers (called by HandleBlueprintRead based on section param) */
 	FOliveToolResult HandleReadSectionAll(const TSharedPtr<FJsonObject>& Params);
 	FOliveToolResult HandleReadSectionGraph(const TSharedPtr<FJsonObject>& Params);
@@ -149,37 +146,6 @@ private:
 	FOliveToolResult HandleAddFunctionType_CustomEvent(const TSharedPtr<FJsonObject>& Params, const FString& AssetPath, UBlueprint* Blueprint);
 	FOliveToolResult HandleAddFunctionType_EventDispatcher(const TSharedPtr<FJsonObject>& Params, const FString& AssetPath, UBlueprint* Blueprint);
 	FOliveToolResult HandleAddFunctionType_Override(const TSharedPtr<FJsonObject>& Params, const FString& AssetPath, UBlueprint* Blueprint);
-
-	// ============================================================================
-	// Plan JSON Tool Handlers
-	// ============================================================================
-
-	void RegisterPlanTools();
-	FOliveToolResult HandleBlueprintPreviewPlanJson(const TSharedPtr<FJsonObject>& Params);
-	FOliveToolResult HandleBlueprintApplyPlanJson(const TSharedPtr<FJsonObject>& Params);
-
-	// ============================================================================
-	// Template Tool Handlers
-	// ============================================================================
-
-	void RegisterTemplateTools();
-	FOliveToolResult HandleBlueprintGetTemplate(const TSharedPtr<FJsonObject>& Params);
-	FOliveToolResult HandleBlueprintListTemplates(const TSharedPtr<FJsonObject>& Params);
-
-	/**
-	 * Create a Blueprint from a factory template.
-	 * Delegates to FOliveTemplateSystem::ApplyTemplate() which handles parameter
-	 * substitution, component/variable/dispatcher creation, and plan execution.
-	 *
-	 * @param TemplateId  Factory template ID (e.g., "gun", "projectile")
-	 * @param AssetPath   Blueprint asset path to create (e.g., "/Game/Blueprints/BP_Pistol")
-	 * @param Params      Full tool parameters (may contain "preset" and "parameters"/"template_params")
-	 * @return Tool result with created asset info or error
-	 */
-	FOliveToolResult HandleBlueprintCreateFromTemplate(
-		const FString& TemplateId,
-		const FString& AssetPath,
-		const TSharedPtr<FJsonObject>& Params);
 
 	// ============================================================================
 	// Graph Writer Tool Handlers

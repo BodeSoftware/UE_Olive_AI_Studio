@@ -25,8 +25,6 @@
 #include "MCP/OliveCppToolHandlers.h"
 #include "MCP/OliveCrossSystemToolHandlers.h"
 #include "MCP/OlivePythonToolHandlers.h"
-#include "MCP/OliveBuildTool.h"
-#include "Template/OliveTemplateSystem.h"
 #include "OliveMCPPromptTemplates.h"
 #include "Chat/OliveEditorChatSession.h"
 #include "UI/SOliveAIChatPanel.h"
@@ -98,28 +96,7 @@ void FOliveAIEditorModule::StartupModule()
 			FString KeywordStr = FString::Join(Keywords, TEXT(", "));
 			UE_LOG(LogOliveAI, Warning, TEXT("Extracted %d keywords: [%s]"), Keywords.Num(), *KeywordStr);
 
-			// Step 2: Template search
-			UE_LOG(LogOliveAI, Warning, TEXT("--- Step 2: Template Search ---"));
-			FString SearchQuery = FString::Join(Keywords, TEXT(" "));
-			TArray<TSharedPtr<FJsonObject>> Results = FOliveTemplateSystem::Get().SearchTemplates(SearchQuery, 8);
-			UE_LOG(LogOliveAI, Warning, TEXT("Found %d matching templates"), Results.Num());
-
-			for (int32 i = 0; i < Results.Num(); ++i)
-			{
-				FString Id, Desc, Proj;
-				Results[i]->TryGetStringField(TEXT("template_id"), Id);
-				Results[i]->TryGetStringField(TEXT("catalog_description"), Desc);
-				Results[i]->TryGetStringField(TEXT("source_project"), Proj);
-
-				// Truncate description for readability
-				if (Desc.Len() > 80)
-				{
-					Desc = Desc.Left(80) + TEXT("...");
-				}
-				UE_LOG(LogOliveAI, Warning, TEXT("  [%d] %s (%s): %s"), i, *Id, *Proj, *Desc);
-			}
-
-			// Step 3: Settings check
+			// Step 2: Settings check
 			UE_LOG(LogOliveAI, Warning, TEXT("--- Settings ---"));
 			const UOliveAISettings* S = UOliveAISettings::Get();
 			if (S)
@@ -127,8 +104,6 @@ void FOliveAIEditorModule::StartupModule()
 				UE_LOG(LogOliveAI, Warning, TEXT("  LLM expansion enabled: %s"), S->bEnableLLMKeywordExpansion ? TEXT("YES") : TEXT("NO"));
 				UE_LOG(LogOliveAI, Warning, TEXT("  Utility provider: %d"), (int32)S->UtilityModelProvider);
 				UE_LOG(LogOliveAI, Warning, TEXT("  Utility model: %s"), *S->UtilityModelId);
-				UE_LOG(LogOliveAI, Warning, TEXT("  Has templates: %s"), FOliveTemplateSystem::Get().HasTemplates() ? TEXT("YES") : TEXT("NO"));
-				UE_LOG(LogOliveAI, Warning, TEXT("  Catalog block length: %d chars"), FOliveTemplateSystem::Get().GetCatalogBlock().Len());
 			}
 
 			UE_LOG(LogOliveAI, Warning, TEXT("===== PRE-SEARCH TEST COMPLETE ====="));
@@ -174,9 +149,6 @@ void FOliveAIEditorModule::ShutdownModule()
 
 	// Shutdown BT node catalog
 	FOliveBTNodeCatalog::Get().Shutdown();
-
-	// Shutdown template system
-	FOliveTemplateSystem::Get().Shutdown();
 
 	// Unregister Blueprint tools
 	FOliveBlueprintToolHandlers::Get().UnregisterAllTools();
@@ -320,8 +292,6 @@ void FOliveAIEditorModule::OnPostEngineInit()
 	// Register built-in tools
 	FOliveToolRegistry::Get().RegisterBuiltInTools();
 
-	// Register olive.build batch executor (after built-in tools, before domain-specific tools)
-	FOliveBuildTool::RegisterTool();
 
 	// Initialize node catalog
 	FOliveNodeCatalog::Get().Initialize();
@@ -381,9 +351,6 @@ void FOliveAIEditorModule::OnPostEngineInit()
 
 	// Register Cross-System validation rules
 	FOliveValidationEngine::Get().RegisterCrossSystemRules();
-
-	// Initialize template system (scans Content/Templates/ for JSON templates)
-	FOliveTemplateSystem::Get().Initialize();
 
 	// Initialize prompt assembler after tool registration.
 	FOlivePromptAssembler::Get().Initialize();

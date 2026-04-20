@@ -13,7 +13,6 @@ class UEdGraphNode;
 class UEdGraphPin;
 class FOliveNodeFactory;
 class FOlivePinConnector;
-struct FOliveIRNode;
 class FJsonObject;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogOliveGraphWriter, Log, All);
@@ -84,18 +83,6 @@ public:
 		const TMap<FString, FString>& NodeProperties,
 		int32 PosX,
 		int32 PosY);
-
-	/**
-	 * Add multiple nodes to a graph in a single transaction
-	 * @param BlueprintPath Full asset path to the Blueprint
-	 * @param GraphName Name of the graph
-	 * @param Nodes Array of IR node definitions to create
-	 * @return Result with CreatedNodeIds array on success
-	 */
-	FOliveBlueprintWriteResult AddNodes(
-		const FString& BlueprintPath,
-		const FString& GraphName,
-		const TArray<FOliveIRNode>& Nodes);
 
 	/**
 	 * Remove a node from a graph by ID
@@ -256,34 +243,6 @@ public:
 	 */
 	FString CacheExternalNode(const FString& BlueprintPath, UEdGraphNode* Node);
 
-	// ============================================================================
-	// Plan Node Tracking (for duplicate cleanup on retry)
-	// ============================================================================
-
-	/**
-	 * Record nodes created by a plan_json call for a specific entry point.
-	 * Used for cleanup on subsequent calls to the same entry point.
-	 * @param EntryKey Format: "BlueprintPath::GraphName::EntryPointName"
-	 * @param CreatedNodeNames UObject FNames of created nodes (excluding reused event/entry/result nodes)
-	 */
-	void RecordPlanNodes(const FString& EntryKey, const TArray<FName>& CreatedNodeNames);
-
-	/**
-	 * Remove nodes previously created by plan_json at this entry point.
-	 * Called before Phase 1 of a new plan_json targeting the same entry point.
-	 * Only removes nodes that still exist in the graph; never touches event/entry/result nodes.
-	 * @param EntryKey Format: "BlueprintPath::GraphName::EntryPointName"
-	 * @param Graph The graph containing the nodes
-	 * @return Number of nodes removed
-	 */
-	int32 CleanupPreviousPlanNodes(const FString& EntryKey, UEdGraph* Graph);
-
-	/**
-	 * Clear all tracked plan nodes for a Blueprint (e.g., on recompile or close).
-	 * @param BlueprintPath Full asset path to the Blueprint
-	 */
-	void ClearPlanNodesForBlueprint(const FString& BlueprintPath);
-
 private:
 	FOliveGraphWriter();
 	~FOliveGraphWriter() = default;
@@ -382,13 +341,6 @@ private:
 	 */
 	bool IsPIEActive() const;
 
-	/**
-	 * Convert IR node properties to node factory properties
-	 * @param IRNode The IR node to convert
-	 * @return Property map suitable for node factory
-	 */
-	TMap<FString, FString> ConvertIRNodeProperties(const FOliveIRNode& IRNode);
-
 	// ============================================================================
 	// Private Members
 	// ============================================================================
@@ -401,8 +353,4 @@ private:
 
 	/** Critical section for thread safety when accessing caches */
 	mutable FCriticalSection CacheLock;
-
-	/** Tracks UObject FNames of nodes created per plan_json entry point for duplicate cleanup.
-	 *  Key format: "BlueprintPath::GraphName::EntryPointName" */
-	TMap<FString, TArray<FName>> PreviousPlanNodesByEntry;
 };

@@ -9,8 +9,6 @@
 #include "Brain/OliveBrainLayer.h"
 #include "Brain/OliveOperationHistory.h"
 #include "Brain/OlivePromptDistiller.h"
-#include "Brain/OliveRetryPolicy.h"
-#include "Brain/OliveSelfCorrectionPolicy.h"
 
 class FOliveMessageQueue;
 class FOliveProviderRetryManager;
@@ -465,14 +463,8 @@ private:
 	/** Prompt distiller for token efficiency */
 	FOlivePromptDistiller PromptDistiller;
 
-	/** Loop detector for current run */
-	FOliveLoopDetector LoopDetector;
-
-	/** Self-correction policy */
-	FOliveSelfCorrectionPolicy SelfCorrectionPolicy;
-
-	/** Retry policy configuration */
-	FOliveRetryPolicy RetryPolicy;
+	/** Per-tool failure attempt counter for hard cap (resets each user turn) */
+	TMap<FString, int32> ToolFailureAttempts;
 
 	// ==========================================
 	// Token Management

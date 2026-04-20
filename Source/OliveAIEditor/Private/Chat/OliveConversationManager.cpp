@@ -13,7 +13,6 @@
 #include "OliveAIEditorModule.h"
 #include "Brain/OliveToolExecutionContext.h"
 #include "Chat/OliveRunManager.h"
-#include "OliveSnapshotManager.h"
 #include "Pipeline/OliveWritePipeline.h"
 #include "Misc/Guid.h"
 #include "Serialization/JsonSerializer.h"
@@ -200,8 +199,7 @@ bool IsFoundationalTool(const FString& ToolName)
 	return ToolName == TEXT("blueprint.create")
 		|| ToolName == TEXT("behaviortree.create")
 		|| ToolName == TEXT("pcg.create_graph")
-		|| ToolName == TEXT("cpp.create_class")
-		|| ToolName == TEXT("blueprint.preview_plan_json");
+		|| ToolName == TEXT("cpp.create_class");
 }
 
 bool DetectMultiAssetIntent(const FString& UserMessage)
@@ -277,12 +275,6 @@ FOliveConversationManager::FOliveConversationManager()
 {
 	Brain = MakeShared<FOliveBrainLayer>();
 	StartNewSession();
-
-	// Wire retry policy from settings
-	if (const UOliveAISettings* Settings = UOliveAISettings::Get())
-	{
-		RetryPolicy.MaxCorrectionCyclesPerWorker = Settings->MaxCorrectionCyclesPerRun;
-	}
 }
 
 namespace OliveConversationManagerInternal
@@ -435,31 +427,7 @@ void FOliveConversationManager::SendUserMessageAutonomous(const FString& Message
 		FOliveMCPServer::Get().Start();
 	}
 
-	// 4. Auto-snapshot before autonomous run for one-click rollback safety net.
-	//    This is especially important because MCP-origin tool calls bypass
-	//    Tier 2/3 confirmation flows.
-	if (ActiveContextPaths.Num() > 0)
-	{
-		const FString TruncatedMessage = Message.Left(60);
-		const FString SnapshotLabel = FString::Printf(TEXT("Pre-autonomous: %s"), *TruncatedMessage);
-		FOliveToolResult SnapshotResult = FOliveSnapshotManager::Get().CreateSnapshot(
-			SnapshotLabel, ActiveContextPaths, TEXT("Auto-snapshot before autonomous provider run"));
-
-		if (SnapshotResult.bSuccess)
-		{
-			UE_LOG(LogOliveAI, Log, TEXT("Auto-snapshot created before autonomous run"));
-		}
-		else
-		{
-			UE_LOG(LogOliveAI, Warning, TEXT("Failed to create auto-snapshot before autonomous run"));
-		}
-	}
-	else
-	{
-		UE_LOG(LogOliveAI, Log, TEXT("Skipping auto-snapshot: no active context paths"));
-	}
-
-	// 5. Propagate the current chat mode to the MCP server so that tool calls
+	// 4. Propagate the current chat mode to the MCP server so that tool calls
 	//    from the internal autonomous agent respect Plan/Ask mode gating.
 	FOliveMCPServer::Get().SetChatModeForInternalAgent(RequestChatMode);
 
@@ -665,8 +633,7 @@ void FOliveConversationManager::SendUserMessage(const FString& Message)
 
 	// Reset tool iteration counter and Brain components
 	CurrentToolIteration = 0;
-	LoopDetector.Reset();
-	SelfCorrectionPolicy.Reset();
+	ToolFailureAttempts.Reset();
 	bTurnHasExplicitWriteIntent = DetectWriteIntent(Message);
 
 	// Dynamic iteration budget for multi-asset tasks
@@ -1786,79 +1753,17 @@ void FOliveConversationManager::HandleToolResult(
 			0.0, Result.Data);
 	}
 
-	// Use SelfCorrectionPolicy to evaluate the result
+	// Hard-cap retry: after 2 failed attempts for the same tool name in one turn, stop the worker.
 	FString ResultContent = Result.ToJsonString();
+	if (!Result.bSuccess)
 	{
-		// Extract asset context from original tool args for per-asset signature tracking
-		FString AssetContext;
-		if (const TSharedPtr<FJsonObject>* FoundArgs = ActiveToolCallArgs.Find(ToolCallId))
+		int32& Attempts = ToolFailureAttempts.FindOrAdd(ToolName);
+		++Attempts;
+		if (Attempts >= 2)
 		{
-			if (!(*FoundArgs)->TryGetStringField(TEXT("path"), AssetContext))
-			{
-				(*FoundArgs)->TryGetStringField(TEXT("asset_path"), AssetContext);
-			}
-
-			// Add finer-grained context for variable operations so batched writes
-			// on different variable names do not collapse into one retry signature.
-			if (ToolName == TEXT("blueprint.add_variable")
-				|| ToolName == TEXT("blueprint.modify_variable")
-				|| ToolName == TEXT("blueprint.remove_variable"))
-			{
-				FString VariableName;
-				const TSharedPtr<FJsonObject>* VariableObj = nullptr;
-				if ((*FoundArgs)->TryGetObjectField(TEXT("variable"), VariableObj) && VariableObj && (*VariableObj).IsValid())
-				{
-					(*VariableObj)->TryGetStringField(TEXT("name"), VariableName);
-				}
-				if (VariableName.IsEmpty())
-				{
-					(*FoundArgs)->TryGetStringField(TEXT("name"), VariableName);
-				}
-				if (VariableName.IsEmpty())
-				{
-					(*FoundArgs)->TryGetStringField(TEXT("variable_name"), VariableName);
-				}
-				if (!VariableName.IsEmpty())
-				{
-					AssetContext = AssetContext.IsEmpty()
-						? FString::Printf(TEXT("var=%s"), *VariableName)
-						: FString::Printf(TEXT("%s|var=%s"), *AssetContext, *VariableName);
-				}
-			}
-		}
-
-		// Look up tool call arguments for plan dedup
-		TSharedPtr<FJsonObject> ToolCallArgsForEval;
-		if (const TSharedPtr<FJsonObject>* FoundArgs = ActiveToolCallArgs.Find(ToolCallId))
-		{
-			ToolCallArgsForEval = *FoundArgs;
-		}
-
-		FOliveCorrectionDecision Decision = SelfCorrectionPolicy.Evaluate(
-			ToolName, ResultContent, LoopDetector, RetryPolicy, AssetContext, ToolCallArgsForEval);
-
-		switch (Decision.Action)
-		{
-		case EOliveCorrectionAction::FeedBackErrors:
-			// Enrich the result content with retry instructions
-			ResultContent = ResultContent + TEXT("\n\n") + Decision.EnrichedMessage;
-			if (Brain.IsValid())
-			{
-				Brain->SetWorkerPhase(EOliveWorkerPhase::SelfCorrecting);
-			}
-			break;
-
-		case EOliveCorrectionAction::StopWorker:
-			// Loop detected — stop and report
-			ResultContent = ResultContent + TEXT("\n\n") + Decision.LoopReport;
-			UE_LOG(LogOliveAI, Warning, TEXT("Self-correction loop detected for tool '%s'. Stopping."), *ToolName);
+			UE_LOG(LogOliveAI, Warning,
+				TEXT("Tool '%s' failed %d times this turn — stopping worker."), *ToolName, Attempts);
 			bStopAfterToolResults = true;
-			// CompleteRun(Failed) is called once in ContinueAfterToolResults after all results are collected
-			break;
-
-		case EOliveCorrectionAction::Continue:
-		default:
-			break;
 		}
 	}
 

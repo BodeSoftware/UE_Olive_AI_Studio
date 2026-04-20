@@ -91,13 +91,6 @@ namespace OliveBlueprintSchemas
 	TSharedPtr<FJsonObject> BlueprintDescribeFunction();
 
 	/**
-	 * Schema for blueprint.verify_completion tool.
-	 * Verify a Blueprint is complete: compiles, expected functions/variables exist,
-	 * no orphaned exec flows, no unwired required data pins.
-	 * Params: {asset_path: string, expected_functions?: string[], expected_variables?: string[]}
-	 */
-	TSharedPtr<FJsonObject> BlueprintVerifyCompletion();
-
 	// ============================================================================
 	// Asset Writer Tool Schemas
 	// ============================================================================
@@ -294,51 +287,6 @@ namespace OliveBlueprintSchemas
 	 *          tracks: [{name: string, type: "float"|"vector"|"color"|"event", keys: array, interp?: string}]}
 	 */
 	TSharedPtr<FJsonObject> BlueprintCreateTimeline();
-
-	// ============================================================================
-	// Plan JSON Tool Schemas
-	// ============================================================================
-
-	/**
-	 * Schema for blueprint.preview_plan_json
-	 * Preview an intent-level plan without mutating the Blueprint.
-	 * Returns normalized plan, diff summary, and a fingerprint for drift detection.
-	 * Params: {asset_path: string, graph_target?: string, mode?: string, plan_json: object}
-	 */
-	TSharedPtr<FJsonObject> BlueprintPreviewPlanJson();
-
-	/**
-	 * Schema for blueprint.apply_plan_json
-	 * Apply an intent-level plan atomically to a Blueprint graph.
-	 * Resolves intents to concrete nodes, executes as a single transaction, compiles once.
-	 * Params: {asset_path: string, graph_target?: string, mode?: string, plan_json: object, preview_fingerprint?: string}
-	 */
-	TSharedPtr<FJsonObject> BlueprintApplyPlanJson();
-
-	// ============================================================================
-	// Template Tool Schemas
-	// ============================================================================
-
-	/**
-	 * Schema for blueprint.create_from_template
-	 * Create a complete Blueprint from a factory template.
-	 * Params: {template_id: string, path: string, preset?: string, parameters?: object}
-	 */
-	TSharedPtr<FJsonObject> BlueprintCreateFromTemplate();
-
-	/**
-	 * Schema for blueprint.get_template
-	 * View a template's full content
-	 * Params: {template_id: string, pattern?: string}
-	 */
-	TSharedPtr<FJsonObject> BlueprintGetTemplate();
-
-	/**
-	 * Schema for blueprint.list_templates
-	 * List available templates
-	 * Params: {type?: string}
-	 */
-	TSharedPtr<FJsonObject> BlueprintListTemplates();
 
 	// ============================================================================
 	// AnimBP Writer Tool Schemas

@@ -2,7 +2,6 @@
 
 #include "OlivePythonToolHandlers.h"
 #include "OlivePythonSchemas.h"
-#include "OliveSnapshotManager.h"
 #include "MCP/OliveToolRegistry.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -105,18 +104,7 @@ FOliveToolResult FOlivePythonToolHandlers::HandleRunPython(const TSharedPtr<FJso
 		);
 	}
 
-	// 3. Take automatic snapshot before execution
-	//    Use a simple name to identify Python script snapshots
-	{
-		TArray<FString> EmptyAssets; // Snapshot with no specific assets = project-wide safety net
-		FOliveSnapshotManager::Get().CreateSnapshot(
-			TEXT("pre_python_script"),
-			EmptyAssets,
-			TEXT("Automatic snapshot before editor.run_python execution")
-		);
-	}
-
-	// 4. Wrap script in try/except
+	// 3. Wrap script in try/except
 	const FString WrappedScript = WrapScript(Script);
 
 	// 5. Execute via FPythonCommandEx
