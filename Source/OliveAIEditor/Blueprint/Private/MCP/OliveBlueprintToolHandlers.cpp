@@ -2490,18 +2490,19 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreate(const TShare
 			return Result;
 		}
 
-		// Also catch paths missing /Game/ prefix
-		if (!AssetPath.StartsWith(TEXT("/Game/")))
+		// Validate the path is under a registered content mount (/Game/, /<PluginName>/, etc.)
+		FString TestFilename;
+		if (!FPackageName::TryConvertLongPackageNameToFilename(AssetPath, TestFilename))
 		{
 			FOliveToolResult Result = FOliveToolResult::Error(
 				TEXT("VALIDATION_INVALID_PATH_PREFIX"),
-				FString::Printf(TEXT("Path '%s' must start with '/Game/'."), *AssetPath),
-				FString::Printf(TEXT("Use '/Game/Blueprints/%s' or another path under /Game/"), *ShortName)
+				FString::Printf(TEXT("Path '%s' is not under a registered content mount. Use '/Game/...' for project content, or '/<PluginName>/...' for plugin content (plugin must have CanContainContent=true)."), *AssetPath),
+				FString::Printf(TEXT("Use '/Game/Blueprints/%s' or place under a mounted plugin's Content folder."), *ShortName)
 			);
 			if (Result.Data.IsValid())
 			{
 				Result.Data->SetStringField(TEXT("self_correction_hint"),
-					FString::Printf(TEXT("Paths must start with /Game/. Try: /Game/Blueprints/%s"), *ShortName));
+					FString::Printf(TEXT("Paths must use a registered mount root. Try: /Game/Blueprints/%s"), *ShortName));
 			}
 			return Result;
 		}
@@ -2786,18 +2787,19 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintScaffold(const TSha
 			return Result;
 		}
 
-		// Catch paths missing /Game/ prefix
-		if (!AssetPath.StartsWith(TEXT("/Game/")))
+		// Validate the path is under a registered content mount (/Game/, /<PluginName>/, etc.)
+		FString TestFilename;
+		if (!FPackageName::TryConvertLongPackageNameToFilename(AssetPath, TestFilename))
 		{
 			FOliveToolResult Result = FOliveToolResult::Error(
 				TEXT("VALIDATION_INVALID_PATH_PREFIX"),
-				FString::Printf(TEXT("Path '%s' must start with '/Game/'."), *AssetPath),
-				FString::Printf(TEXT("Use '/Game/Blueprints/%s' or another path under /Game/"), *ShortName)
+				FString::Printf(TEXT("Path '%s' is not under a registered content mount. Use '/Game/...' for project content, or '/<PluginName>/...' for plugin content (plugin must have CanContainContent=true)."), *AssetPath),
+				FString::Printf(TEXT("Use '/Game/Blueprints/%s' or place under a mounted plugin's Content folder."), *ShortName)
 			);
 			if (Result.Data.IsValid())
 			{
 				Result.Data->SetStringField(TEXT("self_correction_hint"),
-					FString::Printf(TEXT("Paths must start with /Game/. Try: /Game/Blueprints/%s"), *ShortName));
+					FString::Printf(TEXT("Paths must use a registered mount root. Try: /Game/Blueprints/%s"), *ShortName));
 			}
 			return Result;
 		}
@@ -3679,13 +3681,14 @@ FOliveToolResult FOliveBlueprintToolHandlers::HandleBlueprintCreateInterface(
 			);
 		}
 
-		if (!AssetPath.StartsWith(TEXT("/Game/")))
+		FString TestFilename;
+		if (!FPackageName::TryConvertLongPackageNameToFilename(AssetPath, TestFilename))
 		{
 			return FOliveToolResult::Error(
 				TEXT("VALIDATION_INVALID_PATH_PREFIX"),
-				FString::Printf(TEXT("Path '%s' must start with '/Game/'."),
+				FString::Printf(TEXT("Path '%s' is not under a registered content mount. Use '/Game/...' for project content, or '/<PluginName>/...' for plugin content."),
 					*AssetPath),
-				FString::Printf(TEXT("Use '/Game/Interfaces/%s'"), *ShortName)
+				FString::Printf(TEXT("Use '/Game/Interfaces/%s' or place under a mounted plugin's Content folder."), *ShortName)
 			);
 		}
 	}

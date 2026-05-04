@@ -72,6 +72,11 @@
 #include "Components/ComboBoxString.h"
 #include "Components/WidgetSwitcher.h"
 
+// Widget Blueprint includes (for ComponentBoundEvent fallback to widget tree)
+#include "WidgetBlueprint.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/Widget.h"
+
 // Universal node creation includes
 #include "UObject/UObjectGlobals.h"  // For StaticLoadClass
 
@@ -1505,59 +1510,115 @@ UK2Node* FOliveNodeFactory::CreateComponentBoundEventNode(
 	const FName DelegateFName(**DelegateNamePtr);
 	const FString& ComponentName = *ComponentNamePtr;
 
-	// Find the SCS node matching the component name
-	if (!Blueprint->SimpleConstructionScript)
-	{
-		LastError = FString::Printf(
-			TEXT("Blueprint '%s' has no SimpleConstructionScript (not an Actor-based Blueprint)"),
-			*Blueprint->GetName());
-		return nullptr;
-	}
+	// Resolve the component class + variable name. Two sources are supported:
+	//   (1) Actor-based Blueprints: SimpleConstructionScript components.
+	//   (2) Widget Blueprints (UMG, including Editor Utility Widgets): WidgetTree members.
+	UClass* ResolvedComponentClass = nullptr;
+	FName   ResolvedComponentVarName;
+	FString ResolvedSourceLabel;          // "SCS" or "WidgetTree" — used in error text only
 
-	USCS_Node* MatchedSCSNode = nullptr;
-	TArray<USCS_Node*> AllSCSNodes = Blueprint->SimpleConstructionScript->GetAllNodes();
-	for (USCS_Node* SCSNode : AllSCSNodes)
+	if (Blueprint->SimpleConstructionScript)
 	{
-		if (SCSNode && SCSNode->GetVariableName().ToString().Equals(ComponentName, ESearchCase::IgnoreCase))
-		{
-			MatchedSCSNode = SCSNode;
-			break;
-		}
-	}
-
-	if (!MatchedSCSNode)
-	{
-		// Build a list of available components for the error message
-		TArray<FString> AvailableComponents;
+		ResolvedSourceLabel = TEXT("SCS");
+		USCS_Node* MatchedSCSNode = nullptr;
+		TArray<USCS_Node*> AllSCSNodes = Blueprint->SimpleConstructionScript->GetAllNodes();
 		for (USCS_Node* SCSNode : AllSCSNodes)
 		{
-			if (SCSNode)
+			if (SCSNode && SCSNode->GetVariableName().ToString().Equals(ComponentName, ESearchCase::IgnoreCase))
 			{
-				AvailableComponents.Add(SCSNode->GetVariableName().ToString());
+				MatchedSCSNode = SCSNode;
+				break;
 			}
 		}
 
-		LastError = FString::Printf(
-			TEXT("Component '%s' not found in Blueprint '%s' SCS. Available components: %s"),
-			*ComponentName, *Blueprint->GetName(),
-			AvailableComponents.Num() > 0
-				? *FString::Join(AvailableComponents, TEXT(", "))
-				: TEXT("(none)"));
-		return nullptr;
-	}
+		if (!MatchedSCSNode)
+		{
+			TArray<FString> AvailableComponents;
+			for (USCS_Node* SCSNode : AllSCSNodes)
+			{
+				if (SCSNode)
+				{
+					AvailableComponents.Add(SCSNode->GetVariableName().ToString());
+				}
+			}
+			LastError = FString::Printf(
+				TEXT("Component '%s' not found in Blueprint '%s' SCS. Available components: %s"),
+				*ComponentName, *Blueprint->GetName(),
+				AvailableComponents.Num() > 0
+					? *FString::Join(AvailableComponents, TEXT(", "))
+					: TEXT("(none)"));
+			return nullptr;
+		}
 
-	if (!MatchedSCSNode->ComponentClass)
+		if (!MatchedSCSNode->ComponentClass)
+		{
+			LastError = FString::Printf(
+				TEXT("SCS node '%s' has no ComponentClass"), *ComponentName);
+			return nullptr;
+		}
+
+		ResolvedComponentClass = MatchedSCSNode->ComponentClass;
+		ResolvedComponentVarName = MatchedSCSNode->GetVariableName();
+	}
+	else if (UWidgetBlueprint* WidgetBP = Cast<UWidgetBlueprint>(Blueprint))
+	{
+		ResolvedSourceLabel = TEXT("WidgetTree");
+		if (!WidgetBP->WidgetTree)
+		{
+			LastError = FString::Printf(
+				TEXT("Widget Blueprint '%s' has no WidgetTree (cannot resolve widget '%s')"),
+				*Blueprint->GetName(), *ComponentName);
+			return nullptr;
+		}
+
+		UWidget* MatchedWidget = nullptr;
+		TArray<UWidget*> AllWidgets;
+		WidgetBP->WidgetTree->GetAllWidgets(AllWidgets);
+		for (UWidget* W : AllWidgets)
+		{
+			if (W && W->GetName().Equals(ComponentName, ESearchCase::IgnoreCase))
+			{
+				MatchedWidget = W;
+				break;
+			}
+		}
+
+		if (!MatchedWidget)
+		{
+			TArray<FString> AvailableWidgets;
+			for (UWidget* W : AllWidgets)
+			{
+				if (W)
+				{
+					AvailableWidgets.Add(W->GetName());
+				}
+			}
+			LastError = FString::Printf(
+				TEXT("Widget '%s' not found in Blueprint '%s' WidgetTree. Available widgets: %s"),
+				*ComponentName, *Blueprint->GetName(),
+				AvailableWidgets.Num() > 0
+					? *FString::Join(AvailableWidgets, TEXT(", "))
+					: TEXT("(none)"));
+			return nullptr;
+		}
+
+		ResolvedComponentClass = MatchedWidget->GetClass();
+		ResolvedComponentVarName = MatchedWidget->GetFName();
+	}
+	else
 	{
 		LastError = FString::Printf(
-			TEXT("SCS node '%s' has no ComponentClass"), *ComponentName);
+			TEXT("Blueprint '%s' is neither an Actor-based Blueprint (no SimpleConstructionScript) "
+				 "nor a Widget Blueprint, so component '%s' cannot be resolved."),
+			*Blueprint->GetName(), *ComponentName);
 		return nullptr;
 	}
 
-	// Find the multicast delegate property on the component class
+	// Find the multicast delegate property on the resolved component/widget class
 	FMulticastDelegateProperty* FoundDelegateProp = nullptr;
 	TArray<FString> AvailableDelegates;
 
-	for (TFieldIterator<FMulticastDelegateProperty> It(MatchedSCSNode->ComponentClass); It; ++It)
+	for (TFieldIterator<FMulticastDelegateProperty> It(ResolvedComponentClass); It; ++It)
 	{
 		FMulticastDelegateProperty* DelegateProp = *It;
 		AvailableDelegates.Add(DelegateProp->GetName());
@@ -1572,10 +1633,12 @@ UK2Node* FOliveNodeFactory::CreateComponentBoundEventNode(
 	if (!FoundDelegateProp)
 	{
 		LastError = FString::Printf(
-			TEXT("Delegate '%s' not found on component '%s' (class '%s'). "
+			TEXT("Delegate '%s' not found on %s '%s' (class '%s'). "
 				 "Available delegates: %s"),
-			**DelegateNamePtr, *ComponentName,
-			*MatchedSCSNode->ComponentClass->GetName(),
+			**DelegateNamePtr,
+			ResolvedSourceLabel.Equals(TEXT("WidgetTree")) ? TEXT("widget") : TEXT("component"),
+			*ComponentName,
+			*ResolvedComponentClass->GetName(),
 			AvailableDelegates.Num() > 0
 				? *FString::Join(AvailableDelegates, TEXT(", "))
 				: TEXT("(none)"));
@@ -1583,36 +1646,35 @@ UK2Node* FOliveNodeFactory::CreateComponentBoundEventNode(
 	}
 
 	// Find the FObjectProperty on the Blueprint's GeneratedClass that corresponds
-	// to the SCS component variable. InitializeComponentBoundEventParams needs this.
+	// to the resolved component variable. InitializeComponentBoundEventParams needs this.
 	FObjectProperty* ComponentProp = nullptr;
 	if (Blueprint->GeneratedClass)
 	{
 		ComponentProp = FindFProperty<FObjectProperty>(
-			Blueprint->GeneratedClass, MatchedSCSNode->GetVariableName());
+			Blueprint->GeneratedClass, ResolvedComponentVarName);
 	}
 
-	if (!ComponentProp)
+	if (!ComponentProp && Blueprint->SkeletonGeneratedClass)
 	{
-		// Fallback: try SkeletonGeneratedClass
-		if (Blueprint->SkeletonGeneratedClass)
-		{
-			ComponentProp = FindFProperty<FObjectProperty>(
-				Blueprint->SkeletonGeneratedClass, MatchedSCSNode->GetVariableName());
-		}
+		ComponentProp = FindFProperty<FObjectProperty>(
+			Blueprint->SkeletonGeneratedClass, ResolvedComponentVarName);
 	}
 
 	if (!ComponentProp)
 	{
 		LastError = FString::Printf(
-			TEXT("Could not find FObjectProperty for component '%s' on Blueprint '%s' generated class. "
+			TEXT("Could not find FObjectProperty for %s '%s' on Blueprint '%s' generated class. "
 				 "The Blueprint may need to be compiled first."),
+			ResolvedSourceLabel.Equals(TEXT("WidgetTree")) ? TEXT("widget") : TEXT("component"),
 			*ComponentName, *Blueprint->GetName());
 		return nullptr;
 	}
 
 	UE_LOG(LogOliveNodeFactory, Log,
-		TEXT("CreateComponentBoundEventNode: Found delegate '%s' on component '%s' (class '%s')"),
-		**DelegateNamePtr, *ComponentName, *MatchedSCSNode->ComponentClass->GetName());
+		TEXT("CreateComponentBoundEventNode: Found delegate '%s' on %s '%s' (class '%s')"),
+		**DelegateNamePtr,
+		ResolvedSourceLabel.Equals(TEXT("WidgetTree")) ? TEXT("widget") : TEXT("component"),
+		*ComponentName, *ResolvedComponentClass->GetName());
 
 	// Create the ComponentBoundEvent node using the engine's initialization API
 	UK2Node_ComponentBoundEvent* BoundEventNode = NewObject<UK2Node_ComponentBoundEvent>(Graph);
